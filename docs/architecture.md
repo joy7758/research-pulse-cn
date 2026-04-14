@@ -10,8 +10,9 @@ Core flow:
 4. Selected pulse cards enqueue outbox delivery jobs.
 5. The worker dispatches delivery jobs through current supported channel adapters and manages retry and dead-letter transitions.
 6. Digest issues are upserted from selected pulse cards and can be prepared for future official-account publication without external sends.
-7. Mini read grants expose compact mobile-friendly read models for future mini-program landing without opening write access.
-8. Sync devices consume incremental `SyncEvent` feeds and push idempotent mutations back through the same service layer.
+7. Official-account publication jobs can be dispatched through a provider boundary in `dry_run` mode and ingest inbound callback events.
+8. Mini read grants expose compact mobile-friendly read models for future mini-program landing without opening write access.
+9. Sync devices consume incremental `SyncEvent` feeds and push idempotent mutations back through the same service layer.
 
 ## Module boundaries
 
@@ -106,9 +107,12 @@ Tie-break order is deterministic:
 ### Publication reserve boundary
 - `WeChatIdentityBinding` stores admin-managed official-account or mini-program identity bindings without real OAuth flows.
 - `DigestPublicationJob` is a provider-neutral preparation record.
-- In v1 the publication layer is stub-only:
-  - prepare payloads
-  - mark jobs as `prepared` or `previewed`
+- `DigestPublicationAttempt` records dispatch visibility for each provider-boundary invocation.
+- `OfficialAccountCallbackEvent` records inbound callback payloads and deduped handling state.
+- In v1 the publication layer is dry-run only:
+  - prepare provider-ready payloads
+  - dispatch through an explicit `OfficialAccountPublisher` boundary
+  - mark jobs as `prepared`, `previewed`, or `failed`
   - never call real WeChat APIs
 
 ## Mini read-only reserve
@@ -139,6 +143,14 @@ Tie-break order is deterministic:
   - `in_prep -> 35`
   - `paused -> 0`
 - The workflow truth remains the underlying paper type, stage, and event history.
+
+## Official-account callback ingress
+- Callback endpoints are separate from admin auth because they are provider-ingress surfaces.
+- Signature verification is token-based in v1.
+- Supported callback events are intentionally narrow:
+  - `subscribe`
+  - `unsubscribe`
+- Unknown identities are archived but do not create new user bindings automatically.
 
 ## Sync backbone
 

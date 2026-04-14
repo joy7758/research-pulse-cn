@@ -157,6 +157,31 @@ class DigestPublicationMode(StrEnum):
     FUTURE_PROVIDER = "future_provider"
 
 
+class DigestPublicationAttemptStatus(StrEnum):
+    STARTED = "started"
+    PREVIEWED = "previewed"
+    FAILED = "failed"
+
+
+class OfficialAccountProviderMode(StrEnum):
+    DISABLED = "disabled"
+    DRY_RUN = "dry_run"
+
+
+class OfficialAccountCallbackPayloadFormat(StrEnum):
+    XML = "xml"
+    JSON = "json"
+    UNKNOWN = "unknown"
+
+
+class OfficialAccountCallbackProcessingStatus(StrEnum):
+    ACCEPTED = "accepted"
+    PROCESSED = "processed"
+    IGNORED = "ignored"
+    DUPLICATE = "duplicate"
+    FAILED = "failed"
+
+
 class MiniReadGrantType(StrEnum):
     PREVIEW = "preview"
     DIGEST_LANDING = "digest_landing"

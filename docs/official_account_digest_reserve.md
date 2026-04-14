@@ -53,6 +53,7 @@
   - prepared payload
   - timestamps and last error
 - Jobs in this phase are preview or preparation artifacts only.
+- Later phases add dispatch attempts and callback handling on top of the same reserve objects.
 
 ## Build Vs Prepare-Publication Flow
 1. Pulse run selects `PulseCard` rows.
@@ -60,8 +61,9 @@
 3. Admins can rebuild the same issue idempotently for the same `user_id + issue_date`.
 4. Mini read-only grants can use the digest issue as a default landing target.
 5. Admins can prepare publication.
-5. The stub publication layer finds eligible official-account bindings and writes `DigestPublicationJob` rows.
-6. No external send occurs.
+6. The reserve layer finds eligible official-account bindings and writes `DigestPublicationJob` rows in `prepared` state.
+7. Later dispatch steps can preview those jobs through the official-account provider boundary.
+8. No external send occurs in the current phase.
 
 ## Current Non-Goals
 - Real WeChat Official Account API integration
@@ -76,6 +78,7 @@
 - Publication jobs are not exposed through sync in v1.
 - Digest generation uses deterministic summaries only.
 - Deep links now target the mini read-only reserve contract, not a real mini frontend.
+- Real dispatch behavior now lives in a separate provider-boundary phase.
 
 ## Future Work
 - real official-account provider integration

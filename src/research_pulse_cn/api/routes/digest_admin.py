@@ -11,11 +11,15 @@ from fastapi import APIRouter, Depends, Query, Request, status
 from research_pulse_cn.api.audit import audit_request_action
 from research_pulse_cn.api.dependencies import get_audit_service, get_digest_service
 from research_pulse_cn.api.security import require_admin_role
+from research_pulse_cn.core.errors import ConflictError
 from research_pulse_cn.domain.auth import ActorContext
 from research_pulse_cn.domain.enums import (
     AdminRole,
+    DigestPublicationAttemptStatus,
     DigestPublicationMode,
     DigestPublicationStatus,
+    OfficialAccountCallbackProcessingStatus,
+    OfficialAccountProviderMode,
     PulseDigestIssueStatus,
     SyncEventSource,
     WeChatBindingChannelType,
@@ -23,8 +27,12 @@ from research_pulse_cn.domain.enums import (
 from research_pulse_cn.schemas.digest import (
     DigestIssueBuildRequest,
     DigestIssueBuildResponse,
+    DigestPublicationAttemptRead,
+    DigestPublicationDispatchResponse,
     DigestPublicationJobRead,
     DigestPublicationPrepareResponse,
+    OfficialAccountCallbackEventRead,
+    OfficialAccountProviderStatusRead,
     PulseDigestIssueDetailRead,
     PulseDigestIssueRead,
     WeChatIdentityBindingCreate,
@@ -257,6 +265,7 @@ def list_digest_publication_jobs(
     service: DigestServiceDep,
     digest_issue_id: Annotated[UUID | None, Query()] = None,
     user_id: UserIdQuery = None,
+    issue_date: IssueDateQuery = None,
     status: Annotated[DigestPublicationStatus | None, Query()] = None,
 ) -> list[DigestPublicationJobRead]:
     return [
@@ -264,6 +273,115 @@ def list_digest_publication_jobs(
         for job in service.list_publication_jobs(
             digest_issue_id=digest_issue_id,
             user_id=user_id,
+            issue_date=issue_date,
             status=status,
+        )
+    ]
+
+
+@router.post(
+    "/digest-publication-jobs/{publication_job_id}/dispatch",
+    response_model=DigestPublicationDispatchResponse,
+)
+def dispatch_digest_publication_job(
+    publication_job_id: UUID,
+    request: Request,
+    actor: OperatorDep,
+    service: DigestServiceDep,
+    audit_service: AuditServiceDep,
+) -> DigestPublicationDispatchResponse:
+    try:
+        result = service.dispatch_publication_job(publication_job_id)
+    except ConflictError:
+        audit_request_action(
+            audit_service=audit_service,
+            request=request,
+            actor=actor,
+            action="digest_publication.dispatch",
+            resource_type="digest_publication_job",
+            resource_id=str(publication_job_id),
+            status_code=409,
+            metadata={"action_result": "conflict"},
+        )
+        raise
+    audit_request_action(
+        audit_service=audit_service,
+        request=request,
+        actor=actor,
+        action="digest_publication.dispatch",
+        resource_type="digest_publication_job",
+        resource_id=str(result.publication_job.id),
+        status_code=200,
+        metadata={
+            "action_result": result.action,
+            "publication_job_status": result.publication_job.status.value,
+            "attempt_id": None if result.attempt is None else str(result.attempt.id),
+        },
+    )
+    return DigestPublicationDispatchResponse(
+        action=result.action,
+        publication_job=DigestPublicationJobRead.model_validate(result.publication_job),
+        attempt=(
+            None
+            if result.attempt is None
+            else DigestPublicationAttemptRead(
+                **service.serialize_publication_attempt(result.attempt)
+            )
+        ),
+    )
+
+
+@router.get("/digest-publication-attempts", response_model=list[DigestPublicationAttemptRead])
+def list_digest_publication_attempts(
+    _actor: OperatorDep,
+    service: DigestServiceDep,
+    publication_job_id: Annotated[UUID | None, Query()] = None,
+    user_id: UserIdQuery = None,
+    issue_date: IssueDateQuery = None,
+    status: Annotated[DigestPublicationAttemptStatus | None, Query()] = None,
+    provider_mode: Annotated[OfficialAccountProviderMode | None, Query()] = None,
+) -> list[DigestPublicationAttemptRead]:
+    return [
+        DigestPublicationAttemptRead(**service.serialize_publication_attempt(attempt))
+        for attempt in service.list_publication_attempts(
+            publication_job_id=publication_job_id,
+            user_id=user_id,
+            issue_date=issue_date,
+            status=status,
+            provider_mode=provider_mode,
+        )
+    ]
+
+
+@router.get(
+    "/official-account/provider-status",
+    response_model=OfficialAccountProviderStatusRead,
+)
+def official_account_provider_status(
+    _actor: OperatorDep,
+    service: DigestServiceDep,
+) -> OfficialAccountProviderStatusRead:
+    return OfficialAccountProviderStatusRead(**service.provider_status())
+
+
+@router.get(
+    "/official-account/callback-events",
+    response_model=list[OfficialAccountCallbackEventRead],
+)
+def list_official_account_callback_events(
+    _actor: OperatorDep,
+    service: DigestServiceDep,
+    user_id: UserIdQuery = None,
+    linked_binding_id: Annotated[UUID | None, Query()] = None,
+    processing_status: Annotated[OfficialAccountCallbackProcessingStatus | None, Query()] = None,
+    signature_valid: Annotated[bool | None, Query()] = None,
+) -> list[OfficialAccountCallbackEventRead]:
+    return [
+        OfficialAccountCallbackEventRead(**service.serialize_callback_event(event))
+        for event in service.list_callback_events(
+            user_id=user_id,
+            linked_binding_id=linked_binding_id,
+            processing_status=processing_status,
+            signature_valid=signature_valid,
         )
     ]

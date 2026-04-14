@@ -32,6 +32,9 @@ def configure_logging(settings: Settings) -> None:
                         "delivery_job_id=%(delivery_job_id)s "
                         "digest_issue_id=%(digest_issue_id)s "
                         "mini_grant_id=%(mini_grant_id)s user_id=%(user_id)s "
+                        "publication_job_id=%(publication_job_id)s "
+                        "publication_attempt_id=%(publication_attempt_id)s "
+                        "callback_event_id=%(callback_event_id)s "
                         "worker_role=%(worker_role)s "
                         "client_device_id=%(client_device_id)s"
                     ),

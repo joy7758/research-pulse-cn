@@ -2,22 +2,27 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
-from typing import Protocol
+from typing import Any
 from uuid import UUID
+from xml.etree import ElementTree
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy.orm import Session
 
 from research_pulse_cn.core.config import get_settings
-from research_pulse_cn.core.errors import NotFoundError
+from research_pulse_cn.core.errors import ConflictError, NotFoundError
 from research_pulse_cn.core.metrics import get_metrics
 from research_pulse_cn.core.request_context import bind_log_context
 from research_pulse_cn.db.models import (
+    DigestPublicationAttempt,
     DigestPublicationJob,
+    OfficialAccountCallbackEvent,
     PulseCard,
     PulseDigestIssue,
     PulseDigestItem,
@@ -27,9 +32,13 @@ from research_pulse_cn.db.models import (
     utcnow,
 )
 from research_pulse_cn.domain.enums import (
+    DigestPublicationAttemptStatus,
     DigestPublicationMode,
     DigestPublicationStatus,
     DigestPublicationTarget,
+    OfficialAccountCallbackPayloadFormat,
+    OfficialAccountCallbackProcessingStatus,
+    OfficialAccountProviderMode,
     PulseDigestIssueStatus,
     PulseJobStatus,
     SyncEventSource,
@@ -41,6 +50,12 @@ from research_pulse_cn.repositories.digest import DigestRepository
 from research_pulse_cn.repositories.pulse import PulseRepository
 from research_pulse_cn.repositories.user import UserRepository
 from research_pulse_cn.services.common import commit_session
+from research_pulse_cn.services.official_account import (
+    OfficialAccountPublisher,
+    OfficialAccountPublishResult,
+    build_official_account_payload,
+    get_official_account_publisher,
+)
 from research_pulse_cn.services.sync_events import SyncEventService
 
 logger = logging.getLogger(__name__)
@@ -52,56 +67,19 @@ class DigestBuildResult:
     action: str
 
 
-class DigestPublicationProvider(Protocol):
-    """Prepare a future provider payload without sending it externally."""
-
-    def prepare(
-        self,
-        *,
-        issue: PulseDigestIssue,
-        binding: WeChatIdentityBinding,
-        highlights: list[dict[str, str | None]],
-    ) -> dict:
-        """Return a future-facing provider payload."""
+@dataclass(slots=True)
+class DispatchPublicationResult:
+    action: str
+    publication_job: DigestPublicationJob
+    attempt: DigestPublicationAttempt | None
 
 
-class StubOfficialAccountPublicationProvider:
-    """Generate preview payloads without calling any external WeChat API."""
-
-    provider_name = "stub"
-
-    def prepare(
-        self,
-        *,
-        issue: PulseDigestIssue,
-        binding: WeChatIdentityBinding,
-        highlights: list[dict[str, str | None]],
-    ) -> dict:
-        return {
-            "title": issue.title,
-            "summary": issue.summary,
-            "issue_date": issue.issue_date.isoformat(),
-            "highlight_count": issue.highlight_count,
-            "selected_card_count": issue.selected_card_count,
-            "highlights": highlights,
-            "landing": {
-                "deep_link_path": issue.deep_link_path,
-                "mini_program_path": issue.deep_link_path,
-                "article_url": None,
-            },
-            "binding": {
-                "binding_id": str(binding.id),
-                "channel_type": binding.channel_type.value,
-                "app_id": binding.app_id,
-                "openid": binding.openid,
-                "unionid": binding.unionid,
-                "display_label": binding.display_label,
-            },
-            "provider_contract": {
-                "mode": "preview_only",
-                "external_send_enabled": False,
-            },
-        }
+@dataclass(slots=True)
+class CallbackIngestResult:
+    callback_event: OfficialAccountCallbackEvent
+    action: str
+    binding_updated: bool
+    linked_binding: WeChatIdentityBinding | None
 
 
 class DigestService:
@@ -112,7 +90,7 @@ class DigestService:
         session: Session,
         *,
         now_provider=None,
-        publication_provider: DigestPublicationProvider | None = None,
+        official_account_publisher: OfficialAccountPublisher | None = None,
     ) -> None:
         self.session = session
         self.settings = get_settings()
@@ -122,7 +100,9 @@ class DigestService:
         self.pulse_repository = PulseRepository(session)
         self.sync_events = SyncEventService(session)
         self.metrics = get_metrics()
-        self.publication_provider = publication_provider or StubOfficialAccountPublicationProvider()
+        self.official_account_publisher = (
+            official_account_publisher or get_official_account_publisher(self.settings)
+        )
 
     def list_bindings(
         self,
@@ -306,18 +286,6 @@ class DigestService:
             user_id=issue.user_id
         )
         eligible_binding_ids = {binding.id for binding in eligible_bindings}
-        highlights = [
-            {
-                "title": item.title,
-                "summary": item.summary,
-                "why_now": item.why_now,
-                "card_type": item.card_type.value,
-                "source_paper_id": (
-                    None if item.source_paper_id is None else str(item.source_paper_id)
-                ),
-            }
-            for item in issue.items[:3]
-        ]
 
         with bind_log_context(digest_issue_id=issue.id, user_id=issue.user_id):
             for existing in issue.publication_jobs:
@@ -328,26 +296,10 @@ class DigestService:
 
             prepared_jobs: list[DigestPublicationJob] = []
             for binding in eligible_bindings:
-                try:
-                    payload = self.publication_provider.prepare(
-                        issue=issue,
-                        binding=binding,
-                        highlights=highlights,
-                    )
-                except Exception as exc:
-                    self.metrics.increment("digest_publication_jobs_failed_total")
-                    logger.exception("digest publication payload preparation failed")
-                    raise RuntimeError("digest publication preparation failed") from exc
-
                 job = self.repository.get_publication_job(
                     digest_issue_id=issue.id,
                     binding_id=binding.id,
                     publish_target=DigestPublicationTarget.OFFICIAL_ACCOUNT,
-                )
-                status_value = (
-                    DigestPublicationStatus.PREVIEWED
-                    if publish_mode == DigestPublicationMode.MANUAL_PREVIEW
-                    else DigestPublicationStatus.PREPARED
                 )
                 if job is None:
                     job = DigestPublicationJob(
@@ -357,9 +309,14 @@ class DigestService:
                     )
                     self.repository.add_publication_job(job)
                 job.publish_mode = publish_mode
-                job.provider_name = getattr(self.publication_provider, "provider_name", "stub")
-                job.status = status_value
-                job.payload = payload
+                job.provider_name = "official_account_boundary"
+                job.status = DigestPublicationStatus.PREPARED
+                job.payload = build_official_account_payload(
+                    publication_job=job,
+                    issue=issue,
+                    binding=binding,
+                    settings=self.settings,
+                )
                 job.last_error = None
                 job.prepared_at = self.now_provider()
                 prepared_jobs.append(job)
@@ -378,12 +335,329 @@ class DigestService:
         *,
         digest_issue_id: UUID | None = None,
         user_id: UUID | None = None,
+        issue_date: date | None = None,
         status: DigestPublicationStatus | None = None,
     ) -> list[DigestPublicationJob]:
         return self.repository.list_publication_jobs(
             digest_issue_id=digest_issue_id,
             user_id=user_id,
+            issue_date=issue_date,
             status=status,
+        )
+
+    def get_publication_job(self, publication_job_id: UUID) -> DigestPublicationJob:
+        job = self.repository.get_publication_job_by_id(publication_job_id)
+        if job is None:
+            raise NotFoundError(f"digest publication job {publication_job_id} was not found")
+        return job
+
+    def list_publication_attempts(
+        self,
+        *,
+        user_id: UUID | None = None,
+        issue_date: date | None = None,
+        publication_job_id: UUID | None = None,
+        status: DigestPublicationAttemptStatus | None = None,
+        provider_mode: OfficialAccountProviderMode | None = None,
+    ) -> list[DigestPublicationAttempt]:
+        return self.repository.list_publication_attempts(
+            user_id=user_id,
+            issue_date=issue_date,
+            publication_job_id=publication_job_id,
+            status=status,
+            provider_mode=provider_mode,
+        )
+
+    def list_callback_events(
+        self,
+        *,
+        user_id: UUID | None = None,
+        linked_binding_id: UUID | None = None,
+        processing_status: OfficialAccountCallbackProcessingStatus | None = None,
+        signature_valid: bool | None = None,
+    ) -> list[OfficialAccountCallbackEvent]:
+        return self.repository.list_callback_events(
+            user_id=user_id,
+            linked_binding_id=linked_binding_id,
+            processing_status=processing_status,
+            signature_valid=signature_valid,
+        )
+
+    def provider_status(self) -> dict[str, Any]:
+        return {
+            "mode": self.settings.official_account_provider_mode,
+            "callback_enabled": self.settings.official_account_callback_enabled,
+            "dispatch_timeout_seconds": self.settings.official_account_dispatch_timeout_seconds,
+            "outbound_send_enabled": False,
+            "has_app_id": bool(self.settings.wechat_official_app_id),
+            "has_app_secret": bool(self.settings.wechat_official_app_secret),
+            "has_callback_token": bool(self.settings.wechat_official_callback_token),
+            "has_callback_aes_key": bool(self.settings.wechat_official_callback_aes_key),
+            "default_mini_program_app_id": (
+                self.settings.official_account_default_mini_program_app_id
+            ),
+            "default_article_base_url": self.settings.official_account_default_article_base_url,
+            "callback_path": "/integrations/wechat/official-account/callback",
+        }
+
+    def serialize_publication_attempt(self, attempt: DigestPublicationAttempt) -> dict[str, Any]:
+        job = attempt.digest_publication_job
+        return {
+            "id": attempt.id,
+            "digest_publication_job_id": attempt.digest_publication_job_id,
+            "digest_issue_id": job.digest_issue_id,
+            "user_id": job.digest_issue.user_id,
+            "binding_id": job.binding_id,
+            "attempt_number": attempt.attempt_number,
+            "provider_name": attempt.provider_name,
+            "provider_mode": attempt.provider_mode,
+            "status": attempt.status,
+            "request_payload": attempt.request_payload,
+            "response_payload": attempt.response_payload,
+            "error_summary": attempt.error_summary,
+            "started_at": attempt.started_at,
+            "finished_at": attempt.finished_at,
+        }
+
+    def serialize_callback_event(self, event: OfficialAccountCallbackEvent) -> dict[str, Any]:
+        return {
+            "id": event.id,
+            "app_id": event.app_id,
+            "to_user_name": event.to_user_name,
+            "from_openid": event.from_openid,
+            "msg_type": event.msg_type,
+            "event_type": event.event_type,
+            "event_key": event.event_key,
+            "event_time": event.event_time,
+            "dedupe_key": event.dedupe_key,
+            "signature_valid": event.signature_valid,
+            "payload_format": event.payload_format,
+            "raw_payload": event.raw_payload,
+            "parsed_payload": event.parsed_payload_json,
+            "processing_status": event.processing_status,
+            "processing_note": event.processing_note,
+            "linked_binding_id": event.linked_binding_id,
+            "created_at": event.created_at,
+            "processed_at": event.processed_at,
+        }
+
+    def dispatch_publication_job(
+        self,
+        publication_job_id: UUID,
+    ) -> DispatchPublicationResult:
+        job = self.get_publication_job(publication_job_id)
+        if job.publish_target != DigestPublicationTarget.OFFICIAL_ACCOUNT:
+            raise ConflictError("publication job target is not supported by this dispatcher")
+        if job.binding is None:
+            raise ConflictError("publication job has no official-account binding")
+
+        publisher = self.official_account_publisher
+        latest_attempt = self.repository.get_latest_publication_attempt(publication_job_id=job.id)
+        if (
+            self.settings.official_account_provider_mode == OfficialAccountProviderMode.DRY_RUN
+            and job.status == DigestPublicationStatus.PREVIEWED
+            and latest_attempt is not None
+            and latest_attempt.status == DigestPublicationAttemptStatus.PREVIEWED
+            and latest_attempt.provider_mode == OfficialAccountProviderMode.DRY_RUN
+        ):
+            return DispatchPublicationResult(
+                action="already_previewed",
+                publication_job=job,
+                attempt=latest_attempt,
+            )
+
+        attempt_number = 1 if latest_attempt is None else latest_attempt.attempt_number + 1
+        attempt = DigestPublicationAttempt(
+            digest_publication_job_id=job.id,
+            attempt_number=attempt_number,
+            provider_name=publisher.provider_name,
+            provider_mode=publisher.provider_mode,
+            status=DigestPublicationAttemptStatus.STARTED,
+            started_at=self.now_provider(),
+        )
+        self.repository.add_publication_attempt(attempt)
+        self.metrics.increment("digest_publication_attempts_created_total")
+
+        with bind_log_context(
+            digest_issue_id=job.digest_issue_id,
+            publication_job_id=job.id,
+            publication_attempt_id=attempt.id,
+            user_id=job.digest_issue.user_id,
+        ):
+            try:
+                result = publisher.dispatch(
+                    publication_job=job,
+                    issue=job.digest_issue,
+                    binding=job.binding,
+                )
+            except ConflictError as exc:
+                attempt.status = DigestPublicationAttemptStatus.FAILED
+                attempt.error_summary = str(exc)
+                attempt.finished_at = self.now_provider()
+                job.provider_name = publisher.provider_name
+                job.last_error = str(exc)
+                job.status = DigestPublicationStatus.FAILED
+                self.metrics.increment("digest_publication_attempts_failed_total")
+                commit_session(self.session)
+                raise
+            except Exception as exc:
+                attempt.status = DigestPublicationAttemptStatus.FAILED
+                attempt.error_summary = str(exc)
+                attempt.finished_at = self.now_provider()
+                job.provider_name = publisher.provider_name
+                job.last_error = "official-account dispatch failed"
+                job.status = DigestPublicationStatus.FAILED
+                self.metrics.increment("digest_publication_attempts_failed_total")
+                logger.exception("official-account dispatch failed")
+                commit_session(self.session)
+                raise RuntimeError("official-account dispatch failed") from exc
+
+            self._apply_dispatch_result(job=job, attempt=attempt, result=result)
+            commit_session(self.session)
+            refreshed_job = self.get_publication_job(job.id)
+            refreshed_attempt = self.repository.get_latest_publication_attempt(
+                publication_job_id=job.id
+            )
+            return DispatchPublicationResult(
+                action="previewed",
+                publication_job=refreshed_job,
+                attempt=refreshed_attempt,
+            )
+
+    def verify_callback_handshake(
+        self,
+        *,
+        signature: str | None,
+        timestamp: str | None,
+        nonce: str | None,
+        echostr: str,
+    ) -> str:
+        if not self.settings.official_account_callback_enabled:
+            raise ConflictError("official-account callback handling is disabled")
+        if not self._verify_callback_signature(
+            signature=signature,
+            timestamp=timestamp,
+            nonce=nonce,
+        ):
+            raise ConflictError("official-account callback signature is invalid")
+        return echostr
+
+    def ingest_callback(
+        self,
+        *,
+        raw_payload: str,
+        signature: str | None,
+        timestamp: str | None,
+        nonce: str | None,
+    ) -> CallbackIngestResult:
+        if not self.settings.official_account_callback_enabled:
+            raise ConflictError("official-account callback handling is disabled")
+
+        self.metrics.increment("official_account_callback_events_received_total")
+        parsed_payload, payload_format = self._parse_callback_payload(raw_payload)
+        parsed_app_id = self._resolve_callback_app_id(parsed_payload)
+        dedupe_key = self._build_callback_dedupe_key(
+            raw_payload=raw_payload,
+            parsed_payload=parsed_payload,
+            app_id=parsed_app_id,
+        )
+        existing = self.repository.get_callback_event_by_dedupe_key(dedupe_key)
+        if existing is not None:
+            existing.processing_status = OfficialAccountCallbackProcessingStatus.DUPLICATE
+            existing.processing_note = "duplicate callback ignored"
+            existing.processed_at = self.now_provider()
+            commit_session(self.session)
+            self.metrics.increment("official_account_callback_events_processed_total")
+            return CallbackIngestResult(
+                callback_event=existing,
+                action="duplicate",
+                binding_updated=False,
+                linked_binding=existing.linked_binding,
+            )
+
+        event = OfficialAccountCallbackEvent(
+            app_id=parsed_app_id,
+            to_user_name=_string_or_none(parsed_payload.get("ToUserName")),
+            from_openid=_string_or_none(
+                parsed_payload.get("FromUserName") or parsed_payload.get("openid")
+            ),
+            msg_type=_string_or_none(
+                parsed_payload.get("MsgType") or parsed_payload.get("msg_type")
+            ),
+            event_type=_string_or_none(parsed_payload.get("Event") or parsed_payload.get("event")),
+            event_key=_string_or_none(
+                parsed_payload.get("EventKey") or parsed_payload.get("event_key")
+            ),
+            event_time=self._parse_callback_event_time(
+                parsed_payload.get("CreateTime")
+                or parsed_payload.get("EventTime")
+                or parsed_payload.get("event_time")
+            ),
+            dedupe_key=dedupe_key,
+            signature_valid=self._verify_callback_signature(
+                signature=signature,
+                timestamp=timestamp,
+                nonce=nonce,
+            ),
+            payload_format=payload_format,
+            raw_payload=raw_payload,
+            parsed_payload_json=parsed_payload or None,
+            processing_status=OfficialAccountCallbackProcessingStatus.ACCEPTED,
+        )
+        self.repository.add_callback_event(event)
+
+        if not event.signature_valid:
+            event.processing_status = OfficialAccountCallbackProcessingStatus.FAILED
+            event.processing_note = "callback signature verification failed"
+            event.processed_at = self.now_provider()
+            commit_session(self.session)
+            return CallbackIngestResult(
+                callback_event=event,
+                action="signature_invalid",
+                binding_updated=False,
+                linked_binding=None,
+            )
+
+        linked_binding = self._resolve_callback_binding(
+            app_id=event.app_id,
+            openid=event.from_openid,
+        )
+        event.linked_binding_id = None if linked_binding is None else linked_binding.id
+
+        action = "ignored"
+        binding_updated = False
+        if event.msg_type != "event":
+            event.processing_status = OfficialAccountCallbackProcessingStatus.IGNORED
+            event.processing_note = "non-event official-account callback ignored in v1"
+        elif event.event_type == "subscribe":
+            action, binding_updated = self._handle_subscribe_callback(
+                event=event,
+                binding=linked_binding,
+            )
+        elif event.event_type == "unsubscribe":
+            action, binding_updated = self._handle_unsubscribe_callback(
+                event=event,
+                binding=linked_binding,
+            )
+        else:
+            event.processing_status = OfficialAccountCallbackProcessingStatus.IGNORED
+            event.processing_note = (
+                f"official-account callback event {event.event_type or 'unknown'} ignored in v1"
+            )
+            event.processed_at = self.now_provider()
+
+        commit_session(self.session)
+        if event.processing_status in {
+            OfficialAccountCallbackProcessingStatus.PROCESSED,
+            OfficialAccountCallbackProcessingStatus.IGNORED,
+            OfficialAccountCallbackProcessingStatus.DUPLICATE,
+        }:
+            self.metrics.increment("official_account_callback_events_processed_total")
+        return CallbackIngestResult(
+            callback_event=event,
+            action=action,
+            binding_updated=binding_updated,
+            linked_binding=linked_binding,
         )
 
     def _upsert_issue(
@@ -605,3 +879,197 @@ class DigestService:
 
     def _build_deep_link_path(self, user_id: UUID, issue_date: date) -> str:
         return f"/mini/pulse-digests/{user_id}/{issue_date.isoformat()}"
+
+    def _apply_dispatch_result(
+        self,
+        *,
+        job: DigestPublicationJob,
+        attempt: DigestPublicationAttempt,
+        result: OfficialAccountPublishResult,
+    ) -> None:
+        attempt.provider_name = result.provider_name
+        attempt.provider_mode = result.provider_mode
+        attempt.status = result.attempt_status
+        attempt.request_payload = result.request_payload
+        attempt.response_payload = result.response_payload
+        attempt.error_summary = None
+        attempt.finished_at = self.now_provider()
+        job.provider_name = result.provider_name
+        job.payload = result.request_payload
+        job.last_error = None
+        if result.attempt_status == DigestPublicationAttemptStatus.PREVIEWED:
+            job.status = DigestPublicationStatus.PREVIEWED
+        job.external_message_id = result.external_message_id
+
+    def _resolve_callback_binding(
+        self,
+        *,
+        app_id: str | None,
+        openid: str | None,
+    ) -> WeChatIdentityBinding | None:
+        if not app_id or not openid:
+            return None
+        return self.repository.get_binding_by_channel_app_openid(
+            channel_type=WeChatBindingChannelType.OFFICIAL_ACCOUNT,
+            app_id=app_id,
+            openid=openid,
+        )
+
+    def _handle_subscribe_callback(
+        self,
+        *,
+        event: OfficialAccountCallbackEvent,
+        binding: WeChatIdentityBinding | None,
+    ) -> tuple[str, bool]:
+        if binding is None:
+            event.processing_status = OfficialAccountCallbackProcessingStatus.IGNORED
+            event.processing_note = (
+                "no matching official-account binding exists for this subscribe event"
+            )
+            event.processed_at = self.now_provider()
+            return "binding_not_found", False
+
+        callback_time = event.event_time or self.now_provider()
+        binding.subscribed = True
+        binding.subscribed_at = callback_time
+        binding.unsubscribed_at = None
+        binding.last_seen_at = callback_time
+        binding.bind_state = WeChatBindingState.ACTIVE
+        event.processing_status = OfficialAccountCallbackProcessingStatus.PROCESSED
+        event.processing_note = "official-account subscribe event applied to binding"
+        event.processed_at = self.now_provider()
+        self.sync_events.emit_wechat_identity_binding(
+            binding,
+            event_type=SyncEventType.UPDATED,
+            event_source=SyncEventSource.SYSTEM,
+        )
+        self.metrics.increment("official_account_binding_updates_total")
+        return "binding_updated", True
+
+    def _handle_unsubscribe_callback(
+        self,
+        *,
+        event: OfficialAccountCallbackEvent,
+        binding: WeChatIdentityBinding | None,
+    ) -> tuple[str, bool]:
+        if binding is None:
+            event.processing_status = OfficialAccountCallbackProcessingStatus.IGNORED
+            event.processing_note = (
+                "no matching official-account binding exists for this unsubscribe event"
+            )
+            event.processed_at = self.now_provider()
+            return "binding_not_found", False
+
+        callback_time = event.event_time or self.now_provider()
+        binding.subscribed = False
+        binding.unsubscribed_at = callback_time
+        binding.last_seen_at = callback_time
+        event.processing_status = OfficialAccountCallbackProcessingStatus.PROCESSED
+        event.processing_note = "official-account unsubscribe event applied to binding"
+        event.processed_at = self.now_provider()
+        self.sync_events.emit_wechat_identity_binding(
+            binding,
+            event_type=SyncEventType.UPDATED,
+            event_source=SyncEventSource.SYSTEM,
+        )
+        self.metrics.increment("official_account_binding_updates_total")
+        return "binding_updated", True
+
+    def _build_callback_dedupe_key(
+        self,
+        *,
+        raw_payload: str,
+        parsed_payload: dict[str, Any],
+        app_id: str | None,
+    ) -> str:
+        parts = [
+            app_id or "",
+            _string_or_none(parsed_payload.get("FromUserName")) or "",
+            _string_or_none(parsed_payload.get("MsgType") or parsed_payload.get("msg_type")) or "",
+            _string_or_none(parsed_payload.get("Event") or parsed_payload.get("event")) or "",
+            _string_or_none(parsed_payload.get("EventKey") or parsed_payload.get("event_key"))
+            or "",
+            _string_or_none(
+                parsed_payload.get("CreateTime")
+                or parsed_payload.get("EventTime")
+                or parsed_payload.get("event_time")
+            )
+            or "",
+            raw_payload.strip(),
+        ]
+        return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()
+
+    def _resolve_callback_app_id(self, parsed_payload: dict[str, Any]) -> str | None:
+        return (
+            self.settings.wechat_official_app_id
+            or _string_or_none(parsed_payload.get("AppId"))
+            or _string_or_none(parsed_payload.get("app_id"))
+        )
+
+    def _parse_callback_payload(
+        self,
+        raw_payload: str,
+    ) -> tuple[dict[str, Any], OfficialAccountCallbackPayloadFormat]:
+        stripped = raw_payload.strip()
+        if not stripped:
+            return {}, OfficialAccountCallbackPayloadFormat.UNKNOWN
+        if stripped.startswith("<"):
+            try:
+                root = ElementTree.fromstring(stripped)
+            except ElementTree.ParseError:
+                return {}, OfficialAccountCallbackPayloadFormat.XML
+            payload = {
+                child.tag: (child.text or "").strip() if child.text is not None else None
+                for child in root
+            }
+            return payload, OfficialAccountCallbackPayloadFormat.XML
+        if stripped.startswith("{") or stripped.startswith("["):
+            try:
+                payload = json.loads(stripped)
+            except json.JSONDecodeError:
+                return {}, OfficialAccountCallbackPayloadFormat.JSON
+            return (
+                payload if isinstance(payload, dict) else {},
+                OfficialAccountCallbackPayloadFormat.JSON,
+            )
+        return {}, OfficialAccountCallbackPayloadFormat.UNKNOWN
+
+    def _parse_callback_event_time(self, raw_value: Any) -> datetime | None:
+        if raw_value is None:
+            return None
+        if isinstance(raw_value, datetime):
+            return raw_value if raw_value.tzinfo is not None else raw_value.replace(tzinfo=UTC)
+        if isinstance(raw_value, (int, float)):
+            return datetime.fromtimestamp(raw_value, tz=UTC)
+        value = str(raw_value).strip()
+        if not value:
+            return None
+        if value.isdigit():
+            return datetime.fromtimestamp(int(value), tz=UTC)
+        try:
+            parsed = datetime.fromisoformat(value)
+        except ValueError:
+            return None
+        return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
+
+    def _verify_callback_signature(
+        self,
+        *,
+        signature: str | None,
+        timestamp: str | None,
+        nonce: str | None,
+    ) -> bool:
+        token = self.settings.wechat_official_callback_token
+        if not token or not signature or not timestamp or not nonce:
+            return False
+        expected = hashlib.sha1(
+            "".join(sorted([token, str(timestamp), str(nonce)])).encode("utf-8")
+        ).hexdigest()
+        return expected == signature
+
+
+def _string_or_none(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None

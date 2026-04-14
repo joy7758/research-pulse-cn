@@ -102,7 +102,7 @@
   - `GET /admin/digest-publication-jobs`
 - `PulseDigestIssue` is built from already selected `PulseCard` rows only.
 - Publication preparation is stub-only:
-  - jobs move to `prepared` or `previewed`
+  - jobs move to `prepared`
   - no real external send occurs
 - Future WeChat work remains:
   - official-account digest publishing
@@ -131,6 +131,31 @@
   - a paper-detail landing
 - No real mini-program auth, session exchange, or frontend code exists in v1.
 
+## Official-account provider boundary
+- Official-account dispatch now has an explicit provider mode:
+  - `disabled`
+  - `dry_run`
+- New provider settings live in `.env.example`:
+  - `APP_OFFICIAL_ACCOUNT_PROVIDER_MODE`
+  - `APP_WECHAT_OFFICIAL_APP_ID`
+  - `APP_WECHAT_OFFICIAL_APP_SECRET`
+  - `APP_WECHAT_OFFICIAL_CALLBACK_TOKEN`
+  - `APP_WECHAT_OFFICIAL_CALLBACK_AES_KEY`
+  - `APP_OFFICIAL_ACCOUNT_CALLBACK_ENABLED`
+  - `APP_OFFICIAL_ACCOUNT_DEFAULT_MINI_PROGRAM_APP_ID`
+  - `APP_OFFICIAL_ACCOUNT_DEFAULT_ARTICLE_BASE_URL`
+  - `APP_OFFICIAL_ACCOUNT_DISPATCH_TIMEOUT_SECONDS`
+- Admin inspection and dispatch endpoints:
+  - `POST /admin/digest-publication-jobs/{publication_job_id}/dispatch`
+  - `GET /admin/digest-publication-attempts`
+  - `GET /admin/official-account/provider-status`
+  - `GET /admin/official-account/callback-events`
+- Provider ingress endpoints:
+  - `GET /integrations/wechat/official-account/callback`
+  - `POST /integrations/wechat/official-account/callback`
+- `dry_run` dispatch creates preview attempts and never performs a live send.
+- Unknown callback identities are stored for review and do not auto-create bindings.
+
 ## Ops endpoints
 - `GET /health/live`: lightweight process liveness
 - `GET /health/ready`: database readiness and component details, protected by operator/admin or internal service auth
@@ -154,5 +179,6 @@
 - Expand deterministic facts into richer signal scoring and portfolio context.
 - Add official-account digest publishing on top of persisted pulse and sync data.
 - Add real mini-program auth and landing handoff on top of the read-only reserve.
+- Add real official-account outbound sending behind the existing provider boundary.
 - Add customer-facing auth separately from `AdminAccount`.
 - Add SSO/OIDC only after the internal admin boundary stabilizes.

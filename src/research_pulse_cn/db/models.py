@@ -30,11 +30,15 @@ from research_pulse_cn.domain.enums import (
     ClientType,
     DeliveryAttemptStatus,
     DeliveryJobStatus,
+    DigestPublicationAttemptStatus,
     DigestPublicationMode,
     DigestPublicationStatus,
     DigestPublicationTarget,
     MiniReadGrantStatus,
     MiniReadGrantType,
+    OfficialAccountCallbackPayloadFormat,
+    OfficialAccountCallbackProcessingStatus,
+    OfficialAccountProviderMode,
     PaperType,
     PulseCardType,
     PulseDigestIssueStatus,
@@ -352,6 +356,9 @@ class WeChatIdentityBinding(TimestampMixin, Base):
         back_populates="binding",
         cascade="all, delete-orphan",
     )
+    callback_events: Mapped[list[OfficialAccountCallbackEvent]] = relationship(
+        back_populates="linked_binding",
+    )
     mini_read_grants: Mapped[list[MiniReadGrant]] = relationship(
         back_populates="binding",
     )
@@ -512,6 +519,84 @@ class DigestPublicationJob(TimestampMixin, Base):
 
     digest_issue: Mapped[PulseDigestIssue] = relationship(back_populates="publication_jobs")
     binding: Mapped[WeChatIdentityBinding | None] = relationship(back_populates="publication_jobs")
+    attempts: Mapped[list[DigestPublicationAttempt]] = relationship(
+        back_populates="digest_publication_job",
+        cascade="all, delete-orphan",
+        order_by="DigestPublicationAttempt.attempt_number",
+    )
+
+
+class DigestPublicationAttempt(Base):
+    __tablename__ = "digest_publication_attempts"
+    __table_args__ = (
+        UniqueConstraint(
+            "digest_publication_job_id",
+            "attempt_number",
+            name="uq_digest_publication_attempts_job_attempt",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    digest_publication_job_id: Mapped[UUID] = mapped_column(
+        ForeignKey("digest_publication_jobs.id", ondelete="CASCADE")
+    )
+    attempt_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    provider_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    provider_mode: Mapped[OfficialAccountProviderMode] = mapped_column(
+        Enum(OfficialAccountProviderMode, native_enum=False),
+        nullable=False,
+    )
+    status: Mapped[DigestPublicationAttemptStatus] = mapped_column(
+        Enum(DigestPublicationAttemptStatus, native_enum=False),
+        nullable=False,
+    )
+    request_payload: Mapped[dict[str, Any] | None] = mapped_column(JSON_VARIANT)
+    response_payload: Mapped[dict[str, Any] | None] = mapped_column(JSON_VARIANT)
+    error_summary: Mapped[str | None] = mapped_column(Text)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    digest_publication_job: Mapped[DigestPublicationJob] = relationship(back_populates="attempts")
+
+
+class OfficialAccountCallbackEvent(Base):
+    __tablename__ = "official_account_callback_events"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    app_id: Mapped[str | None] = mapped_column(String(255))
+    to_user_name: Mapped[str | None] = mapped_column(String(255))
+    from_openid: Mapped[str | None] = mapped_column(String(255))
+    msg_type: Mapped[str | None] = mapped_column(String(100))
+    event_type: Mapped[str | None] = mapped_column(String(100))
+    event_key: Mapped[str | None] = mapped_column(String(255))
+    event_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    dedupe_key: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    signature_valid: Mapped[bool] = mapped_column(nullable=False, default=False)
+    payload_format: Mapped[OfficialAccountCallbackPayloadFormat] = mapped_column(
+        Enum(OfficialAccountCallbackPayloadFormat, native_enum=False),
+        nullable=False,
+        default=OfficialAccountCallbackPayloadFormat.UNKNOWN,
+    )
+    raw_payload: Mapped[str] = mapped_column(Text, nullable=False)
+    parsed_payload_json: Mapped[dict[str, Any] | None] = mapped_column(
+        "parsed_payload",
+        JSON_VARIANT,
+    )
+    processing_status: Mapped[OfficialAccountCallbackProcessingStatus] = mapped_column(
+        Enum(OfficialAccountCallbackProcessingStatus, native_enum=False),
+        nullable=False,
+        default=OfficialAccountCallbackProcessingStatus.ACCEPTED,
+    )
+    processing_note: Mapped[str | None] = mapped_column(Text)
+    linked_binding_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("wechat_identity_bindings.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    linked_binding: Mapped[WeChatIdentityBinding | None] = relationship(
+        back_populates="callback_events"
+    )
 
 
 class DeliveryJob(TimestampMixin, Base):
