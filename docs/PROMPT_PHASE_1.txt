@@ -1,0 +1,11 @@
+Read AGENTS.md and docs/BUILD_SPEC.md before editing anything.
+
+Implement Phase 1 only.
+
+Requirements:
+1. Build a production-friendly Python 3.12 backend foundation as a modular monolith.
+2. Add pyproject.toml, src package layout, FastAPI app, health endpoint, settings, logging, Docker Compose, .env.example, Makefile, pytest, ruff, and README development commands.
+3. Do not implement the business entities yet beyond placeholders needed for app startup.
+4. Keep the repo proprietary and closed-source.
+5. Run available checks and fix obvious issues.
+6. End with a concise summary of created files and remaining work.

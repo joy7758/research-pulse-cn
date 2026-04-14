@@ -1,0 +1,13 @@
+Read AGENTS.md and docs/BUILD_SPEC.md again before editing.
+
+Implement Phase 4 only.
+
+Requirements:
+1. Harden the project for continued private commercial development.
+2. Improve README with setup, run, migrate, seed, lint, test, and worker commands.
+3. Add docs/architecture.md and docs/development.md.
+4. Polish .env.example, Makefile, Docker Compose, and CI workflow.
+5. Do a final pass on naming, dead code, typing, and lint issues.
+6. Ensure no open-source license is added.
+7. Run available checks and fix obvious issues.
+8. End with a concise summary of created files and remaining work.

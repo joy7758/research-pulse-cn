@@ -1,0 +1,14 @@
+Read AGENTS.md and docs/BUILD_SPEC.md again before editing.
+
+Implement Phase 3 only.
+
+Requirements:
+1. Add pulse engine and worker flow.
+2. Implement deterministic fact collection and rule selection.
+3. Implement DummyModelProvider and SimpleCardValidator.
+4. Implement outbox-style DeliveryJob flow with retry and dead-letter transitions.
+5. Implement ConsoleChannelAdapter, DingTalkWebhookAdapter, and WeChat adapter interface stub.
+6. Add endpoints: POST /pulse/preview/{user_id}, POST /pulse/run/{user_id}, GET /delivery-jobs.
+7. Add tests for pulse generation and delivery state transitions.
+8. Run available checks and fix obvious issues.
+9. End with a concise summary of created files and remaining work.
