@@ -3,10 +3,10 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, selectinload
 
-from research_pulse_cn.db.models import PulseCard, PulseJob
+from research_pulse_cn.db.models import DeliveryJob, PulseCard, PulseJob
 from research_pulse_cn.domain.enums import PulseJobStatus
 
 
@@ -26,7 +26,10 @@ class PulseRepository:
         statement = (
             select(PulseJob)
             .execution_options(populate_existing=True)
-            .options(selectinload(PulseJob.cards), selectinload(PulseJob.delivery_jobs))
+            .options(
+                selectinload(PulseJob.cards).selectinload(PulseCard.source_paper),
+                selectinload(PulseJob.delivery_jobs),
+            )
             .where(PulseJob.id == job_id)
         )
         return self.session.scalar(statement)
@@ -45,3 +48,29 @@ class PulseRepository:
         self.session.flush()
         self.session.refresh(card)
         return card
+
+    def list_recent_card_signatures(
+        self,
+        *,
+        user_id: UUID,
+        since: datetime,
+    ) -> set[tuple[str, str]]:
+        statement = (
+            select(PulseCard)
+            .outerjoin(DeliveryJob, DeliveryJob.pulse_card_id == PulseCard.id)
+            .where(
+                PulseCard.user_id == user_id,
+                PulseCard.source_paper_id.is_not(None),
+                or_(
+                    PulseCard.generated_at >= since,
+                    DeliveryJob.created_at >= since,
+                    DeliveryJob.sent_at >= since,
+                ),
+            )
+        )
+        signatures: set[tuple[str, str]] = set()
+        for card in self.session.scalars(statement):
+            if card.source_paper_id is None:
+                continue
+            signatures.add((card.card_type.value, str(card.source_paper_id)))
+        return signatures

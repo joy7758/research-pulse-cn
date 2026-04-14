@@ -23,6 +23,11 @@
 - Tests: `make test`
 - Full local gate: `make check`
 
+## Pulse scoring knobs
+- Defaults live in application settings and `.env.example`
+- Per-user overrides can be applied through `SubscriptionPolicy.policy["pulse"]`
+- See `docs/pulse_scoring.md` for the exact pipeline and supported knobs
+
 ## Database notes
 - Production target is PostgreSQL.
 - Tests use SQLite through `APP_DATABASE_URL`.
@@ -35,5 +40,5 @@
 
 ## Next extension points
 - Replace `DummyModelProvider` with a real provider adapter.
-- Expand deterministic facts into richer signal scoring.
+- Expand deterministic facts into richer signal scoring and portfolio context.
 - Add authenticated channel delivery implementations.

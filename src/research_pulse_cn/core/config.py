@@ -20,6 +20,44 @@ class Settings(BaseSettings):
     delivery_retry_delay_seconds: int = Field(
         default=300, validation_alias="APP_DELIVERY_RETRY_DELAY_SECONDS"
     )
+    pulse_stale_days: int = Field(default=10, validation_alias="APP_PULSE_STALE_DAYS")
+    pulse_deadline_horizon_days: int = Field(
+        default=7, validation_alias="APP_PULSE_DEADLINE_HORIZON_DAYS"
+    )
+    pulse_dedupe_window_hours: int = Field(
+        default=24, validation_alias="APP_PULSE_DEDUPE_WINDOW_HOURS"
+    )
+    pulse_min_score: int = Field(default=10, validation_alias="APP_PULSE_MIN_SCORE")
+    pulse_default_max_cards_per_run: int = Field(
+        default=3, validation_alias="APP_PULSE_DEFAULT_MAX_CARDS_PER_RUN"
+    )
+    pulse_weight_signal_change: int = Field(
+        default=18, validation_alias="APP_PULSE_WEIGHT_SIGNAL_CHANGE"
+    )
+    pulse_weight_stalled_progress: int = Field(
+        default=12, validation_alias="APP_PULSE_WEIGHT_STALLED_PROGRESS"
+    )
+    pulse_weight_deadline_risk: int = Field(
+        default=5, validation_alias="APP_PULSE_WEIGHT_DEADLINE_RISK"
+    )
+    pulse_weight_next_action: int = Field(
+        default=8, validation_alias="APP_PULSE_WEIGHT_NEXT_ACTION"
+    )
+    pulse_weight_related_paper: int = Field(
+        default=4, validation_alias="APP_PULSE_WEIGHT_RELATED_PAPER"
+    )
+    pulse_modifier_recent_signal_delta: int = Field(
+        default=8, validation_alias="APP_PULSE_MODIFIER_RECENT_SIGNAL_DELTA"
+    )
+    pulse_modifier_approaching_deadline: int = Field(
+        default=10, validation_alias="APP_PULSE_MODIFIER_APPROACHING_DEADLINE"
+    )
+    pulse_modifier_long_stagnation: int = Field(
+        default=6, validation_alias="APP_PULSE_MODIFIER_LONG_STAGNATION"
+    )
+    pulse_modifier_explicit_next_action: int = Field(
+        default=4, validation_alias="APP_PULSE_MODIFIER_EXPLICIT_NEXT_ACTION"
+    )
 
     postgres_host: str = Field(default="localhost", validation_alias="POSTGRES_HOST")
     postgres_port: int = Field(default=5432, validation_alias="POSTGRES_PORT")

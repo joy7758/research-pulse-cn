@@ -5,9 +5,9 @@ Research Pulse CN is implemented as a modular monolith that keeps domain decisio
 
 Core flow:
 1. CRUD APIs manage user profiles, paper profiles, events, snapshots, and subscription policies.
-2. Pulse preview and run requests feed deterministic facts into a rule engine.
-3. A model-provider adapter produces pulse card content.
-4. Pulse cards enqueue outbox delivery jobs.
+2. Pulse preview and run requests build deterministic facts, candidates, scores, suppression reasons, and final selections.
+3. A model-provider adapter produces card copy only for selected candidates.
+4. Selected pulse cards enqueue outbox delivery jobs.
 5. The worker dispatches delivery jobs through channel adapters and manages retry and dead-letter transitions.
 
 ## Module boundaries
@@ -52,17 +52,36 @@ Core flow:
   - next action facts
   - stalled progress facts
   - signal change facts
+  - deadline risk facts
+  - related paper placeholder facts
 
 ### Rule selection
-- `DeterministicRuleEngine` deduplicates facts by paper and card type.
-- It ranks by priority and yields a bounded ordered set.
+- `DeterministicRuleEngine` converts facts into stable candidates.
+- Candidate ranking now happens in a dedicated scoring and suppression pipeline.
+
+### Scoring and suppression
+- `PulseService` resolves user-specific scoring knobs from defaults plus `SubscriptionPolicy.policy` overrides.
+- Candidates are scored with explainable weighted breakdowns.
+- Suppression is applied before selection for:
+  - quiet hours
+  - dedupe window
+  - low score
+  - paused paper guard
+  - frequency cap overflow after ordering
+
+Tie-break order is deterministic:
+1. score total descending
+2. explicit card type order
+3. source timestamp descending
+4. paper title ascending
+5. candidate id ascending
 
 ### Card generation
-- `DummyModelProvider` turns structured facts into stable card payloads.
+- `DummyModelProvider` turns selected candidates into stable card payloads.
 - `SimpleCardValidator` blocks incomplete outputs before persistence.
 
 ### Delivery
-- Each enabled subscription policy creates a delivery job per card.
+- Each enabled subscription policy creates a delivery job per selected card.
 - `DeliveryService` moves jobs through:
   - `pending`
   - `sending`

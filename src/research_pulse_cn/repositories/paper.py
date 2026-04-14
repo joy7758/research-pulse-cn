@@ -17,6 +17,7 @@ class PaperRepository:
     def list(self, *, user_id: UUID | None = None) -> list[PaperProfile]:
         statement = (
             select(PaperProfile)
+            .execution_options(populate_existing=True)
             .options(
                 selectinload(PaperProfile.progress_events),
                 selectinload(PaperProfile.signal_snapshots),
@@ -30,6 +31,7 @@ class PaperRepository:
     def get(self, paper_id: UUID) -> PaperProfile | None:
         statement = (
             select(PaperProfile)
+            .execution_options(populate_existing=True)
             .options(
                 selectinload(PaperProfile.progress_events),
                 selectinload(PaperProfile.signal_snapshots),

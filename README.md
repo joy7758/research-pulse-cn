@@ -98,3 +98,6 @@ For a continuously polling worker:
 - `src/research_pulse_cn`: application code
 - `tests`: test suite
 - `docs`: product and implementation notes
+
+## Pulse scoring
+The ranking pipeline is documented in [docs/pulse_scoring.md](docs/pulse_scoring.md).

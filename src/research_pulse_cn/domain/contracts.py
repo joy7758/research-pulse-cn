@@ -3,25 +3,27 @@
 from collections.abc import Mapping, Sequence
 from typing import Any, Protocol
 
+from research_pulse_cn.domain.pulse import PulseCandidate, PulseFact
+
 
 class FactCollector(Protocol):
     """Collect normalized facts for pulse generation."""
 
-    def collect(self, subject_id: str) -> Sequence[Mapping[str, Any]]:
+    def collect(self, subject_id: str) -> Sequence[PulseFact]:
         """Return normalized facts for a given subject."""
 
 
 class RuleEngine(Protocol):
     """Choose which facts should become pulse candidates."""
 
-    def select(self, facts: Sequence[Mapping[str, Any]]) -> Sequence[Mapping[str, Any]]:
-        """Filter or score candidate facts."""
+    def generate_candidates(self, facts: Sequence[PulseFact]) -> Sequence[PulseCandidate]:
+        """Convert normalized facts into pulse candidates."""
 
 
 class ModelProvider(Protocol):
     """Generate human-facing card content from structured inputs."""
 
-    def generate(self, payload: Mapping[str, Any]) -> Mapping[str, Any]:
+    def generate(self, payload: PulseCandidate) -> Mapping[str, Any]:
         """Produce a card payload."""
 
 

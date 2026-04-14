@@ -27,3 +27,10 @@ def test_alembic_upgrade_creates_core_tables(tmp_path) -> None:
         "pulse_cards",
         "delivery_jobs",
     }.issubset(table_names)
+    pulse_card_columns = {column["name"] for column in inspector.get_columns("pulse_cards")}
+    assert {
+        "source_paper_id",
+        "score_total",
+        "score_breakdown",
+        "candidate_metadata",
+    }.issubset(pulse_card_columns)
