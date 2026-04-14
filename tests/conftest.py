@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from research_pulse_cn import db as _db  # noqa: F401
 from research_pulse_cn.app import create_app
 from research_pulse_cn.core.config import get_settings
+from research_pulse_cn.core.metrics import get_metrics
 from research_pulse_cn.db import models as _models  # noqa: F401
 from research_pulse_cn.db.base import Base
 from research_pulse_cn.db.session import get_engine, get_session_factory, reset_db_session_state
@@ -19,11 +20,13 @@ def isolated_test_environment(tmp_path, monkeypatch) -> Iterator[None]:
     monkeypatch.setenv("APP_MAX_DELIVERY_RETRIES", "2")
     monkeypatch.setenv("APP_DELIVERY_RETRY_DELAY_SECONDS", "0")
     get_settings.cache_clear()
+    get_metrics().reset()
     reset_db_session_state()
     Base.metadata.create_all(bind=get_engine())
     yield
     Base.metadata.drop_all(bind=get_engine())
     reset_db_session_state()
+    get_metrics().reset()
     get_settings.cache_clear()
 
 

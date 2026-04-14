@@ -2,14 +2,16 @@
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from uuid import uuid4
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 
 from research_pulse_cn import __version__
 from research_pulse_cn.api.errors import register_exception_handlers
 from research_pulse_cn.api.router import api_router
 from research_pulse_cn.core.config import get_settings
 from research_pulse_cn.core.logging import configure_logging
+from research_pulse_cn.core.request_context import bind_log_context
 
 
 @asynccontextmanager
@@ -34,5 +36,14 @@ def create_app() -> FastAPI:
         redoc_url="/redoc",
     )
     register_exception_handlers(app)
+
+    @app.middleware("http")
+    async def request_id_middleware(request: Request, call_next) -> Response:
+        request_id = request.headers.get("X-Request-ID") or str(uuid4())
+        with bind_log_context(request_id=request_id):
+            response = await call_next(request)
+        response.headers["X-Request-ID"] = request_id
+        return response
+
     app.include_router(api_router)
     return app

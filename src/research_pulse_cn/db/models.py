@@ -13,12 +13,16 @@ from research_pulse_cn.db.base import Base
 from research_pulse_cn.db.types import JSON_VARIANT
 from research_pulse_cn.domain.enums import (
     ChannelType,
+    DeliveryAttemptStatus,
     DeliveryJobStatus,
     PaperType,
     PulseCardType,
+    PulseJobScheduledReason,
     PulseJobStatus,
     SignalSource,
     SubscriptionFrequency,
+    WorkerRole,
+    WorkerStatus,
 )
 
 
@@ -142,6 +146,7 @@ class SubscriptionPolicy(TimestampMixin, Base):
     policy: Mapped[dict[str, Any]] = mapped_column(JSON_VARIANT, default=dict)
 
     user: Mapped[UserProfile] = relationship(back_populates="subscription_policies")
+    pulse_jobs: Mapped[list[PulseJob]] = relationship(back_populates="subscription_policy")
 
 
 class PulseJob(TimestampMixin, Base):
@@ -149,15 +154,44 @@ class PulseJob(TimestampMixin, Base):
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     user_id: Mapped[UUID] = mapped_column(ForeignKey("user_profiles.id", ondelete="CASCADE"))
+    subscription_policy_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("subscription_policies.id", ondelete="SET NULL")
+    )
+    source_pulse_job_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("pulse_jobs.id", ondelete="SET NULL")
+    )
     scheduled_for: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    scheduled_reason: Mapped[PulseJobScheduledReason] = mapped_column(
+        Enum(PulseJobScheduledReason, native_enum=False),
+        default=PulseJobScheduledReason.MANUAL_RUN,
+        nullable=False,
+    )
+    schedule_key: Mapped[str | None] = mapped_column(String(255), unique=True)
     status: Mapped[PulseJobStatus] = mapped_column(
         Enum(PulseJobStatus, native_enum=False),
         default=PulseJobStatus.PENDING,
         nullable=False,
     )
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    failed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    lease_owner: Mapped[str | None] = mapped_column(String(255))
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     error: Mapped[str | None] = mapped_column(Text)
 
     user: Mapped[UserProfile] = relationship(back_populates="pulse_jobs")
+    subscription_policy: Mapped[SubscriptionPolicy | None] = relationship(
+        back_populates="pulse_jobs"
+    )
+    source_pulse_job: Mapped[PulseJob | None] = relationship(
+        remote_side=[id],
+        back_populates="replay_jobs",
+        foreign_keys=[source_pulse_job_id],
+    )
+    replay_jobs: Mapped[list[PulseJob]] = relationship(
+        back_populates="source_pulse_job",
+        foreign_keys=[source_pulse_job_id],
+    )
     cards: Mapped[list[PulseCard]] = relationship(
         back_populates="pulse_job", cascade="all, delete-orphan"
     )
@@ -228,3 +262,49 @@ class DeliveryJob(TimestampMixin, Base):
     pulse_card: Mapped[PulseCard | None] = relationship(back_populates="delivery_jobs")
     pulse_job: Mapped[PulseJob | None] = relationship(back_populates="delivery_jobs")
     user: Mapped[UserProfile] = relationship(back_populates="delivery_jobs")
+    attempts: Mapped[list[DeliveryAttempt]] = relationship(
+        back_populates="delivery_job",
+        cascade="all, delete-orphan",
+        order_by="DeliveryAttempt.attempt_number",
+    )
+
+
+class WorkerHeartbeat(Base):
+    __tablename__ = "worker_heartbeats"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    worker_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    worker_role: Mapped[WorkerRole] = mapped_column(
+        Enum(WorkerRole, native_enum=False), nullable=False
+    )
+    status: Mapped[WorkerStatus] = mapped_column(
+        Enum(WorkerStatus, native_enum=False), nullable=False
+    )
+    hostname_or_instance: Mapped[str] = mapped_column(String(255), nullable=False)
+    pid: Mapped[int | None] = mapped_column(Integer)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    last_heartbeat_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column("metadata", JSON_VARIANT, default=dict)
+
+
+class DeliveryAttempt(Base):
+    __tablename__ = "delivery_attempts"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    delivery_job_id: Mapped[UUID] = mapped_column(
+        ForeignKey("delivery_jobs.id", ondelete="CASCADE")
+    )
+    attempt_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    channel: Mapped[ChannelType] = mapped_column(
+        Enum(ChannelType, native_enum=False), nullable=False
+    )
+    adapter_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[DeliveryAttemptStatus] = mapped_column(
+        Enum(DeliveryAttemptStatus, native_enum=False), nullable=False
+    )
+    response_summary: Mapped[str | None] = mapped_column(Text)
+    error_summary: Mapped[str | None] = mapped_column(Text)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    delivery_job: Mapped[DeliveryJob] = relationship(back_populates="attempts")

@@ -10,7 +10,9 @@ Private repository. Proprietary and confidential.
 - SQLAlchemy 2 models and Alembic migration
 - CRUD APIs for users, papers, progress events, signal snapshots, and subscription policies
 - Deterministic pulse preview and run flow
+- Daily scheduler foundation with per-policy local-time scheduling
 - Outbox-style delivery jobs with retry and dead-letter transitions
+- Worker heartbeats, delivery-attempt tracking, readiness checks, and Prometheus-style metrics
 - Console adapter, DingTalk webhook adapter skeleton, and WeChat adapter stub
 - Seed data, Docker Compose, pytest, Ruff, and CI
 
@@ -51,16 +53,23 @@ The code keeps pulse generation behind stable interfaces such as `FactCollector`
 6. Seed demo data:
    `make seed`
 7. Run the API:
-   `make run`
+   `make run-api`
+8. Run the delivery worker:
+   `make run-worker`
+9. Run the daily scheduler:
+   `make run-scheduler`
 
 Open API docs at `http://127.0.0.1:8000/docs`.
 
 ## Common commands
 - `make install`: install runtime and dev dependencies
-- `make run`: run the FastAPI development server
+- `make run` or `make run-api`: run the FastAPI development server
 - `make migrate`: apply Alembic migrations
 - `make seed`: load local demo data
 - `make worker`: process pending pulse and delivery jobs once
+- `make run-worker`: run the polling delivery worker
+- `make scheduler-tick`: run one scheduler tick
+- `make run-scheduler`: run the polling scheduler
 - `make lint`: run Ruff checks
 - `make format`: run Ruff formatting
 - `make test`: run the test suite
@@ -75,17 +84,46 @@ Important values:
 - `APP_DATABASE_URL`: optional override for local SQLite or test databases
 - `POSTGRES_*`: PostgreSQL connection settings
 - `REDIS_*`: Redis connection settings
+- `APP_DEFAULT_TIMEZONE`: fallback timezone for daily scheduling
+- `APP_PULSE_DEFAULT_SEND_HOUR_LOCAL`: default local send hour for daily policies
+- `APP_PULSE_DEFAULT_SEND_MINUTE_LOCAL`: default local send minute for daily policies
 - `APP_MAX_DELIVERY_RETRIES`: retry ceiling before dead-letter
 - `APP_DELIVERY_RETRY_DELAY_SECONDS`: retry backoff in seconds
+- `APP_WORKER_HEARTBEAT_INTERVAL_SECONDS`: expected heartbeat cadence for local workers
+- `APP_WORKER_LEASE_SECONDS`: lease duration when a worker claims a pulse job
 
-## Running the worker
-The worker can be run once for local verification:
+## Running workers and scheduler
+Run one-off local cycles:
 
 `make worker`
 
-For a continuously polling worker:
+`make scheduler-tick`
+
+Run long-lived local loops:
 
 `python -m research_pulse_cn.worker.main --limit 20 --poll-interval 15`
+
+`python -m research_pulse_cn.scheduler.main --poll-interval 60`
+
+With Docker Compose, the codebase now exposes separate `api`, `worker`, and `scheduler` services.
+
+## Operations surface
+- Health:
+  - `GET /health`
+  - `GET /health/live`
+  - `GET /health/ready`
+- Pulse:
+  - `POST /pulse/preview/{user_id}`
+  - `POST /pulse/run/{user_id}`
+- Ops:
+  - `GET /ops/metrics`
+  - `GET /ops/heartbeats`
+  - `GET /ops/pulse-jobs`
+  - `GET /ops/delivery-jobs`
+  - `GET /ops/delivery-attempts`
+  - `POST /ops/scheduler/tick`
+  - `POST /ops/delivery-jobs/{delivery_job_id}/requeue`
+  - `POST /ops/pulse-jobs/{pulse_job_id}/replay`
 
 ## Seeded demo profile
 `make seed` creates:
@@ -101,3 +139,6 @@ For a continuously polling worker:
 
 ## Pulse scoring
 The ranking pipeline is documented in [docs/pulse_scoring.md](docs/pulse_scoring.md).
+
+## Operations guide
+Operational scheduling, replay, requeue, heartbeats, attempts, and metrics are documented in [docs/operations.md](docs/operations.md).

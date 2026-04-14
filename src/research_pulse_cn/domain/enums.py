@@ -40,6 +40,12 @@ class PulseJobStatus(StrEnum):
     FAILED = "failed"
 
 
+class PulseJobScheduledReason(StrEnum):
+    MANUAL_RUN = "manual_run"
+    DAILY_SCHEDULE = "daily_schedule"
+    REPLAY = "replay"
+
+
 class PulseCardType(StrEnum):
     SIGNAL_CHANGE = "signal_change"
     STALLED_PROGRESS = "stalled_progress"
@@ -54,3 +60,21 @@ class DeliveryJobStatus(StrEnum):
     SENT = "sent"
     FAILED = "failed"
     DEAD_LETTER = "dead_letter"
+
+
+class WorkerRole(StrEnum):
+    SCHEDULER = "scheduler"
+    DELIVERY_WORKER = "delivery_worker"
+
+
+class WorkerStatus(StrEnum):
+    STARTING = "starting"
+    IDLE = "idle"
+    RUNNING = "running"
+    ERROR = "error"
+
+
+class DeliveryAttemptStatus(StrEnum):
+    STARTED = "started"
+    SENT = "sent"
+    FAILED = "failed"

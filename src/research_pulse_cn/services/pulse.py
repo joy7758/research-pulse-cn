@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, time, timedelta
@@ -15,6 +16,8 @@ from research_pulse_cn.adapters.channels.registry import ChannelAdapterRegistry
 from research_pulse_cn.adapters.models.dummy import DummyModelProvider
 from research_pulse_cn.core.config import Settings, get_settings
 from research_pulse_cn.core.errors import NotFoundError, ValidationFailedError
+from research_pulse_cn.core.metrics import get_metrics
+from research_pulse_cn.core.request_context import bind_log_context
 from research_pulse_cn.db.models import DeliveryJob, PaperProfile, PulseCard, PulseJob
 from research_pulse_cn.db.models import utcnow as db_utcnow
 from research_pulse_cn.domain.contracts import (
@@ -27,6 +30,7 @@ from research_pulse_cn.domain.enums import (
     DeliveryJobStatus,
     PaperType,
     PulseCardType,
+    PulseJobScheduledReason,
     PulseJobStatus,
 )
 from research_pulse_cn.domain.pulse import (
@@ -46,6 +50,8 @@ from research_pulse_cn.repositories.user import UserRepository
 from research_pulse_cn.schemas.pulse import PulseCardPreview
 from research_pulse_cn.services.common import commit_session
 from research_pulse_cn.services.delivery import DeliveryService
+
+logger = logging.getLogger(__name__)
 
 CARD_TYPE_TIE_BREAK_ORDER: dict[PulseCardType, int] = {
     PulseCardType.SIGNAL_CHANGE: 0,
@@ -401,14 +407,30 @@ class PulseService:
         self.model_provider = model_provider or DummyModelProvider()
         self.card_validator = card_validator or SimpleCardValidator()
         self.delivery_service = DeliveryService(session, adapter_registry=adapter_registry)
+        self.metrics = get_metrics()
 
     def preview(self, user_id: UUID) -> PulsePipelineResult:
         return self._build_pipeline(user_id)
 
-    def enqueue_run(self, user_id: UUID) -> PulseJob:
+    def enqueue_run(
+        self,
+        user_id: UUID,
+        *,
+        scheduled_for: datetime | None = None,
+        subscription_policy_id: UUID | None = None,
+        scheduled_reason: PulseJobScheduledReason = PulseJobScheduledReason.MANUAL_RUN,
+        schedule_key: str | None = None,
+        source_pulse_job_id: UUID | None = None,
+    ) -> PulseJob:
         self._ensure_user_exists(user_id)
         job = PulseJob(
-            user_id=user_id, scheduled_for=self.now_provider(), status=PulseJobStatus.PENDING
+            user_id=user_id,
+            subscription_policy_id=subscription_policy_id,
+            source_pulse_job_id=source_pulse_job_id,
+            scheduled_for=scheduled_for or self.now_provider(),
+            scheduled_reason=scheduled_reason,
+            schedule_key=schedule_key,
+            status=PulseJobStatus.PENDING,
         )
         self.pulse_repository.add_job(job)
         commit_session(self.session)
@@ -422,39 +444,84 @@ class PulseService:
         job, _pipeline = self.run_with_pipeline(user_id)
         return job
 
-    def process_pending_jobs(self, *, limit: int = 20) -> list[PulseJob]:
-        jobs = self.pulse_repository.list_pending_jobs(as_of=self.now_provider(), limit=limit)
+    def process_pending_jobs(
+        self,
+        *,
+        limit: int = 20,
+        lease_owner: str = "pulse-worker",
+    ) -> list[PulseJob]:
+        now = self.now_provider()
+        lease_expires_at = now + timedelta(seconds=self.settings.worker_lease_seconds)
+        jobs = self.pulse_repository.list_pending_jobs(as_of=now, limit=limit)
+        processed_jobs: list[PulseJob] = []
         for job in jobs:
-            self.process_job(job.id)
-        return [self.get_job(job.id) for job in jobs]
+            acquired = self.pulse_repository.acquire_lease(
+                job_id=job.id,
+                owner=lease_owner,
+                lease_expires_at=lease_expires_at,
+                as_of=now,
+            )
+            if not acquired:
+                continue
+            commit_session(self.session)
+            processed_jobs.append(self.process_job(job.id, lease_owner=lease_owner))
+        return processed_jobs
 
-    def process_job_with_pipeline(self, job_id: UUID) -> tuple[PulseJob, PulsePipelineResult]:
+    def process_job_with_pipeline(
+        self,
+        job_id: UUID,
+        *,
+        lease_owner: str | None = None,
+    ) -> tuple[PulseJob, PulsePipelineResult]:
         job = self.get_job(job_id)
-        job.status = PulseJobStatus.RUNNING
-        job.error = None
-        commit_session(self.session)
+        with bind_log_context(pulse_job_id=job.id, user_id=job.user_id):
+            now = self.now_provider()
+            job.status = PulseJobStatus.RUNNING
+            job.error = None
+            job.started_at = job.started_at or now
+            job.completed_at = None
+            job.failed_at = None
+            if lease_owner is not None:
+                job.lease_owner = lease_owner
+                job.lease_expires_at = now + timedelta(seconds=self.settings.worker_lease_seconds)
+            commit_session(self.session)
+            logger.info("pulse job started")
 
-        try:
-            pipeline = self._build_pipeline(job.user_id)
-            cards = [
-                self._persist_card(job, candidate) for candidate in pipeline.selected_candidates
-            ]
-            self._enqueue_delivery_jobs(job, cards)
-            job.status = PulseJobStatus.COMPLETED
-            commit_session(self.session)
-        except Exception as exc:
-            self.session.rollback()
-            failed_job = self.get_job(job_id)
-            failed_job.status = PulseJobStatus.FAILED
-            failed_job.error = str(exc)
-            commit_session(self.session)
-            raise
+            try:
+                pipeline = self._build_pipeline(
+                    job.user_id,
+                    subscription_policy_id=job.subscription_policy_id,
+                )
+                cards = [
+                    self._persist_card(job, candidate) for candidate in pipeline.selected_candidates
+                ]
+                self._enqueue_delivery_jobs(job, cards)
+                job.status = PulseJobStatus.COMPLETED
+                job.completed_at = self.now_provider()
+                job.lease_owner = None
+                job.lease_expires_at = None
+                commit_session(self.session)
+                self.metrics.increment("pulse_jobs_completed_total")
+                self.metrics.increment("pulse_cards_selected_total", len(cards))
+                logger.info("pulse job completed", extra={"selected_cards": len(cards)})
+            except Exception as exc:
+                self.session.rollback()
+                failed_job = self.get_job(job_id)
+                failed_job.status = PulseJobStatus.FAILED
+                failed_job.error = str(exc)
+                failed_job.failed_at = self.now_provider()
+                failed_job.lease_owner = None
+                failed_job.lease_expires_at = None
+                commit_session(self.session)
+                self.metrics.increment("pulse_jobs_failed_total")
+                logger.exception("pulse job failed")
+                raise
 
         self.delivery_service.dispatch_due_jobs()
         return self.get_job(job_id), pipeline
 
-    def process_job(self, job_id: UUID) -> PulseJob:
-        job, _pipeline = self.process_job_with_pipeline(job_id)
+    def process_job(self, job_id: UUID, *, lease_owner: str | None = None) -> PulseJob:
+        job, _pipeline = self.process_job_with_pipeline(job_id, lease_owner=lease_owner)
         return job
 
     def get_job(self, job_id: UUID) -> PulseJob:
@@ -466,9 +533,17 @@ class PulseService:
     def build_preview_cards(self, candidates: list[PulseCandidate]) -> list[PulseCardPreview]:
         return [self._candidate_to_preview(candidate) for candidate in candidates]
 
-    def _build_pipeline(self, user_id: UUID) -> PulsePipelineResult:
+    def _build_pipeline(
+        self,
+        user_id: UUID,
+        *,
+        subscription_policy_id: UUID | None = None,
+    ) -> PulsePipelineResult:
         self._ensure_user_exists(user_id)
-        policies = self.policy_repository.list(user_id=user_id, enabled_only=True)
+        policies = self._policies_for_pipeline(
+            user_id=user_id,
+            subscription_policy_id=subscription_policy_id,
+        )
         resolved_policy = self._resolve_policy(policies)
         facts = self._filter_facts_for_config(
             list(self.fact_collector.collect(str(user_id))),
@@ -506,6 +581,19 @@ class PulseService:
             selected_candidates=selected_candidates,
             ordering_explanation=ordering_explanation,
         )
+
+    def _policies_for_pipeline(
+        self,
+        *,
+        user_id: UUID,
+        subscription_policy_id: UUID | None,
+    ) -> list[Any]:
+        if subscription_policy_id is None:
+            return self.policy_repository.list(user_id=user_id, enabled_only=True)
+        policy = self.policy_repository.get(subscription_policy_id)
+        if policy is None:
+            return []
+        return [policy]
 
     def _filter_facts_for_config(
         self,
@@ -776,7 +864,7 @@ class PulseService:
         return self.pulse_repository.add_card(card)
 
     def _enqueue_delivery_jobs(self, job: PulseJob, cards: list[PulseCard]) -> list[DeliveryJob]:
-        policies = self.policy_repository.list(user_id=job.user_id, enabled_only=True)
+        policies = self._delivery_policies_for_job(job)
         delivery_jobs: list[DeliveryJob] = []
         for card in cards:
             for policy in policies:
@@ -810,6 +898,14 @@ class PulseService:
                 delivery_jobs.append(self.delivery_repository.add(delivery_job))
         commit_session(self.session)
         return delivery_jobs
+
+    def _delivery_policies_for_job(self, job: PulseJob) -> list[Any]:
+        if job.subscription_policy_id is None:
+            return self.policy_repository.list(user_id=job.user_id, enabled_only=True)
+        policy = self.policy_repository.get(job.subscription_policy_id)
+        if policy is None or not policy.enabled:
+            return []
+        return [policy]
 
     def _matching_quiet_hours(
         self,

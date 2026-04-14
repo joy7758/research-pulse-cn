@@ -8,8 +8,10 @@ from sqlalchemy.orm import Session
 
 from research_pulse_cn.db.session import get_db_session
 from research_pulse_cn.services.delivery import DeliveryService
+from research_pulse_cn.services.ops import OpsService
 from research_pulse_cn.services.paper import PaperService
 from research_pulse_cn.services.pulse import PulseService
+from research_pulse_cn.services.scheduler import SchedulerService
 from research_pulse_cn.services.subscription_policy import SubscriptionPolicyService
 from research_pulse_cn.services.user import UserService
 
@@ -39,3 +41,11 @@ def get_pulse_service(session: SessionDep) -> PulseService:
 
 def get_delivery_service(session: SessionDep) -> DeliveryService:
     return DeliveryService(session)
+
+
+def get_scheduler_service(session: SessionDep) -> SchedulerService:
+    return SchedulerService(session)
+
+
+def get_ops_service(session: SessionDep) -> OpsService:
+    return OpsService(session)

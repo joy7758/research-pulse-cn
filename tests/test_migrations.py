@@ -26,6 +26,8 @@ def test_alembic_upgrade_creates_core_tables(tmp_path) -> None:
         "pulse_jobs",
         "pulse_cards",
         "delivery_jobs",
+        "worker_heartbeats",
+        "delivery_attempts",
     }.issubset(table_names)
     pulse_card_columns = {column["name"] for column in inspector.get_columns("pulse_cards")}
     assert {
@@ -34,3 +36,14 @@ def test_alembic_upgrade_creates_core_tables(tmp_path) -> None:
         "score_breakdown",
         "candidate_metadata",
     }.issubset(pulse_card_columns)
+    pulse_job_columns = {column["name"] for column in inspector.get_columns("pulse_jobs")}
+    assert {
+        "subscription_policy_id",
+        "scheduled_reason",
+        "schedule_key",
+        "started_at",
+        "completed_at",
+        "failed_at",
+        "lease_owner",
+        "lease_expires_at",
+    }.issubset(pulse_job_columns)

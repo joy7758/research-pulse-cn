@@ -58,6 +58,17 @@ class Settings(BaseSettings):
     pulse_modifier_explicit_next_action: int = Field(
         default=4, validation_alias="APP_PULSE_MODIFIER_EXPLICIT_NEXT_ACTION"
     )
+    default_timezone: str = Field(default="UTC", validation_alias="APP_DEFAULT_TIMEZONE")
+    pulse_default_send_hour_local: int = Field(
+        default=9, validation_alias="APP_PULSE_DEFAULT_SEND_HOUR_LOCAL"
+    )
+    pulse_default_send_minute_local: int = Field(
+        default=0, validation_alias="APP_PULSE_DEFAULT_SEND_MINUTE_LOCAL"
+    )
+    worker_heartbeat_interval_seconds: int = Field(
+        default=15, validation_alias="APP_WORKER_HEARTBEAT_INTERVAL_SECONDS"
+    )
+    worker_lease_seconds: int = Field(default=120, validation_alias="APP_WORKER_LEASE_SECONDS")
 
     postgres_host: str = Field(default="localhost", validation_alias="POSTGRES_HOST")
     postgres_port: int = Field(default=5432, validation_alias="POSTGRES_PORT")

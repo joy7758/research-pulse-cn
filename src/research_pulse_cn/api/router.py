@@ -4,6 +4,7 @@ from fastapi import APIRouter
 
 from research_pulse_cn.api.routes.delivery_jobs import router as delivery_jobs_router
 from research_pulse_cn.api.routes.health import router as health_router
+from research_pulse_cn.api.routes.ops import router as ops_router
 from research_pulse_cn.api.routes.papers import router as papers_router
 from research_pulse_cn.api.routes.pulse import router as pulse_router
 from research_pulse_cn.api.routes.subscription_policies import (
@@ -18,3 +19,4 @@ api_router.include_router(papers_router)
 api_router.include_router(subscription_policies_router)
 api_router.include_router(pulse_router)
 api_router.include_router(delivery_jobs_router)
+api_router.include_router(ops_router)

@@ -1,0 +1,199 @@
+Read AGENTS.md, docs/BUILD_SPEC.md, docs/architecture.md, docs/development.md, and docs/pulse_scoring.md before editing.
+
+Implement Phase 6 only: operations-grade observability and task scheduling.
+
+Hard boundaries for this phase:
+- Do not add authentication or authorization.
+- Do not add multi-tenant or institution features.
+- Do not integrate real model providers.
+- Do not integrate real DingTalk or WeChat production APIs beyond existing adapter boundaries.
+- Do not add frontend work beyond API/OpenAPI responses and docs.
+- Do not replace the current modular monolith architecture.
+
+Primary goal:
+Move the system from manual-run capable to scheduler-driven and ops-observable.
+
+This phase should make the backend suitable for:
+- stable daily pulse scheduling
+- operational inspection
+- replay/requeue of failed work
+- basic production diagnostics
+- future real channel integration without refactoring the core
+
+Required changes:
+
+1. Scheduling foundation
+Implement a deterministic scheduler service and scheduler worker loop.
+
+Requirements:
+- Reuse the existing pulse pipeline instead of reimplementing it.
+- Automatically schedule only SubscriptionPolicy rows with frequency = daily and enabled = true.
+- Event frequency policies should remain non-automated in this phase.
+- Document clearly that event scheduling is reserved for a later phase.
+- Support local scheduling via policy JSON keys:
+  - timezone (default from app settings)
+  - send_hour_local (default from app settings)
+  - send_minute_local (default 0)
+- Persist UTC timestamps, but compute due-ness using the local timezone.
+- Ensure at most one daily PulseJob is created per user + subscription policy + local date.
+- Use a stable schedule key and DB-backed uniqueness to prevent duplicate scheduling.
+- If possible, also use safe locking or conflict handling so repeated scheduler ticks do not create duplicates.
+- Add a scheduler worker entrypoint/command and Makefile target.
+
+2. Pulse job lifecycle hardening
+Extend PulseJob so ops can inspect lifecycle clearly.
+
+Add minimal production-friendly fields as needed, such as:
+- subscription_policy_id nullable FK
+- scheduled_reason enum such as [manual_run, daily_schedule, replay]
+- schedule_key nullable unique
+- started_at nullable
+- completed_at nullable
+- failed_at nullable
+- lease_owner nullable
+- lease_expires_at nullable
+
+Do not overdesign.
+Use Alembic migration(s).
+
+3. Worker heartbeat tracking
+Add a WorkerHeartbeat model and persistence flow.
+
+Requirements:
+- Track scheduler and delivery worker heartbeats.
+- Store:
+  - worker_name
+  - worker_role
+  - status
+  - hostname_or_instance
+  - pid nullable
+  - started_at
+  - last_heartbeat_at
+  - metadata JSON
+- Heartbeats should update periodically from worker loops.
+- Add an ops API to inspect current heartbeats.
+
+4. Delivery observability
+Add delivery-attempt visibility without changing the current delivery architecture.
+
+Requirements:
+- Add a DeliveryAttempt model/table.
+- Record one row per send attempt.
+- Store:
+  - delivery_job_id
+  - attempt_number
+  - channel
+  - adapter_name
+  - status [started, sent, failed]
+  - response_summary nullable
+  - error_summary nullable
+  - started_at
+  - finished_at nullable
+- Preserve current retry/dead-letter behavior.
+- Create attempts from the existing delivery flow with minimal disruption.
+
+5. Operational API surface
+Add internal-only ops endpoints.
+
+Required endpoints:
+- GET /health/live
+- GET /health/ready
+- GET /ops/metrics
+- GET /ops/heartbeats
+- GET /ops/pulse-jobs
+- GET /ops/delivery-jobs
+- GET /ops/delivery-attempts
+- POST /ops/scheduler/tick
+- POST /ops/delivery-jobs/{delivery_job_id}/requeue
+- POST /ops/pulse-jobs/{pulse_job_id}/replay
+
+Behavior requirements:
+- live should be a lightweight process liveness check
+- ready should verify at least database readiness; include component details in response
+- ops endpoints should support reasonable filtering where practical, especially by status and recent time windows
+- replay/requeue endpoints should be idempotent where practical and must not silently duplicate active work
+
+6. Metrics and logging
+Add operational metrics and improve structured logging.
+
+Metrics requirements:
+- Use a simple Prometheus-style text endpoint for /ops/metrics
+- Track at minimum:
+  - scheduler_ticks_total
+  - scheduler_jobs_created_total
+  - pulse_jobs_completed_total
+  - pulse_jobs_failed_total
+  - pulse_cards_selected_total
+  - delivery_jobs_sent_total
+  - delivery_jobs_failed_total
+  - delivery_jobs_dead_letter_total
+- Include a small number of gauges if useful, but keep it simple
+
+Logging requirements:
+- Add request_id middleware for HTTP requests
+- Propagate useful correlation IDs in logs where practical:
+  - request_id
+  - pulse_job_id
+  - delivery_job_id
+  - user_id
+  - worker_role
+- Keep logs readable and structured
+- Do not introduce heavy logging dependencies unless clearly justified
+
+7. Scheduler and worker commands
+Add production-friendly local commands and compose services.
+
+Requirements:
+- Add Makefile targets for:
+  - run-api
+  - run-worker
+  - run-scheduler
+  - scheduler-tick
+  - seed
+  - lint
+  - test
+- Update docker-compose so scheduler and worker can run as separate services using the same codebase
+- Keep local development straightforward
+
+8. Tests
+Add or update tests covering at minimum:
+- scheduler creates one daily PulseJob per local date for a due policy
+- repeated scheduler tick does not create duplicates
+- event policies are not auto-scheduled in this phase
+- replay endpoint creates a valid replay job or safely returns existing active replay state
+- requeue endpoint moves a failed/dead-letter delivery job back to pending correctly
+- worker heartbeats are persisted and visible
+- delivery attempts are recorded
+- metrics endpoint exposes expected counters
+- readiness endpoint returns healthy component details under test setup
+
+Keep existing tests passing.
+
+9. Documentation
+Add docs/operations.md.
+
+It should explain:
+- scheduler model and what is automated in v1
+- heartbeat model
+- delivery attempt tracking
+- ops endpoints
+- metrics exposed
+- replay/requeue semantics
+- local commands
+- known limitations
+- future work for real channel integrations and event scheduling
+
+Also update README.md and docs/development.md accordingly.
+
+10. Quality bar
+- Keep changes readable and typed
+- Keep schema changes minimal and justified
+- Add only necessary dependencies
+- Run available checks
+- Fix obvious lint/test issues
+- End with a concise summary:
+  - files changed
+  - migrations created
+  - new config knobs
+  - new commands
+  - next-phase recommendations only
