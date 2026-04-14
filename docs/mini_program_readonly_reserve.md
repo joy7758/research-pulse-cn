@@ -73,7 +73,7 @@
 - Treating mini routes as the primary product surface today
 
 ## Future Work
+- official-account provider-boundary handoff into mini landing routes
 - real mini-program auth and session exchange
-- official-account landing handoff into mini routes
 - richer mobile read models and compact timeline views
 - limited write actions only after permission and conflict rules are explicit

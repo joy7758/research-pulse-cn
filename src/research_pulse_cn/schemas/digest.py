@@ -9,9 +9,13 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from research_pulse_cn.domain.enums import (
+    DigestPublicationAttemptStatus,
     DigestPublicationMode,
     DigestPublicationStatus,
     DigestPublicationTarget,
+    OfficialAccountCallbackPayloadFormat,
+    OfficialAccountCallbackProcessingStatus,
+    OfficialAccountProviderMode,
     PulseCardType,
     PulseDigestIssueStatus,
     WeChatBindingChannelType,
@@ -101,6 +105,62 @@ class DigestPublicationJobRead(ORMModel):
     updated_at: datetime
 
 
+class DigestPublicationAttemptRead(BaseModel):
+    id: UUID
+    digest_publication_job_id: UUID
+    digest_issue_id: UUID
+    user_id: UUID
+    binding_id: UUID | None
+    attempt_number: int
+    provider_name: str
+    provider_mode: OfficialAccountProviderMode
+    status: DigestPublicationAttemptStatus
+    request_payload: dict[str, Any] | None
+    response_payload: dict[str, Any] | None
+    error_summary: str | None
+    started_at: datetime
+    finished_at: datetime | None
+
+
+class OfficialAccountProviderStatusRead(BaseModel):
+    mode: OfficialAccountProviderMode
+    callback_enabled: bool
+    dispatch_timeout_seconds: int
+    outbound_send_enabled: bool
+    has_app_id: bool
+    has_app_secret: bool
+    has_callback_token: bool
+    has_callback_aes_key: bool
+    default_mini_program_app_id: str | None
+    default_article_base_url: str | None
+    callback_path: str
+
+
+class OfficialAccountCallbackEventRead(ORMModel):
+    id: UUID
+    app_id: str | None
+    to_user_name: str | None
+    from_openid: str | None
+    msg_type: str | None
+    event_type: str | None
+    event_key: str | None
+    event_time: datetime | None
+    dedupe_key: str
+    signature_valid: bool
+    payload_format: OfficialAccountCallbackPayloadFormat
+    raw_payload: str
+    parsed_payload: dict[str, Any] | None = Field(
+        default=None,
+        validation_alias="parsed_payload_json",
+        serialization_alias="parsed_payload",
+    )
+    processing_status: OfficialAccountCallbackProcessingStatus
+    processing_note: str | None
+    linked_binding_id: UUID | None
+    created_at: datetime
+    processed_at: datetime | None
+
+
 class PulseDigestIssueRead(ORMModel):
     id: UUID
     user_id: UUID
@@ -137,3 +197,9 @@ class DigestIssueBuildResponse(BaseModel):
 class DigestPublicationPrepareResponse(BaseModel):
     issue: PulseDigestIssueDetailRead
     publication_jobs: list[DigestPublicationJobRead] = Field(default_factory=list)
+
+
+class DigestPublicationDispatchResponse(BaseModel):
+    action: str
+    publication_job: DigestPublicationJobRead
+    attempt: DigestPublicationAttemptRead | None = None

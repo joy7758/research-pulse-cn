@@ -1,7 +1,10 @@
+import hashlib
 from datetime import timedelta
 
+from research_pulse_cn.core.config import get_settings
 from research_pulse_cn.db.models import utcnow
 from research_pulse_cn.domain.enums import (
+    OfficialAccountProviderMode,
     PaperType,
     SignalSource,
     SubscriptionFrequency,
@@ -111,6 +114,63 @@ def create_digest_ready_user(client, headers, *, email: str) -> tuple[dict, dict
     run_response = client.post(f"/pulse/run/{user['id']}", headers=headers)
     assert run_response.status_code == 200
     return user, run_response.json()
+
+
+def configure_official_account_settings(
+    monkeypatch,
+    *,
+    provider_mode: str,
+    callback_enabled: bool = False,
+    app_id: str = "wx-official-app",
+    callback_token: str = "callback-token",
+    callback_aes_key: str = "callback-aes-key",
+    article_base_url: str = "https://digest.example.local",
+    mini_program_app_id: str = "wx-mini-app",
+) -> None:
+    monkeypatch.setenv("APP_OFFICIAL_ACCOUNT_PROVIDER_MODE", provider_mode)
+    monkeypatch.setenv("APP_WECHAT_OFFICIAL_APP_ID", app_id)
+    monkeypatch.setenv("APP_WECHAT_OFFICIAL_APP_SECRET", "test-official-secret")
+    monkeypatch.setenv("APP_WECHAT_OFFICIAL_CALLBACK_TOKEN", callback_token)
+    monkeypatch.setenv("APP_WECHAT_OFFICIAL_CALLBACK_AES_KEY", callback_aes_key)
+    monkeypatch.setenv(
+        "APP_OFFICIAL_ACCOUNT_CALLBACK_ENABLED",
+        "true" if callback_enabled else "false",
+    )
+    monkeypatch.setenv(
+        "APP_OFFICIAL_ACCOUNT_DEFAULT_MINI_PROGRAM_APP_ID",
+        mini_program_app_id,
+    )
+    monkeypatch.setenv(
+        "APP_OFFICIAL_ACCOUNT_DEFAULT_ARTICLE_BASE_URL",
+        article_base_url,
+    )
+    monkeypatch.setenv("APP_OFFICIAL_ACCOUNT_DISPATCH_TIMEOUT_SECONDS", "7")
+    get_settings.cache_clear()
+
+
+def build_callback_signature(token: str, timestamp: str, nonce: str) -> str:
+    return hashlib.sha1("".join(sorted([token, timestamp, nonce])).encode("utf-8")).hexdigest()
+
+
+def build_official_account_event_xml(
+    *,
+    openid: str,
+    event: str,
+    to_user_name: str = "gh_test_official",
+    event_time: int = 1_710_000_000,
+    event_key: str | None = None,
+) -> str:
+    event_key_node = "" if event_key is None else f"<EventKey><![CDATA[{event_key}]]></EventKey>"
+    return (
+        "<xml>"
+        f"<ToUserName><![CDATA[{to_user_name}]]></ToUserName>"
+        f"<FromUserName><![CDATA[{openid}]]></FromUserName>"
+        f"<CreateTime>{event_time}</CreateTime>"
+        "<MsgType><![CDATA[event]]></MsgType>"
+        f"<Event><![CDATA[{event}]]></Event>"
+        f"{event_key_node}"
+        "</xml>"
+    )
 
 
 def test_operator_can_create_and_update_wechat_bindings(client, operator_headers) -> None:
@@ -313,9 +373,9 @@ def test_prepare_publication_only_uses_eligible_official_account_bindings(
     assert prepared.status_code == 200
     assert len(prepared.json()["publication_jobs"]) == 1
     job = prepared.json()["publication_jobs"][0]
-    assert job["status"] == "previewed"
+    assert job["status"] == "prepared"
     assert job["publish_target"] == "official_account"
-    assert job["provider_name"] == "stub"
+    assert job["provider_name"] == "official_account_boundary"
     assert job["external_message_id"] is None
     assert job["payload"]["binding"]["openid"] == "eligible-openid"
 
@@ -380,3 +440,455 @@ def test_device_token_cannot_access_digest_admin_routes(client, operator_headers
     response = client.get("/admin/digest-issues", headers=device_headers)
 
     assert response.status_code == 401
+
+
+def test_operator_can_dispatch_publication_job_in_dry_run_mode(
+    client,
+    operator_headers,
+    monkeypatch,
+) -> None:
+    configure_official_account_settings(
+        monkeypatch,
+        provider_mode=OfficialAccountProviderMode.DRY_RUN.value,
+    )
+    user, _run_payload = create_digest_ready_user(
+        client,
+        operator_headers,
+        email="digest-dispatch@example.com",
+    )
+    digest_issue = client.get(
+        "/admin/digest-issues",
+        headers=operator_headers,
+        params={"user_id": user["id"]},
+    ).json()[0]
+    client.post(
+        "/admin/wechat-bindings",
+        headers=operator_headers,
+        json={
+            "user_id": user["id"],
+            "channel_type": WeChatBindingChannelType.OFFICIAL_ACCOUNT.value,
+            "app_id": "wx-official-app",
+            "openid": "dispatch-openid",
+            "bind_state": WeChatBindingState.ACTIVE.value,
+            "subscribed": True,
+            "digest_enabled": True,
+        },
+    )
+    prepared = client.post(
+        f"/admin/digest-issues/{digest_issue['id']}/prepare-publication",
+        headers=operator_headers,
+    ).json()
+    publication_job = prepared["publication_jobs"][0]
+
+    dispatched = client.post(
+        f"/admin/digest-publication-jobs/{publication_job['id']}/dispatch",
+        headers=operator_headers,
+    )
+    attempts = client.get(
+        "/admin/digest-publication-attempts",
+        headers=operator_headers,
+        params={"publication_job_id": publication_job["id"]},
+    )
+
+    assert dispatched.status_code == 200
+    assert dispatched.json()["action"] == "previewed"
+    assert dispatched.json()["publication_job"]["status"] == "previewed"
+    assert dispatched.json()["publication_job"]["external_message_id"] is None
+    assert dispatched.json()["attempt"]["status"] == "previewed"
+    assert dispatched.json()["attempt"]["provider_mode"] == "dry_run"
+    assert attempts.status_code == 200
+    assert len(attempts.json()) == 1
+
+
+def test_viewer_cannot_dispatch_publication_job(
+    client,
+    operator_headers,
+    viewer_headers,
+    monkeypatch,
+) -> None:
+    configure_official_account_settings(
+        monkeypatch,
+        provider_mode=OfficialAccountProviderMode.DRY_RUN.value,
+    )
+    user, _run_payload = create_digest_ready_user(
+        client,
+        operator_headers,
+        email="digest-dispatch-viewer@example.com",
+    )
+    digest_issue = client.get(
+        "/admin/digest-issues",
+        headers=operator_headers,
+        params={"user_id": user["id"]},
+    ).json()[0]
+    client.post(
+        "/admin/wechat-bindings",
+        headers=operator_headers,
+        json={
+            "user_id": user["id"],
+            "channel_type": WeChatBindingChannelType.OFFICIAL_ACCOUNT.value,
+            "app_id": "wx-official-app",
+            "openid": "dispatch-viewer-openid",
+            "bind_state": WeChatBindingState.ACTIVE.value,
+            "subscribed": True,
+            "digest_enabled": True,
+        },
+    )
+    publication_job = client.post(
+        f"/admin/digest-issues/{digest_issue['id']}/prepare-publication",
+        headers=operator_headers,
+    ).json()["publication_jobs"][0]
+
+    response = client.post(
+        f"/admin/digest-publication-jobs/{publication_job['id']}/dispatch",
+        headers=viewer_headers,
+    )
+
+    assert response.status_code == 403
+
+
+def test_disabled_provider_mode_blocks_dispatch_cleanly(
+    client,
+    operator_headers,
+    monkeypatch,
+) -> None:
+    configure_official_account_settings(
+        monkeypatch,
+        provider_mode=OfficialAccountProviderMode.DISABLED.value,
+    )
+    user, _run_payload = create_digest_ready_user(
+        client,
+        operator_headers,
+        email="digest-dispatch-disabled@example.com",
+    )
+    digest_issue = client.get(
+        "/admin/digest-issues",
+        headers=operator_headers,
+        params={"user_id": user["id"]},
+    ).json()[0]
+    client.post(
+        "/admin/wechat-bindings",
+        headers=operator_headers,
+        json={
+            "user_id": user["id"],
+            "channel_type": WeChatBindingChannelType.OFFICIAL_ACCOUNT.value,
+            "app_id": "wx-official-app",
+            "openid": "dispatch-disabled-openid",
+            "bind_state": WeChatBindingState.ACTIVE.value,
+            "subscribed": True,
+            "digest_enabled": True,
+        },
+    )
+    publication_job = client.post(
+        f"/admin/digest-issues/{digest_issue['id']}/prepare-publication",
+        headers=operator_headers,
+    ).json()["publication_jobs"][0]
+
+    dispatched = client.post(
+        f"/admin/digest-publication-jobs/{publication_job['id']}/dispatch",
+        headers=operator_headers,
+    )
+    attempts = client.get(
+        "/admin/digest-publication-attempts",
+        headers=operator_headers,
+        params={"publication_job_id": publication_job["id"]},
+    )
+
+    assert dispatched.status_code == 409
+    assert "disabled" in dispatched.json()["detail"]
+    assert attempts.status_code == 200
+    assert attempts.json()[0]["status"] == "failed"
+
+
+def test_provider_status_endpoint_reflects_mode_without_leaking_secrets(
+    client,
+    operator_headers,
+    monkeypatch,
+) -> None:
+    configure_official_account_settings(
+        monkeypatch,
+        provider_mode=OfficialAccountProviderMode.DRY_RUN.value,
+        callback_enabled=True,
+    )
+
+    response = client.get("/admin/official-account/provider-status", headers=operator_headers)
+
+    assert response.status_code == 200
+    assert response.json()["mode"] == "dry_run"
+    assert response.json()["callback_enabled"] is True
+    assert response.json()["has_app_secret"] is True
+    assert "test-official-secret" not in response.text
+
+
+def test_callback_verification_path_behaves_correctly_when_enabled(
+    client,
+    monkeypatch,
+) -> None:
+    configure_official_account_settings(
+        monkeypatch,
+        provider_mode=OfficialAccountProviderMode.DISABLED.value,
+        callback_enabled=True,
+    )
+    timestamp = "1710000000"
+    nonce = "nonce-001"
+    echostr = "hello-wechat"
+    signature = build_callback_signature("callback-token", timestamp, nonce)
+
+    response = client.get(
+        "/integrations/wechat/official-account/callback",
+        params={
+            "signature": signature,
+            "timestamp": timestamp,
+            "nonce": nonce,
+            "echostr": echostr,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.text == echostr
+
+
+def test_callback_subscribe_updates_matching_binding(
+    client,
+    operator_headers,
+    monkeypatch,
+) -> None:
+    configure_official_account_settings(
+        monkeypatch,
+        provider_mode=OfficialAccountProviderMode.DISABLED.value,
+        callback_enabled=True,
+    )
+    user = create_user(client, operator_headers, email="callback-subscribe@example.com")
+    binding = client.post(
+        "/admin/wechat-bindings",
+        headers=operator_headers,
+        json={
+            "user_id": user["id"],
+            "channel_type": WeChatBindingChannelType.OFFICIAL_ACCOUNT.value,
+            "app_id": "wx-official-app",
+            "openid": "subscribe-openid",
+            "bind_state": WeChatBindingState.PENDING.value,
+            "subscribed": False,
+            "digest_enabled": True,
+        },
+    ).json()
+    timestamp = "1710000001"
+    nonce = "nonce-002"
+    payload = build_official_account_event_xml(openid="subscribe-openid", event="subscribe")
+    signature = build_callback_signature("callback-token", timestamp, nonce)
+
+    response = client.post(
+        "/integrations/wechat/official-account/callback",
+        params={"signature": signature, "timestamp": timestamp, "nonce": nonce},
+        content=payload,
+        headers={"Content-Type": "application/xml"},
+    )
+    updated_binding = client.get(
+        "/admin/wechat-bindings",
+        headers=operator_headers,
+        params={"user_id": user["id"], "channel_type": "official_account"},
+    ).json()[0]
+
+    assert binding["id"] == updated_binding["id"]
+    assert response.status_code == 200
+    assert updated_binding["subscribed"] is True
+    assert updated_binding["bind_state"] == "active"
+    assert updated_binding["subscribed_at"] is not None
+
+
+def test_callback_unsubscribe_updates_matching_binding(
+    client,
+    operator_headers,
+    monkeypatch,
+) -> None:
+    configure_official_account_settings(
+        monkeypatch,
+        provider_mode=OfficialAccountProviderMode.DISABLED.value,
+        callback_enabled=True,
+    )
+    user = create_user(client, operator_headers, email="callback-unsubscribe@example.com")
+    client.post(
+        "/admin/wechat-bindings",
+        headers=operator_headers,
+        json={
+            "user_id": user["id"],
+            "channel_type": WeChatBindingChannelType.OFFICIAL_ACCOUNT.value,
+            "app_id": "wx-official-app",
+            "openid": "unsubscribe-openid",
+            "bind_state": WeChatBindingState.ACTIVE.value,
+            "subscribed": True,
+            "digest_enabled": True,
+        },
+    )
+    timestamp = "1710000002"
+    nonce = "nonce-003"
+    payload = build_official_account_event_xml(openid="unsubscribe-openid", event="unsubscribe")
+    signature = build_callback_signature("callback-token", timestamp, nonce)
+
+    response = client.post(
+        "/integrations/wechat/official-account/callback",
+        params={"signature": signature, "timestamp": timestamp, "nonce": nonce},
+        content=payload,
+        headers={"Content-Type": "application/xml"},
+    )
+    updated_binding = client.get(
+        "/admin/wechat-bindings",
+        headers=operator_headers,
+        params={"user_id": user["id"], "channel_type": "official_account"},
+    ).json()[0]
+
+    assert response.status_code == 200
+    assert updated_binding["subscribed"] is False
+    assert updated_binding["unsubscribed_at"] is not None
+
+
+def test_duplicate_callbacks_are_deduped(
+    client,
+    operator_headers,
+    monkeypatch,
+) -> None:
+    configure_official_account_settings(
+        monkeypatch,
+        provider_mode=OfficialAccountProviderMode.DISABLED.value,
+        callback_enabled=True,
+    )
+    user = create_user(client, operator_headers, email="callback-duplicate@example.com")
+    client.post(
+        "/admin/wechat-bindings",
+        headers=operator_headers,
+        json={
+            "user_id": user["id"],
+            "channel_type": WeChatBindingChannelType.OFFICIAL_ACCOUNT.value,
+            "app_id": "wx-official-app",
+            "openid": "duplicate-openid",
+            "bind_state": WeChatBindingState.ACTIVE.value,
+            "subscribed": False,
+            "digest_enabled": True,
+        },
+    )
+    timestamp = "1710000003"
+    nonce = "nonce-004"
+    payload = build_official_account_event_xml(openid="duplicate-openid", event="subscribe")
+    signature = build_callback_signature("callback-token", timestamp, nonce)
+
+    first = client.post(
+        "/integrations/wechat/official-account/callback",
+        params={"signature": signature, "timestamp": timestamp, "nonce": nonce},
+        content=payload,
+        headers={"Content-Type": "application/xml"},
+    )
+    second = client.post(
+        "/integrations/wechat/official-account/callback",
+        params={"signature": signature, "timestamp": timestamp, "nonce": nonce},
+        content=payload,
+        headers={"Content-Type": "application/xml"},
+    )
+    events = client.get(
+        "/admin/official-account/callback-events",
+        headers=operator_headers,
+        params={"user_id": user["id"]},
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert len(events.json()) == 1
+    assert events.json()[0]["processing_status"] == "duplicate"
+
+
+def test_unknown_openid_callback_does_not_auto_create_binding(
+    client,
+    operator_headers,
+    monkeypatch,
+) -> None:
+    configure_official_account_settings(
+        monkeypatch,
+        provider_mode=OfficialAccountProviderMode.DISABLED.value,
+        callback_enabled=True,
+    )
+    timestamp = "1710000004"
+    nonce = "nonce-005"
+    payload = build_official_account_event_xml(openid="unknown-openid", event="subscribe")
+    signature = build_callback_signature("callback-token", timestamp, nonce)
+
+    response = client.post(
+        "/integrations/wechat/official-account/callback",
+        params={"signature": signature, "timestamp": timestamp, "nonce": nonce},
+        content=payload,
+        headers={"Content-Type": "application/xml"},
+    )
+    events = client.get(
+        "/admin/official-account/callback-events",
+        headers=operator_headers,
+    )
+    bindings = client.get(
+        "/admin/wechat-bindings",
+        headers=operator_headers,
+        params={"channel_type": "official_account"},
+    )
+
+    assert response.status_code == 200
+    assert len(bindings.json()) == 0
+    assert events.json()[0]["linked_binding_id"] is None
+
+
+def test_official_account_metrics_appear_on_ops_metrics(
+    client,
+    operator_headers,
+    monkeypatch,
+) -> None:
+    configure_official_account_settings(
+        monkeypatch,
+        provider_mode=OfficialAccountProviderMode.DRY_RUN.value,
+        callback_enabled=True,
+    )
+    user, _run_payload = create_digest_ready_user(
+        client,
+        operator_headers,
+        email="official-account-metrics@example.com",
+    )
+    digest_issue = client.get(
+        "/admin/digest-issues",
+        headers=operator_headers,
+        params={"user_id": user["id"]},
+    ).json()[0]
+    client.post(
+        "/admin/wechat-bindings",
+        headers=operator_headers,
+        json={
+            "user_id": user["id"],
+            "channel_type": WeChatBindingChannelType.OFFICIAL_ACCOUNT.value,
+            "app_id": "wx-official-app",
+            "openid": "metrics-openid",
+            "bind_state": WeChatBindingState.ACTIVE.value,
+            "subscribed": True,
+            "digest_enabled": True,
+        },
+    )
+    publication_job = client.post(
+        f"/admin/digest-issues/{digest_issue['id']}/prepare-publication",
+        headers=operator_headers,
+    ).json()["publication_jobs"][0]
+    client.post(
+        f"/admin/digest-publication-jobs/{publication_job['id']}/dispatch",
+        headers=operator_headers,
+    )
+    callback_payload = build_official_account_event_xml(openid="metrics-openid", event="subscribe")
+    callback_signature = build_callback_signature("callback-token", "1710000005", "nonce-006")
+    client.post(
+        "/integrations/wechat/official-account/callback",
+        params={
+            "signature": callback_signature,
+            "timestamp": "1710000005",
+            "nonce": "nonce-006",
+        },
+        content=callback_payload,
+        headers={"Content-Type": "application/xml"},
+    )
+
+    metrics = client.get("/ops/metrics", headers=operator_headers)
+
+    assert metrics.status_code == 200
+    assert "official_account_callback_events_received_total" in metrics.text
+    assert "official_account_callback_events_processed_total" in metrics.text
+    assert "official_account_binding_updates_total" in metrics.text
+    assert "digest_publication_attempts_created_total" in metrics.text
+    assert "digest_publication_attempts_failed_total" in metrics.text

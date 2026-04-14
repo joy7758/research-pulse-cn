@@ -16,6 +16,7 @@ from research_pulse_cn.db.models import (
     SignalSnapshot,
     SubscriptionPolicy,
     SyncEvent,
+    WeChatIdentityBinding,
     utcnow,
 )
 from research_pulse_cn.domain.enums import SyncEventSource, SyncEventType
@@ -190,6 +191,35 @@ class SyncEventService:
                 "selected_card_count": digest_issue.selected_card_count,
                 "deep_link_path": digest_issue.deep_link_path,
                 "updated_at": _iso_or_none(digest_issue.updated_at),
+            },
+        )
+
+    def emit_wechat_identity_binding(
+        self,
+        binding: WeChatIdentityBinding,
+        *,
+        event_type: SyncEventType,
+        event_source: SyncEventSource,
+    ) -> SyncEvent:
+        return self._emit(
+            user_id=binding.user_id,
+            entity_type="wechat_identity_binding",
+            entity_id=str(binding.id),
+            event_type=event_type,
+            event_source=event_source,
+            payload={
+                "id": str(binding.id),
+                "user_id": str(binding.user_id),
+                "channel_type": binding.channel_type.value,
+                "app_id": binding.app_id,
+                "bind_state": binding.bind_state.value,
+                "subscribed": binding.subscribed,
+                "digest_enabled": binding.digest_enabled,
+                "display_label": binding.display_label,
+                "subscribed_at": _iso_or_none(binding.subscribed_at),
+                "unsubscribed_at": _iso_or_none(binding.unsubscribed_at),
+                "last_seen_at": _iso_or_none(binding.last_seen_at),
+                "updated_at": _iso_or_none(binding.updated_at),
             },
         )
 

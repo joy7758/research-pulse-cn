@@ -16,6 +16,7 @@ Private repository. Proprietary and confidential.
 - Current delivery paths for `in_app`, `email`, and `webhook`, with console/webhook adapters for local development
 - Device-token sync backbone for desktop and future lightweight clients
 - WeChat identity bindings plus digest issue/publication reserve objects for future official-account and mini-program flows
+- Official-account provider-ready dry-run dispatch and callback ingress boundaries without live outbound sends
 - Seed data, Docker Compose, pytest, Ruff, and CI
 
 ## Architecture
@@ -109,8 +110,17 @@ Important values:
 - `APP_MINI_READ_GRANT_DEFAULT_TTL_HOURS`: default preview-grant lifetime for `/mini/*`
 - `APP_MINI_PAPERS_DEFAULT_LIMIT`: default compact paper page size for mini reads
 - `APP_MINI_PAPERS_MAX_LIMIT`: max compact paper page size for mini reads
+- `APP_OFFICIAL_ACCOUNT_PROVIDER_MODE`: official-account provider mode, currently `disabled` or `dry_run`
+- `APP_WECHAT_OFFICIAL_APP_ID`: official-account app id for provider readiness and callback matching
+- `APP_WECHAT_OFFICIAL_APP_SECRET`: reserved secret for future real provider activation
+- `APP_WECHAT_OFFICIAL_CALLBACK_TOKEN`: signature token for callback verification
+- `APP_WECHAT_OFFICIAL_CALLBACK_AES_KEY`: reserved AES key for future richer callback handling
+- `APP_OFFICIAL_ACCOUNT_CALLBACK_ENABLED`: enable or disable callback ingress handling
+- `APP_OFFICIAL_ACCOUNT_DEFAULT_MINI_PROGRAM_APP_ID`: default mini-program app id for landing payloads
+- `APP_OFFICIAL_ACCOUNT_DEFAULT_ARTICLE_BASE_URL`: optional base URL for future article landing payloads
+- `APP_OFFICIAL_ACCOUNT_DISPATCH_TIMEOUT_SECONDS`: dry-run dispatch timeout setting for provider boundary
 
-No real WeChat API credentials are required in this phase. Official-account publication remains stub-only.
+No real WeChat API credentials are required in this phase. Official-account publication remains provider-ready and dry-run only.
 Mini-program access is reserve-only and read-only in this phase.
 
 ## Running workers and scheduler
@@ -152,6 +162,10 @@ With Docker Compose, the codebase now exposes separate `api`, `worker`, and `sch
   - `POST /admin/digest-issues/build/{user_id}`
   - `POST /admin/digest-issues/{digest_issue_id}/prepare-publication`
   - `GET /admin/digest-publication-jobs`
+  - `POST /admin/digest-publication-jobs/{publication_job_id}/dispatch`
+  - `GET /admin/digest-publication-attempts`
+  - `GET /admin/official-account/provider-status`
+  - `GET /admin/official-account/callback-events`
   - `GET /admin/mini-read-grants`
   - `POST /admin/mini-read-grants`
   - `POST /admin/mini-read-grants/{grant_id}/revoke`
@@ -182,6 +196,9 @@ With Docker Compose, the codebase now exposes separate `api`, `worker`, and `sch
   - `GET /mini/digest-issues/{digest_issue_id}`
   - `GET /mini/papers`
   - `GET /mini/papers/{paper_id}`
+- Integrations:
+  - `GET /integrations/wechat/official-account/callback`
+  - `POST /integrations/wechat/official-account/callback`
 
 ## Seeded demo profile
 `make seed` creates:
@@ -212,3 +229,6 @@ Digest issues, WeChat identity binding, and publication preparation without real
 
 ## Mini-program read-only reserve
 Mini preview grants, compact mobile read models, and derived paper progress percentages are documented in [docs/mini_program_readonly_reserve.md](docs/mini_program_readonly_reserve.md).
+
+## Official-account provider boundary
+Dry-run dispatch, callback ingress, subscription-state updates, and provider-safe settings are documented in [docs/official_account_provider_boundary.md](docs/official_account_provider_boundary.md).

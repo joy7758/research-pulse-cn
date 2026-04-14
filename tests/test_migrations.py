@@ -24,7 +24,9 @@ def test_alembic_upgrade_creates_core_tables(tmp_path) -> None:
         "client_devices",
         "client_access_tokens",
         "digest_publication_jobs",
+        "digest_publication_attempts",
         "mini_read_grants",
+        "official_account_callback_events",
         "sync_events",
         "sync_cursors",
         "sync_mutations",
@@ -193,6 +195,21 @@ def test_alembic_upgrade_creates_core_tables(tmp_path) -> None:
         "payload",
         "prepared_at",
     }.issubset(publication_job_columns)
+    publication_attempt_columns = {
+        column["name"] for column in inspector.get_columns("digest_publication_attempts")
+    }
+    assert {
+        "digest_publication_job_id",
+        "attempt_number",
+        "provider_name",
+        "provider_mode",
+        "status",
+        "request_payload",
+        "response_payload",
+        "error_summary",
+        "started_at",
+        "finished_at",
+    }.issubset(publication_attempt_columns)
     mini_grant_columns = {column["name"] for column in inspector.get_columns("mini_read_grants")}
     assert {
         "user_id",
@@ -206,3 +223,25 @@ def test_alembic_upgrade_creates_core_tables(tmp_path) -> None:
         "last_used_at",
         "created_by_admin_id",
     }.issubset(mini_grant_columns)
+    callback_event_columns = {
+        column["name"] for column in inspector.get_columns("official_account_callback_events")
+    }
+    assert {
+        "app_id",
+        "to_user_name",
+        "from_openid",
+        "msg_type",
+        "event_type",
+        "event_key",
+        "event_time",
+        "dedupe_key",
+        "signature_valid",
+        "payload_format",
+        "raw_payload",
+        "parsed_payload",
+        "processing_status",
+        "processing_note",
+        "linked_binding_id",
+        "created_at",
+        "processed_at",
+    }.issubset(callback_event_columns)

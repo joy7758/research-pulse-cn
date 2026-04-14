@@ -1,0 +1,271 @@
+Read AGENTS.md, docs/BUILD_SPEC.md, docs/architecture.md, docs/development.md, docs/pulse_scoring.md, docs/operations.md, docs/auth_admin_boundary.md, docs/sync_foundation.md, docs/official_account_digest_reserve.md, and docs/mini_program_readonly_reserve.md before editing.
+
+Implement Phase 11 only: official-account provider boundary v1.
+
+Hard boundaries for this phase:
+- Do not add real WeChat OAuth login.
+- Do not add Mini Program frontend code.
+- Do not add customer-facing UI.
+- Do not add real external send by default.
+- Do not make test/dev environments require live WeChat credentials.
+- Do not weaken existing admin auth, internal service auth, device-token sync auth, or mini-read auth.
+- Do not reintroduce WeChat as a generic DeliveryJob channel.
+- Do not replace the current modular monolith architecture.
+
+Primary goal:
+Move the official-account path from "reserve only" to "provider-ready dry-run dispatch + inbound callback boundary".
+
+This phase should make the backend suitable for:
+- future real official-account provider activation
+- safe dry-run dispatch of digest publication jobs
+- inbound official-account callback ingestion
+- official-account subscribe/unsubscribe state updates on existing bindings
+- ops/admin inspection of provider readiness and callback events
+
+Required changes:
+
+1. Official-account provider settings and boundary
+Add provider-facing settings, with safe defaults.
+
+At minimum:
+- official_account_provider_mode enum/string with values [disabled, dry_run]
+- wechat_official_app_id
+- wechat_official_app_secret
+- wechat_official_callback_token
+- wechat_official_callback_aes_key
+- official_account_callback_enabled bool
+- official_account_default_mini_program_app_id nullable
+- official_account_default_article_base_url nullable
+- official_account_dispatch_timeout_seconds
+
+Requirements:
+- default mode must be disabled or dry_run-safe
+- do not require live credentials for tests
+- document all settings clearly
+- do not store secrets in repo
+- keep the provider contract future-friendly for real integration in a later phase
+
+2. Official-account callback event persistence
+Add an OfficialAccountCallbackEvent model/table.
+
+Required fields:
+- id UUID pk
+- app_id nullable
+- to_user_name nullable
+- from_openid nullable
+- msg_type nullable
+- event_type nullable
+- event_key nullable
+- event_time nullable
+- dedupe_key string unique
+- signature_valid bool
+- payload_format enum [xml, json, unknown]
+- raw_payload text
+- parsed_payload json nullable
+- processing_status enum [accepted, processed, ignored, duplicate, failed]
+- processing_note nullable
+- linked_binding_id nullable FK to WeChatIdentityBinding
+- created_at
+- processed_at nullable
+
+Requirements:
+- keep schema production-friendly
+- dedupe repeated callbacks
+- persist raw payload even when parsing fails
+- use minimal parsing only for fields needed in v1
+
+3. Publication attempt visibility
+Add a DigestPublicationAttempt model/table.
+
+Required fields:
+- id UUID pk
+- digest_publication_job_id FK
+- attempt_number int
+- provider_name string
+- provider_mode string
+- status enum [started, previewed, failed]
+- request_payload json nullable
+- response_payload json nullable
+- error_summary nullable
+- started_at
+- finished_at nullable
+
+Constraints:
+- unique(digest_publication_job_id, attempt_number)
+- keep schema minimal and ops-friendly
+
+4. OfficialAccountPublisher interface
+Introduce a clear provider boundary.
+
+Requirements:
+- add an OfficialAccountPublisher interface/service
+- add DryRunOfficialAccountPublisher implementation
+- optionally add DisabledOfficialAccountPublisher implementation
+- do not perform real outbound network calls in this phase
+- provider output should be based on:
+  - DigestPublicationJob
+  - PulseDigestIssue
+  - PulseDigestItems
+  - WeChatIdentityBinding
+- render a provider-ready payload containing:
+  - title
+  - summary
+  - highlights
+  - landing metadata
+  - binding summary
+  - provider contract metadata
+- keep payload transport-neutral enough to support a later real provider integration
+- do not hardcode a final irreversible assumption about eventual transport shape
+
+5. Dispatch flow for publication jobs
+Add a real dispatch step, but dry-run only in this phase.
+
+Required endpoints:
+- POST /admin/digest-publication-jobs/{publication_job_id}/dispatch
+- GET /admin/digest-publication-attempts
+- GET /admin/official-account/provider-status
+- GET /admin/official-account/callback-events
+
+Behavior:
+- operator and super_admin can dispatch and inspect
+- viewer cannot
+- dispatch must:
+  - load the publication job
+  - validate it is eligible for dispatch
+  - create a DigestPublicationAttempt row
+  - invoke the publisher boundary
+  - update the publication job payload/status accordingly
+- in dry_run mode:
+  - no external send occurs
+  - publication job should end in previewed or prepared-previewed state, but not sent
+  - attempt status should be previewed
+- in disabled mode:
+  - return a controlled failure or conflict
+  - create no fake success
+- dispatch should be idempotent where practical for already previewed content
+- list endpoints should support basic filtering where practical:
+  - status
+  - provider_mode
+  - issue_date
+  - user_id
+
+6. Inbound callback endpoints
+Add official-account callback ingress endpoints.
+
+Required endpoints:
+- GET /integrations/wechat/official-account/callback
+- POST /integrations/wechat/official-account/callback
+
+Behavior:
+- these endpoints are not protected by admin auth; they are provider ingress endpoints
+- verify request signature using settings when callback handling is enabled
+- GET should support verification/echo-style handshake behavior
+- POST should:
+  - persist raw payload
+  - verify signature
+  - parse minimal payload fields
+  - dedupe repeated events
+  - record processing status
+- supported v1 callback handling:
+  - subscribe
+  - unsubscribe
+  - scan or similar event only if trivial to support cleanly; otherwise ignore with note
+- if a matching WeChatIdentityBinding exists by:
+  - channel_type = official_account
+  - app_id
+  - openid
+  then update:
+  - subscribed
+  - subscribed_at
+  - unsubscribed_at
+  - last_seen_at
+  - bind_state when appropriate
+- if no binding exists:
+  - persist event
+  - do not auto-create a user binding
+  - document this clearly as deferred until future binding flows
+
+7. Audit logging
+Add lightweight audit coverage for:
+- manual dispatch action
+- callback-driven binding subscription state changes when a binding is updated
+- provider-status changes are not required
+- do not allow audit logging failures to break the main request path
+
+8. Sync integration
+If straightforward, emit compact SyncEvent rows for:
+- WeChatIdentityBinding subscription state updates
+- do not sync raw callback payloads
+- do not sync publication attempts unless trivial and clearly useful; otherwise defer and document
+
+9. Metrics and logging
+Add official-account observability.
+
+Required metrics:
+- official_account_callback_events_received_total
+- official_account_callback_events_processed_total
+- official_account_binding_updates_total
+- digest_publication_attempts_created_total
+- digest_publication_attempts_failed_total
+
+Logging requirements:
+- include callback_event_id where practical
+- include digest_publication_job_id and attempt_id where practical
+- include request_id and user_id where available
+- keep style aligned with current structured logging
+
+10. Tests
+Add or update tests covering at minimum:
+- operator can dispatch publication job in dry_run mode
+- viewer cannot dispatch publication job
+- disabled provider mode blocks dispatch cleanly
+- dry_run dispatch creates DigestPublicationAttempt and does not mark job as sent
+- provider-status endpoint reflects mode/config safely without leaking secrets
+- GET callback verification path behaves correctly when enabled
+- POST callback with subscribe updates a matching official_account binding to subscribed=true
+- POST callback with unsubscribe updates a matching binding to subscribed=false and unsubscribed_at
+- duplicate callbacks dedupe correctly
+- unknown openid does not auto-create a binding
+- official-account metrics appear on /ops/metrics
+- existing tests continue to pass
+
+11. Documentation
+Add docs/official_account_provider_boundary.md
+
+It should explain:
+- why provider boundary is being added before real external sending
+- settings and modes
+- OfficialAccountCallbackEvent model
+- DigestPublicationAttempt model
+- dispatch flow
+- inbound callback flow
+- current limitations
+- future work:
+  - real provider outbound integration
+  - binding reconciliation via real auth / OAuth
+  - official-account to mini-program landing handoff
+  - richer event handling
+
+Also update:
+- README.md
+- docs/development.md
+- docs/architecture.md
+- docs/official_account_digest_reserve.md
+- docs/mini_program_readonly_reserve.md
+- any docs that should reference official-account provider readiness
+
+12. Quality bar
+- keep schema changes minimal and production-friendly
+- keep code typed and readable
+- do not add unnecessary dependencies
+- do not add real outbound sending in this phase
+- run available checks
+- fix obvious lint/test issues
+- end with a concise summary:
+  - files changed
+  - migrations created
+  - new models
+  - new endpoints
+  - new settings
+  - next-phase recommendation only
+

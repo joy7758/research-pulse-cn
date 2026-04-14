@@ -5,6 +5,8 @@ from functools import lru_cache
 from pydantic import Field, computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from research_pulse_cn.domain.enums import OfficialAccountProviderMode
+
 
 class Settings(BaseSettings):
     """Environment-driven runtime settings."""
@@ -120,6 +122,42 @@ class Settings(BaseSettings):
     mini_papers_max_limit: int = Field(
         default=100,
         validation_alias="APP_MINI_PAPERS_MAX_LIMIT",
+    )
+    official_account_provider_mode: OfficialAccountProviderMode = Field(
+        default=OfficialAccountProviderMode.DISABLED,
+        validation_alias="APP_OFFICIAL_ACCOUNT_PROVIDER_MODE",
+    )
+    wechat_official_app_id: str | None = Field(
+        default=None,
+        validation_alias="APP_WECHAT_OFFICIAL_APP_ID",
+    )
+    wechat_official_app_secret: str | None = Field(
+        default=None,
+        validation_alias="APP_WECHAT_OFFICIAL_APP_SECRET",
+    )
+    wechat_official_callback_token: str | None = Field(
+        default=None,
+        validation_alias="APP_WECHAT_OFFICIAL_CALLBACK_TOKEN",
+    )
+    wechat_official_callback_aes_key: str | None = Field(
+        default=None,
+        validation_alias="APP_WECHAT_OFFICIAL_CALLBACK_AES_KEY",
+    )
+    official_account_callback_enabled: bool = Field(
+        default=False,
+        validation_alias="APP_OFFICIAL_ACCOUNT_CALLBACK_ENABLED",
+    )
+    official_account_default_mini_program_app_id: str | None = Field(
+        default=None,
+        validation_alias="APP_OFFICIAL_ACCOUNT_DEFAULT_MINI_PROGRAM_APP_ID",
+    )
+    official_account_default_article_base_url: str | None = Field(
+        default=None,
+        validation_alias="APP_OFFICIAL_ACCOUNT_DEFAULT_ARTICLE_BASE_URL",
+    )
+    official_account_dispatch_timeout_seconds: int = Field(
+        default=5,
+        validation_alias="APP_OFFICIAL_ACCOUNT_DISPATCH_TIMEOUT_SECONDS",
     )
 
     postgres_host: str = Field(default="localhost", validation_alias="POSTGRES_HOST")
