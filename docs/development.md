@@ -108,6 +108,29 @@
   - official-account digest publishing
   - mini-program read-only landing on top of sync
 
+## Mini-program read-only reserve
+- Mini access is modeled as a separate read-only auth boundary.
+- Operators and super admins can create preview grants under:
+  - `GET /admin/mini-read-grants`
+  - `POST /admin/mini-read-grants`
+  - `POST /admin/mini-read-grants/{grant_id}/revoke`
+- Mini grant tokens can only access:
+  - `GET /mini/bootstrap`
+  - `GET /mini/today`
+  - `GET /mini/digest-issues/{digest_issue_id}`
+  - `GET /mini/papers`
+  - `GET /mini/papers/{paper_id}`
+- Mini defaults live in `.env.example`:
+  - `APP_MINI_READ_GRANT_DEFAULT_TTL_HOURS`
+  - `APP_MINI_PAPERS_DEFAULT_LIMIT`
+  - `APP_MINI_PAPERS_MAX_LIMIT`
+- `progress_percentage` is a derived UI/read-model heuristic from `PaperProfile.type`, not a persisted workflow truth field.
+- Preview grants can point at:
+  - a user overview
+  - a digest landing
+  - a paper-detail landing
+- No real mini-program auth, session exchange, or frontend code exists in v1.
+
 ## Ops endpoints
 - `GET /health/live`: lightweight process liveness
 - `GET /health/ready`: database readiness and component details, protected by operator/admin or internal service auth
@@ -130,6 +153,6 @@
 - Replace `DummyModelProvider` with a real provider adapter.
 - Expand deterministic facts into richer signal scoring and portfolio context.
 - Add official-account digest publishing on top of persisted pulse and sync data.
-- Add mini-program read access on top of the sync backbone.
+- Add real mini-program auth and landing handoff on top of the read-only reserve.
 - Add customer-facing auth separately from `AdminAccount`.
 - Add SSO/OIDC only after the internal admin boundary stabilizes.

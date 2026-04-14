@@ -157,6 +157,19 @@ class DigestPublicationMode(StrEnum):
     FUTURE_PROVIDER = "future_provider"
 
 
+class MiniReadGrantType(StrEnum):
+    PREVIEW = "preview"
+    DIGEST_LANDING = "digest_landing"
+    DAILY_OVERVIEW = "daily_overview"
+    PAPER_DETAIL = "paper_detail"
+
+
+class MiniReadGrantStatus(StrEnum):
+    ACTIVE = "active"
+    REVOKED = "revoked"
+    EXPIRED = "expired"
+
+
 ACTIVE_DELIVERY_CHANNELS = frozenset(
     {
         ChannelType.IN_APP,

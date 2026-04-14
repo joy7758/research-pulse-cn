@@ -58,7 +58,8 @@
 1. Pulse run selects `PulseCard` rows.
 2. Pulse completion auto-upserts one `PulseDigestIssue` for the user-local date.
 3. Admins can rebuild the same issue idempotently for the same `user_id + issue_date`.
-4. Admins can prepare publication.
+4. Mini read-only grants can use the digest issue as a default landing target.
+5. Admins can prepare publication.
 5. The stub publication layer finds eligible official-account bindings and writes `DigestPublicationJob` rows.
 6. No external send occurs.
 
@@ -74,10 +75,10 @@
 - Publication payloads are provider-neutral previews, not real sends.
 - Publication jobs are not exposed through sync in v1.
 - Digest generation uses deterministic summaries only.
-- Deep links are placeholders for future mini-program landing routes.
+- Deep links now target the mini read-only reserve contract, not a real mini frontend.
 
 ## Future Work
 - real official-account provider integration
-- mini-program landing and read-only client
+- real mini-program landing and read-only client
 - real binding and OAuth flows
 - richer digest composition and editorial controls
