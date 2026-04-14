@@ -14,6 +14,11 @@ COUNTER_NAMES = (
     "delivery_jobs_sent_total",
     "delivery_jobs_failed_total",
     "delivery_jobs_dead_letter_total",
+    "sync_events_emitted_total",
+    "sync_feed_requests_total",
+    "sync_mutations_received_total",
+    "sync_mutations_applied_total",
+    "sync_mutations_failed_total",
 )
 
 

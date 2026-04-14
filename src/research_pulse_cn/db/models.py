@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, Text, Uuid
+from sqlalchemy import BigInteger, DateTime, Enum, ForeignKey, Integer, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from research_pulse_cn.db.base import Base
@@ -15,6 +15,7 @@ from research_pulse_cn.domain.enums import (
     AdminRole,
     AuditActorType,
     ChannelType,
+    ClientType,
     DeliveryAttemptStatus,
     DeliveryJobStatus,
     PaperType,
@@ -23,6 +24,9 @@ from research_pulse_cn.domain.enums import (
     PulseJobStatus,
     SignalSource,
     SubscriptionFrequency,
+    SyncEventSource,
+    SyncEventType,
+    SyncMutationStatus,
     WorkerRole,
     WorkerStatus,
 )
@@ -87,6 +91,15 @@ class UserProfile(TimestampMixin, Base):
     )
     pulse_cards: Mapped[list[PulseCard]] = relationship(back_populates="user")
     delivery_jobs: Mapped[list[DeliveryJob]] = relationship(back_populates="user")
+    client_devices: Mapped[list[ClientDevice]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    sync_events: Mapped[list[SyncEvent]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+        order_by="SyncEvent.sequence",
+    )
 
 
 class PaperProfile(TimestampMixin, Base):
@@ -370,3 +383,117 @@ class AuditLog(Base):
     status_code: Mapped[int | None] = mapped_column(Integer)
     metadata_json: Mapped[dict[str, Any] | None] = mapped_column("metadata", JSON_VARIANT)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class ClientDevice(TimestampMixin, Base):
+    __tablename__ = "client_devices"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("user_profiles.id", ondelete="CASCADE"))
+    client_type: Mapped[ClientType] = mapped_column(
+        Enum(ClientType, native_enum=False),
+        nullable=False,
+    )
+    display_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    user: Mapped[UserProfile] = relationship(back_populates="client_devices")
+    access_tokens: Mapped[list[ClientAccessToken]] = relationship(
+        back_populates="client_device",
+        cascade="all, delete-orphan",
+        order_by="ClientAccessToken.issued_at.desc()",
+    )
+    cursor: Mapped[SyncCursor | None] = relationship(
+        back_populates="client_device",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
+    mutations: Mapped[list[SyncMutation]] = relationship(
+        back_populates="client_device",
+        cascade="all, delete-orphan",
+        order_by="SyncMutation.created_at.asc()",
+    )
+
+
+class ClientAccessToken(Base):
+    __tablename__ = "client_access_tokens"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    client_device_id: Mapped[UUID] = mapped_column(
+        ForeignKey("client_devices.id", ondelete="CASCADE")
+    )
+    token_hash: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_ip: Mapped[str | None] = mapped_column(String(255))
+    user_agent: Mapped[str | None] = mapped_column(String(500))
+
+    client_device: Mapped[ClientDevice] = relationship(back_populates="access_tokens")
+
+
+class SyncEvent(Base):
+    __tablename__ = "sync_events"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    sequence: Mapped[int] = mapped_column(BigInteger, nullable=False, unique=True)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("user_profiles.id", ondelete="CASCADE"))
+    entity_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    entity_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    event_type: Mapped[SyncEventType] = mapped_column(
+        Enum(SyncEventType, native_enum=False),
+        nullable=False,
+    )
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON_VARIANT, default=dict)
+    event_source: Mapped[SyncEventSource] = mapped_column(
+        Enum(SyncEventSource, native_enum=False),
+        nullable=False,
+    )
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    user: Mapped[UserProfile] = relationship(back_populates="sync_events")
+
+
+class SyncCursor(Base):
+    __tablename__ = "sync_cursors"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    client_device_id: Mapped[UUID] = mapped_column(
+        ForeignKey("client_devices.id", ondelete="CASCADE"),
+        unique=True,
+    )
+    last_event_sequence: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utcnow,
+        onupdate=utcnow,
+    )
+
+    client_device: Mapped[ClientDevice] = relationship(back_populates="cursor")
+
+
+class SyncMutation(Base):
+    __tablename__ = "sync_mutations"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    client_device_id: Mapped[UUID] = mapped_column(
+        ForeignKey("client_devices.id", ondelete="CASCADE")
+    )
+    client_mutation_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    mutation_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    resource_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    resource_id: Mapped[str | None] = mapped_column(String(255))
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON_VARIANT, default=dict)
+    status: Mapped[SyncMutationStatus] = mapped_column(
+        Enum(SyncMutationStatus, native_enum=False),
+        nullable=False,
+    )
+    error_message: Mapped[str | None] = mapped_column(Text)
+    resulting_event_sequence: Mapped[int | None] = mapped_column(BigInteger)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    client_device: Mapped[ClientDevice] = relationship(back_populates="mutations")

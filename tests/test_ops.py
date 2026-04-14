@@ -216,7 +216,7 @@ def test_requeue_endpoint_moves_dead_letter_delivery_back_to_pending(
         user_id=user["id"],
         frequency=SubscriptionFrequency.EVENT,
         headers=operator_headers,
-        channel=ChannelType.DINGTALK.value,
+        channel=ChannelType.WEBHOOK.value,
         endpoint="https://fail.example.local/webhook",
     )
 

@@ -8,7 +8,8 @@ Core flow:
 2. Pulse preview and run requests build deterministic facts, candidates, scores, suppression reasons, and final selections.
 3. A model-provider adapter produces card copy only for selected candidates.
 4. Selected pulse cards enqueue outbox delivery jobs.
-5. The worker dispatches delivery jobs through channel adapters and manages retry and dead-letter transitions.
+5. The worker dispatches delivery jobs through current supported channel adapters and manages retry and dead-letter transitions.
+6. Sync devices consume incremental `SyncEvent` feeds and push idempotent mutations back through the same service layer.
 
 ## Module boundaries
 
@@ -31,14 +32,18 @@ Core flow:
   - deterministic pulse generation
   - delivery orchestration
   - worker processing
+  - device lifecycle and sync mutation handling
 
 ### `adapters`
 - Contains outbound channel integrations and model-provider implementations.
 - Current adapters:
   - `ConsoleChannelAdapter`
-  - `DingTalkWebhookAdapter`
-  - `WeChatTemplateAdapter` stub
+  - `WebhookChannelAdapter`
   - `DummyModelProvider`
+
+Future communication surfaces are intentionally outside the active delivery layer:
+- official-account digest publishing
+- mini-program lightweight client access through sync
 
 ### `api`
 - FastAPI transport layer.
@@ -88,6 +93,23 @@ Tie-break order is deterministic:
   - `sent`
   - `failed`
   - `dead_letter`
+
+## Sync backbone
+
+### Device identity
+- `ClientDevice` represents a desktop or mobile sync client tied to one `UserProfile`.
+- `ClientAccessToken` stores only hashed device credentials.
+- Device tokens are valid only for `/sync/*`.
+
+### Event feed
+- `SyncEvent` stores user-scoped, monotonic events for paper, progress, signal, subscription, and pulse-card changes.
+- `SyncCursor` tracks the latest acknowledged sequence per device.
+- `SyncMutation` records idempotent client-originated writes keyed by `(client_device_id, client_mutation_id)`.
+
+### Consistency model
+- Supported sync patches are last-write-wins in v1.
+- Client mutations flow through the same service layer as admin/API writes.
+- This keeps the desktop client, future lightweight clients, and future digest publishing surfaces aligned on one canonical backend state model.
 
 ## Why this shape
 - It is production-friendly without over-fragmenting into microservices.

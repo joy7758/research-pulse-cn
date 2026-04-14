@@ -32,6 +32,7 @@ from research_pulse_cn.domain.enums import (
     PulseCardType,
     PulseJobScheduledReason,
     PulseJobStatus,
+    SyncEventSource,
 )
 from research_pulse_cn.domain.pulse import (
     PulseCandidate,
@@ -50,6 +51,7 @@ from research_pulse_cn.repositories.user import UserRepository
 from research_pulse_cn.schemas.pulse import PulseCardPreview
 from research_pulse_cn.services.common import commit_session
 from research_pulse_cn.services.delivery import DeliveryService
+from research_pulse_cn.services.sync_events import SyncEventService
 
 logger = logging.getLogger(__name__)
 
@@ -407,6 +409,7 @@ class PulseService:
         self.model_provider = model_provider or DummyModelProvider()
         self.card_validator = card_validator or SimpleCardValidator()
         self.delivery_service = DeliveryService(session, adapter_registry=adapter_registry)
+        self.sync_events = SyncEventService(session)
         self.metrics = get_metrics()
 
     def preview(self, user_id: UUID) -> PulsePipelineResult:
@@ -861,7 +864,12 @@ class PulseService:
             generated_by=preview.generated_by,
             generated_at=self.now_provider(),
         )
-        return self.pulse_repository.add_card(card)
+        persisted = self.pulse_repository.add_card(card)
+        self.sync_events.emit_pulse_card(
+            persisted,
+            event_source=SyncEventSource.WORKER,
+        )
+        return persisted
 
     def _enqueue_delivery_jobs(self, job: PulseJob, cards: list[PulseCard]) -> list[DeliveryJob]:
         policies = self._delivery_policies_for_job(job)

@@ -90,3 +90,46 @@ class AuditActorType(StrEnum):
     ADMIN = "admin"
     SERVICE = "service"
     ANONYMOUS = "anonymous"
+
+
+class ClientType(StrEnum):
+    DESKTOP = "desktop"
+    MOBILE = "mobile"
+
+
+class SyncEventType(StrEnum):
+    CREATED = "created"
+    UPDATED = "updated"
+    DELETED = "deleted"
+    SNAPSHOT = "snapshot"
+
+
+class SyncEventSource(StrEnum):
+    API = "api"
+    SYNC_PUSH = "sync_push"
+    WORKER = "worker"
+    SEED = "seed"
+    SYSTEM = "system"
+
+
+class SyncMutationStatus(StrEnum):
+    ACCEPTED = "accepted"
+    APPLIED = "applied"
+    DUPLICATE = "duplicate"
+    FAILED = "failed"
+
+
+ACTIVE_DELIVERY_CHANNELS = frozenset(
+    {
+        ChannelType.IN_APP,
+        ChannelType.EMAIL,
+        ChannelType.WEBHOOK,
+    }
+)
+
+DEPRECATED_DELIVERY_CHANNELS = frozenset(
+    {
+        ChannelType.DINGTALK,
+        ChannelType.WECHAT,
+    }
+)

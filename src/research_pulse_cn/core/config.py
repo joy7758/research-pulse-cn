@@ -93,6 +93,22 @@ class Settings(BaseSettings):
         default="change-me-internal-service-token",
         validation_alias="APP_INTERNAL_SERVICE_TOKEN",
     )
+    sync_device_token_ttl_days: int = Field(
+        default=90,
+        validation_alias="APP_SYNC_DEVICE_TOKEN_TTL_DAYS",
+    )
+    sync_feed_default_limit: int = Field(
+        default=100,
+        validation_alias="APP_SYNC_FEED_DEFAULT_LIMIT",
+    )
+    sync_feed_max_limit: int = Field(
+        default=500,
+        validation_alias="APP_SYNC_FEED_MAX_LIMIT",
+    )
+    sync_push_max_batch_size: int = Field(
+        default=50,
+        validation_alias="APP_SYNC_PUSH_MAX_BATCH_SIZE",
+    )
 
     postgres_host: str = Field(default="localhost", validation_alias="POSTGRES_HOST")
     postgres_port: int = Field(default=5432, validation_alias="POSTGRES_PORT")

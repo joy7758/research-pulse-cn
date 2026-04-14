@@ -16,6 +16,7 @@ from research_pulse_cn.services.paper import PaperService
 from research_pulse_cn.services.pulse import PulseService
 from research_pulse_cn.services.scheduler import SchedulerService
 from research_pulse_cn.services.subscription_policy import SubscriptionPolicyService
+from research_pulse_cn.services.sync import SyncService
 from research_pulse_cn.services.user import UserService
 
 
@@ -64,3 +65,7 @@ def get_auth_service(session: SessionDep) -> AuthService:
 
 def get_audit_service(session: SessionDep) -> AuditService:
     return AuditService(session)
+
+
+def get_sync_service(session: SessionDep) -> SyncService:
+    return SyncService(session)

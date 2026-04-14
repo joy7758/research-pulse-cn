@@ -113,7 +113,7 @@ def test_subscription_policy_crud_flow(client, operator_headers) -> None:
         headers=operator_headers,
         json={
             "user_id": user["id"],
-            "channel": ChannelType.DINGTALK,
+            "channel": ChannelType.WEBHOOK,
             "enabled": True,
             "frequency": SubscriptionFrequency.DAILY,
             "endpoint": "https://example.local/webhook",

@@ -6,7 +6,7 @@ Hard boundaries for this phase:
 - Do not add authentication.
 - Do not add multi-tenant support.
 - Do not integrate real model providers.
-- Do not integrate real DingTalk or WeChat production APIs beyond existing adapter skeleton boundaries.
+- Do not integrate future official-account publishing or mini-program client APIs.
 - Do not add frontend work beyond API/OpenAPI responses and docs.
 
 Primary goal:

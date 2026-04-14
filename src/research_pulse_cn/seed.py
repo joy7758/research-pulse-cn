@@ -128,11 +128,11 @@ def seed_demo_data() -> None:
         policy_service.create_policy(
             SubscriptionPolicyCreate(
                 user_id=user.id,
-                channel=ChannelType.DINGTALK,
+                channel=ChannelType.WEBHOOK,
                 enabled=True,
                 frequency=SubscriptionFrequency.DAILY,
-                endpoint="https://oapi.dingtalk.local/webhook/demo",
-                policy={"signing": "stub"},
+                endpoint="https://hooks.example.local/research-pulse-demo",
+                policy={"delivery_mode": "digest"},
             )
         )
     finally:

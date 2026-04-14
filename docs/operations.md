@@ -105,6 +105,11 @@ Prometheus-style counters exposed in v1:
 - `delivery_jobs_sent_total`
 - `delivery_jobs_failed_total`
 - `delivery_jobs_dead_letter_total`
+- `sync_events_emitted_total`
+- `sync_feed_requests_total`
+- `sync_mutations_received_total`
+- `sync_mutations_applied_total`
+- `sync_mutations_failed_total`
 
 ### Inspection
 - `GET /ops/heartbeats`
@@ -150,11 +155,13 @@ Idempotency behavior:
 - Event policies are not auto-scheduled yet.
 - Scheduler v1 creates jobs for the current local date only and does not backfill missed runs.
 - Redis is not yet used as a coordination backend for scheduling or delivery leases.
-- Real DingTalk and WeChat APIs are still outside this phase.
+- Device sync is last-write-wins and does not attempt multi-device merge semantics.
+- Official-account digest publishing and mini-program client surfaces are future work.
 
 ## Future Work
 - event-driven scheduling for `frequency = event`
 - persistent shared metrics and richer gauges
 - stronger distributed worker coordination
-- real DingTalk and WeChat delivery implementations
+- official-account digest publishing on top of persisted pulse data
+- mini-program lightweight client access on top of sync feeds
 - alerting hooks and trace correlation across external providers

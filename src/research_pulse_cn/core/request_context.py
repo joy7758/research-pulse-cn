@@ -12,6 +12,7 @@ _PULSE_JOB_ID: ContextVar[str] = ContextVar("pulse_job_id", default="-")
 _DELIVERY_JOB_ID: ContextVar[str] = ContextVar("delivery_job_id", default="-")
 _USER_ID: ContextVar[str] = ContextVar("user_id", default="-")
 _WORKER_ROLE: ContextVar[str] = ContextVar("worker_role", default="-")
+_CLIENT_DEVICE_ID: ContextVar[str] = ContextVar("client_device_id", default="-")
 
 
 def get_request_id() -> str:
@@ -27,6 +28,7 @@ def current_log_context() -> dict[str, str]:
         "delivery_job_id": _DELIVERY_JOB_ID.get(),
         "user_id": _USER_ID.get(),
         "worker_role": _WORKER_ROLE.get(),
+        "client_device_id": _CLIENT_DEVICE_ID.get(),
     }
 
 
@@ -39,6 +41,7 @@ def bind_log_context(**values: Any) -> Iterator[None]:
         "delivery_job_id": _DELIVERY_JOB_ID,
         "user_id": _USER_ID,
         "worker_role": _WORKER_ROLE,
+        "client_device_id": _CLIENT_DEVICE_ID,
     }
     tokens: list[tuple[ContextVar[str], Token[str]]] = []
     try:

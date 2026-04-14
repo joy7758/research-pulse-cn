@@ -13,7 +13,8 @@ Private repository. Proprietary and confidential.
 - Daily scheduler foundation with per-policy local-time scheduling
 - Outbox-style delivery jobs with retry and dead-letter transitions
 - Worker heartbeats, delivery-attempt tracking, readiness checks, and Prometheus-style metrics
-- Console adapter, DingTalk webhook adapter skeleton, and WeChat adapter stub
+- Current delivery paths for `in_app`, `email`, and `webhook`, with console/webhook adapters for local development
+- Device-token sync backbone for desktop and future lightweight clients
 - Seed data, Docker Compose, pytest, Ruff, and CI
 
 ## Architecture
@@ -100,6 +101,10 @@ Important values:
 - `APP_AUTH_JWT_ISSUER`: expected issuer claim for admin access tokens
 - `APP_AUTH_JWT_AUDIENCE`: expected audience claim for admin access tokens
 - `APP_INTERNAL_SERVICE_TOKEN`: bearer token for internal `/ops/*` and readiness callers
+- `APP_SYNC_DEVICE_TOKEN_TTL_DAYS`: sync device token lifetime
+- `APP_SYNC_FEED_DEFAULT_LIMIT`: default incremental sync page size
+- `APP_SYNC_FEED_MAX_LIMIT`: max allowed sync feed page size
+- `APP_SYNC_PUSH_MAX_BATCH_SIZE`: max mutations accepted per sync push batch
 
 ## Running workers and scheduler
 Run one-off local cycles:
@@ -128,6 +133,10 @@ With Docker Compose, the codebase now exposes separate `api`, `worker`, and `sch
   - `PATCH /admin/admin-accounts/{admin_account_id}`
   - `POST /admin/admin-accounts/{admin_account_id}/set-password`
   - `GET /admin/audit-logs`
+  - `GET /admin/client-devices`
+  - `POST /admin/client-devices`
+  - `POST /admin/client-devices/{client_device_id}/rotate-token`
+  - `POST /admin/client-devices/{client_device_id}/revoke`
 - Health:
   - `GET /health`
   - `GET /health/live`
@@ -144,13 +153,18 @@ With Docker Compose, the codebase now exposes separate `api`, `worker`, and `sch
   - `POST /ops/scheduler/tick`
   - `POST /ops/delivery-jobs/{delivery_job_id}/requeue`
   - `POST /ops/pulse-jobs/{pulse_job_id}/replay`
+- Sync:
+  - `GET /sync/me`
+  - `GET /sync/feed`
+  - `POST /sync/push`
+  - `POST /sync/ack`
 
 ## Seeded demo profile
 `make seed` creates:
 - one demo user
 - two demo papers
 - progress and signal history
-- in-app and DingTalk delivery policies
+- in-app and webhook delivery policies
 
 ## Structure
 - `src/research_pulse_cn`: application code
@@ -165,3 +179,6 @@ Operational scheduling, replay, requeue, heartbeats, attempts, and metrics are d
 
 ## Auth and admin boundary
 Admin authentication, RBAC, internal service auth, audit logs, and bootstrap flow are documented in [docs/auth_admin_boundary.md](docs/auth_admin_boundary.md).
+
+## Sync foundation
+Device identity, incremental feed, mutation idempotency, and future lightweight-client alignment are documented in [docs/sync_foundation.md](docs/sync_foundation.md).

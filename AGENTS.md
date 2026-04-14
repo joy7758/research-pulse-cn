@@ -37,8 +37,11 @@ Provide interfaces for:
 ## Delivery channels
 Implement now:
 - Console adapter
-- DingTalk webhook adapter skeleton
-- WeChat adapter interface skeleton
+- Webhook adapter
+
+Future communication surfaces:
+- official-account digest publishing
+- mini-program lightweight client access via sync
 
 ## Guardrails
 - No secrets in repo

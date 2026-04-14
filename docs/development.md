@@ -68,8 +68,25 @@
 
 ## Delivery adapter notes
 - Console adapter is the safe default for local verification.
-- DingTalk adapter is a non-network skeleton with retry-aware failure simulation.
-- WeChat remains a stub and intentionally dead-letters if selected.
+- Webhook adapter is the only network-shaped outbound adapter in current runtime flows.
+- Legacy `dingtalk` and `wechat` enum values remain only for compatibility with old rows and are rejected for new policy writes.
+- Future communication work should target:
+  - official-account digest publishing
+  - mini-program lightweight client access through sync
+
+## Sync foundation
+- Device tokens are created under `/admin/client-devices`.
+- Device tokens can only access `/sync/*`.
+- Incremental sync flow in v1:
+  - `GET /sync/feed`
+  - `POST /sync/ack`
+  - `POST /sync/push`
+- Sync defaults live in `.env.example`:
+  - `APP_SYNC_DEVICE_TOKEN_TTL_DAYS`
+  - `APP_SYNC_FEED_DEFAULT_LIMIT`
+  - `APP_SYNC_FEED_MAX_LIMIT`
+  - `APP_SYNC_PUSH_MAX_BATCH_SIZE`
+- Conflict handling in v1 is last-write-wins for supported patch operations.
 
 ## Ops endpoints
 - `GET /health/live`: lightweight process liveness
@@ -92,6 +109,7 @@
 ## Next extension points
 - Replace `DummyModelProvider` with a real provider adapter.
 - Expand deterministic facts into richer signal scoring and portfolio context.
-- Add authenticated channel delivery implementations.
+- Add official-account digest publishing on top of persisted pulse and sync data.
+- Add mini-program read access on top of the sync backbone.
 - Add customer-facing auth separately from `AdminAccount`.
 - Add SSO/OIDC only after the internal admin boundary stabilizes.

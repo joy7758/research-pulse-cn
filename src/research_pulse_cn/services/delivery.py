@@ -67,8 +67,8 @@ class DeliveryService:
         for job in jobs:
             with bind_log_context(delivery_job_id=job.id, user_id=job.user_id):
                 attempt = self._start_attempt(job)
-                adapter = self.adapter_registry.for_channel(job.channel)
                 try:
+                    adapter = self.adapter_registry.for_channel(job.channel)
                     adapter.send({"endpoint": job.endpoint, **job.payload})
                     self._mark_sent(job.id, attempt.id, adapter_name=type(adapter).__name__)
                 except DeliveryDispatchError as exc:
@@ -106,7 +106,7 @@ class DeliveryService:
             delivery_job_id=job.id,
             attempt_number=job.retry_count + 1,
             channel=job.channel,
-            adapter_name=type(self.adapter_registry.for_channel(job.channel)).__name__,
+            adapter_name=self.adapter_registry.adapter_name(job.channel),
             status=DeliveryAttemptStatus.STARTED,
             started_at=utcnow(),
         )

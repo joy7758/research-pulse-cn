@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from research_pulse_cn.core.errors import NotFoundError
 from research_pulse_cn.db.models import PaperProfile, ProgressEvent, SignalSnapshot
+from research_pulse_cn.domain.enums import SyncEventSource, SyncEventType
 from research_pulse_cn.repositories.paper import PaperRepository
 from research_pulse_cn.repositories.user import UserRepository
 from research_pulse_cn.schemas.paper import (
@@ -16,6 +17,7 @@ from research_pulse_cn.schemas.paper import (
     SignalSnapshotCreate,
 )
 from research_pulse_cn.services.common import commit_session
+from research_pulse_cn.services.sync_events import SyncEventService
 
 
 class PaperService:
@@ -25,6 +27,7 @@ class PaperService:
         self.session = session
         self.paper_repository = PaperRepository(session)
         self.user_repository = UserRepository(session)
+        self.sync_events = SyncEventService(session)
 
     def list_papers(self, *, user_id: UUID | None = None) -> list[PaperProfile]:
         return self.paper_repository.list(user_id=user_id)
@@ -35,18 +38,39 @@ class PaperService:
             raise NotFoundError(f"paper {paper_id} was not found")
         return paper
 
-    def create_paper(self, payload: PaperProfileCreate) -> PaperProfile:
+    def create_paper(
+        self,
+        payload: PaperProfileCreate,
+        *,
+        event_source: SyncEventSource = SyncEventSource.API,
+    ) -> PaperProfile:
         if self.user_repository.get(payload.user_id) is None:
             raise NotFoundError(f"user {payload.user_id} was not found")
         paper = PaperProfile(**payload.model_dump())
         self.paper_repository.add(paper)
+        self.sync_events.emit_paper_profile(
+            paper,
+            event_type=SyncEventType.CREATED,
+            event_source=event_source,
+        )
         commit_session(self.session)
         return self.get_paper(paper.id)
 
-    def update_paper(self, paper_id: UUID, payload: PaperProfileUpdate) -> PaperProfile:
+    def update_paper(
+        self,
+        paper_id: UUID,
+        payload: PaperProfileUpdate,
+        *,
+        event_source: SyncEventSource = SyncEventSource.API,
+    ) -> PaperProfile:
         paper = self.get_paper(paper_id)
         for field, value in payload.model_dump(exclude_unset=True).items():
             setattr(paper, field, value)
+        self.sync_events.emit_paper_profile(
+            paper,
+            event_type=SyncEventType.UPDATED,
+            event_source=event_source,
+        )
         commit_session(self.session)
         return self.get_paper(paper_id)
 
@@ -59,12 +83,23 @@ class PaperService:
         self.get_paper(paper_id)
         return self.paper_repository.list_progress_events(paper_id)
 
-    def add_progress_event(self, paper_id: UUID, payload: ProgressEventCreate) -> ProgressEvent:
+    def add_progress_event(
+        self,
+        paper_id: UUID,
+        payload: ProgressEventCreate,
+        *,
+        event_source: SyncEventSource = SyncEventSource.API,
+    ) -> ProgressEvent:
         paper = self.get_paper(paper_id)
         event = ProgressEvent(paper_id=paper.id, **payload.model_dump())
         paper.stage = payload.stage
         paper.last_touch_at = payload.happened_at.astimezone(UTC)
         self.paper_repository.add_progress_event(event)
+        self.sync_events.emit_progress_event(
+            event,
+            user_id=paper.user_id,
+            event_source=event_source,
+        )
         commit_session(self.session)
         return event
 
@@ -72,9 +107,20 @@ class PaperService:
         self.get_paper(paper_id)
         return self.paper_repository.list_signal_snapshots(paper_id)
 
-    def add_signal_snapshot(self, paper_id: UUID, payload: SignalSnapshotCreate) -> SignalSnapshot:
+    def add_signal_snapshot(
+        self,
+        paper_id: UUID,
+        payload: SignalSnapshotCreate,
+        *,
+        event_source: SyncEventSource = SyncEventSource.API,
+    ) -> SignalSnapshot:
         paper = self.get_paper(paper_id)
         snapshot = SignalSnapshot(paper_id=paper.id, **payload.model_dump())
         self.paper_repository.add_signal_snapshot(snapshot)
+        self.sync_events.emit_signal_snapshot(
+            snapshot,
+            user_id=paper.user_id,
+            event_source=event_source,
+        )
         commit_session(self.session)
         return snapshot

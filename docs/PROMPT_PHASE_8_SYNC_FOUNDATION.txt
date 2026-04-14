@@ -1,0 +1,24 @@
+Read AGENTS.md, docs/BUILD_SPEC.md, docs/architecture.md, docs/development.md, docs/pulse_scoring.md, docs/operations.md, and docs/auth_admin_boundary.md before editing.
+
+Implement Phase 8 only: sync foundation v1 and communication-boundary cleanup.
+
+Hard boundaries for this phase:
+- Do not add any real WeChat official account integration.
+- Do not add any real mini program integration.
+- Do not add any DingTalk integration.
+- Do not add customer-facing UI.
+- Do not add multi-tenant or institution features.
+- Do not replace the current modular monolith architecture.
+- Do not remove or weaken the current admin auth boundary.
+
+Primary goal:
+1. Remove the incorrect current assumption that DingTalk/WeChat are active delivery channels.
+2. Build a production-friendly sync backbone for the future desktop client and later lightweight clients.
+
+Key requirements:
+- Keep only current valid delivery paths active in runtime.
+- Add `ClientDevice`, `ClientAccessToken`, `SyncEvent`, `SyncCursor`, and `SyncMutation`.
+- Add device-token-only `/sync/*` endpoints plus admin-managed device lifecycle endpoints.
+- Emit sync events for key server-side writes and pulse-card persistence.
+- Keep sync mutations idempotent by `client_mutation_id`.
+- Update docs to frame future WeChat work as official-account digest publishing and mini-program lightweight client access.

@@ -338,7 +338,7 @@ def test_delivery_retry_then_dead_letter(session) -> None:
     create_policy(
         session,
         user_id=user.id,
-        channel=ChannelType.DINGTALK,
+        channel=ChannelType.WEBHOOK,
         endpoint="https://fail.example.local/webhook",
     )
 

@@ -21,6 +21,11 @@ def test_alembic_upgrade_creates_core_tables(tmp_path) -> None:
         "admin_accounts",
         "admin_refresh_tokens",
         "audit_logs",
+        "client_devices",
+        "client_access_tokens",
+        "sync_events",
+        "sync_cursors",
+        "sync_mutations",
         "user_profiles",
         "paper_profiles",
         "progress_events",
@@ -82,3 +87,54 @@ def test_alembic_upgrade_creates_core_tables(tmp_path) -> None:
         "metadata",
         "created_at",
     }.issubset(audit_log_columns)
+    client_device_columns = {column["name"] for column in inspector.get_columns("client_devices")}
+    assert {
+        "user_id",
+        "client_type",
+        "display_name",
+        "is_active",
+        "last_seen_at",
+    }.issubset(client_device_columns)
+    client_access_token_columns = {
+        column["name"] for column in inspector.get_columns("client_access_tokens")
+    }
+    assert {
+        "client_device_id",
+        "token_hash",
+        "issued_at",
+        "expires_at",
+        "revoked_at",
+        "last_used_at",
+    }.issubset(client_access_token_columns)
+    sync_event_columns = {column["name"] for column in inspector.get_columns("sync_events")}
+    assert {
+        "sequence",
+        "user_id",
+        "entity_type",
+        "entity_id",
+        "event_type",
+        "payload",
+        "event_source",
+        "occurred_at",
+    }.issubset(sync_event_columns)
+    sync_cursor_columns = {column["name"] for column in inspector.get_columns("sync_cursors")}
+    assert {
+        "client_device_id",
+        "last_event_sequence",
+        "last_synced_at",
+        "updated_at",
+    }.issubset(sync_cursor_columns)
+    sync_mutation_columns = {column["name"] for column in inspector.get_columns("sync_mutations")}
+    assert {
+        "client_device_id",
+        "client_mutation_id",
+        "mutation_type",
+        "resource_type",
+        "resource_id",
+        "payload",
+        "status",
+        "error_message",
+        "resulting_event_sequence",
+        "created_at",
+        "applied_at",
+    }.issubset(sync_mutation_columns)
