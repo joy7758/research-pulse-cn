@@ -207,6 +207,9 @@ def test_alembic_upgrade_creates_core_tables(tmp_path) -> None:
         "request_payload",
         "response_payload",
         "error_summary",
+        "external_message_id",
+        "provider_response_code",
+        "provider_response_message",
         "started_at",
         "finished_at",
     }.issubset(publication_attempt_columns)

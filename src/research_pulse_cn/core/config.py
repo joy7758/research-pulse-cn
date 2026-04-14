@@ -5,7 +5,10 @@ from functools import lru_cache
 from pydantic import Field, computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from research_pulse_cn.domain.enums import OfficialAccountProviderMode
+from research_pulse_cn.domain.enums import (
+    OfficialAccountProviderMode,
+    OfficialAccountTransportKind,
+)
 
 
 class Settings(BaseSettings):
@@ -127,6 +130,10 @@ class Settings(BaseSettings):
         default=OfficialAccountProviderMode.DISABLED,
         validation_alias="APP_OFFICIAL_ACCOUNT_PROVIDER_MODE",
     )
+    official_account_transport_kind: OfficialAccountTransportKind = Field(
+        default=OfficialAccountTransportKind.TEMPLATE_NOTICE,
+        validation_alias="APP_OFFICIAL_ACCOUNT_TRANSPORT_KIND",
+    )
     wechat_official_app_id: str | None = Field(
         default=None,
         validation_alias="APP_WECHAT_OFFICIAL_APP_ID",
@@ -143,9 +150,37 @@ class Settings(BaseSettings):
         default=None,
         validation_alias="APP_WECHAT_OFFICIAL_CALLBACK_AES_KEY",
     )
+    wechat_official_digest_template_id: str | None = Field(
+        default=None,
+        validation_alias="APP_WECHAT_OFFICIAL_DIGEST_TEMPLATE_ID",
+    )
     official_account_callback_enabled: bool = Field(
         default=False,
         validation_alias="APP_OFFICIAL_ACCOUNT_CALLBACK_ENABLED",
+    )
+    official_account_real_send_enabled: bool = Field(
+        default=False,
+        validation_alias="APP_OFFICIAL_ACCOUNT_REAL_SEND_ENABLED",
+    )
+    official_account_access_token_refresh_skew_seconds: int = Field(
+        default=120,
+        validation_alias="APP_OFFICIAL_ACCOUNT_ACCESS_TOKEN_REFRESH_SKEW_SECONDS",
+    )
+    official_account_http_connect_timeout_seconds: int = Field(
+        default=5,
+        validation_alias="APP_OFFICIAL_ACCOUNT_HTTP_CONNECT_TIMEOUT_SECONDS",
+    )
+    official_account_http_read_timeout_seconds: int = Field(
+        default=10,
+        validation_alias="APP_OFFICIAL_ACCOUNT_HTTP_READ_TIMEOUT_SECONDS",
+    )
+    official_account_max_retries: int = Field(
+        default=2,
+        validation_alias="APP_OFFICIAL_ACCOUNT_MAX_RETRIES",
+    )
+    official_account_template_field_mapping_json: dict[str, str] | None = Field(
+        default=None,
+        validation_alias="APP_OFFICIAL_ACCOUNT_TEMPLATE_FIELD_MAPPING_JSON",
     )
     official_account_default_mini_program_app_id: str | None = Field(
         default=None,

@@ -16,7 +16,7 @@ Private repository. Proprietary and confidential.
 - Current delivery paths for `in_app`, `email`, and `webhook`, with console/webhook adapters for local development
 - Device-token sync backbone for desktop and future lightweight clients
 - WeChat identity bindings plus digest issue/publication reserve objects for future official-account and mini-program flows
-- Official-account provider-ready dry-run dispatch and callback ingress boundaries without live outbound sends
+- Official-account provider boundary with `disabled` / `dry_run` / explicit `real` mode, callback ingress, and token-backed real-send activation
 - Seed data, Docker Compose, pytest, Ruff, and CI
 
 ## Architecture
@@ -110,17 +110,25 @@ Important values:
 - `APP_MINI_READ_GRANT_DEFAULT_TTL_HOURS`: default preview-grant lifetime for `/mini/*`
 - `APP_MINI_PAPERS_DEFAULT_LIMIT`: default compact paper page size for mini reads
 - `APP_MINI_PAPERS_MAX_LIMIT`: max compact paper page size for mini reads
-- `APP_OFFICIAL_ACCOUNT_PROVIDER_MODE`: official-account provider mode, currently `disabled` or `dry_run`
+- `APP_OFFICIAL_ACCOUNT_PROVIDER_MODE`: official-account provider mode: `disabled`, `dry_run`, or `real`
+- `APP_OFFICIAL_ACCOUNT_TRANSPORT_KIND`: outbound transport strategy, currently `template_notice`
 - `APP_WECHAT_OFFICIAL_APP_ID`: official-account app id for provider readiness and callback matching
-- `APP_WECHAT_OFFICIAL_APP_SECRET`: reserved secret for future real provider activation
+- `APP_WECHAT_OFFICIAL_APP_SECRET`: official-account secret for real access-token refresh
+- `APP_WECHAT_OFFICIAL_DIGEST_TEMPLATE_ID`: template-notice template id used in real mode
 - `APP_WECHAT_OFFICIAL_CALLBACK_TOKEN`: signature token for callback verification
 - `APP_WECHAT_OFFICIAL_CALLBACK_AES_KEY`: reserved AES key for future richer callback handling
 - `APP_OFFICIAL_ACCOUNT_CALLBACK_ENABLED`: enable or disable callback ingress handling
+- `APP_OFFICIAL_ACCOUNT_REAL_SEND_ENABLED`: explicit safety switch required in addition to `provider_mode=real`
+- `APP_OFFICIAL_ACCOUNT_ACCESS_TOKEN_REFRESH_SKEW_SECONDS`: early-refresh buffer for cached access tokens
+- `APP_OFFICIAL_ACCOUNT_HTTP_CONNECT_TIMEOUT_SECONDS`: connect timeout for provider HTTP calls
+- `APP_OFFICIAL_ACCOUNT_HTTP_READ_TIMEOUT_SECONDS`: read timeout for provider HTTP calls
+- `APP_OFFICIAL_ACCOUNT_MAX_RETRIES`: retry budget for real outbound template sends
+- `APP_OFFICIAL_ACCOUNT_TEMPLATE_FIELD_MAPPING_JSON`: optional logical-field to template-field mapping JSON
 - `APP_OFFICIAL_ACCOUNT_DEFAULT_MINI_PROGRAM_APP_ID`: default mini-program app id for landing payloads
 - `APP_OFFICIAL_ACCOUNT_DEFAULT_ARTICLE_BASE_URL`: optional base URL for future article landing payloads
-- `APP_OFFICIAL_ACCOUNT_DISPATCH_TIMEOUT_SECONDS`: dry-run dispatch timeout setting for provider boundary
+- `APP_OFFICIAL_ACCOUNT_DISPATCH_TIMEOUT_SECONDS`: dispatch timeout budget reported in provider status
 
-No real WeChat API credentials are required in this phase. Official-account publication remains provider-ready and dry-run only.
+Real official-account sending stays opt-in. Local and test setups do not require live WeChat credentials unless you intentionally enable `provider_mode=real` and `APP_OFFICIAL_ACCOUNT_REAL_SEND_ENABLED=true`.
 Mini-program access is reserve-only and read-only in this phase.
 
 ## Running workers and scheduler
@@ -165,6 +173,7 @@ With Docker Compose, the codebase now exposes separate `api`, `worker`, and `sch
   - `POST /admin/digest-publication-jobs/{publication_job_id}/dispatch`
   - `GET /admin/digest-publication-attempts`
   - `GET /admin/official-account/provider-status`
+  - `POST /admin/official-account/provider-token/refresh`
   - `GET /admin/official-account/callback-events`
   - `GET /admin/mini-read-grants`
   - `POST /admin/mini-read-grants`
@@ -232,3 +241,6 @@ Mini preview grants, compact mobile read models, and derived paper progress perc
 
 ## Official-account provider boundary
 Dry-run dispatch, callback ingress, subscription-state updates, and provider-safe settings are documented in [docs/official_account_provider_boundary.md](docs/official_account_provider_boundary.md).
+
+## Official-account real send
+Real-mode activation, access-token caching, template-notice transport, and credential-backed per-binding dispatch are documented in [docs/official_account_real_send_v1.md](docs/official_account_real_send_v1.md).

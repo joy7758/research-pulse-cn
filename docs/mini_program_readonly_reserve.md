@@ -74,6 +74,7 @@
 
 ## Future Work
 - official-account provider-boundary handoff into mini landing routes
+- real per-binding official-account sends that link into the same mini landing paths
 - real mini-program auth and session exchange
 - richer mobile read models and compact timeline views
 - limited write actions only after permission and conflict rules are explicit

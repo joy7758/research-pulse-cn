@@ -160,12 +160,18 @@ class DigestPublicationMode(StrEnum):
 class DigestPublicationAttemptStatus(StrEnum):
     STARTED = "started"
     PREVIEWED = "previewed"
+    SENT = "sent"
     FAILED = "failed"
 
 
 class OfficialAccountProviderMode(StrEnum):
     DISABLED = "disabled"
     DRY_RUN = "dry_run"
+    REAL = "real"
+
+
+class OfficialAccountTransportKind(StrEnum):
+    TEMPLATE_NOTICE = "template_notice"
 
 
 class OfficialAccountCallbackPayloadFormat(StrEnum):

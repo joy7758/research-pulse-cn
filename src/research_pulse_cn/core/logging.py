@@ -52,6 +52,10 @@ def configure_logging(settings: Settings) -> None:
                     "filters": ["request_context"],
                 }
             },
+            "loggers": {
+                "httpx": {"handlers": ["default"], "level": "WARNING", "propagate": False},
+                "httpcore": {"handlers": ["default"], "level": "WARNING", "propagate": False},
+            },
             "root": {"handlers": ["default"], "level": settings.app_log_level},
         }
     )

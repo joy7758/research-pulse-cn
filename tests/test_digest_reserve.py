@@ -1,6 +1,8 @@
 import hashlib
 from datetime import timedelta
 
+import httpx
+
 from research_pulse_cn.core.config import get_settings
 from research_pulse_cn.db.models import utcnow
 from research_pulse_cn.domain.enums import (
@@ -121,17 +123,41 @@ def configure_official_account_settings(
     *,
     provider_mode: str,
     callback_enabled: bool = False,
-    app_id: str = "wx-official-app",
+    real_send_enabled: bool = False,
+    app_id: str | None = "wx-official-app",
+    app_secret: str | None = "test-official-secret",
     callback_token: str = "callback-token",
     callback_aes_key: str = "callback-aes-key",
+    template_id: str | None = "digest-template-001",
     article_base_url: str = "https://digest.example.local",
     mini_program_app_id: str = "wx-mini-app",
+    transport_kind: str = "template_notice",
+    access_token_refresh_skew_seconds: int = 120,
+    connect_timeout_seconds: int = 5,
+    read_timeout_seconds: int = 10,
+    max_retries: int = 2,
+    template_field_mapping_json: str | None = None,
 ) -> None:
     monkeypatch.setenv("APP_OFFICIAL_ACCOUNT_PROVIDER_MODE", provider_mode)
-    monkeypatch.setenv("APP_WECHAT_OFFICIAL_APP_ID", app_id)
-    monkeypatch.setenv("APP_WECHAT_OFFICIAL_APP_SECRET", "test-official-secret")
+    monkeypatch.setenv("APP_OFFICIAL_ACCOUNT_TRANSPORT_KIND", transport_kind)
+    monkeypatch.setenv(
+        "APP_OFFICIAL_ACCOUNT_REAL_SEND_ENABLED",
+        "true" if real_send_enabled else "false",
+    )
+    if app_id is None:
+        monkeypatch.delenv("APP_WECHAT_OFFICIAL_APP_ID", raising=False)
+    else:
+        monkeypatch.setenv("APP_WECHAT_OFFICIAL_APP_ID", app_id)
+    if app_secret is None:
+        monkeypatch.delenv("APP_WECHAT_OFFICIAL_APP_SECRET", raising=False)
+    else:
+        monkeypatch.setenv("APP_WECHAT_OFFICIAL_APP_SECRET", app_secret)
     monkeypatch.setenv("APP_WECHAT_OFFICIAL_CALLBACK_TOKEN", callback_token)
     monkeypatch.setenv("APP_WECHAT_OFFICIAL_CALLBACK_AES_KEY", callback_aes_key)
+    if template_id is None:
+        monkeypatch.delenv("APP_WECHAT_OFFICIAL_DIGEST_TEMPLATE_ID", raising=False)
+    else:
+        monkeypatch.setenv("APP_WECHAT_OFFICIAL_DIGEST_TEMPLATE_ID", template_id)
     monkeypatch.setenv(
         "APP_OFFICIAL_ACCOUNT_CALLBACK_ENABLED",
         "true" if callback_enabled else "false",
@@ -144,8 +170,62 @@ def configure_official_account_settings(
         "APP_OFFICIAL_ACCOUNT_DEFAULT_ARTICLE_BASE_URL",
         article_base_url,
     )
+    if template_field_mapping_json is None:
+        monkeypatch.delenv("APP_OFFICIAL_ACCOUNT_TEMPLATE_FIELD_MAPPING_JSON", raising=False)
+    else:
+        monkeypatch.setenv(
+            "APP_OFFICIAL_ACCOUNT_TEMPLATE_FIELD_MAPPING_JSON",
+            template_field_mapping_json,
+        )
+    monkeypatch.setenv(
+        "APP_OFFICIAL_ACCOUNT_ACCESS_TOKEN_REFRESH_SKEW_SECONDS",
+        str(access_token_refresh_skew_seconds),
+    )
+    monkeypatch.setenv(
+        "APP_OFFICIAL_ACCOUNT_HTTP_CONNECT_TIMEOUT_SECONDS",
+        str(connect_timeout_seconds),
+    )
+    monkeypatch.setenv(
+        "APP_OFFICIAL_ACCOUNT_HTTP_READ_TIMEOUT_SECONDS",
+        str(read_timeout_seconds),
+    )
+    monkeypatch.setenv("APP_OFFICIAL_ACCOUNT_MAX_RETRIES", str(max_retries))
     monkeypatch.setenv("APP_OFFICIAL_ACCOUNT_DISPATCH_TIMEOUT_SECONDS", "7")
     get_settings.cache_clear()
+
+
+def install_mock_official_account_http(
+    monkeypatch,
+    *,
+    token_payload: dict | None = None,
+    send_payload: dict | None = None,
+    send_status_code: int = 200,
+) -> dict[str, int]:
+    calls = {"token": 0, "send": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/cgi-bin/token"):
+            calls["token"] += 1
+            return httpx.Response(
+                200,
+                json=token_payload or {"access_token": "test-access-token", "expires_in": 7200},
+            )
+        if request.url.path.endswith("/cgi-bin/message/template/send"):
+            calls["send"] += 1
+            return httpx.Response(
+                send_status_code,
+                json=send_payload or {"errcode": 0, "errmsg": "ok", "msgid": 12345},
+            )
+        raise AssertionError(
+            f"unexpected official-account HTTP request: {request.method} {request.url}"
+        )
+
+    transport = httpx.MockTransport(handler)
+    monkeypatch.setattr(
+        "research_pulse_cn.services.official_account.create_official_account_http_client",
+        lambda _settings: httpx.Client(transport=transport),
+    )
+    return calls
 
 
 def build_callback_signature(token: str, timestamp: str, nonce: str) -> str:
@@ -614,9 +694,353 @@ def test_provider_status_endpoint_reflects_mode_without_leaking_secrets(
 
     assert response.status_code == 200
     assert response.json()["mode"] == "dry_run"
+    assert response.json()["transport_kind"] == "template_notice"
+    assert response.json()["readiness"] is True
     assert response.json()["callback_enabled"] is True
     assert response.json()["has_app_secret"] is True
+    assert response.json()["has_digest_template_id"] is True
+    assert response.json()["token_cached"] is False
+    assert response.json()["cache_backend"] == "in_memory"
     assert "test-official-secret" not in response.text
+
+
+def test_provider_status_readiness_is_false_in_real_mode_when_required_settings_missing(
+    client,
+    operator_headers,
+    monkeypatch,
+) -> None:
+    configure_official_account_settings(
+        monkeypatch,
+        provider_mode=OfficialAccountProviderMode.REAL.value,
+        real_send_enabled=True,
+        app_secret=None,
+        template_id=None,
+    )
+
+    response = client.get("/admin/official-account/provider-status", headers=operator_headers)
+
+    assert response.status_code == 200
+    assert response.json()["mode"] == "real"
+    assert response.json()["readiness"] is False
+    assert "wechat official app secret is missing" in response.json()["readiness_failures"]
+    assert "official-account digest template id is missing" in response.json()["readiness_failures"]
+
+
+def test_manual_provider_token_refresh_in_real_mode_updates_cache_state(
+    client,
+    operator_headers,
+    monkeypatch,
+) -> None:
+    configure_official_account_settings(
+        monkeypatch,
+        provider_mode=OfficialAccountProviderMode.REAL.value,
+        real_send_enabled=True,
+    )
+    install_mock_official_account_http(monkeypatch)
+
+    response = client.post(
+        "/admin/official-account/provider-token/refresh",
+        headers=operator_headers,
+    )
+    provider_status = client.get(
+        "/admin/official-account/provider-status",
+        headers=operator_headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["action"] == "refreshed"
+    assert response.json()["mode"] == "real"
+    assert response.json()["token_cached"] is True
+    assert response.json()["token_expires_at"] is not None
+    assert response.json()["last_refresh_at"] is not None
+    assert provider_status.json()["token_cached"] is True
+    assert "test-access-token" not in provider_status.text
+
+
+def test_repeated_token_fetch_within_ttl_uses_cache_and_avoids_duplicate_http_fetch(
+    client,
+    operator_headers,
+    monkeypatch,
+) -> None:
+    configure_official_account_settings(
+        monkeypatch,
+        provider_mode=OfficialAccountProviderMode.REAL.value,
+        real_send_enabled=True,
+    )
+    calls = install_mock_official_account_http(monkeypatch)
+
+    refreshed = client.post(
+        "/admin/official-account/provider-token/refresh",
+        headers=operator_headers,
+    )
+    assert refreshed.status_code == 200
+    assert calls["token"] == 1
+
+    user, _run_payload = create_digest_ready_user(
+        client,
+        operator_headers,
+        email="digest-real-cache@example.com",
+    )
+    digest_issue = client.get(
+        "/admin/digest-issues",
+        headers=operator_headers,
+        params={"user_id": user["id"]},
+    ).json()[0]
+    client.post(
+        "/admin/wechat-bindings",
+        headers=operator_headers,
+        json={
+            "user_id": user["id"],
+            "channel_type": WeChatBindingChannelType.OFFICIAL_ACCOUNT.value,
+            "app_id": "wx-official-app",
+            "openid": "dispatch-real-cache-openid",
+            "bind_state": WeChatBindingState.ACTIVE.value,
+            "subscribed": True,
+            "digest_enabled": True,
+        },
+    )
+    publication_job = client.post(
+        f"/admin/digest-issues/{digest_issue['id']}/prepare-publication",
+        headers=operator_headers,
+    ).json()["publication_jobs"][0]
+
+    dispatched = client.post(
+        f"/admin/digest-publication-jobs/{publication_job['id']}/dispatch",
+        headers=operator_headers,
+    )
+
+    assert dispatched.status_code == 200
+    assert calls["token"] == 1
+    assert calls["send"] == 1
+
+
+def test_operator_can_dispatch_publication_job_in_real_mode_with_mocked_http(
+    client,
+    operator_headers,
+    monkeypatch,
+) -> None:
+    configure_official_account_settings(
+        monkeypatch,
+        provider_mode=OfficialAccountProviderMode.REAL.value,
+        real_send_enabled=True,
+    )
+    install_mock_official_account_http(monkeypatch)
+    user, _run_payload = create_digest_ready_user(
+        client,
+        operator_headers,
+        email="digest-dispatch-real@example.com",
+    )
+    digest_issue = client.get(
+        "/admin/digest-issues",
+        headers=operator_headers,
+        params={"user_id": user["id"]},
+    ).json()[0]
+    client.post(
+        "/admin/wechat-bindings",
+        headers=operator_headers,
+        json={
+            "user_id": user["id"],
+            "channel_type": WeChatBindingChannelType.OFFICIAL_ACCOUNT.value,
+            "app_id": "wx-official-app",
+            "openid": "dispatch-real-openid",
+            "bind_state": WeChatBindingState.ACTIVE.value,
+            "subscribed": True,
+            "digest_enabled": True,
+        },
+    )
+    publication_job = client.post(
+        f"/admin/digest-issues/{digest_issue['id']}/prepare-publication",
+        headers=operator_headers,
+    ).json()["publication_jobs"][0]
+
+    dispatched = client.post(
+        f"/admin/digest-publication-jobs/{publication_job['id']}/dispatch",
+        headers=operator_headers,
+    )
+
+    assert dispatched.status_code == 200
+    assert dispatched.json()["action"] == "sent"
+    assert dispatched.json()["publication_job"]["status"] == "sent"
+    assert dispatched.json()["publication_job"]["external_message_id"] == "12345"
+    assert dispatched.json()["attempt"]["status"] == "sent"
+    assert dispatched.json()["attempt"]["provider_mode"] == "real"
+
+
+def test_real_send_success_marks_publication_job_as_sent_and_records_attempt(
+    client,
+    operator_headers,
+    monkeypatch,
+) -> None:
+    configure_official_account_settings(
+        monkeypatch,
+        provider_mode=OfficialAccountProviderMode.REAL.value,
+        real_send_enabled=True,
+    )
+    install_mock_official_account_http(monkeypatch)
+    user, _run_payload = create_digest_ready_user(
+        client,
+        operator_headers,
+        email="digest-dispatch-real-success@example.com",
+    )
+    digest_issue = client.get(
+        "/admin/digest-issues",
+        headers=operator_headers,
+        params={"user_id": user["id"]},
+    ).json()[0]
+    client.post(
+        "/admin/wechat-bindings",
+        headers=operator_headers,
+        json={
+            "user_id": user["id"],
+            "channel_type": WeChatBindingChannelType.OFFICIAL_ACCOUNT.value,
+            "app_id": "wx-official-app",
+            "openid": "dispatch-real-success-openid",
+            "bind_state": WeChatBindingState.ACTIVE.value,
+            "subscribed": True,
+            "digest_enabled": True,
+        },
+    )
+    publication_job = client.post(
+        f"/admin/digest-issues/{digest_issue['id']}/prepare-publication",
+        headers=operator_headers,
+    ).json()["publication_jobs"][0]
+
+    client.post(
+        f"/admin/digest-publication-jobs/{publication_job['id']}/dispatch",
+        headers=operator_headers,
+    )
+    refreshed_job = client.get(
+        "/admin/digest-publication-jobs",
+        headers=operator_headers,
+        params={"digest_issue_id": digest_issue["id"], "status": "sent"},
+    )
+    attempts = client.get(
+        "/admin/digest-publication-attempts",
+        headers=operator_headers,
+        params={"publication_job_id": publication_job["id"]},
+    )
+
+    assert refreshed_job.status_code == 200
+    assert len(refreshed_job.json()) == 1
+    assert refreshed_job.json()[0]["published_at"] is not None
+    assert attempts.json()[0]["external_message_id"] == "12345"
+    assert attempts.json()[0]["provider_response_code"] == "0"
+
+
+def test_real_send_failure_marks_publication_job_failed_and_records_error_details(
+    client,
+    operator_headers,
+    monkeypatch,
+) -> None:
+    configure_official_account_settings(
+        monkeypatch,
+        provider_mode=OfficialAccountProviderMode.REAL.value,
+        real_send_enabled=True,
+    )
+    install_mock_official_account_http(
+        monkeypatch,
+        send_payload={"errcode": 40003, "errmsg": "invalid openid"},
+    )
+    user, _run_payload = create_digest_ready_user(
+        client,
+        operator_headers,
+        email="digest-dispatch-real-failure@example.com",
+    )
+    digest_issue = client.get(
+        "/admin/digest-issues",
+        headers=operator_headers,
+        params={"user_id": user["id"]},
+    ).json()[0]
+    client.post(
+        "/admin/wechat-bindings",
+        headers=operator_headers,
+        json={
+            "user_id": user["id"],
+            "channel_type": WeChatBindingChannelType.OFFICIAL_ACCOUNT.value,
+            "app_id": "wx-official-app",
+            "openid": "dispatch-real-failure-openid",
+            "bind_state": WeChatBindingState.ACTIVE.value,
+            "subscribed": True,
+            "digest_enabled": True,
+        },
+    )
+    publication_job = client.post(
+        f"/admin/digest-issues/{digest_issue['id']}/prepare-publication",
+        headers=operator_headers,
+    ).json()["publication_jobs"][0]
+
+    dispatched = client.post(
+        f"/admin/digest-publication-jobs/{publication_job['id']}/dispatch",
+        headers=operator_headers,
+    )
+
+    assert dispatched.status_code == 200
+    assert dispatched.json()["action"] == "failed"
+    assert dispatched.json()["publication_job"]["status"] == "failed"
+    assert dispatched.json()["publication_job"]["last_error"] == "invalid openid"
+    assert dispatched.json()["attempt"]["status"] == "failed"
+    assert dispatched.json()["attempt"]["provider_response_code"] == "40003"
+    assert dispatched.json()["attempt"]["provider_response_message"] == "invalid openid"
+
+
+def test_already_sent_publication_job_is_not_redispatched_by_default(
+    client,
+    operator_headers,
+    monkeypatch,
+) -> None:
+    configure_official_account_settings(
+        monkeypatch,
+        provider_mode=OfficialAccountProviderMode.REAL.value,
+        real_send_enabled=True,
+    )
+    calls = install_mock_official_account_http(monkeypatch)
+    user, _run_payload = create_digest_ready_user(
+        client,
+        operator_headers,
+        email="digest-dispatch-real-repeat@example.com",
+    )
+    digest_issue = client.get(
+        "/admin/digest-issues",
+        headers=operator_headers,
+        params={"user_id": user["id"]},
+    ).json()[0]
+    client.post(
+        "/admin/wechat-bindings",
+        headers=operator_headers,
+        json={
+            "user_id": user["id"],
+            "channel_type": WeChatBindingChannelType.OFFICIAL_ACCOUNT.value,
+            "app_id": "wx-official-app",
+            "openid": "dispatch-real-repeat-openid",
+            "bind_state": WeChatBindingState.ACTIVE.value,
+            "subscribed": True,
+            "digest_enabled": True,
+        },
+    )
+    publication_job = client.post(
+        f"/admin/digest-issues/{digest_issue['id']}/prepare-publication",
+        headers=operator_headers,
+    ).json()["publication_jobs"][0]
+
+    first = client.post(
+        f"/admin/digest-publication-jobs/{publication_job['id']}/dispatch",
+        headers=operator_headers,
+    )
+    second = client.post(
+        f"/admin/digest-publication-jobs/{publication_job['id']}/dispatch",
+        headers=operator_headers,
+    )
+    attempts = client.get(
+        "/admin/digest-publication-attempts",
+        headers=operator_headers,
+        params={"publication_job_id": publication_job["id"]},
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert second.json()["action"] == "already_sent"
+    assert len(attempts.json()) == 1
+    assert calls["send"] == 1
 
 
 def test_callback_verification_path_behaves_correctly_when_enabled(
@@ -892,3 +1316,7 @@ def test_official_account_metrics_appear_on_ops_metrics(
     assert "official_account_binding_updates_total" in metrics.text
     assert "digest_publication_attempts_created_total" in metrics.text
     assert "digest_publication_attempts_failed_total" in metrics.text
+    assert "official_account_access_token_refresh_total" in metrics.text
+    assert "official_account_access_token_refresh_failed_total" in metrics.text
+    assert "official_account_real_dispatch_success_total" in metrics.text
+    assert "official_account_real_dispatch_failure_total" in metrics.text

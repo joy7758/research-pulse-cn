@@ -553,6 +553,9 @@ class DigestPublicationAttempt(Base):
     request_payload: Mapped[dict[str, Any] | None] = mapped_column(JSON_VARIANT)
     response_payload: Mapped[dict[str, Any] | None] = mapped_column(JSON_VARIANT)
     error_summary: Mapped[str | None] = mapped_column(Text)
+    external_message_id: Mapped[str | None] = mapped_column(String(255))
+    provider_response_code: Mapped[str | None] = mapped_column(String(100))
+    provider_response_message: Mapped[str | None] = mapped_column(Text)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
