@@ -9,11 +9,20 @@
 - `APP_OFFICIAL_ACCOUNT_PROVIDER_MODE`
   - `disabled`
   - `dry_run`
+  - `real`
+- `APP_OFFICIAL_ACCOUNT_TRANSPORT_KIND`
 - `APP_WECHAT_OFFICIAL_APP_ID`
 - `APP_WECHAT_OFFICIAL_APP_SECRET`
+- `APP_WECHAT_OFFICIAL_DIGEST_TEMPLATE_ID`
 - `APP_WECHAT_OFFICIAL_CALLBACK_TOKEN`
 - `APP_WECHAT_OFFICIAL_CALLBACK_AES_KEY`
 - `APP_OFFICIAL_ACCOUNT_CALLBACK_ENABLED`
+- `APP_OFFICIAL_ACCOUNT_REAL_SEND_ENABLED`
+- `APP_OFFICIAL_ACCOUNT_ACCESS_TOKEN_REFRESH_SKEW_SECONDS`
+- `APP_OFFICIAL_ACCOUNT_HTTP_CONNECT_TIMEOUT_SECONDS`
+- `APP_OFFICIAL_ACCOUNT_HTTP_READ_TIMEOUT_SECONDS`
+- `APP_OFFICIAL_ACCOUNT_MAX_RETRIES`
+- `APP_OFFICIAL_ACCOUNT_TEMPLATE_FIELD_MAPPING_JSON`
 - `APP_OFFICIAL_ACCOUNT_DEFAULT_MINI_PROGRAM_APP_ID`
 - `APP_OFFICIAL_ACCOUNT_DEFAULT_ARTICLE_BASE_URL`
 - `APP_OFFICIAL_ACCOUNT_DISPATCH_TIMEOUT_SECONDS`
@@ -25,6 +34,9 @@ Current behavior:
 - `dry_run`
   - dispatch creates attempts and preview payloads
   - no external send occurs
+- `real`
+  - dispatch can use cached access tokens and a concrete outbound transport
+  - real sends still require an explicit readiness gate and safety flag
 
 ## OfficialAccountCallbackEvent Model
 - Stores inbound callback payloads before and after minimal processing.
@@ -59,9 +71,10 @@ Current behavior:
   - `response_payload`
   - `error_summary`
   - timestamps
-- In v1 statuses are:
+- Current statuses are:
   - `started`
   - `previewed`
+  - `sent`
   - `failed`
 
 ## Dispatch Flow
@@ -71,7 +84,8 @@ Current behavior:
 4. The service creates a `DigestPublicationAttempt`.
 5. The `OfficialAccountPublisher` boundary runs.
 6. In `dry_run` mode the attempt becomes `previewed` and the job becomes `previewed`.
-7. In `disabled` mode the attempt is recorded as failed and the request returns a controlled conflict.
+7. In `real` mode a provider-backed attempt can become `sent` or `failed`.
+8. In `disabled` mode the attempt is recorded as failed and the request returns a controlled conflict.
 
 ## Inbound Callback Flow
 ### GET handshake
@@ -105,14 +119,14 @@ Current behavior:
   - no new user binding is auto-created in v1
 
 ## Current Limitations
-- No real outbound official-account send exists yet.
+- This document now stops at the provider boundary and callback layer.
+- Real-send activation details live in `docs/official_account_real_send_v1.md`.
 - AES decryption and richer provider callback handling are deferred.
 - No OAuth or end-user reconciliation flow exists for missing bindings.
 - Callback processing only supports a narrow event subset in v1.
 - Publication attempts are admin-visible only and are not synced to clients.
 
 ## Future Work
-- real outbound provider integration
 - binding reconciliation through future auth or OAuth flows
 - official-account to mini-program landing handoff
 - richer event handling and provider diagnostics

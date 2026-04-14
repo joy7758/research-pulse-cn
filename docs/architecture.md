@@ -9,8 +9,8 @@ Core flow:
 3. A model-provider adapter produces card copy only for selected candidates.
 4. Selected pulse cards enqueue outbox delivery jobs.
 5. The worker dispatches delivery jobs through current supported channel adapters and manages retry and dead-letter transitions.
-6. Digest issues are upserted from selected pulse cards and can be prepared for future official-account publication without external sends.
-7. Official-account publication jobs can be dispatched through a provider boundary in `dry_run` mode and ingest inbound callback events.
+6. Digest issues are upserted from selected pulse cards and can be prepared for future official-account publication.
+7. Official-account publication jobs can be dispatched through a provider boundary in `disabled`, `dry_run`, or explicit `real` mode while callback events update existing bindings.
 8. Mini read grants expose compact mobile-friendly read models for future mini-program landing without opening write access.
 9. Sync devices consume incremental `SyncEvent` feeds and push idempotent mutations back through the same service layer.
 
@@ -109,11 +109,17 @@ Tie-break order is deterministic:
 - `DigestPublicationJob` is a provider-neutral preparation record.
 - `DigestPublicationAttempt` records dispatch visibility for each provider-boundary invocation.
 - `OfficialAccountCallbackEvent` records inbound callback payloads and deduped handling state.
-- In v1 the publication layer is dry-run only:
-  - prepare provider-ready payloads
-  - dispatch through an explicit `OfficialAccountPublisher` boundary
-  - mark jobs as `prepared`, `previewed`, or `failed`
-  - never call real WeChat APIs
+- The publication layer now separates:
+  - reserve objects and payload preparation
+  - provider status/readiness inspection
+  - callback ingestion
+  - dry-run preview dispatch
+  - explicit per-binding real sends through `template_notice`
+- Real sends remain opt-in:
+  - `provider_mode=real`
+  - `real_send_enabled=true`
+  - configured credentials and template id
+- Access tokens are cached outside the database and never written to publication-attempt rows.
 
 ## Mini read-only reserve
 

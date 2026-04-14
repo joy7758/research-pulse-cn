@@ -16,6 +16,7 @@ from research_pulse_cn.domain.enums import (
     OfficialAccountCallbackPayloadFormat,
     OfficialAccountCallbackProcessingStatus,
     OfficialAccountProviderMode,
+    OfficialAccountTransportKind,
     PulseCardType,
     PulseDigestIssueStatus,
     WeChatBindingChannelType,
@@ -118,22 +119,49 @@ class DigestPublicationAttemptRead(BaseModel):
     request_payload: dict[str, Any] | None
     response_payload: dict[str, Any] | None
     error_summary: str | None
+    external_message_id: str | None
+    provider_response_code: str | None
+    provider_response_message: str | None
     started_at: datetime
     finished_at: datetime | None
 
 
 class OfficialAccountProviderStatusRead(BaseModel):
     mode: OfficialAccountProviderMode
+    transport_kind: OfficialAccountTransportKind
+    readiness: bool
+    readiness_checks: dict[str, bool]
+    readiness_failures: list[str]
     callback_enabled: bool
+    real_send_enabled: bool
     dispatch_timeout_seconds: int
+    http_connect_timeout_seconds: int
+    http_read_timeout_seconds: int
+    max_retries: int
     outbound_send_enabled: bool
+    token_cached: bool
+    token_expires_at: datetime | None
+    last_refresh_at: datetime | None
+    cache_backend: str
     has_app_id: bool
     has_app_secret: bool
+    has_digest_template_id: bool
     has_callback_token: bool
     has_callback_aes_key: bool
+    has_template_field_mapping: bool
     default_mini_program_app_id: str | None
     default_article_base_url: str | None
     callback_path: str
+
+
+class OfficialAccountProviderTokenRefreshResponse(BaseModel):
+    action: str
+    mode: OfficialAccountProviderMode
+    transport_kind: OfficialAccountTransportKind
+    token_cached: bool
+    token_expires_at: datetime | None
+    last_refresh_at: datetime | None
+    cache_backend: str
 
 
 class OfficialAccountCallbackEventRead(ORMModel):

@@ -13,6 +13,7 @@ from research_pulse_cn.db.base import Base
 from research_pulse_cn.db.models import AdminAccount
 from research_pulse_cn.db.session import get_engine, get_session_factory, reset_db_session_state
 from research_pulse_cn.domain.enums import AdminRole
+from research_pulse_cn.services.official_account import reset_official_account_runtime_state
 
 
 @pytest.fixture(autouse=True)
@@ -28,12 +29,14 @@ def isolated_test_environment(tmp_path, monkeypatch) -> Iterator[None]:
     monkeypatch.setenv("APP_INTERNAL_SERVICE_TOKEN", "test-internal-service-token")
     get_settings.cache_clear()
     get_metrics().reset()
+    reset_official_account_runtime_state()
     reset_db_session_state()
     Base.metadata.create_all(bind=get_engine())
     yield
     Base.metadata.drop_all(bind=get_engine())
     reset_db_session_state()
     get_metrics().reset()
+    reset_official_account_runtime_state()
     get_settings.cache_clear()
 
 

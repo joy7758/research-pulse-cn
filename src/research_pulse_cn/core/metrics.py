@@ -30,6 +30,10 @@ COUNTER_NAMES = (
     "official_account_callback_events_received_total",
     "official_account_callback_events_processed_total",
     "official_account_binding_updates_total",
+    "official_account_access_token_refresh_total",
+    "official_account_access_token_refresh_failed_total",
+    "official_account_real_dispatch_success_total",
+    "official_account_real_dispatch_failure_total",
 )
 
 

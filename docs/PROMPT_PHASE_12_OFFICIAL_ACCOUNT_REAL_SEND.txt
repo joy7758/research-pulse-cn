@@ -1,0 +1,277 @@
+Read AGENTS.md, docs/BUILD_SPEC.md, docs/architecture.md, docs/development.md, docs/pulse_scoring.md, docs/operations.md, docs/auth_admin_boundary.md, docs/sync_foundation.md, docs/official_account_digest_reserve.md, docs/mini_program_readonly_reserve.md, and docs/official_account_provider_boundary.md before editing.
+
+Implement Phase 12 only: official-account real send v1.
+
+Hard boundaries for this phase:
+- Do not add WeChat OAuth login.
+- Do not add Mini Program frontend code.
+- Do not add customer-facing UI.
+- Do not require live WeChat credentials for tests.
+- Do not default-enable real sending in any environment.
+- Do not turn official account publishing into a generic DeliveryJob channel.
+- Do not implement a mass-broadcast / campaign engine in this phase.
+- Do not weaken existing admin auth, internal service auth, sync device auth, or mini-read auth.
+- Do not replace the current modular monolith architecture.
+
+Primary goal:
+Allow a deployment with valid WeChat official-account credentials to switch the provider from dry_run to real mode and perform credential-backed per-binding digest dispatch safely.
+
+This phase should make the backend suitable for:
+- explicit real provider activation in deployment environments
+- access-token acquisition and caching
+- real publication dispatch for a single bound official-account recipient
+- sent/failed publication state transitions
+- future expansion to richer official-account outbound strategies without refactoring the core
+
+Architectural intent:
+- Keep dispatch per binding / per recipient.
+- Do not assume final marketing or broadcast strategy.
+- Keep outbound transport pluggable.
+- In v1, implement one concrete real transport strategy only:
+  - template_notice
+- Keep room for future strategies without breaking current models.
+
+Required changes:
+
+1. Provider mode and transport settings
+Extend provider settings with safe defaults.
+
+Required settings:
+- APP_OFFICIAL_ACCOUNT_PROVIDER_MODE with values [disabled, dry_run, real]
+- APP_OFFICIAL_ACCOUNT_TRANSPORT_KIND with values [template_notice]
+- APP_WECHAT_OFFICIAL_DIGEST_TEMPLATE_ID
+- APP_OFFICIAL_ACCOUNT_REAL_SEND_ENABLED bool
+- APP_OFFICIAL_ACCOUNT_ACCESS_TOKEN_REFRESH_SKEW_SECONDS
+- APP_OFFICIAL_ACCOUNT_HTTP_CONNECT_TIMEOUT_SECONDS
+- APP_OFFICIAL_ACCOUNT_HTTP_READ_TIMEOUT_SECONDS
+- APP_OFFICIAL_ACCOUNT_MAX_RETRIES
+- APP_OFFICIAL_ACCOUNT_TEMPLATE_FIELD_MAPPING_JSON nullable
+- keep existing official-account settings from prior phases
+
+Requirements:
+- default mode remains safe for local/dev/test
+- real send must require both:
+  - provider_mode = real
+  - real_send_enabled = true
+- document all settings clearly
+- do not leak secrets in status endpoints
+- if field mapping is absent, provide a production-friendly default mapping:
+  - first
+  - keyword1
+  - keyword2
+  - keyword3
+  - remark
+
+2. Access token service and cache
+Implement OfficialAccountAccessTokenService.
+
+Requirements:
+- use the official-account client-credential token flow
+- cache token until shortly before expiry using refresh skew
+- prefer Redis if already available cleanly in the project
+- if Redis is unavailable in local/test, provide a simple in-process fallback cache
+- do not persist raw access tokens to database tables
+- do not log raw access tokens
+- expose safe cache state in provider-status:
+  - token_cached bool
+  - token_expires_at nullable
+  - last_refresh_at nullable
+  - cache_backend summary
+- add protected admin endpoint:
+  - POST /admin/official-account/provider-token/refresh
+- operator and super_admin can call it
+- in dry_run mode this endpoint may no-op with a clear response
+- in disabled mode it should not fake success
+
+3. Real outbound provider and transport boundary
+Add a real provider implementation.
+
+Requirements:
+- keep OfficialAccountPublisher interface
+- keep DisabledOfficialAccountPublisher and DryRunOfficialAccountPublisher
+- add RealOfficialAccountPublisher
+- add a transport strategy boundary, for example:
+  - OfficialAccountTransport
+  - TemplateNoticeTransport
+- v1 real send uses only template_notice transport
+- real provider must:
+  - fetch access token via OfficialAccountAccessTokenService
+  - build request payload from:
+    - DigestPublicationJob
+    - PulseDigestIssue
+    - PulseDigestItems
+    - WeChatIdentityBinding
+  - send one request per binding / recipient
+  - parse provider response into normalized success/failure result
+
+4. Template payload builder
+Implement a production-friendly payload builder for template_notice transport.
+
+Requirements:
+- build a payload including at minimum:
+  - touser
+  - template_id
+  - url optional
+  - miniprogram optional
+  - data
+- derive landing metadata from:
+  - digest deep_link_path
+  - official_account_default_article_base_url when available
+  - official_account_default_mini_program_app_id when available
+- allow configurable field mapping via APP_OFFICIAL_ACCOUNT_TEMPLATE_FIELD_MAPPING_JSON
+- default logical digest fields:
+  - issue_title
+  - issue_date
+  - highlight_count
+  - summary
+  - primary_action
+  - remark
+- map logical fields into template fields using config mapping
+- truncate or normalize content safely when needed
+- keep rendering deterministic and well tested
+
+5. Real dispatch flow
+Enhance existing dispatch endpoint behavior:
+- POST /admin/digest-publication-jobs/{publication_job_id}/dispatch
+
+Requirements:
+- dispatch must support disabled, dry_run, and real modes
+- disabled:
+  - return controlled failure/conflict
+  - create no fake success
+- dry_run:
+  - preserve current preview behavior
+- real:
+  - require provider readiness
+  - require eligible publication job
+  - require binding with:
+    - channel_type = official_account
+    - bind_state = active
+    - subscribed = true
+    - digest_enabled = true
+  - create DigestPublicationAttempt
+  - invoke RealOfficialAccountPublisher
+  - on success:
+    - mark publication job as sent
+    - set published_at
+    - store external_message_id if returned
+  - on failure:
+    - mark publication job failed
+    - populate last_error
+    - mark attempt failed
+- dispatch idempotency:
+  - if job is already sent and no force flag is provided, do not resend
+  - optional force=false query parameter is acceptable
+  - failed jobs may be retried deliberately
+
+6. Publication attempt visibility enhancements
+Extend DigestPublicationAttempt minimally if needed.
+
+Possible additions if justified:
+- external_message_id nullable
+- provider_response_code nullable
+- provider_response_message nullable
+
+Requirements:
+- keep schema changes minimal
+- store request/response payloads in a safe, ops-friendly way
+- never store app secret or raw access token in attempts
+
+7. Provider status and readiness
+Enhance:
+- GET /admin/official-account/provider-status
+
+Requirements:
+- report:
+  - mode
+  - transport_kind
+  - outbound_send_enabled
+  - readiness bool
+  - readiness_checks
+  - callback_enabled
+  - token cache summary
+  - timeout/retry settings
+  - safe config presence booleans
+- do not expose secrets
+- make readiness failure reasons easy to understand operationally
+
+8. Audit logging
+Add lightweight audit coverage for:
+- manual provider token refresh
+- real dispatch action
+- real dispatch success/failure outcome
+Do not let audit logging failures break the main request path.
+
+9. Metrics and logging
+Add official-account real-send observability.
+
+Required metrics:
+- official_account_access_token_refresh_total
+- official_account_access_token_refresh_failed_total
+- official_account_real_dispatch_success_total
+- official_account_real_dispatch_failure_total
+
+Logging requirements:
+- include publication_job_id and attempt_id where practical
+- include binding_id and user_id where available
+- include request_id where available
+- never log app secret or raw access token
+- keep style aligned with existing structured logging
+
+10. Tests
+Add or update tests covering at minimum:
+- provider-status readiness is false in real mode when required settings are missing
+- manual token refresh in real mode works with mocked HTTP and updates cache state
+- repeated token fetch within valid TTL uses cache and avoids duplicate HTTP fetch
+- operator can dispatch publication job in real mode with mocked HTTP
+- viewer cannot dispatch publication job
+- real send success marks publication job as sent and records attempt
+- real send failure marks publication job failed and records error details
+- dry_run behavior remains unchanged
+- disabled mode still blocks dispatch cleanly
+- already sent job is not redispatched by default
+- provider-status does not leak secrets or raw tokens
+- existing tests continue to pass
+
+11. Documentation
+Add docs/official_account_real_send_v1.md
+
+It should explain:
+- why this phase is per-binding real send rather than a broadcast engine
+- provider modes and transport kind
+- token service and cache strategy
+- template payload builder and field mapping
+- dispatch state machine
+- readiness model
+- dry_run vs real behavior
+- security/secrets handling
+- current non-goals
+- future work:
+  - richer outbound strategies
+  - broadcast/campaign path
+  - real OAuth binding flows
+  - tighter mini-program handoff
+
+Also update:
+- README.md
+- docs/development.md
+- docs/architecture.md
+- docs/official_account_provider_boundary.md
+- docs/official_account_digest_reserve.md
+- docs/mini_program_readonly_reserve.md
+- any docs that should mention real send activation
+
+12. Quality bar
+- keep schema changes minimal and production-friendly
+- keep code typed and readable
+- do not add unnecessary dependencies
+- do not require live credentials in tests
+- run available checks
+- fix obvious lint/test issues
+- end with a concise summary:
+  - files changed
+  - migrations created
+  - new settings
+  - new endpoints
+  - token cache strategy
+  - next-phase recommendation only

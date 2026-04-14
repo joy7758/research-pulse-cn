@@ -51,9 +51,11 @@ from research_pulse_cn.repositories.pulse import PulseRepository
 from research_pulse_cn.repositories.user import UserRepository
 from research_pulse_cn.services.common import commit_session
 from research_pulse_cn.services.official_account import (
+    OfficialAccountAccessTokenService,
     OfficialAccountPublisher,
     OfficialAccountPublishResult,
     build_official_account_payload,
+    build_provider_status,
     get_official_account_publisher,
 )
 from research_pulse_cn.services.sync_events import SyncEventService
@@ -100,8 +102,17 @@ class DigestService:
         self.pulse_repository = PulseRepository(session)
         self.sync_events = SyncEventService(session)
         self.metrics = get_metrics()
+        self.official_account_access_token_service = OfficialAccountAccessTokenService(
+            self.settings,
+            metrics=self.metrics,
+            now_provider=self.now_provider,
+        )
         self.official_account_publisher = (
-            official_account_publisher or get_official_account_publisher(self.settings)
+            official_account_publisher
+            or get_official_account_publisher(
+                self.settings,
+                access_token_service=self.official_account_access_token_service,
+            )
         )
 
     def list_bindings(
@@ -384,21 +395,26 @@ class DigestService:
         )
 
     def provider_status(self) -> dict[str, Any]:
-        return {
-            "mode": self.settings.official_account_provider_mode,
-            "callback_enabled": self.settings.official_account_callback_enabled,
-            "dispatch_timeout_seconds": self.settings.official_account_dispatch_timeout_seconds,
-            "outbound_send_enabled": False,
-            "has_app_id": bool(self.settings.wechat_official_app_id),
-            "has_app_secret": bool(self.settings.wechat_official_app_secret),
-            "has_callback_token": bool(self.settings.wechat_official_callback_token),
-            "has_callback_aes_key": bool(self.settings.wechat_official_callback_aes_key),
-            "default_mini_program_app_id": (
-                self.settings.official_account_default_mini_program_app_id
-            ),
-            "default_article_base_url": self.settings.official_account_default_article_base_url,
-            "callback_path": "/integrations/wechat/official-account/callback",
-        }
+        return build_provider_status(
+            self.settings,
+            access_token_service=self.official_account_access_token_service,
+        )
+
+    def refresh_provider_token(self) -> dict[str, Any]:
+        if self.settings.official_account_provider_mode == OfficialAccountProviderMode.DISABLED:
+            raise ConflictError("official-account provider mode is disabled")
+        if self.settings.official_account_provider_mode == OfficialAccountProviderMode.DRY_RUN:
+            snapshot = self.official_account_access_token_service.cache_snapshot()
+            return {
+                "action": "noop",
+                "mode": self.settings.official_account_provider_mode,
+                "transport_kind": self.settings.official_account_transport_kind,
+                "token_cached": snapshot.token_cached,
+                "token_expires_at": snapshot.token_expires_at,
+                "last_refresh_at": snapshot.last_refresh_at,
+                "cache_backend": snapshot.backend,
+            }
+        return self.official_account_access_token_service.refresh_summary()
 
     def serialize_publication_attempt(self, attempt: DigestPublicationAttempt) -> dict[str, Any]:
         job = attempt.digest_publication_job
@@ -415,6 +431,9 @@ class DigestService:
             "request_payload": attempt.request_payload,
             "response_payload": attempt.response_payload,
             "error_summary": attempt.error_summary,
+            "external_message_id": attempt.external_message_id,
+            "provider_response_code": attempt.provider_response_code,
+            "provider_response_message": attempt.provider_response_message,
             "started_at": attempt.started_at,
             "finished_at": attempt.finished_at,
         }
@@ -444,12 +463,26 @@ class DigestService:
     def dispatch_publication_job(
         self,
         publication_job_id: UUID,
+        *,
+        force: bool = False,
     ) -> DispatchPublicationResult:
         job = self.get_publication_job(publication_job_id)
         if job.publish_target != DigestPublicationTarget.OFFICIAL_ACCOUNT:
             raise ConflictError("publication job target is not supported by this dispatcher")
         if job.binding is None:
             raise ConflictError("publication job has no official-account binding")
+        if (
+            self.settings.official_account_provider_mode == OfficialAccountProviderMode.REAL
+            and not force
+            and job.status == DigestPublicationStatus.SENT
+        ):
+            return DispatchPublicationResult(
+                action="already_sent",
+                publication_job=job,
+                attempt=self.repository.get_latest_publication_attempt(publication_job_id=job.id),
+            )
+        if self.settings.official_account_provider_mode == OfficialAccountProviderMode.REAL:
+            self._validate_real_dispatch_binding(job.binding)
 
         publisher = self.official_account_publisher
         latest_attempt = self.repository.get_latest_publication_attempt(publication_job_id=job.id)
@@ -498,6 +531,8 @@ class DigestService:
                 job.last_error = str(exc)
                 job.status = DigestPublicationStatus.FAILED
                 self.metrics.increment("digest_publication_attempts_failed_total")
+                if self.settings.official_account_provider_mode == OfficialAccountProviderMode.REAL:
+                    self.metrics.increment("official_account_real_dispatch_failure_total")
                 commit_session(self.session)
                 raise
             except Exception as exc:
@@ -508,6 +543,8 @@ class DigestService:
                 job.last_error = "official-account dispatch failed"
                 job.status = DigestPublicationStatus.FAILED
                 self.metrics.increment("digest_publication_attempts_failed_total")
+                if self.settings.official_account_provider_mode == OfficialAccountProviderMode.REAL:
+                    self.metrics.increment("official_account_real_dispatch_failure_total")
                 logger.exception("official-account dispatch failed")
                 commit_session(self.session)
                 raise RuntimeError("official-account dispatch failed") from exc
@@ -518,8 +555,13 @@ class DigestService:
             refreshed_attempt = self.repository.get_latest_publication_attempt(
                 publication_job_id=job.id
             )
+            action = "failed"
+            if result.attempt_status == DigestPublicationAttemptStatus.PREVIEWED:
+                action = "previewed"
+            elif result.attempt_status == DigestPublicationAttemptStatus.SENT:
+                action = "sent"
             return DispatchPublicationResult(
-                action="previewed",
+                action=action,
                 publication_job=refreshed_job,
                 attempt=refreshed_attempt,
             )
@@ -892,14 +934,38 @@ class DigestService:
         attempt.status = result.attempt_status
         attempt.request_payload = result.request_payload
         attempt.response_payload = result.response_payload
-        attempt.error_summary = None
+        attempt.error_summary = result.error_summary
+        attempt.external_message_id = result.external_message_id
+        attempt.provider_response_code = result.provider_response_code
+        attempt.provider_response_message = result.provider_response_message
         attempt.finished_at = self.now_provider()
         job.provider_name = result.provider_name
         job.payload = result.request_payload
-        job.last_error = None
+        job.last_error = result.error_summary
         if result.attempt_status == DigestPublicationAttemptStatus.PREVIEWED:
             job.status = DigestPublicationStatus.PREVIEWED
+        elif result.attempt_status == DigestPublicationAttemptStatus.SENT:
+            job.status = DigestPublicationStatus.SENT
+            job.published_at = self.now_provider()
+        else:
+            job.status = DigestPublicationStatus.FAILED
         job.external_message_id = result.external_message_id
+        if result.attempt_status == DigestPublicationAttemptStatus.FAILED:
+            self.metrics.increment("digest_publication_attempts_failed_total")
+            if result.provider_mode == OfficialAccountProviderMode.REAL:
+                self.metrics.increment("official_account_real_dispatch_failure_total")
+        elif result.attempt_status == DigestPublicationAttemptStatus.SENT:
+            self.metrics.increment("official_account_real_dispatch_success_total")
+
+    def _validate_real_dispatch_binding(self, binding: WeChatIdentityBinding) -> None:
+        if binding.channel_type != WeChatBindingChannelType.OFFICIAL_ACCOUNT:
+            raise ConflictError("publication binding is not an official-account binding")
+        if binding.bind_state != WeChatBindingState.ACTIVE:
+            raise ConflictError("official-account binding is not active")
+        if not binding.subscribed:
+            raise ConflictError("official-account binding is not subscribed")
+        if not binding.digest_enabled:
+            raise ConflictError("official-account binding has digest disabled")
 
     def _resolve_callback_binding(
         self,

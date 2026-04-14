@@ -135,13 +135,22 @@
 - Official-account dispatch now has an explicit provider mode:
   - `disabled`
   - `dry_run`
+  - `real`
 - New provider settings live in `.env.example`:
   - `APP_OFFICIAL_ACCOUNT_PROVIDER_MODE`
+  - `APP_OFFICIAL_ACCOUNT_TRANSPORT_KIND`
   - `APP_WECHAT_OFFICIAL_APP_ID`
   - `APP_WECHAT_OFFICIAL_APP_SECRET`
+  - `APP_WECHAT_OFFICIAL_DIGEST_TEMPLATE_ID`
   - `APP_WECHAT_OFFICIAL_CALLBACK_TOKEN`
   - `APP_WECHAT_OFFICIAL_CALLBACK_AES_KEY`
   - `APP_OFFICIAL_ACCOUNT_CALLBACK_ENABLED`
+  - `APP_OFFICIAL_ACCOUNT_REAL_SEND_ENABLED`
+  - `APP_OFFICIAL_ACCOUNT_ACCESS_TOKEN_REFRESH_SKEW_SECONDS`
+  - `APP_OFFICIAL_ACCOUNT_HTTP_CONNECT_TIMEOUT_SECONDS`
+  - `APP_OFFICIAL_ACCOUNT_HTTP_READ_TIMEOUT_SECONDS`
+  - `APP_OFFICIAL_ACCOUNT_MAX_RETRIES`
+  - `APP_OFFICIAL_ACCOUNT_TEMPLATE_FIELD_MAPPING_JSON`
   - `APP_OFFICIAL_ACCOUNT_DEFAULT_MINI_PROGRAM_APP_ID`
   - `APP_OFFICIAL_ACCOUNT_DEFAULT_ARTICLE_BASE_URL`
   - `APP_OFFICIAL_ACCOUNT_DISPATCH_TIMEOUT_SECONDS`
@@ -149,11 +158,17 @@
   - `POST /admin/digest-publication-jobs/{publication_job_id}/dispatch`
   - `GET /admin/digest-publication-attempts`
   - `GET /admin/official-account/provider-status`
+  - `POST /admin/official-account/provider-token/refresh`
   - `GET /admin/official-account/callback-events`
 - Provider ingress endpoints:
   - `GET /integrations/wechat/official-account/callback`
   - `POST /integrations/wechat/official-account/callback`
 - `dry_run` dispatch creates preview attempts and never performs a live send.
+- `real` dispatch is still opt-in and requires:
+  - `APP_OFFICIAL_ACCOUNT_PROVIDER_MODE=real`
+  - `APP_OFFICIAL_ACCOUNT_REAL_SEND_ENABLED=true`
+  - configured app id, app secret, and digest template id
+- Real mode uses a client-credential access-token flow with Redis-preferred caching and in-memory fallback for local/test.
 - Unknown callback identities are stored for review and do not auto-create bindings.
 
 ## Ops endpoints
@@ -179,6 +194,5 @@
 - Expand deterministic facts into richer signal scoring and portfolio context.
 - Add official-account digest publishing on top of persisted pulse and sync data.
 - Add real mini-program auth and landing handoff on top of the read-only reserve.
-- Add real official-account outbound sending behind the existing provider boundary.
 - Add customer-facing auth separately from `AdminAccount`.
 - Add SSO/OIDC only after the internal admin boundary stabilizes.

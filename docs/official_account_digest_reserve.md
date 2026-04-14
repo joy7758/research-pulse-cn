@@ -62,8 +62,8 @@
 4. Mini read-only grants can use the digest issue as a default landing target.
 5. Admins can prepare publication.
 6. The reserve layer finds eligible official-account bindings and writes `DigestPublicationJob` rows in `prepared` state.
-7. Later dispatch steps can preview those jobs through the official-account provider boundary.
-8. No external send occurs in the current phase.
+7. Later dispatch steps can preview or real-send those jobs through the official-account provider boundary.
+8. Real sends remain opt-in and do not change the reserve-object model.
 
 ## Current Non-Goals
 - Real WeChat Official Account API integration
@@ -74,14 +74,13 @@
 
 ## Current Limitations
 - Binding lifecycle is admin-managed only.
-- Publication payloads are provider-neutral previews, not real sends.
+- Publication payloads start provider-neutral and can later be rendered into transport-specific requests.
 - Publication jobs are not exposed through sync in v1.
 - Digest generation uses deterministic summaries only.
 - Deep links now target the mini read-only reserve contract, not a real mini frontend.
 - Real dispatch behavior now lives in a separate provider-boundary phase.
 
 ## Future Work
-- real official-account provider integration
 - real mini-program landing and read-only client
 - real binding and OAuth flows
 - richer digest composition and editorial controls

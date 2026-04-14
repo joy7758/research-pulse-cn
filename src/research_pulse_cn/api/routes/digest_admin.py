@@ -33,6 +33,7 @@ from research_pulse_cn.schemas.digest import (
     DigestPublicationPrepareResponse,
     OfficialAccountCallbackEventRead,
     OfficialAccountProviderStatusRead,
+    OfficialAccountProviderTokenRefreshResponse,
     PulseDigestIssueDetailRead,
     PulseDigestIssueRead,
     WeChatIdentityBindingCreate,
@@ -289,9 +290,10 @@ def dispatch_digest_publication_job(
     actor: OperatorDep,
     service: DigestServiceDep,
     audit_service: AuditServiceDep,
+    force: Annotated[bool, Query()] = False,
 ) -> DigestPublicationDispatchResponse:
     try:
-        result = service.dispatch_publication_job(publication_job_id)
+        result = service.dispatch_publication_job(publication_job_id, force=force)
     except ConflictError:
         audit_request_action(
             audit_service=audit_service,
@@ -316,6 +318,7 @@ def dispatch_digest_publication_job(
             "action_result": result.action,
             "publication_job_status": result.publication_job.status.value,
             "attempt_id": None if result.attempt is None else str(result.attempt.id),
+            "force": force,
         },
     )
     return DigestPublicationDispatchResponse(
@@ -362,6 +365,45 @@ def official_account_provider_status(
     service: DigestServiceDep,
 ) -> OfficialAccountProviderStatusRead:
     return OfficialAccountProviderStatusRead(**service.provider_status())
+
+
+@router.post(
+    "/official-account/provider-token/refresh",
+    response_model=OfficialAccountProviderTokenRefreshResponse,
+)
+def refresh_official_account_provider_token(
+    request: Request,
+    actor: OperatorDep,
+    service: DigestServiceDep,
+    audit_service: AuditServiceDep,
+) -> OfficialAccountProviderTokenRefreshResponse:
+    try:
+        result = service.refresh_provider_token()
+    except ConflictError:
+        audit_request_action(
+            audit_service=audit_service,
+            request=request,
+            actor=actor,
+            action="official_account.provider_token_refresh",
+            resource_type="official_account_provider",
+            status_code=409,
+            metadata={"action_result": "conflict"},
+        )
+        raise
+    audit_request_action(
+        audit_service=audit_service,
+        request=request,
+        actor=actor,
+        action="official_account.provider_token_refresh",
+        resource_type="official_account_provider",
+        status_code=200,
+        metadata={
+            "action_result": result["action"],
+            "cache_backend": result["cache_backend"],
+            "token_cached": result["token_cached"],
+        },
+    )
+    return OfficialAccountProviderTokenRefreshResponse(**result)
 
 
 @router.get(
