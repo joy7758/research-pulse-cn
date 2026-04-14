@@ -5,13 +5,17 @@ mod progress;
 mod secret_store;
 mod service;
 mod sync_client;
+mod workspace;
 
 use anyhow::{Context, Result};
 use models::{
-    AppBootstrapRead, ConnectDeviceInput, ConnectDeviceResponse, ListPapersInput, PaperDetailRead,
-    PaperListItemRead, PendingMutationRead, QueuePaperPatchInput, QueueProgressEventCreateInput,
-    QueueSubscriptionPolicyPatchInput, SubscriptionPolicyRead, SyncNowResponse, SyncStatusRead,
-    TodayOverviewRead, WriteActionResultRead,
+    AppBootstrapRead, ChooseWorkspaceRootInput, ConnectDeviceInput, ConnectDeviceResponse,
+    EnsurePaperWorkspaceInput, ImportPaperAttachmentsInput, ImportPaperAttachmentsResponse,
+    ListPapersInput, PaperAttachmentRead, PaperDetailRead, PaperListItemRead,
+    PaperWorkspaceRead, PendingMutationRead, QueuePaperPatchInput,
+    QueueProgressEventCreateInput, QueueSubscriptionPolicyPatchInput,
+    RefreshPaperWorkspaceInput, SubscriptionPolicyRead, SyncNowResponse, SyncStatusRead,
+    TodayOverviewRead, WorkspaceStatusRead, WriteActionResultRead,
 };
 use service::{DesktopPaths, DesktopService};
 use tauri::{Manager, State};
@@ -157,6 +161,96 @@ fn listPendingMutations(state: State<AppState>) -> Result<Vec<PendingMutationRea
 
 #[allow(non_snake_case)]
 #[tauri::command]
+fn getWorkspaceStatus(state: State<AppState>) -> Result<WorkspaceStatusRead, String> {
+    state
+        .desktop_service()
+        .and_then(|service| service.get_workspace_status())
+        .map_err(command_error)
+}
+
+#[allow(non_snake_case)]
+#[tauri::command]
+fn chooseWorkspaceRoot(
+    state: State<AppState>,
+    input: ChooseWorkspaceRootInput,
+) -> Result<WorkspaceStatusRead, String> {
+    state
+        .desktop_service()
+        .and_then(|service| service.choose_workspace_root(input))
+        .map_err(command_error)
+}
+
+#[allow(non_snake_case)]
+#[tauri::command]
+fn clearWorkspaceRoot(state: State<AppState>) -> Result<WorkspaceStatusRead, String> {
+    state
+        .desktop_service()
+        .and_then(|service| service.clear_workspace_root())
+        .map_err(command_error)
+}
+
+#[allow(non_snake_case)]
+#[tauri::command]
+fn ensurePaperWorkspace(
+    state: State<AppState>,
+    input: EnsurePaperWorkspaceInput,
+) -> Result<PaperWorkspaceRead, String> {
+    state
+        .desktop_service()
+        .and_then(|service| service.ensure_paper_workspace(&input.paper_id))
+        .map_err(command_error)
+}
+
+#[allow(non_snake_case)]
+#[tauri::command]
+fn getPaperWorkspace(
+    state: State<AppState>,
+    paperId: String,
+) -> Result<PaperWorkspaceRead, String> {
+    state
+        .desktop_service()
+        .and_then(|service| service.get_paper_workspace(&paperId))
+        .map_err(command_error)
+}
+
+#[allow(non_snake_case)]
+#[tauri::command]
+fn listPaperAttachments(
+    state: State<AppState>,
+    paperId: String,
+) -> Result<Vec<PaperAttachmentRead>, String> {
+    state
+        .desktop_service()
+        .and_then(|service| service.list_paper_attachments(&paperId))
+        .map_err(command_error)
+}
+
+#[allow(non_snake_case)]
+#[tauri::command]
+fn importPaperAttachments(
+    state: State<AppState>,
+    input: ImportPaperAttachmentsInput,
+) -> Result<ImportPaperAttachmentsResponse, String> {
+    state
+        .desktop_service()
+        .and_then(|service| service.import_paper_attachments(input))
+        .map_err(command_error)
+}
+
+#[allow(non_snake_case)]
+#[tauri::command]
+fn refreshPaperWorkspace(
+    state: State<AppState>,
+    input: RefreshPaperWorkspaceInput,
+) -> Result<PaperWorkspaceRead, String> {
+    state
+        .desktop_service()
+        .and_then(|service| service.refresh_paper_workspace(&input.paper_id))
+        .map_err(command_error)
+}
+
+#[allow(non_snake_case)]
+#[tauri::command]
 fn queuePaperPatch(
     state: State<AppState>,
     input: QueuePaperPatchInput,
@@ -194,6 +288,7 @@ fn queueSubscriptionPolicyPatch(
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let state = build_state(app).map_err(|error| {
                 std::io::Error::other(format!("failed to initialize desktop state: {error:#}"))
@@ -213,6 +308,14 @@ pub fn run() {
             getPaperDetail,
             listSubscriptionPolicies,
             listPendingMutations,
+            getWorkspaceStatus,
+            chooseWorkspaceRoot,
+            clearWorkspaceRoot,
+            ensurePaperWorkspace,
+            getPaperWorkspace,
+            listPaperAttachments,
+            importPaperAttachments,
+            refreshPaperWorkspace,
             queuePaperPatch,
             queueProgressEventCreate,
             queueSubscriptionPolicyPatch

@@ -50,6 +50,8 @@ describe("desktop read model helpers", () => {
         updatedAt: "2026-04-14T00:00:00Z",
         pendingMutationCount: 0,
         lastMutationError: null,
+        attachmentCount: 0,
+        workspaceReady: false,
       },
       {
         id: "paper-a",
@@ -66,6 +68,8 @@ describe("desktop read model helpers", () => {
         updatedAt: "2026-04-15T00:00:00Z",
         pendingMutationCount: 0,
         lastMutationError: null,
+        attachmentCount: 2,
+        workspaceReady: true,
       },
       {
         id: "paper-c",
@@ -82,6 +86,8 @@ describe("desktop read model helpers", () => {
         updatedAt: "2026-04-13T00:00:00Z",
         pendingMutationCount: 0,
         lastMutationError: null,
+        attachmentCount: 1,
+        workspaceReady: true,
       },
     ];
 

@@ -17,7 +17,7 @@ Private repository. Proprietary and confidential.
 - Device-token sync backbone for desktop and future lightweight clients
 - WeChat identity bindings plus digest issue/publication reserve objects for future official-account and mini-program flows
 - Official-account provider boundary with `disabled` / `dry_run` / explicit `real` mode, callback ingress, and token-backed real-send activation
-- Tauri 2 desktop shell with Rust-side pull sync, local SQLite cache, mutation outbox, and minimal writeback for paper/progress/subscription policy edits
+- Tauri 2 desktop shell with Rust-side pull sync, local SQLite cache, mutation outbox, minimal writeback for paper/progress/subscription policy edits, and a local paper workspace layer
 - Seed data, Docker Compose, pytest, Ruff, and CI
 
 ## Architecture
@@ -87,6 +87,14 @@ The shell currently uses device-token sync against:
 Desktop prerequisites on macOS include:
 - Xcode Command Line Tools
 - Rust
+
+The desktop shell now also supports a local-only paper workspace:
+- user-chosen workspace root
+- deterministic `papers/<paper_id>/...` folder layout
+- managed-copy attachment import
+- local attachment metadata index in desktop SQLite
+
+This workspace layer does not upload files, sync attachments to the backend, or run OCR/AI analysis in v1.
 
 ## Common commands
 - `make install`: install runtime and dev dependencies

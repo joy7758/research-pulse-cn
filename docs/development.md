@@ -137,12 +137,22 @@ The desktop shell does not use admin login. It uses admin-issued device tokens, 
   - `digest_issue_cache`
   - `sync_event_cache`
   - `mutation_outbox`
+  - `workspace_settings`
+  - `paper_workspace_cache`
+  - `paper_attachment_cache`
 - Desktop sync now runs:
   - push queued mutations
   - pull feed pages
   - apply events
   - ack only after successful apply
 - `progress_percentage` in desktop list/detail views is the same derived heuristic used by the mini read model, not a persisted workflow truth field.
+- Desktop local workspace in v1:
+  - choose a workspace root from Settings
+  - ensure a deterministic paper workspace from Paper Detail
+  - import attachments as managed local copies only
+  - refresh attachment status when files disappear from disk
+- Changing or clearing the workspace root does not move or delete existing managed files.
+- `clearLocalCache` and `disconnectDevice` do not delete managed workspace files.
 
 ## Official-account digest reserve
 - WeChat identity binding is admin-managed only in v1.

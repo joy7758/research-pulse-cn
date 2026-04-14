@@ -75,12 +75,12 @@ The authoritative local cache still comes from server events, not direct optimis
 - no business CRUD calls from desktop
 - no CRDT or field-level merge sophistication
 - no offline background daemon
-- no local attachment or workspace management
+- no synced attachment or workspace management
 - no customer auth
 
 ## Future Work
 - richer paper editing and batch operations
-- local attachments and workspace structure
+- local attachments and workspace structure beyond the v1 managed-copy layer
 - background sync / retry loop
 - stronger conflict handling and reconciliation UX
 - stronger desktop secret storage and device hardening

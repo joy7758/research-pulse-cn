@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { open } from "@tauri-apps/plugin-dialog";
 import {
   HashRouter,
   Navigate,
@@ -18,7 +19,9 @@ import {
   sortPapers,
 } from "./lib/readModels";
 import type {
+  ChooseWorkspaceRootInput,
   ConnectDeviceInput,
+  ImportPaperAttachmentsResponse,
   ListPapersInput,
   PaperDetailRead,
   PaperListItemRead,
@@ -30,6 +33,7 @@ import type {
   SyncNowResponse,
   SyncStatusRead,
   TodayOverviewRead,
+  WorkspaceStatusRead,
   WriteActionResultRead,
 } from "./lib/types";
 
@@ -59,6 +63,10 @@ type SubscriptionPolicyDraft = {
   frequencyCap: string;
   quietStart: string;
   quietEnd: string;
+};
+
+type AttachmentImportDraft = {
+  attachmentKind: string;
 };
 
 function App() {
@@ -650,6 +658,12 @@ function PapersView({ dataVersion }: { dataVersion: number }) {
                   {paper.pendingMutationCount} pending write
                 </span>
               ) : null}
+              <span className={`pill ${paper.workspaceReady ? "pill-success" : ""}`}>
+                Workspace {paper.workspaceReady ? "ready" : "pending"}
+              </span>
+              {paper.attachmentCount ? (
+                <span className="pill">{paper.attachmentCount} attachments</span>
+              ) : null}
               {paper.lastMutationError ? (
                 <span className="pill pill-danger">Sync failed</span>
               ) : null}
@@ -677,40 +691,47 @@ function PaperDetailView({
     summary: "",
     owner: "desktop",
   });
+  const [attachmentDraft, setAttachmentDraft] = useState<AttachmentImportDraft>({
+    attachmentKind: "manuscript",
+  });
   const [savingPatch, setSavingPatch] = useState(false);
   const [savingProgress, setSavingProgress] = useState(false);
+  const [workspaceBusy, setWorkspaceBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [workspaceMessage, setWorkspaceMessage] = useState<string | null>(null);
 
-  useEffect(() => {
+  const loadPaperDetail = useCallback(async () => {
     if (!paperId) {
       return;
     }
-    void (async () => {
-      setLoading(true);
-      try {
-        const detail = await desktopApi.getPaperDetail(paperId);
-        setPaper(detail);
-        setPatchDraft({
-          stage: detail.stage,
-          venue: detail.venue ?? "",
-          nextAction: detail.nextAction ?? "",
-          blocker: detail.blocker ?? "",
-          priority: String(detail.priority),
-        });
-        setProgressDraft((current) => ({
-          ...current,
-          stage: detail.stage,
-        }));
-        setError(null);
-      } catch (loadError) {
-        setError(loadError instanceof Error ? loadError.message : String(loadError));
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, [paperId, dataVersion]);
+    setLoading(true);
+    try {
+      const detail = await desktopApi.getPaperDetail(paperId);
+      setPaper(detail);
+      setPatchDraft({
+        stage: detail.stage,
+        venue: detail.venue ?? "",
+        nextAction: detail.nextAction ?? "",
+        blocker: detail.blocker ?? "",
+        priority: String(detail.priority),
+      });
+      setProgressDraft((current) => ({
+        ...current,
+        stage: detail.stage,
+      }));
+      setError(null);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : String(loadError));
+    } finally {
+      setLoading(false);
+    }
+  }, [paperId]);
+
+  useEffect(() => {
+    void loadPaperDetail();
+  }, [dataVersion, loadPaperDetail]);
 
   if (!paperId) {
     return <Navigate to="/papers" replace />;
@@ -745,6 +766,7 @@ function PaperDetailView({
         priority: Number(currentPatchDraft.priority),
       } satisfies QueuePaperPatchInput);
       await onWriteResult(result);
+      await loadPaperDetail();
       setActionMessage(buildWriteMessage(result, "Paper update queued"));
     } catch (saveError) {
       setActionMessage(
@@ -766,6 +788,7 @@ function PaperDetailView({
         owner: progressDraft.owner,
       } satisfies QueueProgressEventCreateInput);
       await onWriteResult(result);
+      await loadPaperDetail();
       setProgressDraft((current) => ({
         ...current,
         summary: "",
@@ -780,6 +803,73 @@ function PaperDetailView({
     }
   }
 
+  async function handleEnsureWorkspace() {
+    setWorkspaceBusy(true);
+    try {
+      const workspace = await desktopApi.ensurePaperWorkspace(currentPaper.id);
+      await loadPaperDetail();
+      setWorkspaceMessage(
+        workspace.workspaceReady
+          ? "Local workspace ensured."
+          : "Workspace metadata was created, but the root still needs attention.",
+      );
+    } catch (workspaceError) {
+      setWorkspaceMessage(
+        workspaceError instanceof Error ? workspaceError.message : String(workspaceError),
+      );
+    } finally {
+      setWorkspaceBusy(false);
+    }
+  }
+
+  async function handleRefreshWorkspace() {
+    setWorkspaceBusy(true);
+    try {
+      await desktopApi.refreshPaperWorkspace(currentPaper.id);
+      await loadPaperDetail();
+      setWorkspaceMessage("Workspace metadata refreshed.");
+    } catch (workspaceError) {
+      setWorkspaceMessage(
+        workspaceError instanceof Error ? workspaceError.message : String(workspaceError),
+      );
+    } finally {
+      setWorkspaceBusy(false);
+    }
+  }
+
+  async function handleImportAttachments() {
+    const selection = await open({
+      title: "Import local paper attachments",
+      multiple: true,
+      directory: false,
+    });
+    const sourcePaths = Array.isArray(selection)
+      ? selection
+      : selection
+        ? [selection]
+        : [];
+    if (!sourcePaths.length) {
+      return;
+    }
+
+    setWorkspaceBusy(true);
+    try {
+      const response = await desktopApi.importPaperAttachments({
+        paperId: currentPaper.id,
+        attachmentKind: attachmentDraft.attachmentKind,
+        sourcePaths,
+      });
+      await loadPaperDetail();
+      setWorkspaceMessage(buildAttachmentImportMessage(response));
+    } catch (workspaceError) {
+      setWorkspaceMessage(
+        workspaceError instanceof Error ? workspaceError.message : String(workspaceError),
+      );
+    } finally {
+      setWorkspaceBusy(false);
+    }
+  }
+
   return (
     <section className="page-grid">
       <div className="panel">
@@ -789,6 +879,17 @@ function PaperDetailView({
           <span className="pill">{paper.paperType}</span>
           <span className="pill">{paper.stage}</span>
           <span className="pill">{paper.progressPercentage}% progress</span>
+          <span className={`pill ${paper.workspace.workspaceReady ? "pill-success" : ""}`}>
+            Workspace{" "}
+            {paper.workspace.workspaceReady
+              ? "ready"
+              : paper.workspace.workspaceAbsPath
+                ? "pending"
+                : "unconfigured"}
+          </span>
+          {paper.workspace.attachmentCount ? (
+            <span className="pill">{paper.workspace.attachmentCount} attachments</span>
+          ) : null}
           {paper.pendingMutationCount ? (
             <span className="pill pill-accent">
               {paper.pendingMutationCount} pending write
@@ -913,6 +1014,98 @@ function PaperDetailView({
           </button>
         </div>
         {actionMessage ? <p className="meta-note">{actionMessage}</p> : null}
+      </div>
+
+      <div className="panel">
+        <div className="eyebrow">Local Workspace</div>
+        <div className="detail-grid">
+          <DetailRow
+            label="Workspace path"
+            value={paper.workspace.workspaceAbsPath ?? "Workspace root not configured"}
+          />
+          <DetailRow label="Relative path" value={paper.workspace.workspaceRelPath} />
+          <DetailRow
+            label="Workspace state"
+            value={paper.workspace.workspaceReady ? "ready" : "pending"}
+          />
+          <DetailRow
+            label="Managed attachments"
+            value={String(paper.workspace.attachmentCount)}
+          />
+        </div>
+        <div className="form-grid">
+          <label>
+            Attachment kind
+            <select
+              value={attachmentDraft.attachmentKind}
+              onChange={(event) =>
+                setAttachmentDraft({
+                  attachmentKind: event.target.value,
+                })
+              }
+            >
+              <option value="manuscript">manuscript</option>
+              <option value="review">review</option>
+              <option value="response_letter">response_letter</option>
+              <option value="figure">figure</option>
+              <option value="dataset">dataset</option>
+              <option value="supplement">supplement</option>
+              <option value="note">note</option>
+              <option value="other">other</option>
+            </select>
+          </label>
+        </div>
+        <div className="form-actions">
+          <button type="button" onClick={() => void handleEnsureWorkspace()} disabled={workspaceBusy}>
+            {workspaceBusy ? "Working..." : "Ensure Workspace"}
+          </button>
+          <button
+            type="button"
+            className="button-secondary"
+            onClick={() => void handleImportAttachments()}
+            disabled={workspaceBusy}
+          >
+            Import Attachments
+          </button>
+          <button
+            type="button"
+            className="button-secondary"
+            onClick={() => void handleRefreshWorkspace()}
+            disabled={workspaceBusy}
+          >
+            Refresh Workspace
+          </button>
+        </div>
+        {workspaceMessage ? <p className="meta-note">{workspaceMessage}</p> : null}
+        {!paper.attachments.length ? (
+          <p className="panel-message">
+            No managed attachments yet. Ensure the workspace and import local files as managed copies.
+          </p>
+        ) : (
+          <div className="list-stack">
+            {paper.attachments.map((attachment) => (
+              <article className="list-card" key={attachment.id}>
+                <div className="list-card-topline">
+                  <span>{attachment.attachmentKind}</span>
+                  <span>{attachment.status}</span>
+                </div>
+                <h3>{attachment.originalFileName}</h3>
+                <p>
+                  Stored as {attachment.storedFileName}
+                  {attachment.sizeBytes ? ` • ${formatBytes(attachment.sizeBytes)}` : ""}
+                </p>
+                <div className="pill-row">
+                  <span className="pill">{attachment.storageMode}</span>
+                  <span className="pill">{attachment.relativePath}</span>
+                  {attachment.mimeType ? <span className="pill">{attachment.mimeType}</span> : null}
+                  {attachment.status === "missing" ? (
+                    <span className="pill pill-danger">Missing on disk</span>
+                  ) : null}
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="panel">
@@ -1049,9 +1242,11 @@ function SettingsView({
 }) {
   const [policies, setPolicies] = useState<SubscriptionPolicyRead[]>([]);
   const [pendingMutations, setPendingMutations] = useState<PendingMutationRead[]>([]);
+  const [workspaceStatus, setWorkspaceStatus] = useState<WorkspaceStatusRead | null>(null);
   const [drafts, setDrafts] = useState<Record<string, SubscriptionPolicyDraft>>({});
   const [loading, setLoading] = useState(true);
   const [savingPolicyId, setSavingPolicyId] = useState<string | null>(null);
+  const [workspaceBusy, setWorkspaceBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
 
@@ -1059,12 +1254,14 @@ function SettingsView({
     void (async () => {
       setLoading(true);
       try {
-        const [nextPolicies, nextPending] = await Promise.all([
+        const [nextPolicies, nextPending, nextWorkspaceStatus] = await Promise.all([
           desktopApi.listSubscriptionPolicies(),
           desktopApi.listPendingMutations(),
+          desktopApi.getWorkspaceStatus(),
         ]);
         setPolicies(nextPolicies);
         setPendingMutations(nextPending);
+        setWorkspaceStatus(nextWorkspaceStatus);
         setDrafts(
           Object.fromEntries(
             nextPolicies.map((policy) => [
@@ -1108,6 +1305,47 @@ function SettingsView({
       );
     } finally {
       setSavingPolicyId(null);
+    }
+  }
+
+  async function handleChooseWorkspaceRoot() {
+    const selectedPath = await open({
+      directory: true,
+      multiple: false,
+      title: "Choose desktop workspace root",
+    });
+    if (!selectedPath || Array.isArray(selectedPath)) {
+      return;
+    }
+
+    setWorkspaceBusy(true);
+    try {
+      const result = await desktopApi.chooseWorkspaceRoot({
+        selectedPath,
+      } satisfies ChooseWorkspaceRootInput);
+      setWorkspaceStatus(result);
+      setActionMessage("Workspace root saved.");
+    } catch (workspaceError) {
+      setActionMessage(
+        workspaceError instanceof Error ? workspaceError.message : String(workspaceError),
+      );
+    } finally {
+      setWorkspaceBusy(false);
+    }
+  }
+
+  async function handleClearWorkspaceRoot() {
+    setWorkspaceBusy(true);
+    try {
+      const result = await desktopApi.clearWorkspaceRoot();
+      setWorkspaceStatus(result);
+      setActionMessage("Workspace root cleared. Managed files were left untouched.");
+    } catch (workspaceError) {
+      setActionMessage(
+        workspaceError instanceof Error ? workspaceError.message : String(workspaceError),
+      );
+    } finally {
+      setWorkspaceBusy(false);
     }
   }
 
@@ -1287,6 +1525,53 @@ function SettingsView({
       </div>
 
       <div className="panel">
+        <div className="eyebrow">Workspace</div>
+        <h1>Local paper workspace</h1>
+        <div className="detail-grid">
+          <DetailRow
+            label="Root path"
+            value={workspaceStatus?.rootPath ?? "Not configured"}
+          />
+          <DetailRow
+            label="Status"
+            value={workspaceStatus?.status ?? "unknown"}
+          />
+          <DetailRow
+            label="Layout version"
+            value={String(workspaceStatus?.layoutVersion ?? 1)}
+          />
+          <DetailRow
+            label="Managed attachments"
+            value={String(workspaceStatus?.managedAttachmentCount ?? 0)}
+          />
+        </div>
+        {workspaceStatus?.lastError ? (
+          <p className="meta-note">{workspaceStatus.lastError}</p>
+        ) : (
+          <p className="panel-message">
+            Managed attachments stay local in v1. Changing the root does not move old files.
+          </p>
+        )}
+        <div className="sidebar-actions">
+          <button
+            type="button"
+            onClick={() => void handleChooseWorkspaceRoot()}
+            disabled={workspaceBusy}
+          >
+            {workspaceBusy ? "Working..." : "Choose Workspace Root"}
+          </button>
+          <button
+            type="button"
+            className="button-secondary"
+            onClick={() => void handleClearWorkspaceRoot()}
+            disabled={workspaceBusy}
+          >
+            Clear Workspace Root
+          </button>
+        </div>
+      </div>
+
+      <div className="panel">
         <div className="eyebrow">Pending Outbox</div>
         {!pendingMutations.length ? (
           <p className="panel-message">No queued or failed mutations.</p>
@@ -1357,6 +1642,13 @@ function buildWriteMessage(result: WriteActionResultRead, prefix: string) {
   return prefix;
 }
 
+function buildAttachmentImportMessage(response: ImportPaperAttachmentsResponse) {
+  const imported = response.results.filter((result) => result.status === "imported").length;
+  const duplicates = response.results.filter((result) => result.status === "duplicate").length;
+  const failed = response.results.filter((result) => result.status === "failed").length;
+  return `Workspace updated. Imported ${imported}, duplicate ${duplicates}, failed ${failed}.`;
+}
+
 function toDateTimeLocalValue(isoTimestamp: string) {
   const date = new Date(isoTimestamp);
   const year = date.getFullYear();
@@ -1383,6 +1675,16 @@ function formatDateTime(value: string) {
   } catch {
     return value;
   }
+}
+
+function formatBytes(value: number) {
+  if (value < 1024) {
+    return `${value} B`;
+  }
+  if (value < 1024 * 1024) {
+    return `${(value / 1024).toFixed(1)} KB`;
+  }
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 export default App;
