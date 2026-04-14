@@ -9,7 +9,9 @@ mod sync_client;
 use anyhow::{Context, Result};
 use models::{
     AppBootstrapRead, ConnectDeviceInput, ConnectDeviceResponse, ListPapersInput, PaperDetailRead,
-    PaperListItemRead, SyncNowResponse, SyncStatusRead, TodayOverviewRead,
+    PaperListItemRead, PendingMutationRead, QueuePaperPatchInput, QueueProgressEventCreateInput,
+    QueueSubscriptionPolicyPatchInput, SubscriptionPolicyRead, SyncNowResponse, SyncStatusRead,
+    TodayOverviewRead, WriteActionResultRead,
 };
 use service::{DesktopPaths, DesktopService};
 use tauri::{Manager, State};
@@ -135,6 +137,60 @@ fn getPaperDetail(state: State<AppState>, paperId: String) -> Result<PaperDetail
         .map_err(command_error)
 }
 
+#[allow(non_snake_case)]
+#[tauri::command]
+fn listSubscriptionPolicies(state: State<AppState>) -> Result<Vec<SubscriptionPolicyRead>, String> {
+    state
+        .desktop_service()
+        .and_then(|service| service.list_subscription_policies())
+        .map_err(command_error)
+}
+
+#[allow(non_snake_case)]
+#[tauri::command]
+fn listPendingMutations(state: State<AppState>) -> Result<Vec<PendingMutationRead>, String> {
+    state
+        .desktop_service()
+        .and_then(|service| service.list_pending_mutations())
+        .map_err(command_error)
+}
+
+#[allow(non_snake_case)]
+#[tauri::command]
+fn queuePaperPatch(
+    state: State<AppState>,
+    input: QueuePaperPatchInput,
+) -> Result<WriteActionResultRead, String> {
+    state
+        .desktop_service()
+        .and_then(|service| service.queue_paper_patch(input))
+        .map_err(command_error)
+}
+
+#[allow(non_snake_case)]
+#[tauri::command]
+fn queueProgressEventCreate(
+    state: State<AppState>,
+    input: QueueProgressEventCreateInput,
+) -> Result<WriteActionResultRead, String> {
+    state
+        .desktop_service()
+        .and_then(|service| service.queue_progress_event_create(input))
+        .map_err(command_error)
+}
+
+#[allow(non_snake_case)]
+#[tauri::command]
+fn queueSubscriptionPolicyPatch(
+    state: State<AppState>,
+    input: QueueSubscriptionPolicyPatchInput,
+) -> Result<WriteActionResultRead, String> {
+    state
+        .desktop_service()
+        .and_then(|service| service.queue_subscription_policy_patch(input))
+        .map_err(command_error)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -154,7 +210,12 @@ pub fn run() {
             getSyncStatus,
             getTodayOverview,
             listPapers,
-            getPaperDetail
+            getPaperDetail,
+            listSubscriptionPolicies,
+            listPendingMutations,
+            queuePaperPatch,
+            queueProgressEventCreate,
+            queueSubscriptionPolicyPatch
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

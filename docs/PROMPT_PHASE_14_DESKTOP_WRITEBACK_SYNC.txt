@@ -1,0 +1,64 @@
+Read AGENTS.md, docs/BUILD_SPEC.md, docs/architecture.md, docs/development.md, docs/pulse_scoring.md, docs/operations.md, docs/auth_admin_boundary.md, docs/sync_foundation.md, docs/official_account_digest_reserve.md, docs/mini_program_readonly_reserve.md, docs/official_account_provider_boundary.md, docs/official_account_real_send_v1.md, and docs/desktop_tauri_skeleton_v1.md before editing.
+
+Implement Phase 14 only: desktop write-back sync v1.
+
+Hard boundaries for this phase:
+- Do not introduce Electron.
+- Do not add customer-facing OAuth login.
+- Do not add Mini Program frontend code.
+- Do not add PDF import, annotation, local file indexing, or workspace file management yet.
+- Do not add background daemon/service-mode desktop sync.
+- Do not add desktop write paths outside the existing sync mutation API.
+- Do not call business CRUD endpoints directly from the desktop app.
+- Do not add CRDTs, operational transforms, or complex conflict-free merge logic.
+- Do not add offline-first conflict resolution beyond the existing server-authoritative sync model.
+- Do not weaken existing admin auth, internal service auth, device-token sync auth, mini-read auth, or official-account provider boundaries.
+- Do not replace the modular monolith backend architecture.
+
+Primary goal:
+Turn the desktop app from read-only pull-sync into a minimal write-capable research workbench using the existing /sync/push mutation model.
+
+Architectural intent:
+- Desktop writes are queued locally first.
+- The authoritative local cache is updated from server SyncEvent replay, not from direct optimistic mutation of the main cache tables.
+- Immediate flush may be attempted after queueing when connected, but the authoritative read models must still be based on synced server events.
+
+Required changes:
+1. Add local SQLite `mutation_outbox` and `subscription_policy_cache`.
+2. Add desktop-side write services and commands for:
+   - `queuePaperPatch`
+   - `queueProgressEventCreate`
+   - `queueSubscriptionPolicyPatch`
+3. Change `syncNow` flow to:
+   - push queued/failed mutations
+   - pull feed
+   - apply events
+   - ack only after successful apply
+4. Keep main cache authoritative from SyncEvent replay only.
+5. Expose pending/failed mutation state in desktop read models and UI.
+6. Add minimal write UI for:
+   - paper patch
+   - progress event create
+   - subscription policy patch
+7. Prefer no backend migration; only allow backward-friendly sync payload tweaks if needed.
+8. Keep consistency model explicit:
+   - server authoritative
+   - last-write-wins
+   - no CRDT/offline merge sophistication
+9. Add Rust/TS tests for outbox, duplicate handling, failed mutations, roundtrip apply, and pending-state exposure.
+10. Add docs/desktop_writeback_sync_v1.md and update README / development / architecture / sync docs.
+
+Quality bar:
+- keep desktop code typed and readable
+- keep backend changes minimal and justified
+- do not add unnecessary dependencies
+- do not require live backend credentials in tests
+- do not add business CRUD calls from desktop
+- run available checks
+- fix obvious lint/test issues
+- end with a concise summary:
+  - files changed
+  - whether any backend migration was needed
+  - new local cache tables
+  - new commands
+  - next-phase recommendation only
