@@ -78,7 +78,7 @@ Direct app-local commands:
 
 ## Current Non-Goals
 - no desktop write-back sync beyond the limited Phase 14 mutation set
-- no local paper/file workspace
+- no cloud-synced paper/file workspace
 - no PDF import or annotation
 - no embedded backend or bundled server mode
 - no auto-update, signing, packaging, or release hardening
@@ -87,6 +87,6 @@ Direct app-local commands:
 ## Future Work
 - richer desktop write-back sync beyond paper patch, progress events, and subscription policy patch
 - stronger secret storage beyond the local dev file-backed abstraction
-- local paper/file workspace and annotation features
+- local paper/file workspace and annotation features beyond the v1 managed-copy layer
 - packaging, signing, and distribution workflows
 - richer desktop UX and offline conflict handling

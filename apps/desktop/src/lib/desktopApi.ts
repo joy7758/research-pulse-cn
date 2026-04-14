@@ -2,11 +2,16 @@ import { invoke } from "@tauri-apps/api/core";
 
 import type {
   AppBootstrapRead,
+  ChooseWorkspaceRootInput,
   ConnectDeviceInput,
   ConnectDeviceResponse,
+  ImportPaperAttachmentsInput,
+  ImportPaperAttachmentsResponse,
   ListPapersInput,
+  PaperAttachmentRead,
   PaperDetailRead,
   PaperListItemRead,
+  PaperWorkspaceRead,
   PendingMutationRead,
   QueuePaperPatchInput,
   QueueProgressEventCreateInput,
@@ -15,6 +20,7 @@ import type {
   SyncNowResponse,
   SyncStatusRead,
   TodayOverviewRead,
+  WorkspaceStatusRead,
   WriteActionResultRead,
 } from "./types";
 
@@ -35,6 +41,24 @@ export const desktopApi = {
     invoke<SubscriptionPolicyRead[]>("listSubscriptionPolicies"),
   listPendingMutations: () =>
     invoke<PendingMutationRead[]>("listPendingMutations"),
+  getWorkspaceStatus: () => invoke<WorkspaceStatusRead>("getWorkspaceStatus"),
+  chooseWorkspaceRoot: (input: ChooseWorkspaceRootInput) =>
+    invoke<WorkspaceStatusRead>("chooseWorkspaceRoot", { input }),
+  clearWorkspaceRoot: () => invoke<WorkspaceStatusRead>("clearWorkspaceRoot"),
+  ensurePaperWorkspace: (paperId: string) =>
+    invoke<PaperWorkspaceRead>("ensurePaperWorkspace", {
+      input: { paperId },
+    }),
+  getPaperWorkspace: (paperId: string) =>
+    invoke<PaperWorkspaceRead>("getPaperWorkspace", { paperId }),
+  listPaperAttachments: (paperId: string) =>
+    invoke<PaperAttachmentRead[]>("listPaperAttachments", { paperId }),
+  importPaperAttachments: (input: ImportPaperAttachmentsInput) =>
+    invoke<ImportPaperAttachmentsResponse>("importPaperAttachments", { input }),
+  refreshPaperWorkspace: (paperId: string) =>
+    invoke<PaperWorkspaceRead>("refreshPaperWorkspace", {
+      input: { paperId },
+    }),
   queuePaperPatch: (input: QueuePaperPatchInput) =>
     invoke<WriteActionResultRead>("queuePaperPatch", { input }),
   queueProgressEventCreate: (input: QueueProgressEventCreateInput) =>

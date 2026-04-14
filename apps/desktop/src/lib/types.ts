@@ -52,6 +52,45 @@ export type SubscriptionPolicyRead = {
   lastMutationError: string | null;
 };
 
+export type WorkspaceStatusRead = {
+  rootPath: string | null;
+  status: "unconfigured" | "ready" | "missing" | "invalid" | string;
+  layoutVersion: number;
+  lastValidatedAt: string | null;
+  lastError: string | null;
+  managedAttachmentCount: number;
+};
+
+export type PaperWorkspaceRead = {
+  paperId: string;
+  paperTitle: string;
+  workspaceRelPath: string;
+  workspaceAbsPath: string | null;
+  workspaceReady: boolean;
+  attachmentCount: number;
+  lastImportedAt: string | null;
+};
+
+export type PaperAttachmentRead = {
+  id: string;
+  paperId: string;
+  attachmentKind: string;
+  storageMode: string;
+  originalFileName: string;
+  storedFileName: string;
+  fileExtension: string | null;
+  relativePath: string;
+  absolutePath: string | null;
+  sourcePath: string;
+  sizeBytes: number | null;
+  mimeType: string | null;
+  sha256: string | null;
+  status: "ready" | "missing" | string;
+  importedAt: string;
+  updatedAt: string;
+  lastOpenedAt: string | null;
+};
+
 export type PaperListItemRead = {
   id: string;
   userId: string;
@@ -67,6 +106,8 @@ export type PaperListItemRead = {
   updatedAt: string | null;
   pendingMutationCount: number;
   lastMutationError: string | null;
+  attachmentCount: number;
+  workspaceReady: boolean;
 };
 
 export type DigestHighlightRead = {
@@ -134,6 +175,8 @@ export type PaperDetailRead = {
   signalSnapshots: SignalSnapshotRead[];
   pendingMutationCount: number;
   lastMutationError: string | null;
+  workspace: PaperWorkspaceRead;
+  attachments: PaperAttachmentRead[];
 };
 
 export type AppBootstrapRead = {
@@ -171,6 +214,28 @@ export type ListPapersInput = {
   limit?: number;
   paperType?: string;
   stage?: string;
+};
+
+export type ChooseWorkspaceRootInput = {
+  selectedPath: string;
+};
+
+export type ImportPaperAttachmentsInput = {
+  paperId: string;
+  attachmentKind: string;
+  sourcePaths: string[];
+};
+
+export type PaperAttachmentImportResultRead = {
+  sourcePath: string;
+  status: "imported" | "duplicate" | "failed" | string;
+  message: string | null;
+  attachment: PaperAttachmentRead | null;
+};
+
+export type ImportPaperAttachmentsResponse = {
+  workspace: PaperWorkspaceRead;
+  results: PaperAttachmentImportResultRead[];
 };
 
 export type QueuePaperPatchInput = {

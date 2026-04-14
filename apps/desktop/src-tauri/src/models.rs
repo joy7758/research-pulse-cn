@@ -65,6 +65,51 @@ pub struct SubscriptionPolicyRead {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct WorkspaceStatusRead {
+    pub root_path: Option<String>,
+    pub status: String,
+    pub layout_version: i64,
+    pub last_validated_at: Option<String>,
+    pub last_error: Option<String>,
+    pub managed_attachment_count: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PaperWorkspaceRead {
+    pub paper_id: String,
+    pub paper_title: String,
+    pub workspace_rel_path: String,
+    pub workspace_abs_path: Option<String>,
+    pub workspace_ready: bool,
+    pub attachment_count: i64,
+    pub last_imported_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PaperAttachmentRead {
+    pub id: String,
+    pub paper_id: String,
+    pub attachment_kind: String,
+    pub storage_mode: String,
+    pub original_file_name: String,
+    pub stored_file_name: String,
+    pub file_extension: Option<String>,
+    pub relative_path: String,
+    pub absolute_path: Option<String>,
+    pub source_path: String,
+    pub size_bytes: Option<i64>,
+    pub mime_type: Option<String>,
+    pub sha256: Option<String>,
+    pub status: String,
+    pub imported_at: String,
+    pub updated_at: String,
+    pub last_opened_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DigestHighlightRead {
     pub sort_order: i64,
     pub pulse_card_id: String,
@@ -129,6 +174,8 @@ pub struct PaperListItemRead {
     pub updated_at: Option<String>,
     pub pending_mutation_count: i64,
     pub last_mutation_error: Option<String>,
+    pub attachment_count: i64,
+    pub workspace_ready: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -176,6 +223,8 @@ pub struct PaperDetailRead {
     pub signal_snapshots: Vec<SignalSnapshotRead>,
     pub pending_mutation_count: i64,
     pub last_mutation_error: Option<String>,
+    pub workspace: PaperWorkspaceRead,
+    pub attachments: Vec<PaperAttachmentRead>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -223,6 +272,48 @@ pub struct ListPapersInput {
     pub limit: Option<usize>,
     pub paper_type: Option<String>,
     pub stage: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChooseWorkspaceRootInput {
+    pub selected_path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EnsurePaperWorkspaceInput {
+    pub paper_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportPaperAttachmentsInput {
+    pub paper_id: String,
+    pub attachment_kind: String,
+    pub source_paths: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RefreshPaperWorkspaceInput {
+    pub paper_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PaperAttachmentImportResultRead {
+    pub source_path: String,
+    pub status: String,
+    pub message: Option<String>,
+    pub attachment: Option<PaperAttachmentRead>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportPaperAttachmentsResponse {
+    pub workspace: PaperWorkspaceRead,
+    pub results: Vec<PaperAttachmentImportResultRead>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

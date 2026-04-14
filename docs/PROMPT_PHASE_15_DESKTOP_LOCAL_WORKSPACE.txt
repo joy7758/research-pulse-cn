@@ -1,0 +1,285 @@
+Read AGENTS.md, docs/BUILD_SPEC.md, docs/architecture.md, docs/development.md, docs/pulse_scoring.md, docs/operations.md, docs/auth_admin_boundary.md, docs/sync_foundation.md, docs/official_account_digest_reserve.md, docs/mini_program_readonly_reserve.md, docs/official_account_provider_boundary.md, docs/official_account_real_send_v1.md, docs/desktop_tauri_skeleton_v1.md, and docs/desktop_writeback_sync_v1.md before editing.
+
+Implement Phase 15 only: desktop local paper workspace v1.
+
+Hard boundaries for this phase:
+- Do not introduce Electron.
+- Do not add customer-facing OAuth login.
+- Do not add Mini Program frontend code.
+- Do not add OCR, PDF text extraction, citation extraction, metadata scraping, or any AI-assisted file understanding.
+- Do not add cloud file upload or cloud attachment sync.
+- Do not add automatic filesystem watching/daemon sync.
+- Do not delete or modify the user’s original imported source files.
+- Do not add desktop write paths outside the existing sync mutation architecture.
+- Do not weaken existing admin auth, internal service auth, device-token sync auth, mini-read auth, or official-account provider boundaries.
+- Do not replace the modular monolith backend architecture.
+
+Primary goal:
+Add a local paper workspace foundation to the Tauri desktop app:
+- user-chosen workspace root
+- deterministic per-paper folder layout
+- managed-copy attachment import
+- local attachment metadata index
+- simple workspace UI in desktop app
+
+This phase should make the repository suitable for:
+- organizing local paper-related files under a stable workspace root
+- attaching/managing local manuscript/review/response/figure/data files per paper
+- building future local file workflows without changing the desktop shell
+- keeping local file management fully local in v1
+
+Architectural intent:
+- Workspace metadata stays in desktop local SQLite.
+- Imported attachments are managed copies under the chosen workspace root.
+- The source-of-truth for local attachment metadata is the local desktop DB.
+- This phase does not sync attachment files or attachment metadata to the backend.
+- Frontend may use native dialogs to pick folders/files, but all path validation, directory creation, file copying, duplicate detection, and metadata indexing must happen in Rust commands.
+
+Required changes:
+
+1. Local workspace persistence
+Extend the desktop local SQLite cache with these tables:
+
+A. workspace_settings
+Required fields:
+- id text pk (singleton row acceptable)
+- root_path text nullable
+- status text/enum [unconfigured, ready, missing, invalid]
+- layout_version int
+- last_validated_at text nullable
+- last_error text nullable
+- created_at
+- updated_at
+
+B. paper_workspace_cache
+Required fields:
+- paper_id text pk
+- paper_title text
+- workspace_rel_path text
+- workspace_abs_path text nullable
+- workspace_ready bool
+- attachment_count int default 0
+- last_imported_at text nullable
+- created_at
+- updated_at
+
+C. paper_attachment_cache
+Required fields:
+- id text/uuid pk
+- paper_id text
+- attachment_kind text
+- storage_mode text/enum [managed_copy]
+- original_file_name text
+- stored_file_name text
+- file_extension text nullable
+- relative_path text
+- absolute_path text nullable
+- source_path text
+- size_bytes int nullable
+- mime_type text nullable
+- sha256 text nullable
+- status text/enum [ready, missing]
+- imported_at text
+- updated_at text
+- last_opened_at text nullable
+
+Constraints:
+- keep schema small and production-friendly
+- add local init/migration handling
+- query by paper_id efficiently
+- no backend migrations expected in this phase
+
+2. Workspace root selection and validation
+Implement desktop workspace root management.
+
+Requirements:
+- allow choosing a local directory as workspace root
+- support clearing/changing workspace root
+- validate whether the root exists and is writable
+- persist status and last_error cleanly
+- if root is changed, do not automatically move existing managed files in v1
+- document that migration of old workspace roots is deferred
+- keep metadata DB under app data as before; only managed files go under workspace root
+
+3. Deterministic per-paper folder layout
+Implement a stable workspace layout.
+
+Requirements:
+- each paper gets a deterministic folder under workspace root
+- folder naming must be stable even if paper title changes
+- use paper_id as the primary stable identifier in the folder name
+- a safe optional slug from title is acceptable only if stability is preserved
+
+Minimum layout for each paper:
+- papers/<paper_id>/
+- papers/<paper_id>/attachments/
+- papers/<paper_id>/notes/
+- papers/<paper_id>/exports/
+
+Also create one placeholder metadata file in the paper root, such as:
+- workspace.json
+or
+- README.md
+
+The placeholder should contain a compact explanation of the workspace purpose and basic paper identity.
+
+4. Attachment import
+Implement managed-copy attachment import.
+
+Supported attachment kinds:
+- manuscript
+- review
+- response_letter
+- figure
+- dataset
+- supplement
+- note
+- other
+
+Requirements:
+- allow selecting one or more local files for import
+- imported files must be copied into the paper attachments directory
+- original source files must remain untouched
+- generate deterministic safe stored filenames, for example:
+  - timestamp + sanitized original filename
+or another documented stable approach
+- best-effort detect duplicates within the same paper workspace
+- duplicate detection may use sha256 and/or file size heuristics
+- duplicate import should not create a second managed copy silently; return a clear duplicate result
+- record metadata in paper_attachment_cache
+- best-effort derive mime_type and extension
+- if a copied file later goes missing, workspace refresh should mark status=missing
+
+5. Workspace commands
+Add/extend Tauri Rust commands for at least:
+- getWorkspaceStatus
+- chooseWorkspaceRoot
+- clearWorkspaceRoot
+- ensurePaperWorkspace
+- getPaperWorkspace
+- listPaperAttachments
+- importPaperAttachments
+- refreshPaperWorkspace
+
+Behavior:
+- commands must return typed payloads
+- do not leak device token or unrelated secrets
+- keep file I/O in Rust, not React components
+- chooseWorkspaceRoot may open native folder selection or accept a chosen path from the frontend, but final validation/persistence must happen in Rust
+- importPaperAttachments may receive selected file paths from the frontend, but actual copy/index logic must happen in Rust
+
+6. Desktop read models
+Add/update compact desktop read models for:
+- WorkspaceStatusRead
+- PaperWorkspaceRead
+- PaperAttachmentRead
+
+Update existing read models where useful:
+- PaperListItemRead may include attachmentCount and workspaceReady
+- PaperDetailRead should include workspace summary and attachment list
+
+Requirements:
+- preserve current derived progress_percentage heuristic unchanged
+- keep read models compact and client-friendly
+- expose clear local-only state without pretending it is synced cloud data
+
+7. Desktop frontend behavior
+Add minimal useful workspace UI.
+
+Settings / Sync Status view:
+- add a Workspace section
+- show current root path and validation state
+- allow choose root / clear root
+- show total managed attachment count if straightforward
+
+Papers view:
+- show workspace badge or attachment count where available
+
+Paper Detail view:
+- show a Local Workspace section
+- show workspace path/state
+- show attachment list
+- allow:
+  - ensure workspace
+  - import attachments
+  - refresh workspace
+- show attachment kind, original name, stored name, size, imported time, status
+- clear empty states when no workspace root or no attachments exist
+
+Do not add rich previewers in this phase.
+Do not add drag-and-drop unless trivial and low-risk.
+
+8. Local consistency model
+Keep the local file/workspace model simple.
+
+Requirements:
+- attachment metadata is local-only in v1
+- workspace state is independent from backend sync state
+- clearLocalCache should NOT delete managed workspace files under the workspace root
+- disconnectDevice should NOT delete managed workspace files
+- document this clearly
+- if paper metadata changes from sync (e.g. title), workspace folder path should remain stable
+
+9. Tests
+Add or update tests covering at minimum:
+
+Rust desktop tests where practical:
+- chooseWorkspaceRoot persists a valid root
+- ensurePaperWorkspace creates the expected directory layout
+- placeholder metadata file is created
+- importPaperAttachments copies files into managed workspace
+- duplicate import is handled cleanly
+- refreshPaperWorkspace marks missing files appropriately
+- clearLocalCache does not delete managed workspace files
+- disconnectDevice does not delete managed workspace files
+- getPaperWorkspace and listPaperAttachments return stable read models
+- progress_percentage mapping remains unchanged
+
+Frontend / TS tests where practical:
+- workspace read-model shaping helper if implemented
+- attachment list shaping helper if implemented
+
+Repo-level:
+- existing backend tests continue to pass
+
+10. Documentation
+Add docs/desktop_local_workspace_v1.md
+
+It should explain:
+- why local workspace is being added before cloud file sync
+- local-only attachment model
+- workspace root model
+- per-paper folder layout
+- managed-copy import model
+- duplicate handling
+- local read models
+- current non-goals
+- future work:
+  - cloud attachment sync
+  - OCR / text extraction
+  - local previewers
+  - drag-and-drop
+  - richer workspace note templates
+
+Also update:
+- README.md
+- docs/development.md
+- docs/architecture.md
+- docs/desktop_tauri_skeleton_v1.md
+- docs/desktop_writeback_sync_v1.md
+- any docs that should mention the desktop local workspace layer
+
+11. Quality bar
+- keep desktop code typed and readable
+- keep backend changes minimal or zero
+- do not add unnecessary dependencies
+- do not require live backend credentials in tests
+- do not add OCR or AI file analysis
+- run available checks
+- fix obvious lint/test issues
+- end with a concise summary:
+  - files changed
+  - whether any backend migration was needed
+  - new local tables
+  - new commands
+  - next-phase recommendation only

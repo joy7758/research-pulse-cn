@@ -13,7 +13,7 @@ Core flow:
 7. Official-account publication jobs can be dispatched through a provider boundary in `disabled`, `dry_run`, or explicit `real` mode while callback events update existing bindings.
 8. Mini read grants expose compact mobile-friendly read models for future mini-program landing without opening write access.
 9. Sync devices consume incremental `SyncEvent` feeds and push idempotent mutations back through the same service layer.
-10. A Tauri desktop shell consumes the same sync feed, keeps a local SQLite outbox, and performs limited writeback through `/sync/push` without bundling the backend.
+10. A Tauri desktop shell consumes the same sync feed, keeps a local SQLite outbox, performs limited writeback through `/sync/push`, and manages a local-only paper workspace without bundling the backend.
 
 ## Module boundaries
 
@@ -178,6 +178,9 @@ Tie-break order is deterministic:
   - secret storage
   - local SQLite cache
   - local mutation outbox
+  - local workspace root validation
+  - managed-copy attachment import
+  - attachment metadata indexing
   - sync HTTP client
   - typed Tauri command boundary
 - React owns:
@@ -190,6 +193,12 @@ Tie-break order is deterministic:
   - `paper.patch`
   - `progress_event.create`
   - `subscription_policy.patch`
+- Desktop local workspace is intentionally local-only in v1:
+  - workspace root selection
+  - deterministic `papers/<paper_id>/...` folders
+  - managed-copy attachments
+  - no backend attachment sync
+  - no OCR or AI file understanding
 - The desktop shell applies a push-before-pull cycle, but local paper and policy caches remain authoritative only after server `SyncEvent` replay.
 
 ### Consistency model

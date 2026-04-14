@@ -6,11 +6,17 @@ use serde_json::Value;
 
 use crate::error::{ensure_parent_dir, invalid_state};
 use crate::models::{
-    DigestHighlightRead, PaperDetailRead, PaperListItemRead, PendingMutationRead,
-    ProgressEventRead, RemoteSyncEvent, RemoteSyncMutationResult, SignalSnapshotRead,
-    SubscriptionPolicyRead, SyncStatusRead, TodayOverviewRead, UserConnectionRead,
+    DigestHighlightRead, PaperAttachmentRead, PaperDetailRead, PaperListItemRead,
+    PaperWorkspaceRead, PendingMutationRead, ProgressEventRead, RemoteSyncEvent,
+    RemoteSyncMutationResult, SignalSnapshotRead, SubscriptionPolicyRead, SyncStatusRead,
+    TodayOverviewRead, UserConnectionRead, WorkspaceStatusRead,
 };
 use crate::progress::derive_progress_percentage;
+use crate::workspace::{
+    attachment_status_for_path, default_workspace_root_record, paper_workspace_ready_for_path,
+    workspace_root_rebind_path, workspace_root_row_id, WorkspaceRootRecord,
+    WORKSPACE_LAYOUT_VERSION,
+};
 
 const DEFAULT_PAPER_LIMIT: usize = 50;
 const MAX_PAPER_LIMIT: usize = 200;
@@ -47,6 +53,14 @@ pub struct PushOutcomeSummary {
     pub applied_count: i64,
     pub duplicate_count: i64,
     pub failed_count: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct DuplicateAttachmentRecord {
+    pub attachment_id: String,
+    pub sha256: Option<String>,
+    pub size_bytes: Option<i64>,
+    pub original_file_name: String,
 }
 
 impl Default for SyncStateRecord {
@@ -204,10 +218,82 @@ impl LocalCache {
                 CREATE INDEX IF NOT EXISTS idx_mutation_outbox_resource
                     ON mutation_outbox (resource_type, resource_id, created_at ASC, id ASC);
 
-                PRAGMA user_version = 2;
+                CREATE TABLE IF NOT EXISTS workspace_settings (
+                    id TEXT PRIMARY KEY,
+                    root_path TEXT,
+                    status TEXT NOT NULL DEFAULT 'unconfigured',
+                    layout_version INTEGER NOT NULL DEFAULT 1,
+                    last_validated_at TEXT,
+                    last_error TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS paper_workspace_cache (
+                    paper_id TEXT PRIMARY KEY,
+                    paper_title TEXT NOT NULL,
+                    workspace_rel_path TEXT NOT NULL,
+                    workspace_abs_path TEXT,
+                    workspace_ready INTEGER NOT NULL DEFAULT 0,
+                    attachment_count INTEGER NOT NULL DEFAULT 0,
+                    last_imported_at TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS paper_attachment_cache (
+                    id TEXT PRIMARY KEY,
+                    paper_id TEXT NOT NULL,
+                    attachment_kind TEXT NOT NULL,
+                    storage_mode TEXT NOT NULL,
+                    original_file_name TEXT NOT NULL,
+                    stored_file_name TEXT NOT NULL,
+                    file_extension TEXT,
+                    relative_path TEXT NOT NULL,
+                    absolute_path TEXT,
+                    source_path TEXT NOT NULL,
+                    size_bytes INTEGER,
+                    mime_type TEXT,
+                    sha256 TEXT,
+                    status TEXT NOT NULL,
+                    imported_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    last_opened_at TEXT
+                );
+                CREATE INDEX IF NOT EXISTS idx_paper_attachment_cache_paper
+                    ON paper_attachment_cache (paper_id, imported_at DESC, id ASC);
+                CREATE INDEX IF NOT EXISTS idx_paper_attachment_cache_sha
+                    ON paper_attachment_cache (paper_id, sha256, size_bytes);
+
+                PRAGMA user_version = 3;
                 "#,
             )
             .context("failed to initialize desktop cache schema")?;
+        let default_workspace = default_workspace_root_record();
+        connection.execute(
+            r#"
+            INSERT OR IGNORE INTO workspace_settings (
+                id,
+                root_path,
+                status,
+                layout_version,
+                last_validated_at,
+                last_error,
+                created_at,
+                updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+            "#,
+            params![
+                default_workspace.id,
+                default_workspace.root_path,
+                default_workspace.status,
+                default_workspace.layout_version,
+                default_workspace.last_validated_at,
+                default_workspace.last_error,
+                default_workspace.created_at,
+                default_workspace.updated_at
+            ],
+        )?;
         Ok(())
     }
 
@@ -262,6 +348,174 @@ impl LocalCache {
             )
             .optional()?;
         Ok(record.unwrap_or_default())
+    }
+
+    pub fn workspace_root_record(&self) -> Result<WorkspaceRootRecord> {
+        let connection = self.open()?;
+        let record = connection
+            .query_row(
+                r#"
+                SELECT
+                    id,
+                    root_path,
+                    status,
+                    layout_version,
+                    last_validated_at,
+                    last_error,
+                    created_at,
+                    updated_at
+                FROM workspace_settings
+                WHERE id = ?1
+                "#,
+                params![workspace_root_row_id()],
+                |row| {
+                    Ok(WorkspaceRootRecord {
+                        id: row.get(0)?,
+                        root_path: row.get(1)?,
+                        status: row.get(2)?,
+                        layout_version: row.get(3)?,
+                        last_validated_at: row.get(4)?,
+                        last_error: row.get(5)?,
+                        created_at: row.get(6)?,
+                        updated_at: row.get(7)?,
+                    })
+                },
+            )
+            .optional()?;
+        Ok(record.unwrap_or_else(default_workspace_root_record))
+    }
+
+    pub fn upsert_workspace_root_record(
+        &self,
+        root_path: Option<&str>,
+        status: &str,
+        last_validated_at: &str,
+        last_error: Option<&str>,
+    ) -> Result<()> {
+        let current = self.workspace_root_record()?;
+        let connection = self.open()?;
+        let now = timestamp_now();
+        connection.execute(
+            r#"
+            INSERT INTO workspace_settings (
+                id,
+                root_path,
+                status,
+                layout_version,
+                last_validated_at,
+                last_error,
+                created_at,
+                updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+            ON CONFLICT(id) DO UPDATE SET
+                root_path = excluded.root_path,
+                status = excluded.status,
+                layout_version = excluded.layout_version,
+                last_validated_at = excluded.last_validated_at,
+                last_error = excluded.last_error,
+                updated_at = excluded.updated_at
+            "#,
+            params![
+                workspace_root_row_id(),
+                root_path,
+                status,
+                WORKSPACE_LAYOUT_VERSION,
+                last_validated_at,
+                last_error,
+                current.created_at,
+                now
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn workspace_status(&self) -> Result<WorkspaceStatusRead> {
+        let connection = self.open()?;
+        let root = self.workspace_root_record()?;
+        let managed_attachment_count = connection.query_row(
+            "SELECT COUNT(*) FROM paper_attachment_cache",
+            [],
+            |row| row.get(0),
+        )?;
+        Ok(WorkspaceStatusRead {
+            root_path: root.root_path,
+            status: root.status,
+            layout_version: root.layout_version,
+            last_validated_at: root.last_validated_at,
+            last_error: root.last_error,
+            managed_attachment_count,
+        })
+    }
+
+    pub fn rebind_workspace_root(&self, root_path: Option<&str>) -> Result<()> {
+        let mut connection = self.open()?;
+        let transaction = connection.transaction()?;
+        let now = timestamp_now();
+
+        {
+            let mut statement = transaction.prepare(
+                r#"
+                SELECT paper_id, workspace_rel_path
+                FROM paper_workspace_cache
+                ORDER BY paper_id ASC
+                "#,
+            )?;
+            let rows = statement.query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })?;
+            for row in rows {
+                let (paper_id, rel_path) = row?;
+                let abs_path = workspace_root_rebind_path(root_path, &rel_path);
+                let ready = paper_workspace_ready_for_path(abs_path.as_deref());
+                transaction.execute(
+                    r#"
+                    UPDATE paper_workspace_cache
+                    SET
+                        workspace_abs_path = ?1,
+                        workspace_ready = ?2,
+                        updated_at = ?3
+                    WHERE paper_id = ?4
+                    "#,
+                    params![abs_path, if ready { 1 } else { 0 }, now, paper_id],
+                )?;
+            }
+        }
+
+        {
+            let mut statement = transaction.prepare(
+                r#"
+                SELECT id, relative_path
+                FROM paper_attachment_cache
+                ORDER BY id ASC
+                "#,
+            )?;
+            let rows = statement.query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })?;
+            for row in rows {
+                let (attachment_id, rel_path) = row?;
+                let abs_path = workspace_root_rebind_path(root_path, &rel_path);
+                let status = if root_path.is_some() {
+                    attachment_status_for_path(abs_path.as_deref())
+                } else {
+                    "ready".to_string()
+                };
+                transaction.execute(
+                    r#"
+                    UPDATE paper_attachment_cache
+                    SET
+                        absolute_path = ?1,
+                        status = ?2,
+                        updated_at = ?3
+                    WHERE id = ?4
+                    "#,
+                    params![abs_path, status, now, attachment_id],
+                )?;
+            }
+        }
+
+        transaction.commit()?;
+        self.refresh_paper_workspace_counts()
     }
 
     pub fn upsert_connection(
@@ -579,6 +833,392 @@ impl LocalCache {
         load_outbox_stats(&connection)
     }
 
+    pub fn upsert_paper_workspace(
+        &self,
+        paper_id: &str,
+        paper_title: &str,
+        workspace_rel_path: &str,
+        workspace_abs_path: Option<&str>,
+        workspace_ready: bool,
+        last_imported_at: Option<&str>,
+    ) -> Result<()> {
+        let connection = self.open()?;
+        let now = timestamp_now();
+        connection.execute(
+            r#"
+            INSERT INTO paper_workspace_cache (
+                paper_id,
+                paper_title,
+                workspace_rel_path,
+                workspace_abs_path,
+                workspace_ready,
+                attachment_count,
+                last_imported_at,
+                created_at,
+                updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, 0, ?6, ?7, ?7)
+            ON CONFLICT(paper_id) DO UPDATE SET
+                paper_title = excluded.paper_title,
+                workspace_rel_path = excluded.workspace_rel_path,
+                workspace_abs_path = excluded.workspace_abs_path,
+                workspace_ready = excluded.workspace_ready,
+                last_imported_at = COALESCE(excluded.last_imported_at, paper_workspace_cache.last_imported_at),
+                updated_at = excluded.updated_at
+            "#,
+            params![
+                paper_id,
+                paper_title,
+                workspace_rel_path,
+                workspace_abs_path,
+                if workspace_ready { 1 } else { 0 },
+                last_imported_at,
+                now
+            ],
+        )?;
+        self.refresh_paper_workspace_counts()
+    }
+
+    pub fn touch_paper_workspace_imported_at(
+        &self,
+        paper_id: &str,
+        last_imported_at: &str,
+    ) -> Result<()> {
+        let connection = self.open()?;
+        connection.execute(
+            r#"
+            UPDATE paper_workspace_cache
+            SET
+                last_imported_at = ?1,
+                updated_at = ?1
+            WHERE paper_id = ?2
+            "#,
+            params![last_imported_at, paper_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_paper_workspace(&self, paper_id: &str) -> Result<PaperWorkspaceRead> {
+        let connection = self.open()?;
+        let row = connection
+            .query_row(
+                r#"
+                SELECT
+                    paper_id,
+                    paper_title,
+                    workspace_rel_path,
+                    workspace_abs_path,
+                    workspace_ready,
+                    attachment_count,
+                    last_imported_at
+                FROM paper_workspace_cache
+                WHERE paper_id = ?1
+                "#,
+                params![paper_id],
+                |row| {
+                    Ok(PaperWorkspaceRead {
+                        paper_id: row.get(0)?,
+                        paper_title: row.get(1)?,
+                        workspace_rel_path: row.get(2)?,
+                        workspace_abs_path: row.get(3)?,
+                        workspace_ready: row.get::<_, i64>(4)? == 1,
+                        attachment_count: row.get(5)?,
+                        last_imported_at: row.get(6)?,
+                    })
+                },
+            )
+            .optional()?;
+
+        if let Some(workspace) = row {
+            return Ok(workspace);
+        }
+
+        let paper = connection
+            .query_row(
+                "SELECT title FROM paper_cache WHERE id = ?1",
+                params![paper_id],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?
+            .ok_or_else(|| invalid_state(format!("paper {paper_id} is not cached")))?;
+        let root = self.workspace_root_record()?;
+        let rel_path = format!("papers/{paper_id}");
+        Ok(PaperWorkspaceRead {
+            paper_id: paper_id.to_string(),
+            paper_title: paper,
+            workspace_rel_path: rel_path.clone(),
+            workspace_abs_path: workspace_root_rebind_path(root.root_path.as_deref(), &rel_path),
+            workspace_ready: false,
+            attachment_count: 0,
+            last_imported_at: None,
+        })
+    }
+
+    pub fn upsert_attachment(
+        &self,
+        id: &str,
+        paper_id: &str,
+        attachment_kind: &str,
+        storage_mode: &str,
+        original_file_name: &str,
+        stored_file_name: &str,
+        file_extension: Option<&str>,
+        relative_path: &str,
+        absolute_path: Option<&str>,
+        source_path: &str,
+        size_bytes: Option<i64>,
+        mime_type: Option<&str>,
+        sha256: Option<&str>,
+        status: &str,
+        imported_at: &str,
+        last_opened_at: Option<&str>,
+    ) -> Result<()> {
+        let connection = self.open()?;
+        connection.execute(
+            r#"
+            INSERT INTO paper_attachment_cache (
+                id,
+                paper_id,
+                attachment_kind,
+                storage_mode,
+                original_file_name,
+                stored_file_name,
+                file_extension,
+                relative_path,
+                absolute_path,
+                source_path,
+                size_bytes,
+                mime_type,
+                sha256,
+                status,
+                imported_at,
+                updated_at,
+                last_opened_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?15, ?16)
+            ON CONFLICT(id) DO UPDATE SET
+                attachment_kind = excluded.attachment_kind,
+                storage_mode = excluded.storage_mode,
+                original_file_name = excluded.original_file_name,
+                stored_file_name = excluded.stored_file_name,
+                file_extension = excluded.file_extension,
+                relative_path = excluded.relative_path,
+                absolute_path = excluded.absolute_path,
+                source_path = excluded.source_path,
+                size_bytes = excluded.size_bytes,
+                mime_type = excluded.mime_type,
+                sha256 = excluded.sha256,
+                status = excluded.status,
+                updated_at = excluded.updated_at,
+                last_opened_at = excluded.last_opened_at
+            "#,
+            params![
+                id,
+                paper_id,
+                attachment_kind,
+                storage_mode,
+                original_file_name,
+                stored_file_name,
+                file_extension,
+                relative_path,
+                absolute_path,
+                source_path,
+                size_bytes,
+                mime_type,
+                sha256,
+                status,
+                imported_at,
+                last_opened_at
+            ],
+        )?;
+        self.refresh_paper_workspace_counts()
+    }
+
+    pub fn get_attachment_by_id(&self, attachment_id: &str) -> Result<PaperAttachmentRead> {
+        let connection = self.open()?;
+        connection
+            .query_row(
+                r#"
+                SELECT
+                    id,
+                    paper_id,
+                    attachment_kind,
+                    storage_mode,
+                    original_file_name,
+                    stored_file_name,
+                    file_extension,
+                    relative_path,
+                    absolute_path,
+                    source_path,
+                    size_bytes,
+                    mime_type,
+                    sha256,
+                    status,
+                    imported_at,
+                    updated_at,
+                    last_opened_at
+                FROM paper_attachment_cache
+                WHERE id = ?1
+                "#,
+                params![attachment_id],
+                map_attachment_row,
+            )
+            .optional()?
+            .ok_or_else(|| invalid_state(format!("attachment {attachment_id} is not indexed")))
+    }
+
+    pub fn list_paper_attachments(&self, paper_id: &str) -> Result<Vec<PaperAttachmentRead>> {
+        let connection = self.open()?;
+        let mut statement = connection.prepare(
+            r#"
+            SELECT
+                id,
+                paper_id,
+                attachment_kind,
+                storage_mode,
+                original_file_name,
+                stored_file_name,
+                file_extension,
+                relative_path,
+                absolute_path,
+                source_path,
+                size_bytes,
+                mime_type,
+                sha256,
+                status,
+                imported_at,
+                updated_at,
+                last_opened_at
+            FROM paper_attachment_cache
+            WHERE paper_id = ?1
+            ORDER BY imported_at DESC, id ASC
+            "#,
+        )?;
+        let rows = statement.query_map(params![paper_id], map_attachment_row)?;
+        collect_rows(rows)
+    }
+
+    pub fn find_duplicate_attachment(
+        &self,
+        paper_id: &str,
+        sha256: Option<&str>,
+        size_bytes: Option<i64>,
+    ) -> Result<Option<DuplicateAttachmentRecord>> {
+        let connection = self.open()?;
+        if let Some(sha256) = sha256 {
+            let row = connection
+                .query_row(
+                    r#"
+                    SELECT id, sha256, size_bytes, original_file_name
+                    FROM paper_attachment_cache
+                    WHERE paper_id = ?1
+                      AND sha256 = ?2
+                    ORDER BY imported_at DESC, id ASC
+                    LIMIT 1
+                    "#,
+                    params![paper_id, sha256],
+                    |row| {
+                        Ok(DuplicateAttachmentRecord {
+                            attachment_id: row.get(0)?,
+                            sha256: row.get(1)?,
+                            size_bytes: row.get(2)?,
+                            original_file_name: row.get(3)?,
+                        })
+                    },
+                )
+                .optional()?;
+            if row.is_some() {
+                return Ok(row);
+            }
+        }
+
+        if let Some(size_bytes) = size_bytes {
+            return connection
+                .query_row(
+                    r#"
+                    SELECT id, sha256, size_bytes, original_file_name
+                    FROM paper_attachment_cache
+                    WHERE paper_id = ?1
+                      AND size_bytes = ?2
+                    ORDER BY imported_at DESC, id ASC
+                    LIMIT 1
+                    "#,
+                    params![paper_id, size_bytes],
+                    |row| {
+                        Ok(DuplicateAttachmentRecord {
+                            attachment_id: row.get(0)?,
+                            sha256: row.get(1)?,
+                            size_bytes: row.get(2)?,
+                            original_file_name: row.get(3)?,
+                        })
+                    },
+                )
+                .optional()
+                .map_err(Into::into);
+        }
+
+        Ok(None)
+    }
+
+    pub fn refresh_attachment_statuses(
+        &self,
+        root_path: Option<&str>,
+        paper_id: &str,
+    ) -> Result<()> {
+        let mut connection = self.open()?;
+        let transaction = connection.transaction()?;
+        let now = timestamp_now();
+        {
+            let mut statement = transaction.prepare(
+                r#"
+                SELECT id, relative_path
+                FROM paper_attachment_cache
+                WHERE paper_id = ?1
+                ORDER BY id ASC
+                "#,
+            )?;
+            let rows = statement.query_map(params![paper_id], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })?;
+            for row in rows {
+                let (attachment_id, rel_path) = row?;
+                let absolute_path = workspace_root_rebind_path(root_path, &rel_path);
+                let status = if root_path.is_some() {
+                    attachment_status_for_path(absolute_path.as_deref())
+                } else {
+                    "ready".to_string()
+                };
+                transaction.execute(
+                    r#"
+                    UPDATE paper_attachment_cache
+                    SET
+                        absolute_path = ?1,
+                        status = ?2,
+                        updated_at = ?3
+                    WHERE id = ?4
+                    "#,
+                    params![absolute_path, status, now, attachment_id],
+                )?;
+            }
+        }
+        transaction.commit()?;
+        self.refresh_paper_workspace_counts()
+    }
+
+    pub fn refresh_paper_workspace_counts(&self) -> Result<()> {
+        let connection = self.open()?;
+        connection.execute(
+            r#"
+            UPDATE paper_workspace_cache
+            SET attachment_count = (
+                SELECT COUNT(*)
+                FROM paper_attachment_cache
+                WHERE paper_attachment_cache.paper_id = paper_workspace_cache.paper_id
+            )
+            "#,
+            [],
+        )?;
+        Ok(())
+    }
+
     pub fn list_subscription_policies(&self) -> Result<Vec<SubscriptionPolicyRead>> {
         let connection = self.open()?;
         let user_id = current_user_id(&connection)?;
@@ -770,6 +1410,7 @@ impl LocalCache {
         for row in rows {
             let row = row?;
             let outbox_state = paper_outbox_state(&connection, &row.0)?;
+            let workspace = self.get_paper_workspace(&row.0)?;
             papers.push(PaperListItemRead {
                 id: row.0,
                 user_id: row.1,
@@ -785,6 +1426,8 @@ impl LocalCache {
                 updated_at: row.10,
                 pending_mutation_count: outbox_state.pending_count,
                 last_mutation_error: outbox_state.last_error,
+                attachment_count: workspace.attachment_count,
+                workspace_ready: workspace.workspace_ready,
             });
         }
         Ok(papers)
@@ -891,6 +1534,8 @@ impl LocalCache {
         };
 
         let outbox_state = paper_outbox_state(&connection, paper_id)?;
+        let workspace = self.get_paper_workspace(paper_id)?;
+        let attachments = self.list_paper_attachments(paper_id)?;
         Ok(PaperDetailRead {
             id: paper.0,
             user_id: paper.1,
@@ -911,6 +1556,8 @@ impl LocalCache {
             signal_snapshots,
             pending_mutation_count: outbox_state.pending_count,
             last_mutation_error: outbox_state.last_error,
+            workspace,
+            attachments,
         })
     }
 
@@ -980,6 +1627,7 @@ impl LocalCache {
         match row {
             Some(row) => {
                 let outbox_state = paper_outbox_state(&connection, &row.0)?;
+                let workspace = self.get_paper_workspace(&row.0)?;
                 Ok(Some(PaperListItemRead {
                     id: row.0,
                     user_id: row.1,
@@ -995,6 +1643,8 @@ impl LocalCache {
                     updated_at: row.10,
                     pending_mutation_count: outbox_state.pending_count,
                     last_mutation_error: outbox_state.last_error,
+                    attachment_count: workspace.attachment_count,
+                    workspace_ready: workspace.workspace_ready,
                 }))
             }
             None => Ok(None),
@@ -1045,6 +1695,11 @@ fn apply_single_event(connection: &Connection, event: &RemoteSyncEvent) -> Resul
 }
 
 fn upsert_paper(connection: &Connection, payload: &Value) -> Result<()> {
+    let paper_id = required_string(payload, "id")?;
+    let user_id = required_string(payload, "user_id")?;
+    let title = required_string(payload, "title")?;
+    let paper_type = required_string(payload, "type")?;
+    let stage = required_string(payload, "stage")?;
     connection.execute(
         r#"
         INSERT INTO paper_cache (
@@ -1077,11 +1732,11 @@ fn upsert_paper(connection: &Connection, payload: &Value) -> Result<()> {
             source_links_json = excluded.source_links_json
         "#,
         params![
-            required_string(payload, "id")?,
-            required_string(payload, "user_id")?,
-            required_string(payload, "title")?,
-            required_string(payload, "type")?,
-            required_string(payload, "stage")?,
+            paper_id,
+            user_id,
+            title,
+            paper_type,
+            stage,
             value_as_string(payload.get("venue")),
             payload.get("priority").and_then(Value::as_i64).unwrap_or(0),
             value_as_string(payload.get("next_action")),
@@ -1098,6 +1753,18 @@ fn upsert_paper(connection: &Connection, payload: &Value) -> Result<()> {
                     .get("source_links")
                     .unwrap_or(&Value::Array(Vec::new())),
             )?,
+        ],
+    )?;
+    connection.execute(
+        r#"
+        UPDATE paper_workspace_cache
+        SET paper_title = ?1, updated_at = ?2
+        WHERE paper_id = ?3
+        "#,
+        params![
+            required_string(payload, "title")?,
+            value_as_string(payload.get("updated_at")).unwrap_or_else(timestamp_now),
+            required_string(payload, "id")?
         ],
     )?;
     Ok(())
@@ -1468,6 +2135,28 @@ fn map_mutation_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<PendingMutation
         created_at: row.get(10)?,
         updated_at: row.get(11)?,
         last_attempted_at: row.get(12)?,
+    })
+}
+
+fn map_attachment_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<PaperAttachmentRead> {
+    Ok(PaperAttachmentRead {
+        id: row.get(0)?,
+        paper_id: row.get(1)?,
+        attachment_kind: row.get(2)?,
+        storage_mode: row.get(3)?,
+        original_file_name: row.get(4)?,
+        stored_file_name: row.get(5)?,
+        file_extension: row.get(6)?,
+        relative_path: row.get(7)?,
+        absolute_path: row.get(8)?,
+        source_path: row.get(9)?,
+        size_bytes: row.get(10)?,
+        mime_type: row.get(11)?,
+        sha256: row.get(12)?,
+        status: row.get(13)?,
+        imported_at: row.get(14)?,
+        updated_at: row.get(15)?,
+        last_opened_at: row.get(16)?,
     })
 }
 

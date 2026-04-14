@@ -7,14 +7,22 @@ use uuid::Uuid;
 use crate::cache::{LocalCache, PushOutcomeSummary};
 use crate::error::invalid_state;
 use crate::models::{
-    AppBootstrapRead, ConnectDeviceInput, ConnectDeviceResponse, ListPapersInput,
-    PaperDetailRead, PaperListItemRead, PendingMutationRead, QueuePaperPatchInput,
+    AppBootstrapRead, ChooseWorkspaceRootInput, ConnectDeviceInput, ConnectDeviceResponse,
+    ImportPaperAttachmentsInput, ImportPaperAttachmentsResponse, ListPapersInput,
+    PaperAttachmentImportResultRead, PaperAttachmentRead, PaperDetailRead, PaperListItemRead,
+    PaperWorkspaceRead, PendingMutationRead, QueuePaperPatchInput,
     QueueProgressEventCreateInput, QueueSubscriptionPolicyPatchInput, RemoteSyncMutationRequest,
     RemoteSyncPushRequest, SubscriptionPolicyRead, SyncNowResponse, SyncStatusRead,
-    TodayOverviewRead, UserConnectionRead, WriteActionResultRead,
+    TodayOverviewRead, UserConnectionRead, WorkspaceStatusRead, WriteActionResultRead,
 };
 use crate::secret_store::FileSecretStore;
 use crate::sync_client::{ReqwestSyncBackendApi, SyncBackendApi};
+use crate::workspace::{
+    attachment_status_for_path, build_workspace_layout, collect_file_import_metadata,
+    ensure_paper_workspace_layout, paper_workspace_ready_for_path, path_to_string,
+    prepare_attachment_import, should_treat_as_duplicate, validate_attachment_kind,
+    validate_workspace_root, workspace_root_rebind_path, WorkspaceRootRecord,
+};
 
 const FEED_PAGE_LIMIT: usize = 100;
 
@@ -75,6 +83,201 @@ impl DesktopService {
 
     pub fn list_pending_mutations(&self) -> Result<Vec<PendingMutationRead>> {
         self.cache().list_pending_mutations()
+    }
+
+    pub fn get_workspace_status(&self) -> Result<WorkspaceStatusRead> {
+        let cache = self.cache();
+        let current = cache.workspace_root_record()?;
+        let validation = validate_workspace_root(current.root_path.as_deref());
+        cache.upsert_workspace_root_record(
+            validation.root_path.as_deref(),
+            &validation.status,
+            validation.last_validated_at.as_str(),
+            validation.last_error.as_deref(),
+        )?;
+        cache.rebind_workspace_root(validation.root_path.as_deref())?;
+        cache.workspace_status()
+    }
+
+    pub fn choose_workspace_root(
+        &self,
+        input: ChooseWorkspaceRootInput,
+    ) -> Result<WorkspaceStatusRead> {
+        let validation = validate_workspace_root(Some(&input.selected_path));
+        if validation.status != "ready" {
+            return Err(invalid_state(
+                validation
+                    .last_error
+                    .unwrap_or_else(|| "workspace root is not valid".to_string()),
+            ));
+        }
+        let cache = self.cache();
+        cache.upsert_workspace_root_record(
+            validation.root_path.as_deref(),
+            &validation.status,
+            validation.last_validated_at.as_str(),
+            None,
+        )?;
+        cache.rebind_workspace_root(validation.root_path.as_deref())?;
+        cache.workspace_status()
+    }
+
+    pub fn clear_workspace_root(&self) -> Result<WorkspaceStatusRead> {
+        let cache = self.cache();
+        let validation = validate_workspace_root(None);
+        cache.upsert_workspace_root_record(
+            None,
+            &validation.status,
+            validation.last_validated_at.as_str(),
+            None,
+        )?;
+        cache.rebind_workspace_root(None)?;
+        cache.workspace_status()
+    }
+
+    pub fn ensure_paper_workspace(&self, paper_id: &str) -> Result<PaperWorkspaceRead> {
+        if paper_id.trim().is_empty() {
+            return Err(invalid_state("paper_id is required"));
+        }
+        let cache = self.cache();
+        let root = self.ensure_workspace_root_ready()?;
+        let paper = cache.get_paper_detail(paper_id)?;
+        let layout = ensure_paper_workspace_layout(
+            std::path::Path::new(&root.root_path.clone().unwrap_or_default()),
+            paper_id,
+            &paper.title,
+        )?;
+        cache.upsert_paper_workspace(
+            paper_id,
+            &paper.title,
+            &layout.paper_rel_path,
+            Some(path_to_string(&layout.paper_abs_path).as_str()),
+            true,
+            None,
+        )?;
+        cache.get_paper_workspace(paper_id)
+    }
+
+    pub fn get_paper_workspace(&self, paper_id: &str) -> Result<PaperWorkspaceRead> {
+        if paper_id.trim().is_empty() {
+            return Err(invalid_state("paper_id is required"));
+        }
+        self.cache().get_paper_workspace(paper_id)
+    }
+
+    pub fn list_paper_attachments(&self, paper_id: &str) -> Result<Vec<PaperAttachmentRead>> {
+        if paper_id.trim().is_empty() {
+            return Err(invalid_state("paper_id is required"));
+        }
+        self.cache().list_paper_attachments(paper_id)
+    }
+
+    pub fn import_paper_attachments(
+        &self,
+        input: ImportPaperAttachmentsInput,
+    ) -> Result<ImportPaperAttachmentsResponse> {
+        if input.paper_id.trim().is_empty() {
+            return Err(invalid_state("paper_id is required"));
+        }
+        if input.source_paths.is_empty() {
+            return Err(invalid_state("source_paths must not be empty"));
+        }
+        let attachment_kind = validate_attachment_kind(&input.attachment_kind)?;
+        let cache = self.cache();
+        let root = self.ensure_workspace_root_ready()?;
+        let paper = cache.get_paper_detail(&input.paper_id)?;
+        let root_path = std::path::Path::new(root.root_path.as_deref().unwrap_or_default());
+        let layout = ensure_paper_workspace_layout(root_path, &input.paper_id, &paper.title)?;
+        cache.upsert_paper_workspace(
+            &input.paper_id,
+            &paper.title,
+            &layout.paper_rel_path,
+            Some(path_to_string(&layout.paper_abs_path).as_str()),
+            true,
+            None,
+        )?;
+
+        let imported_at = chrono::Utc::now().to_rfc3339();
+        let mut results = Vec::new();
+        let mut imported_any = false;
+        let mut last_error_message = None;
+
+        for source_path in input.source_paths {
+            match self.import_single_attachment(
+                &cache,
+                &paper.id,
+                &paper.title,
+                &attachment_kind,
+                &layout,
+                &source_path,
+                &imported_at,
+            ) {
+                Ok(result) => {
+                    if result.status == "imported" {
+                        imported_any = true;
+                    }
+                    results.push(result);
+                }
+                Err(error) => {
+                    let message = format!("{error:#}");
+                    last_error_message = Some(message.clone());
+                    results.push(PaperAttachmentImportResultRead {
+                        source_path,
+                        status: "failed".to_string(),
+                        message: Some(message),
+                        attachment: None,
+                    });
+                }
+            }
+        }
+
+        if imported_any {
+            cache.touch_paper_workspace_imported_at(&paper.id, &imported_at)?;
+        }
+        let workspace = self.refresh_paper_workspace(&paper.id)?;
+        if results.iter().all(|result| result.status == "failed") {
+            return Err(invalid_state(
+                last_error_message.unwrap_or_else(|| "attachment import failed".to_string()),
+            ));
+        }
+        Ok(ImportPaperAttachmentsResponse { workspace, results })
+    }
+
+    pub fn refresh_paper_workspace(&self, paper_id: &str) -> Result<PaperWorkspaceRead> {
+        if paper_id.trim().is_empty() {
+            return Err(invalid_state("paper_id is required"));
+        }
+        let cache = self.cache();
+        let root = self.get_workspace_status()?;
+        let root_path = root.root_path.as_deref();
+        let paper_title = cache.get_paper_detail(paper_id)?.title;
+        let fallback_rel_path = build_workspace_layout(
+            std::path::Path::new(root_path.unwrap_or(".")),
+            paper_id,
+        )
+        .paper_rel_path;
+        let current = cache.get_paper_workspace(paper_id).unwrap_or(PaperWorkspaceRead {
+            paper_id: paper_id.to_string(),
+            paper_title: paper_title.clone(),
+            workspace_rel_path: fallback_rel_path,
+            workspace_abs_path: workspace_root_rebind_path(root_path, &format!("papers/{paper_id}")),
+            workspace_ready: false,
+            attachment_count: 0,
+            last_imported_at: None,
+        });
+        let workspace_abs_path =
+            workspace_root_rebind_path(root_path, &current.workspace_rel_path);
+        let workspace_ready = paper_workspace_ready_for_path(workspace_abs_path.as_deref());
+        cache.upsert_paper_workspace(
+            paper_id,
+            &paper_title,
+            &current.workspace_rel_path,
+            workspace_abs_path.as_deref(),
+            workspace_ready,
+            current.last_imported_at.as_deref(),
+        )?;
+        cache.refresh_attachment_statuses(root_path, paper_id)?;
+        cache.get_paper_workspace(paper_id)
     }
 
     pub fn connect_with<A: SyncBackendApi>(
@@ -436,6 +639,80 @@ impl DesktopService {
     fn secret_store(&self) -> FileSecretStore {
         FileSecretStore::new(self.paths.secret_store_path.clone())
     }
+
+    fn ensure_workspace_root_ready(&self) -> Result<WorkspaceRootRecord> {
+        let _ = self.get_workspace_status()?;
+        let root = self.cache().workspace_root_record()?;
+        if root.status != "ready" {
+            return Err(invalid_state(
+                root.last_error
+                    .unwrap_or_else(|| "workspace root is not configured and ready".to_string()),
+            ));
+        }
+        Ok(root)
+    }
+
+    fn import_single_attachment(
+        &self,
+        cache: &LocalCache,
+        paper_id: &str,
+        paper_title: &str,
+        attachment_kind: &str,
+        layout: &crate::workspace::WorkspaceLayoutPaths,
+        source_path: &str,
+        imported_at: &str,
+    ) -> Result<PaperAttachmentImportResultRead> {
+        let metadata = collect_file_import_metadata(source_path)?;
+        if let Some(duplicate) =
+            cache.find_duplicate_attachment(paper_id, metadata.sha256.as_deref(), metadata.size_bytes)?
+        {
+            if should_treat_as_duplicate(
+                duplicate.sha256.as_deref(),
+                duplicate.size_bytes,
+                &duplicate.original_file_name,
+                &metadata,
+            ) {
+                let attachment = cache.get_attachment_by_id(&duplicate.attachment_id)?;
+                return Ok(PaperAttachmentImportResultRead {
+                    source_path: metadata.source_path.clone(),
+                    status: "duplicate".to_string(),
+                    message: Some(format!(
+                        "duplicate attachment already indexed for {paper_title}"
+                    )),
+                    attachment: Some(attachment),
+                });
+            }
+        }
+
+        let prepared = prepare_attachment_import(layout, &metadata, imported_at)?;
+        crate::workspace::copy_managed_attachment(&prepared)?;
+        let status = attachment_status_for_path(Some(&prepared.absolute_path));
+        cache.upsert_attachment(
+            &prepared.attachment_id,
+            paper_id,
+            attachment_kind,
+            "managed_copy",
+            &metadata.original_file_name,
+            &prepared.stored_file_name,
+            metadata.file_extension.as_deref(),
+            &prepared.relative_path,
+            Some(prepared.absolute_path.as_str()),
+            &metadata.source_path,
+            metadata.size_bytes,
+            metadata.mime_type.as_deref(),
+            metadata.sha256.as_deref(),
+            &status,
+            imported_at,
+            None,
+        )?;
+
+        Ok(PaperAttachmentImportResultRead {
+            source_path: metadata.source_path,
+            status: "imported".to_string(),
+            message: None,
+            attachment: Some(cache.get_attachment_by_id(&prepared.attachment_id)?),
+        })
+    }
 }
 
 fn normalize_base_url(value: &str) -> Result<String> {
@@ -469,14 +746,15 @@ fn error_to_string(error: anyhow::Error) -> String {
 
 #[cfg(test)]
 mod tests {
-    use std::{cell::RefCell, rc::Rc};
+    use std::{cell::RefCell, path::PathBuf, rc::Rc};
 
     use serde_json::json;
     use tempfile::tempdir;
 
-    use super::{ConnectDeviceInput, DesktopPaths, DesktopService, ListPapersInput};
+    use super::{ChooseWorkspaceRootInput, ConnectDeviceInput, DesktopPaths, DesktopService, ListPapersInput};
     use crate::models::{
-        QueuePaperPatchInput, QueueProgressEventCreateInput, QueueSubscriptionPolicyPatchInput,
+        ImportPaperAttachmentsInput, QueuePaperPatchInput, QueueProgressEventCreateInput,
+        QueueSubscriptionPolicyPatchInput,
         RemoteSyncAck, RemoteSyncDevice, RemoteSyncEvent, RemoteSyncFeed, RemoteSyncMe,
         RemoteSyncMutationResult, RemoteSyncPushRequest, RemoteSyncPushResponse, RemoteSyncUser,
     };
@@ -544,6 +822,13 @@ mod tests {
             secret_store_path: root.join("device-secret.json"),
         })
         .unwrap()
+    }
+
+    fn new_temp_path() -> PathBuf {
+        let dir = tempdir().unwrap();
+        let path = dir.path().to_path_buf();
+        std::mem::forget(dir);
+        path
     }
 
     fn connect(service: &DesktopService, api: &FakeApi, feed_results: Vec<anyhow::Result<RemoteSyncFeed>>) {
@@ -1227,5 +1512,193 @@ mod tests {
             }))
             .unwrap();
         assert_eq!(papers.len(), 1);
+    }
+
+    #[test]
+    fn choose_workspace_root_persists_valid_root() {
+        let service = service();
+        let workspace_root = new_temp_path();
+
+        let status = service
+            .choose_workspace_root(ChooseWorkspaceRootInput {
+                selected_path: workspace_root.to_string_lossy().into_owned(),
+            })
+            .unwrap();
+        let canonical = std::fs::canonicalize(&workspace_root).unwrap();
+
+        assert_eq!(status.status, "ready");
+        assert_eq!(
+            service.get_workspace_status().unwrap().root_path,
+            Some(canonical.to_string_lossy().into_owned())
+        );
+    }
+
+    #[test]
+    fn ensure_paper_workspace_creates_expected_layout() {
+        let service = service();
+        let api = FakeApi::default();
+        let workspace_root = new_temp_path();
+        connect(
+            &service,
+            &api,
+            vec![Ok(RemoteSyncFeed {
+                events: vec![paper_event("revision", 1)],
+                next_after_sequence: 1,
+                has_more: false,
+            })],
+        );
+        service
+            .choose_workspace_root(ChooseWorkspaceRootInput {
+                selected_path: workspace_root.to_string_lossy().into_owned(),
+            })
+            .unwrap();
+
+        let workspace = service.ensure_paper_workspace("paper-1").unwrap();
+        let workspace_path = PathBuf::from(workspace.workspace_abs_path.unwrap());
+        assert!(workspace.workspace_ready);
+        assert!(workspace_path.join("attachments").exists());
+        assert!(workspace_path.join("notes").exists());
+        assert!(workspace_path.join("exports").exists());
+        assert!(workspace_path.join("workspace.json").exists());
+    }
+
+    #[test]
+    fn import_attachment_managed_copy_and_duplicate_detection_work() {
+        let service = service();
+        let api = FakeApi::default();
+        let workspace_root = new_temp_path();
+        let source_dir = new_temp_path();
+        let source_file = source_dir.join("draft.pdf");
+        std::fs::write(&source_file, b"paper draft").unwrap();
+        connect(
+            &service,
+            &api,
+            vec![Ok(RemoteSyncFeed {
+                events: vec![paper_event("revision", 1)],
+                next_after_sequence: 1,
+                has_more: false,
+            })],
+        );
+        service
+            .choose_workspace_root(ChooseWorkspaceRootInput {
+                selected_path: workspace_root.to_string_lossy().into_owned(),
+            })
+            .unwrap();
+
+        let imported = service
+            .import_paper_attachments(ImportPaperAttachmentsInput {
+                paper_id: "paper-1".to_string(),
+                attachment_kind: "manuscript".to_string(),
+                source_paths: vec![source_file.to_string_lossy().into_owned()],
+            })
+            .unwrap();
+        assert_eq!(imported.results[0].status, "imported");
+        let attachment = imported.results[0].attachment.clone().unwrap();
+        assert!(PathBuf::from(&attachment.absolute_path.clone().unwrap()).exists());
+        assert!(source_file.exists());
+
+        let duplicate = service
+            .import_paper_attachments(ImportPaperAttachmentsInput {
+                paper_id: "paper-1".to_string(),
+                attachment_kind: "manuscript".to_string(),
+                source_paths: vec![source_file.to_string_lossy().into_owned()],
+            })
+            .unwrap();
+        assert_eq!(duplicate.results[0].status, "duplicate");
+        assert_eq!(service.list_paper_attachments("paper-1").unwrap().len(), 1);
+    }
+
+    #[test]
+    fn refresh_workspace_marks_missing_files() {
+        let service = service();
+        let api = FakeApi::default();
+        let workspace_root = new_temp_path();
+        let source_dir = new_temp_path();
+        let source_file = source_dir.join("review.txt");
+        std::fs::write(&source_file, b"review text").unwrap();
+        connect(
+            &service,
+            &api,
+            vec![Ok(RemoteSyncFeed {
+                events: vec![paper_event("revision", 1)],
+                next_after_sequence: 1,
+                has_more: false,
+            })],
+        );
+        service
+            .choose_workspace_root(ChooseWorkspaceRootInput {
+                selected_path: workspace_root.to_string_lossy().into_owned(),
+            })
+            .unwrap();
+        let imported = service
+            .import_paper_attachments(ImportPaperAttachmentsInput {
+                paper_id: "paper-1".to_string(),
+                attachment_kind: "review".to_string(),
+                source_paths: vec![source_file.to_string_lossy().into_owned()],
+            })
+            .unwrap();
+        let managed_path = PathBuf::from(
+            imported.results[0]
+                .attachment
+                .clone()
+                .unwrap()
+                .absolute_path
+                .unwrap(),
+        );
+        std::fs::remove_file(managed_path).unwrap();
+
+        let workspace = service.refresh_paper_workspace("paper-1").unwrap();
+        assert_eq!(workspace.attachment_count, 1);
+        assert_eq!(
+            service.list_paper_attachments("paper-1").unwrap()[0].status,
+            "missing"
+        );
+    }
+
+    #[test]
+    fn clear_local_cache_and_disconnect_do_not_delete_managed_files() {
+        let service = service();
+        let api = FakeApi::default();
+        let workspace_root = new_temp_path();
+        let source_dir = new_temp_path();
+        let source_file = source_dir.join("response.docx");
+        std::fs::write(&source_file, b"response").unwrap();
+        connect(
+            &service,
+            &api,
+            vec![Ok(RemoteSyncFeed {
+                events: vec![paper_event("revision", 1)],
+                next_after_sequence: 1,
+                has_more: false,
+            })],
+        );
+        service
+            .choose_workspace_root(ChooseWorkspaceRootInput {
+                selected_path: workspace_root.to_string_lossy().into_owned(),
+            })
+            .unwrap();
+        let imported = service
+            .import_paper_attachments(ImportPaperAttachmentsInput {
+                paper_id: "paper-1".to_string(),
+                attachment_kind: "response_letter".to_string(),
+                source_paths: vec![source_file.to_string_lossy().into_owned()],
+            })
+            .unwrap();
+        let managed_path = PathBuf::from(
+            imported.results[0]
+                .attachment
+                .clone()
+                .unwrap()
+                .absolute_path
+                .unwrap(),
+        );
+
+        service.clear_local_cache().unwrap();
+        assert!(managed_path.exists());
+        assert_eq!(service.list_paper_attachments("paper-1").unwrap().len(), 1);
+
+        service.disconnect_device().unwrap();
+        assert!(managed_path.exists());
+        assert_eq!(service.list_paper_attachments("paper-1").unwrap().len(), 1);
     }
 }
