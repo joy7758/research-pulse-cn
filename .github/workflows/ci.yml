@@ -28,3 +28,34 @@ jobs:
 
       - name: Pytest
         run: pytest
+
+  desktop:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/desktop
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: apps/desktop/package-lock.json
+
+      - name: Install desktop dependencies
+        run: npm ci
+
+      - name: Desktop lint
+        run: npm run lint
+
+      - name: Desktop typecheck
+        run: npm run typecheck
+
+      - name: Desktop tests
+        run: npm run test
+
+      - name: Desktop web build
+        run: npm run build

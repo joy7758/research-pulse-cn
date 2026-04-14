@@ -1,7 +1,10 @@
 PYTHON ?= python3
+NPM ?= npm
 PACKAGE = research_pulse_cn
+DESKTOP_DIR = apps/desktop
+export PATH := $(HOME)/.cargo/bin:$(PATH)
 
-.PHONY: install run run-api migrate seed worker run-worker run-scheduler scheduler-tick bootstrap-admin lint format test check docker-up docker-down
+.PHONY: install run run-api migrate seed worker run-worker run-scheduler scheduler-tick bootstrap-admin lint format test check docker-up docker-down desktop-install desktop-dev desktop-lint desktop-test desktop-build-web
 
 install:
 	$(PYTHON) -m pip install --upgrade pip
@@ -52,3 +55,19 @@ docker-up:
 
 docker-down:
 	docker compose down
+
+desktop-install:
+	cd $(DESKTOP_DIR) && $(NPM) install
+
+desktop-dev:
+	cd $(DESKTOP_DIR) && $(NPM) run tauri dev
+
+desktop-lint:
+	cd $(DESKTOP_DIR) && $(NPM) run lint && $(NPM) run typecheck
+
+desktop-test:
+	cd $(DESKTOP_DIR) && $(NPM) run test
+	cd $(DESKTOP_DIR) && cargo test --manifest-path src-tauri/Cargo.toml
+
+desktop-build-web:
+	cd $(DESKTOP_DIR) && $(NPM) run build

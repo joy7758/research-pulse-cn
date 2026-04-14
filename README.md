@@ -17,6 +17,7 @@ Private repository. Proprietary and confidential.
 - Device-token sync backbone for desktop and future lightweight clients
 - WeChat identity bindings plus digest issue/publication reserve objects for future official-account and mini-program flows
 - Official-account provider boundary with `disabled` / `dry_run` / explicit `real` mode, callback ingress, and token-backed real-send activation
+- Tauri 2 desktop shell with Rust-side read-only pull sync, local SQLite cache, and compact desktop read models
 - Seed data, Docker Compose, pytest, Ruff, and CI
 
 ## Architecture
@@ -63,8 +64,28 @@ The code keeps pulse generation behind stable interfaces such as `FactCollector`
    `make run-worker`
 10. Run the daily scheduler:
    `make run-scheduler`
+11. Install desktop dependencies if you are working on the shell:
+   `make desktop-install`
+12. Run the desktop shell:
+   `make desktop-dev`
 
 Open API docs at `http://127.0.0.1:8000/docs`.
+
+## Desktop shell
+The repository now includes a desktop client skeleton under `apps/desktop` using:
+- Tauri 2
+- React
+- TypeScript
+- Vite
+
+The shell currently uses read-only pull sync against:
+- `GET /sync/me`
+- `GET /sync/feed`
+- `POST /sync/ack`
+
+Desktop prerequisites on macOS include:
+- Xcode Command Line Tools
+- Rust
 
 ## Common commands
 - `make install`: install runtime and dev dependencies
@@ -82,6 +103,11 @@ Open API docs at `http://127.0.0.1:8000/docs`.
 - `make check`: run lint and tests
 - `make docker-up`: start API dependencies with Docker Compose
 - `make docker-down`: stop Docker Compose services
+- `make desktop-install`: install desktop dependencies under `apps/desktop`
+- `make desktop-dev`: run the Tauri desktop shell in development mode
+- `make desktop-lint`: run desktop lint and typecheck
+- `make desktop-test`: run desktop frontend tests plus Rust cache/sync tests
+- `make desktop-build-web`: build the desktop web frontend without native packaging
 
 ## Environment
 Main environment variables are documented in `.env.example`.
@@ -232,6 +258,9 @@ Admin authentication, RBAC, internal service auth, audit logs, and bootstrap flo
 
 ## Sync foundation
 Device identity, incremental feed, mutation idempotency, and future lightweight-client alignment are documented in [docs/sync_foundation.md](docs/sync_foundation.md).
+
+## Desktop Tauri skeleton
+Desktop shell layout, local cache, pull-sync flow, and developer workflow are documented in [docs/desktop_tauri_skeleton_v1.md](docs/desktop_tauri_skeleton_v1.md).
 
 ## Official-account digest reserve
 Digest issues, WeChat identity binding, and publication preparation without real external sends are documented in [docs/official_account_digest_reserve.md](docs/official_account_digest_reserve.md).

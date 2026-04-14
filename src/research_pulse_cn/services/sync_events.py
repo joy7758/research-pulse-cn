@@ -169,6 +169,7 @@ class SyncEventService:
         event_type: SyncEventType,
         event_source: SyncEventSource,
     ) -> SyncEvent:
+        content_payload = dict(digest_issue.content_payload or {})
         return self._emit(
             user_id=digest_issue.user_id,
             entity_type="pulse_digest_issue",
@@ -190,6 +191,8 @@ class SyncEventService:
                 "highlight_count": digest_issue.highlight_count,
                 "selected_card_count": digest_issue.selected_card_count,
                 "deep_link_path": digest_issue.deep_link_path,
+                "highlights": list(content_payload.get("highlights") or []),
+                "items": list(content_payload.get("items") or []),
                 "updated_at": _iso_or_none(digest_issue.updated_at),
             },
         )

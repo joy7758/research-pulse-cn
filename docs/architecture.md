@@ -13,6 +13,7 @@ Core flow:
 7. Official-account publication jobs can be dispatched through a provider boundary in `disabled`, `dry_run`, or explicit `real` mode while callback events update existing bindings.
 8. Mini read grants expose compact mobile-friendly read models for future mini-program landing without opening write access.
 9. Sync devices consume incremental `SyncEvent` feeds and push idempotent mutations back through the same service layer.
+10. A Tauri desktop shell consumes the same sync feed in read-only pull mode and materializes local SQLite read models without bundling the backend.
 
 ## Module boundaries
 
@@ -170,6 +171,22 @@ Tie-break order is deterministic:
 - `PulseDigestIssue` create/update now also emits compact sync events so future read-only clients can consume digest state.
 - `SyncCursor` tracks the latest acknowledged sequence per device.
 - `SyncMutation` records idempotent client-originated writes keyed by `(client_device_id, client_mutation_id)`.
+
+### Desktop shell
+- `apps/desktop` is isolated from the Python backend.
+- Rust owns:
+  - secret storage
+  - local SQLite cache
+  - sync HTTP client
+  - typed Tauri command boundary
+- React owns:
+  - connection/onboarding view
+  - Today view
+  - Papers view
+  - Paper Detail view
+  - Settings / Sync Status view
+- The desktop shell currently uses read-only pull sync only.
+- It is designed so future write-back sync can land on top of the existing cache and command boundaries.
 
 ### Consistency model
 - Supported sync patches are last-write-wins in v1.
