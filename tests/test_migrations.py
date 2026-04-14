@@ -24,6 +24,7 @@ def test_alembic_upgrade_creates_core_tables(tmp_path) -> None:
         "client_devices",
         "client_access_tokens",
         "digest_publication_jobs",
+        "mini_read_grants",
         "sync_events",
         "sync_cursors",
         "sync_mutations",
@@ -192,3 +193,16 @@ def test_alembic_upgrade_creates_core_tables(tmp_path) -> None:
         "payload",
         "prepared_at",
     }.issubset(publication_job_columns)
+    mini_grant_columns = {column["name"] for column in inspector.get_columns("mini_read_grants")}
+    assert {
+        "user_id",
+        "binding_id",
+        "digest_issue_id",
+        "grant_type",
+        "token_hash",
+        "status",
+        "scope",
+        "expires_at",
+        "last_used_at",
+        "created_by_admin_id",
+    }.issubset(mini_grant_columns)

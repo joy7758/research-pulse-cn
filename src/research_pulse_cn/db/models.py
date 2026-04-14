@@ -33,6 +33,8 @@ from research_pulse_cn.domain.enums import (
     DigestPublicationMode,
     DigestPublicationStatus,
     DigestPublicationTarget,
+    MiniReadGrantStatus,
+    MiniReadGrantType,
     PaperType,
     PulseCardType,
     PulseDigestIssueStatus,
@@ -83,6 +85,9 @@ class AdminAccount(TimestampMixin, Base):
         back_populates="admin_account",
         cascade="all, delete-orphan",
     )
+    created_mini_read_grants: Mapped[list[MiniReadGrant]] = relationship(
+        back_populates="created_by_admin",
+    )
 
 
 class UserProfile(TimestampMixin, Base):
@@ -121,6 +126,10 @@ class UserProfile(TimestampMixin, Base):
         back_populates="user",
         cascade="all, delete-orphan",
         order_by="PulseDigestIssue.issue_date",
+    )
+    mini_read_grants: Mapped[list[MiniReadGrant]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
     )
     sync_events: Mapped[list[SyncEvent]] = relationship(
         back_populates="user",
@@ -343,6 +352,9 @@ class WeChatIdentityBinding(TimestampMixin, Base):
         back_populates="binding",
         cascade="all, delete-orphan",
     )
+    mini_read_grants: Mapped[list[MiniReadGrant]] = relationship(
+        back_populates="binding",
+    )
 
 
 class PulseDigestIssue(TimestampMixin, Base):
@@ -384,6 +396,45 @@ class PulseDigestIssue(TimestampMixin, Base):
     publication_jobs: Mapped[list[DigestPublicationJob]] = relationship(
         back_populates="digest_issue",
         cascade="all, delete-orphan",
+    )
+    mini_read_grants: Mapped[list[MiniReadGrant]] = relationship(
+        back_populates="digest_issue",
+    )
+
+
+class MiniReadGrant(TimestampMixin, Base):
+    __tablename__ = "mini_read_grants"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("user_profiles.id", ondelete="CASCADE"))
+    binding_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("wechat_identity_bindings.id", ondelete="SET NULL")
+    )
+    digest_issue_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("pulse_digest_issues.id", ondelete="SET NULL")
+    )
+    grant_type: Mapped[MiniReadGrantType] = mapped_column(
+        Enum(MiniReadGrantType, native_enum=False),
+        nullable=False,
+    )
+    token_hash: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    status: Mapped[MiniReadGrantStatus] = mapped_column(
+        Enum(MiniReadGrantStatus, native_enum=False),
+        nullable=False,
+        default=MiniReadGrantStatus.ACTIVE,
+    )
+    scope_json: Mapped[dict[str, Any] | None] = mapped_column("scope", JSON_VARIANT)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_by_admin_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("admin_accounts.id", ondelete="SET NULL")
+    )
+
+    user: Mapped[UserProfile] = relationship(back_populates="mini_read_grants")
+    binding: Mapped[WeChatIdentityBinding | None] = relationship(back_populates="mini_read_grants")
+    digest_issue: Mapped[PulseDigestIssue | None] = relationship(back_populates="mini_read_grants")
+    created_by_admin: Mapped[AdminAccount | None] = relationship(
+        back_populates="created_mini_read_grants"
     )
 
 

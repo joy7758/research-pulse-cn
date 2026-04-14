@@ -1,0 +1,233 @@
+Read AGENTS.md, docs/BUILD_SPEC.md, docs/architecture.md, docs/development.md, docs/pulse_scoring.md, docs/operations.md, docs/auth_admin_boundary.md, docs/sync_foundation.md, and docs/official_account_digest_reserve.md before editing.
+
+Implement Phase 10 only: mini-program read-only reserve v1.
+
+Hard boundaries for this phase:
+- Do not call any real WeChat Mini Program API.
+- Do not call any real WeChat Official Account API.
+- Do not add WeChat OAuth login or session exchange.
+- Do not add Mini Program frontend code.
+- Do not add customer-facing write operations from mini endpoints.
+- Do not add multi-tenant or institution features.
+- Do not weaken existing admin auth, internal service auth, or device-token sync auth.
+- Do not reintroduce WeChat as a current active delivery channel.
+- Do not replace the current modular monolith architecture.
+
+Primary goal:
+Create a backend reserve layer for future Mini Program read-only access, using existing digest and binding foundations, without implementing real WeChat login or frontend code.
+
+This phase should make the backend suitable for:
+- future mini-program landing from official-account digest
+- compact mobile-friendly read-only views
+- preview/testing of mini-program payloads from the backend
+- a stable read-only contract for future mini frontend work
+- showing paper progress percentage as a derived read model
+
+Required changes:
+
+1. Mini read grant foundation
+Add a MiniReadGrant model/table.
+
+Required fields:
+- id UUID pk
+- user_id FK to UserProfile
+- binding_id nullable FK to WeChatIdentityBinding
+- digest_issue_id nullable FK to PulseDigestIssue
+- grant_type enum [preview, digest_landing, daily_overview, paper_detail]
+- token_hash
+- status enum [active, revoked, expired]
+- scope JSON nullable
+- expires_at nullable
+- last_used_at nullable
+- created_by_admin_id nullable FK to AdminAccount
+- created_at
+- updated_at
+
+Constraints:
+- keep schema production-friendly
+- store only token hashes at rest
+- plaintext token returned only once at creation time
+- grant tokens must be usable only on /mini/* endpoints
+
+2. Mini read-only auth boundary
+Implement a dedicated mini read auth mode.
+
+Requirements:
+- distinct from admin auth, internal service auth, and sync device token auth
+- bearer token or equivalent grant token accepted only for /mini/* endpoints
+- mini grant token must not access:
+  - /admin/*
+  - /ops/*
+  - /sync/*
+  - business CRUD endpoints
+- revoked or expired grants must be rejected
+- optionally update last_used_at on successful use
+
+3. Derived progress percentage read model
+Add a deterministic progress percentage for read-only presentation.
+
+Requirements:
+- do not add progress_percentage as a persisted source-of-truth field on PaperProfile
+- implement as a pure derived/read-model function
+- map from PaperProfile.type:
+  - published -> 100
+  - revision -> 80
+  - under_review -> 65
+  - in_prep -> 35
+  - paused -> 0
+- expose this value in mini read-only paper summaries and paper detail views
+- document clearly that this is a UI/read-model heuristic, not the workflow truth
+
+4. Compact mini read models
+Implement mobile-friendly view builders/services.
+
+At minimum build compact read models for:
+- mini user summary
+- mini digest issue summary
+- mini digest issue detail
+- mini paper summary
+- mini paper detail
+- mini today overview
+
+Requirements:
+- outputs should be compact, stable, and client-friendly
+- avoid leaking internal-only metadata such as:
+  - admin audit data
+  - score breakdown internals unless intentionally needed
+  - token hashes
+  - internal publication provider payload internals
+- use existing domain data rather than duplicating persistence unnecessarily
+- preserve digest item sort_order
+- include derived progress_percentage in paper summary/detail and where useful in digest/today views
+
+5. Mini read-only endpoints
+Add protected mini endpoints.
+
+Required endpoints:
+- GET /mini/bootstrap
+- GET /mini/today
+- GET /mini/digest-issues/{digest_issue_id}
+- GET /mini/papers
+- GET /mini/papers/{paper_id}
+
+Endpoint behavior:
+
+GET /mini/bootstrap
+- returns current grant context
+- returns linked user summary
+- returns available routes/resources for this grant
+- if grant is tied to a digest issue, include default landing target
+
+GET /mini/today
+- returns latest available digest issue for the user if present
+- include top highlights and compact paper references
+- if no digest issue exists, return a valid empty state payload
+
+GET /mini/digest-issues/{digest_issue_id}
+- returns digest issue detail with items in stable sort_order
+- grant must belong to the same user
+- if grant scope restricts digest access, enforce it
+
+GET /mini/papers
+- support limit and optional status/type filtering if straightforward
+- return compact paper summaries ordered in a documented stable way
+
+GET /mini/papers/{paper_id}
+- return compact paper detail
+- include recent progress events and latest signal snapshots in a compact form if already easy to shape cleanly
+- include progress_percentage
+
+Important:
+- all mini endpoints are read-only
+- do not create write/update mini endpoints in this phase
+
+6. Admin preview grant management
+Add protected admin endpoints for mini preview/testing.
+
+Required endpoints:
+- GET /admin/mini-read-grants
+- POST /admin/mini-read-grants
+- POST /admin/mini-read-grants/{grant_id}/revoke
+
+Behavior:
+- operator and super_admin can create/revoke/list mini read grants
+- viewer cannot
+- create endpoint returns plaintext token once
+- endpoint should support creating a grant for:
+  - a user only
+  - a specific digest issue
+  - a specific binding if provided
+- response should also include a preview landing path for future mini-program routing
+
+7. Digest and binding integration
+Integrate with existing reserve objects without calling real external APIs.
+
+Requirements:
+- if a grant references a digest_issue_id, bootstrap/today should align with that digest as default landing
+- if a grant references a mini_program binding, expose safe binding summary only when useful
+- do not require real mini-program binding for preview grants
+- keep deep_link_path conventions aligned with the digest reserve work
+
+8. Metrics and logging
+Add mini-read observability.
+
+Required metrics:
+- mini_read_grants_issued_total
+- mini_read_grants_revoked_total
+- mini_read_requests_total
+
+Logging requirements:
+- include mini grant id where practical
+- include user_id and request_id where available
+- keep style aligned with existing structured logging
+
+9. Tests
+Add or update tests covering at minimum:
+- operator can create mini read grant and receives plaintext token once
+- viewer cannot create mini read grant
+- mini read grant token can access /mini/* but not /admin/*, /ops/*, /sync/*, or business CRUD
+- revoked grant is rejected
+- expired grant is rejected if expiry is set
+- /mini/bootstrap returns stable grant context
+- /mini/today returns empty state when no digest exists
+- /mini/digest-issues/{id} preserves digest item sort_order
+- /mini/papers/{id} exposes derived progress_percentage according to the mapping
+- existing tests continue to pass
+
+10. Documentation
+Add docs/mini_program_readonly_reserve.md
+
+It should explain:
+- why mini-program access is modeled as read-only first
+- MiniReadGrant model
+- read-only auth boundary
+- compact read models and endpoint contracts
+- derived progress percentage heuristic and its limitations
+- preview/testing workflow
+- current non-goals
+- future work:
+  - real mini-program auth/session
+  - official-account landing handoff
+  - future limited write actions if needed
+
+Also update:
+- README.md
+- docs/development.md
+- docs/architecture.md
+- docs/official_account_digest_reserve.md
+- any docs that should mention mini read-only reserve
+
+11. Quality bar
+- keep schema changes minimal and production-friendly
+- keep code typed and readable
+- do not add unnecessary dependencies
+- do not add real WeChat integrations
+- run available checks
+- fix obvious lint/test issues
+- end with a concise summary:
+  - files changed
+  - migrations created
+  - new models
+  - new endpoints
+  - progress_percentage mapping
+  - next-phase recommendation only

@@ -106,8 +106,12 @@ Important values:
 - `APP_SYNC_FEED_DEFAULT_LIMIT`: default incremental sync page size
 - `APP_SYNC_FEED_MAX_LIMIT`: max allowed sync feed page size
 - `APP_SYNC_PUSH_MAX_BATCH_SIZE`: max mutations accepted per sync push batch
+- `APP_MINI_READ_GRANT_DEFAULT_TTL_HOURS`: default preview-grant lifetime for `/mini/*`
+- `APP_MINI_PAPERS_DEFAULT_LIMIT`: default compact paper page size for mini reads
+- `APP_MINI_PAPERS_MAX_LIMIT`: max compact paper page size for mini reads
 
 No real WeChat API credentials are required in this phase. Official-account publication remains stub-only.
+Mini-program access is reserve-only and read-only in this phase.
 
 ## Running workers and scheduler
 Run one-off local cycles:
@@ -148,6 +152,9 @@ With Docker Compose, the codebase now exposes separate `api`, `worker`, and `sch
   - `POST /admin/digest-issues/build/{user_id}`
   - `POST /admin/digest-issues/{digest_issue_id}/prepare-publication`
   - `GET /admin/digest-publication-jobs`
+  - `GET /admin/mini-read-grants`
+  - `POST /admin/mini-read-grants`
+  - `POST /admin/mini-read-grants/{grant_id}/revoke`
 - Health:
   - `GET /health`
   - `GET /health/live`
@@ -169,6 +176,12 @@ With Docker Compose, the codebase now exposes separate `api`, `worker`, and `sch
   - `GET /sync/feed`
   - `POST /sync/push`
   - `POST /sync/ack`
+- Mini:
+  - `GET /mini/bootstrap`
+  - `GET /mini/today`
+  - `GET /mini/digest-issues/{digest_issue_id}`
+  - `GET /mini/papers`
+  - `GET /mini/papers/{paper_id}`
 
 ## Seeded demo profile
 `make seed` creates:
@@ -196,3 +209,6 @@ Device identity, incremental feed, mutation idempotency, and future lightweight-
 
 ## Official-account digest reserve
 Digest issues, WeChat identity binding, and publication preparation without real external sends are documented in [docs/official_account_digest_reserve.md](docs/official_account_digest_reserve.md).
+
+## Mini-program read-only reserve
+Mini preview grants, compact mobile read models, and derived paper progress percentages are documented in [docs/mini_program_readonly_reserve.md](docs/mini_program_readonly_reserve.md).

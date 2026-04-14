@@ -22,6 +22,9 @@ COUNTER_NAMES = (
     "digest_issues_built_total",
     "digest_publication_jobs_prepared_total",
     "digest_publication_jobs_failed_total",
+    "mini_read_grants_issued_total",
+    "mini_read_grants_revoked_total",
+    "mini_read_requests_total",
 )
 
 

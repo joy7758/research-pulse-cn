@@ -10,7 +10,8 @@ Core flow:
 4. Selected pulse cards enqueue outbox delivery jobs.
 5. The worker dispatches delivery jobs through current supported channel adapters and manages retry and dead-letter transitions.
 6. Digest issues are upserted from selected pulse cards and can be prepared for future official-account publication without external sends.
-7. Sync devices consume incremental `SyncEvent` feeds and push idempotent mutations back through the same service layer.
+7. Mini read grants expose compact mobile-friendly read models for future mini-program landing without opening write access.
+8. Sync devices consume incremental `SyncEvent` feeds and push idempotent mutations back through the same service layer.
 
 ## Module boundaries
 
@@ -109,6 +110,35 @@ Tie-break order is deterministic:
   - prepare payloads
   - mark jobs as `prepared` or `previewed`
   - never call real WeChat APIs
+
+## Mini read-only reserve
+
+### Mini auth boundary
+- `MiniReadGrant` is a dedicated read-only token model for `/mini/*`.
+- Mini grants are distinct from:
+  - admin authentication
+  - internal service authentication
+  - sync device authentication
+- Tokens are stored hashed at rest and returned in plaintext once at issuance time.
+
+### Compact mobile read models
+- The mini layer reshapes existing domain state into compact read payloads for:
+  - bootstrap context
+  - today overview
+  - digest detail
+  - paper summaries
+  - paper detail
+- These views deliberately omit admin-only and provider-internal fields.
+
+### Derived progress percentage
+- Mini paper views expose a deterministic `progress_percentage` derived from `PaperProfile.type`.
+- This is a presentation heuristic only:
+  - `published -> 100`
+  - `revision -> 80`
+  - `under_review -> 65`
+  - `in_prep -> 35`
+  - `paused -> 0`
+- The workflow truth remains the underlying paper type, stage, and event history.
 
 ## Sync backbone
 

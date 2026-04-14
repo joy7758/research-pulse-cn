@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session, selectinload
 from research_pulse_cn.db.models import (
     DigestPublicationJob,
     PulseDigestIssue,
+    PulseDigestItem,
     WeChatIdentityBinding,
 )
 from research_pulse_cn.domain.enums import (
@@ -93,7 +94,7 @@ class DigestRepository:
         statement = (
             select(PulseDigestIssue)
             .options(
-                selectinload(PulseDigestIssue.items),
+                selectinload(PulseDigestIssue.items).selectinload(PulseDigestItem.source_paper),
                 selectinload(PulseDigestIssue.publication_jobs),
                 selectinload(PulseDigestIssue.user),
                 selectinload(PulseDigestIssue.source_pulse_job),
@@ -112,7 +113,7 @@ class DigestRepository:
         statement = (
             select(PulseDigestIssue)
             .options(
-                selectinload(PulseDigestIssue.items),
+                selectinload(PulseDigestIssue.items).selectinload(PulseDigestItem.source_paper),
                 selectinload(PulseDigestIssue.publication_jobs).selectinload(
                     DigestPublicationJob.binding
                 ),
@@ -132,7 +133,7 @@ class DigestRepository:
         statement = (
             select(PulseDigestIssue)
             .options(
-                selectinload(PulseDigestIssue.items),
+                selectinload(PulseDigestIssue.items).selectinload(PulseDigestItem.source_paper),
                 selectinload(PulseDigestIssue.publication_jobs).selectinload(
                     DigestPublicationJob.binding
                 ),

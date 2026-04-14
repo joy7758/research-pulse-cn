@@ -109,6 +109,18 @@ class Settings(BaseSettings):
         default=50,
         validation_alias="APP_SYNC_PUSH_MAX_BATCH_SIZE",
     )
+    mini_read_grant_default_ttl_hours: int = Field(
+        default=72,
+        validation_alias="APP_MINI_READ_GRANT_DEFAULT_TTL_HOURS",
+    )
+    mini_papers_default_limit: int = Field(
+        default=20,
+        validation_alias="APP_MINI_PAPERS_DEFAULT_LIMIT",
+    )
+    mini_papers_max_limit: int = Field(
+        default=100,
+        validation_alias="APP_MINI_PAPERS_MAX_LIMIT",
+    )
 
     postgres_host: str = Field(default="localhost", validation_alias="POSTGRES_HOST")
     postgres_port: int = Field(default=5432, validation_alias="POSTGRES_PORT")

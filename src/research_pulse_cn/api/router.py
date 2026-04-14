@@ -8,6 +8,8 @@ from research_pulse_cn.api.routes.client_devices import router as client_devices
 from research_pulse_cn.api.routes.delivery_jobs import router as delivery_jobs_router
 from research_pulse_cn.api.routes.digest_admin import router as digest_admin_router
 from research_pulse_cn.api.routes.health import router as health_router
+from research_pulse_cn.api.routes.mini import router as mini_router
+from research_pulse_cn.api.routes.mini_admin import router as mini_admin_router
 from research_pulse_cn.api.routes.ops import router as ops_router
 from research_pulse_cn.api.routes.papers import router as papers_router
 from research_pulse_cn.api.routes.pulse import router as pulse_router
@@ -23,6 +25,8 @@ api_router.include_router(auth_router)
 api_router.include_router(admin_router)
 api_router.include_router(client_devices_router)
 api_router.include_router(digest_admin_router)
+api_router.include_router(mini_admin_router)
+api_router.include_router(mini_router)
 api_router.include_router(users_router)
 api_router.include_router(papers_router)
 api_router.include_router(subscription_policies_router)
