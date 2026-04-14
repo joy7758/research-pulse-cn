@@ -119,6 +119,44 @@ class SyncMutationStatus(StrEnum):
     FAILED = "failed"
 
 
+class WeChatBindingChannelType(StrEnum):
+    OFFICIAL_ACCOUNT = "official_account"
+    MINI_PROGRAM = "mini_program"
+
+
+class WeChatBindingState(StrEnum):
+    PENDING = "pending"
+    ACTIVE = "active"
+    REVOKED = "revoked"
+
+
+class PulseDigestIssueStatus(StrEnum):
+    DRAFT = "draft"
+    READY = "ready"
+    PUBLISHED = "published"
+    FAILED = "failed"
+    SKIPPED = "skipped"
+
+
+class DigestPublicationTarget(StrEnum):
+    OFFICIAL_ACCOUNT = "official_account"
+
+
+class DigestPublicationStatus(StrEnum):
+    PENDING = "pending"
+    PREPARED = "prepared"
+    PREVIEWED = "previewed"
+    SENT = "sent"
+    FAILED = "failed"
+    SKIPPED = "skipped"
+
+
+class DigestPublicationMode(StrEnum):
+    MANUAL_PREVIEW = "manual_preview"
+    SCHEDULED_PREPARE = "scheduled_prepare"
+    FUTURE_PROVIDER = "future_provider"
+
+
 ACTIVE_DELIVERY_CHANNELS = frozenset(
     {
         ChannelType.IN_APP,

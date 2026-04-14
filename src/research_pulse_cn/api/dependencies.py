@@ -11,6 +11,7 @@ from research_pulse_cn.services.admin import AdminService
 from research_pulse_cn.services.audit import AuditService
 from research_pulse_cn.services.auth import AuthService
 from research_pulse_cn.services.delivery import DeliveryService
+from research_pulse_cn.services.digest import DigestService
 from research_pulse_cn.services.ops import OpsService
 from research_pulse_cn.services.paper import PaperService
 from research_pulse_cn.services.pulse import PulseService
@@ -45,6 +46,10 @@ def get_pulse_service(session: SessionDep) -> PulseService:
 
 def get_delivery_service(session: SessionDep) -> DeliveryService:
     return DeliveryService(session)
+
+
+def get_digest_service(session: SessionDep) -> DigestService:
+    return DigestService(session)
 
 
 def get_scheduler_service(session: SessionDep) -> SchedulerService:

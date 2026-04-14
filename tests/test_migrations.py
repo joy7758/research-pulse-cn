@@ -23,6 +23,7 @@ def test_alembic_upgrade_creates_core_tables(tmp_path) -> None:
         "audit_logs",
         "client_devices",
         "client_access_tokens",
+        "digest_publication_jobs",
         "sync_events",
         "sync_cursors",
         "sync_mutations",
@@ -33,7 +34,10 @@ def test_alembic_upgrade_creates_core_tables(tmp_path) -> None:
         "subscription_policies",
         "pulse_jobs",
         "pulse_cards",
+        "pulse_digest_issues",
+        "pulse_digest_items",
         "delivery_jobs",
+        "wechat_identity_bindings",
         "worker_heartbeats",
         "delivery_attempts",
     }.issubset(table_names)
@@ -138,3 +142,53 @@ def test_alembic_upgrade_creates_core_tables(tmp_path) -> None:
         "created_at",
         "applied_at",
     }.issubset(sync_mutation_columns)
+    binding_columns = {
+        column["name"] for column in inspector.get_columns("wechat_identity_bindings")
+    }
+    assert {
+        "user_id",
+        "channel_type",
+        "app_id",
+        "openid",
+        "unionid",
+        "bind_state",
+        "subscribed",
+        "digest_enabled",
+        "metadata",
+    }.issubset(binding_columns)
+    digest_issue_columns = {
+        column["name"] for column in inspector.get_columns("pulse_digest_issues")
+    }
+    assert {
+        "user_id",
+        "issue_date",
+        "source_pulse_job_id",
+        "status",
+        "highlight_count",
+        "selected_card_count",
+        "deep_link_path",
+        "content_payload",
+        "build_metadata",
+    }.issubset(digest_issue_columns)
+    digest_item_columns = {column["name"] for column in inspector.get_columns("pulse_digest_items")}
+    assert {
+        "digest_issue_id",
+        "pulse_card_id",
+        "sort_order",
+        "card_type",
+        "source_paper_id",
+        "why_now",
+    }.issubset(digest_item_columns)
+    publication_job_columns = {
+        column["name"] for column in inspector.get_columns("digest_publication_jobs")
+    }
+    assert {
+        "digest_issue_id",
+        "binding_id",
+        "publish_target",
+        "status",
+        "publish_mode",
+        "provider_name",
+        "payload",
+        "prepared_at",
+    }.issubset(publication_job_columns)

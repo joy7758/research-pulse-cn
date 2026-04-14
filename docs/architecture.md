@@ -9,7 +9,8 @@ Core flow:
 3. A model-provider adapter produces card copy only for selected candidates.
 4. Selected pulse cards enqueue outbox delivery jobs.
 5. The worker dispatches delivery jobs through current supported channel adapters and manages retry and dead-letter transitions.
-6. Sync devices consume incremental `SyncEvent` feeds and push idempotent mutations back through the same service layer.
+6. Digest issues are upserted from selected pulse cards and can be prepared for future official-account publication without external sends.
+7. Sync devices consume incremental `SyncEvent` feeds and push idempotent mutations back through the same service layer.
 
 ## Module boundaries
 
@@ -94,6 +95,21 @@ Tie-break order is deterministic:
   - `failed`
   - `dead_letter`
 
+## Digest reserve
+
+### Why digest is separate from pulse cards
+- `PulseCard` remains the ranked atomic unit for delivery and sync.
+- `PulseDigestIssue` becomes the daily user-facing digest artifact for future official-account and mini-program surfaces.
+- `PulseDigestItem` snapshots ordered card content into a digest-specific shape without re-running ranking.
+
+### Publication reserve boundary
+- `WeChatIdentityBinding` stores admin-managed official-account or mini-program identity bindings without real OAuth flows.
+- `DigestPublicationJob` is a provider-neutral preparation record.
+- In v1 the publication layer is stub-only:
+  - prepare payloads
+  - mark jobs as `prepared` or `previewed`
+  - never call real WeChat APIs
+
 ## Sync backbone
 
 ### Device identity
@@ -103,6 +119,7 @@ Tie-break order is deterministic:
 
 ### Event feed
 - `SyncEvent` stores user-scoped, monotonic events for paper, progress, signal, subscription, and pulse-card changes.
+- `PulseDigestIssue` create/update now also emits compact sync events so future read-only clients can consume digest state.
 - `SyncCursor` tracks the latest acknowledged sequence per device.
 - `SyncMutation` records idempotent client-originated writes keyed by `(client_device_id, client_mutation_id)`.
 

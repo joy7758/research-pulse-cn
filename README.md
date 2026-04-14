@@ -15,6 +15,7 @@ Private repository. Proprietary and confidential.
 - Worker heartbeats, delivery-attempt tracking, readiness checks, and Prometheus-style metrics
 - Current delivery paths for `in_app`, `email`, and `webhook`, with console/webhook adapters for local development
 - Device-token sync backbone for desktop and future lightweight clients
+- WeChat identity bindings plus digest issue/publication reserve objects for future official-account and mini-program flows
 - Seed data, Docker Compose, pytest, Ruff, and CI
 
 ## Architecture
@@ -106,6 +107,8 @@ Important values:
 - `APP_SYNC_FEED_MAX_LIMIT`: max allowed sync feed page size
 - `APP_SYNC_PUSH_MAX_BATCH_SIZE`: max mutations accepted per sync push batch
 
+No real WeChat API credentials are required in this phase. Official-account publication remains stub-only.
+
 ## Running workers and scheduler
 Run one-off local cycles:
 
@@ -137,6 +140,14 @@ With Docker Compose, the codebase now exposes separate `api`, `worker`, and `sch
   - `POST /admin/client-devices`
   - `POST /admin/client-devices/{client_device_id}/rotate-token`
   - `POST /admin/client-devices/{client_device_id}/revoke`
+  - `GET /admin/wechat-bindings`
+  - `POST /admin/wechat-bindings`
+  - `PATCH /admin/wechat-bindings/{binding_id}`
+  - `GET /admin/digest-issues`
+  - `GET /admin/digest-issues/{digest_issue_id}`
+  - `POST /admin/digest-issues/build/{user_id}`
+  - `POST /admin/digest-issues/{digest_issue_id}/prepare-publication`
+  - `GET /admin/digest-publication-jobs`
 - Health:
   - `GET /health`
   - `GET /health/live`
@@ -182,3 +193,6 @@ Admin authentication, RBAC, internal service auth, audit logs, and bootstrap flo
 
 ## Sync foundation
 Device identity, incremental feed, mutation idempotency, and future lightweight-client alignment are documented in [docs/sync_foundation.md](docs/sync_foundation.md).
+
+## Official-account digest reserve
+Digest issues, WeChat identity binding, and publication preparation without real external sends are documented in [docs/official_account_digest_reserve.md](docs/official_account_digest_reserve.md).

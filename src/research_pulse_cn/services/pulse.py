@@ -51,6 +51,7 @@ from research_pulse_cn.repositories.user import UserRepository
 from research_pulse_cn.schemas.pulse import PulseCardPreview
 from research_pulse_cn.services.common import commit_session
 from research_pulse_cn.services.delivery import DeliveryService
+from research_pulse_cn.services.digest import DigestService
 from research_pulse_cn.services.sync_events import SyncEventService
 
 logger = logging.getLogger(__name__)
@@ -409,6 +410,7 @@ class PulseService:
         self.model_provider = model_provider or DummyModelProvider()
         self.card_validator = card_validator or SimpleCardValidator()
         self.delivery_service = DeliveryService(session, adapter_registry=adapter_registry)
+        self.digest_service = DigestService(session, now_provider=self.now_provider)
         self.sync_events = SyncEventService(session)
         self.metrics = get_metrics()
 
@@ -499,6 +501,13 @@ class PulseService:
                     self._persist_card(job, candidate) for candidate in pipeline.selected_candidates
                 ]
                 self._enqueue_delivery_jobs(job, cards)
+                self.digest_service.build_issue_from_cards(
+                    user_id=job.user_id,
+                    source_job=job,
+                    ordered_cards=cards,
+                    event_source=SyncEventSource.WORKER,
+                    auto_commit=False,
+                )
                 job.status = PulseJobStatus.COMPLETED
                 job.completed_at = self.now_provider()
                 job.lease_owner = None
@@ -904,7 +913,6 @@ class PulseService:
                     status=DeliveryJobStatus.PENDING,
                 )
                 delivery_jobs.append(self.delivery_repository.add(delivery_job))
-        commit_session(self.session)
         return delivery_jobs
 
     def _delivery_policies_for_job(self, job: PulseJob) -> list[Any]:

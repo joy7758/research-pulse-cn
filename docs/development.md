@@ -88,6 +88,26 @@
   - `APP_SYNC_PUSH_MAX_BATCH_SIZE`
 - Conflict handling in v1 is last-write-wins for supported patch operations.
 
+## Official-account digest reserve
+- WeChat identity binding is admin-managed only in v1.
+- There is no real OAuth, official-account API call, or mini-program frontend in this phase.
+- New admin endpoints:
+  - `GET /admin/wechat-bindings`
+  - `POST /admin/wechat-bindings`
+  - `PATCH /admin/wechat-bindings/{binding_id}`
+  - `GET /admin/digest-issues`
+  - `GET /admin/digest-issues/{digest_issue_id}`
+  - `POST /admin/digest-issues/build/{user_id}`
+  - `POST /admin/digest-issues/{digest_issue_id}/prepare-publication`
+  - `GET /admin/digest-publication-jobs`
+- `PulseDigestIssue` is built from already selected `PulseCard` rows only.
+- Publication preparation is stub-only:
+  - jobs move to `prepared` or `previewed`
+  - no real external send occurs
+- Future WeChat work remains:
+  - official-account digest publishing
+  - mini-program read-only landing on top of sync
+
 ## Ops endpoints
 - `GET /health/live`: lightweight process liveness
 - `GET /health/ready`: database readiness and component details, protected by operator/admin or internal service auth

@@ -19,6 +19,9 @@ COUNTER_NAMES = (
     "sync_mutations_received_total",
     "sync_mutations_applied_total",
     "sync_mutations_failed_total",
+    "digest_issues_built_total",
+    "digest_publication_jobs_prepared_total",
+    "digest_publication_jobs_failed_total",
 )
 
 

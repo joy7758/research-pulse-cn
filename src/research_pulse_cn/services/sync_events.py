@@ -12,6 +12,7 @@ from research_pulse_cn.db.models import (
     PaperProfile,
     ProgressEvent,
     PulseCard,
+    PulseDigestIssue,
     SignalSnapshot,
     SubscriptionPolicy,
     SyncEvent,
@@ -157,6 +158,38 @@ class SyncEventService:
                 "title": pulse_card.title,
                 "summary": pulse_card.summary,
                 "generated_at": pulse_card.generated_at.isoformat(),
+            },
+        )
+
+    def emit_pulse_digest_issue(
+        self,
+        digest_issue: PulseDigestIssue,
+        *,
+        event_type: SyncEventType,
+        event_source: SyncEventSource,
+    ) -> SyncEvent:
+        return self._emit(
+            user_id=digest_issue.user_id,
+            entity_type="pulse_digest_issue",
+            entity_id=str(digest_issue.id),
+            event_type=event_type,
+            event_source=event_source,
+            payload={
+                "id": str(digest_issue.id),
+                "user_id": str(digest_issue.user_id),
+                "issue_date": digest_issue.issue_date.isoformat(),
+                "source_pulse_job_id": (
+                    None
+                    if digest_issue.source_pulse_job_id is None
+                    else str(digest_issue.source_pulse_job_id)
+                ),
+                "status": digest_issue.status.value,
+                "title": digest_issue.title,
+                "summary": digest_issue.summary,
+                "highlight_count": digest_issue.highlight_count,
+                "selected_card_count": digest_issue.selected_card_count,
+                "deep_link_path": digest_issue.deep_link_path,
+                "updated_at": _iso_or_none(digest_issue.updated_at),
             },
         )
 

@@ -41,6 +41,7 @@
   - signal snapshot create
   - subscription policy create/update
   - pulse card persistence
+  - pulse digest issue create/update
 
 ## Mutation Model
 - `SyncMutation` records each device-originated write keyed by `(client_device_id, client_mutation_id)`.
@@ -76,6 +77,7 @@
 - There is no CRDT or field-level merge strategy in v1.
 - Device auth is admin-managed only; no end-user self-service device registration exists.
 - Delivery job status changes are not yet emitted as sync events.
+- WeChat identity bindings and publication jobs are intentionally kept out of sync in v1.
 - Legacy `dingtalk` and `wechat` enum values remain only for compatibility with older rows and are rejected for new policy writes.
 
 ## Future Work

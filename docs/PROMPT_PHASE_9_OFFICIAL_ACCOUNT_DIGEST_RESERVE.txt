@@ -1,0 +1,283 @@
+Read AGENTS.md, docs/BUILD_SPEC.md, docs/architecture.md, docs/development.md, docs/pulse_scoring.md, docs/operations.md, docs/auth_admin_boundary.md, and docs/sync_foundation.md before editing.
+
+Implement Phase 9 only: official-account digest reserve v1.
+
+Hard boundaries for this phase:
+- Do not call any real WeChat Official Account API.
+- Do not call any real WeChat Mini Program API.
+- Do not add WeChat OAuth login.
+- Do not add Mini Program frontend code.
+- Do not add customer-facing UI.
+- Do not add multi-tenant or institution features.
+- Do not weaken or bypass current admin auth, service auth, or device-token boundaries.
+- Do not reintroduce WeChat as a current active DeliveryJob channel.
+- Do not replace the current modular monolith architecture.
+
+Primary goal:
+Create a backend foundation for future WeChat official-account digest publishing and future mini-program landing, without implementing real external delivery yet.
+
+This phase should make the backend suitable for:
+- daily Pulse digest generation as a first-class object
+- future official-account publication workflows
+- future mini-program deep links / landing targets
+- shared WeChat identity binding across official account and mini program
+- keeping current pulse delivery and sync architecture intact
+
+Required changes:
+
+1. WeChat identity binding foundation
+Add a WeChatIdentityBinding model/table.
+
+Required fields:
+- id UUID pk
+- user_id FK to UserProfile
+- channel_type enum [official_account, mini_program]
+- app_id string
+- openid string
+- unionid string nullable
+- bind_state enum [pending, active, revoked]
+- subscribed bool default false
+- digest_enabled bool default true
+- display_label nullable
+- subscribed_at nullable
+- unsubscribed_at nullable
+- last_seen_at nullable
+- metadata JSON nullable
+- created_at
+- updated_at
+
+Constraints:
+- unique(channel_type, app_id, openid)
+- index on unionid if straightforward
+- production-friendly schema and naming
+
+Important:
+- This is an internal/admin-managed binding model in v1.
+- Do not add real OAuth flows yet.
+- Do not assume one user has only one binding forever.
+
+2. Digest issue as a first-class object
+Add PulseDigestIssue and PulseDigestItem models/tables.
+
+PulseDigestIssue required fields:
+- id UUID pk
+- user_id FK
+- issue_date date
+- source_pulse_job_id nullable FK to PulseJob
+- status enum [draft, ready, published, failed, skipped]
+- title string
+- summary text
+- highlight_count int default 0
+- selected_card_count int default 0
+- deep_link_path nullable
+- content_payload JSON
+- build_metadata JSON nullable
+- published_at nullable
+- created_at
+- updated_at
+
+Constraints:
+- unique(user_id, issue_date)
+
+PulseDigestItem required fields:
+- id UUID pk
+- digest_issue_id FK
+- pulse_card_id FK
+- sort_order int
+- card_type
+- source_paper_id nullable FK
+- title
+- summary
+- why_now nullable
+- created_at
+
+Requirements:
+- Digest items should be derived from already selected PulseCard rows.
+- Do not re-score or re-run pulse selection during digest building.
+- Preserve stable order from the existing selected cards / ranking result.
+- Keep issue content deterministic and provider-free in this phase.
+
+3. Publication reserve model
+Add a DigestPublicationJob (or clearly named equivalent) table.
+
+Required fields:
+- id UUID pk
+- digest_issue_id FK
+- binding_id nullable FK to WeChatIdentityBinding
+- publish_target enum [official_account]
+- status enum [pending, prepared, previewed, sent, failed, skipped]
+- publish_mode enum [manual_preview, scheduled_prepare, future_provider]
+- provider_name string default "stub"
+- payload JSON nullable
+- external_message_id nullable
+- last_error nullable
+- prepared_at nullable
+- published_at nullable
+- created_at
+- updated_at
+
+Constraints:
+- unique(digest_issue_id, binding_id, publish_target) if compatible with nullable handling
+  or another minimal uniqueness strategy that prevents duplicate prepared jobs
+
+Important:
+- In this phase, jobs may reach prepared or previewed status.
+- They must never call real external APIs.
+- They must never become sent via real transport in this phase.
+
+4. Digest builder service
+Implement a deterministic digest builder service.
+
+Requirements:
+- Build or upsert one PulseDigestIssue per user per issue_date.
+- Default issue_date should align with the user-local daily pulse date when source_pulse_job is provided.
+- Build from selected PulseCard rows only.
+- Generate:
+  - digest title
+  - concise summary
+  - highlight_count
+  - deep_link_path placeholder for future mini-program landing
+  - content_payload with machine-readable digest structure
+- If there are no selected cards, either:
+  - create/update a skipped issue with clear metadata
+  or
+  - no-op with a documented reason
+  Choose one and document it clearly.
+
+Behavior:
+- Manual build endpoint must be idempotent for the same user/date.
+- Daily pulse completion should automatically upsert a digest issue for that user/date.
+- Rebuilding should update the same issue rather than create duplicates.
+
+5. Publication preparation service
+Implement a provider-neutral publication preparation service and stub publisher.
+
+Requirements:
+- Add an interface/service boundary for future official-account publishing.
+- Add a stub implementation only.
+- Preparing publication should:
+  - find active + subscribed + digest_enabled official_account bindings for the digest user
+  - create or update DigestPublicationJob rows
+  - prepare payloads containing:
+    - title
+    - summary
+    - highlights
+    - landing metadata for future mini-program path / article URL
+    - binding metadata needed for future provider integration
+- It must not send anything externally.
+- It must clearly mark preview/prepared status.
+
+Important:
+- Do not encode a final irreversible assumption about the eventual WeChat transport mechanism.
+- Keep payload/provider fields future-friendly and documented.
+
+6. Admin endpoints
+Add protected admin endpoints.
+
+Required endpoints:
+- GET /admin/wechat-bindings
+- POST /admin/wechat-bindings
+- PATCH /admin/wechat-bindings/{binding_id}
+- GET /admin/digest-issues
+- GET /admin/digest-issues/{digest_issue_id}
+- POST /admin/digest-issues/build/{user_id}
+- POST /admin/digest-issues/{digest_issue_id}/prepare-publication
+- GET /admin/digest-publication-jobs
+
+Role boundary:
+- operator and super_admin can manage wechat bindings
+- operator and super_admin can build digest issues and prepare publication
+- viewer cannot
+- super_admin retains all existing admin privileges
+
+Endpoint behavior:
+- list endpoints should support reasonable filtering where practical:
+  - user_id
+  - channel_type
+  - subscribed
+  - digest_enabled
+  - issue_date
+  - status
+- build endpoint may accept optional issue_date and source_pulse_job_id
+- prepare-publication returns prepared/preview payload data but not send results
+
+7. Audit logging
+Add lightweight audit coverage for:
+- wechat binding create/update
+- digest issue manual build
+- publication prepare action
+
+Do not let audit logging failures break the main request path.
+
+8. Sync integration
+Integrate digest issues into the sync foundation where straightforward.
+
+Requirements:
+- Emit SyncEvent rows for PulseDigestIssue create/update if cleanly supported
+- Keep payload compact and client-friendly
+- Do not expose WeChat binding secrets or unnecessary internal-only metadata
+- Do not add digest publication jobs to sync unless trivial and clearly justified; otherwise defer and document
+
+9. Metrics and logging
+Add digest-related observability.
+
+Required metrics:
+- digest_issues_built_total
+- digest_publication_jobs_prepared_total
+- digest_publication_jobs_failed_total
+
+Logging requirements:
+- include digest_issue_id where practical
+- include user_id and request_id where available
+- keep log style aligned with current structured logging
+
+10. Tests
+Add or update tests covering at minimum:
+- operator can create and update wechat bindings
+- viewer cannot manage wechat bindings
+- manual digest build is idempotent per user/date
+- daily pulse completion auto-upserts a digest issue
+- digest items preserve stable order from selected pulse cards
+- prepare-publication only uses active + subscribed + digest_enabled official_account bindings
+- publication preparation creates preview/prepared jobs but does not send real messages
+- digest metrics appear on /ops/metrics
+- digest issue sync event is emitted if implemented
+- existing tests continue to pass
+
+11. Documentation
+Add docs/official_account_digest_reserve.md
+
+It should explain:
+- why digest is a separate object from PulseCard
+- why WeChat binding is modeled now even before real integration
+- WeChatIdentityBinding model
+- PulseDigestIssue / PulseDigestItem model
+- DigestPublicationJob model
+- build vs prepare-publication flow
+- current non-goals
+- current limitations
+- future work:
+  - real official-account provider integration
+  - mini-program landing and read-only client
+  - real binding / OAuth flows
+
+Also update:
+- README.md
+- docs/development.md
+- docs/architecture.md
+- docs/sync_foundation.md
+- any docs that need to reference digest as future official-account output
+
+12. Quality bar
+- Keep schema changes minimal and production-friendly
+- Keep code typed and readable
+- Do not add unnecessary dependencies
+- Do not reintroduce WeChat as a direct current message-channel adapter
+- Run available checks
+- Fix obvious lint/test issues
+- End with a concise summary:
+  - files changed
+  - migrations created
+  - new models
+  - new endpoints
+  - next-phase recommendation only
