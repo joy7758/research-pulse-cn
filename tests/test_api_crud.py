@@ -6,9 +6,10 @@ from research_pulse_cn.domain.enums import (
 )
 
 
-def create_user(client):
+def create_user(client, headers):
     response = client.post(
         "/users",
+        headers=headers,
         json={
             "name": "Test Researcher",
             "email": "test@example.com",
@@ -24,11 +25,12 @@ def create_user(client):
     return response.json()
 
 
-def test_user_and_paper_crud_flow(client) -> None:
-    user = create_user(client)
+def test_user_and_paper_crud_flow(client, operator_headers) -> None:
+    user = create_user(client, operator_headers)
 
     paper_response = client.post(
         "/papers",
+        headers=operator_headers,
         json={
             "user_id": user["id"],
             "title": "Fatigue tracking paper",
@@ -49,6 +51,7 @@ def test_user_and_paper_crud_flow(client) -> None:
 
     progress_response = client.post(
         f"/papers/{paper['id']}/progress-events",
+        headers=operator_headers,
         json={
             "stage": "revision",
             "happened_at": "2026-03-20T12:00:00Z",
@@ -61,6 +64,7 @@ def test_user_and_paper_crud_flow(client) -> None:
 
     snapshot_one = client.post(
         f"/papers/{paper['id']}/signal-snapshots",
+        headers=operator_headers,
         json={
             "source": SignalSource.MANUAL,
             "citation_count": 4,
@@ -72,6 +76,7 @@ def test_user_and_paper_crud_flow(client) -> None:
     )
     snapshot_two = client.post(
         f"/papers/{paper['id']}/signal-snapshots",
+        headers=operator_headers,
         json={
             "source": SignalSource.MANUAL,
             "citation_count": 5,
@@ -84,23 +89,28 @@ def test_user_and_paper_crud_flow(client) -> None:
     assert snapshot_one.status_code == 201
     assert snapshot_two.status_code == 201
 
-    get_paper = client.get(f"/papers/{paper['id']}")
+    get_paper = client.get(f"/papers/{paper['id']}", headers=operator_headers)
     assert get_paper.status_code == 200
     payload = get_paper.json()
     assert payload["stage"] == "revision"
     assert len(payload["progress_events"]) == 1
     assert len(payload["signal_snapshots"]) == 2
 
-    update_user = client.put(f"/users/{user['id']}", json={"field": "Metallurgy"})
+    update_user = client.put(
+        f"/users/{user['id']}",
+        headers=operator_headers,
+        json={"field": "Metallurgy"},
+    )
     assert update_user.status_code == 200
     assert update_user.json()["field"] == "Metallurgy"
 
 
-def test_subscription_policy_crud_flow(client) -> None:
-    user = create_user(client)
+def test_subscription_policy_crud_flow(client, operator_headers) -> None:
+    user = create_user(client, operator_headers)
 
     created = client.post(
         "/subscription-policies",
+        headers=operator_headers,
         json={
             "user_id": user["id"],
             "channel": ChannelType.DINGTALK,
@@ -113,14 +123,27 @@ def test_subscription_policy_crud_flow(client) -> None:
     assert created.status_code == 201
     policy_id = created.json()["id"]
 
-    listed = client.get(f"/subscription-policies?user_id={user['id']}")
+    listed = client.get(
+        f"/subscription-policies?user_id={user['id']}",
+        headers=operator_headers,
+    )
     assert listed.status_code == 200
     assert len(listed.json()) == 1
 
-    updated = client.put(f"/subscription-policies/{policy_id}", json={"enabled": False})
+    updated = client.put(
+        f"/subscription-policies/{policy_id}",
+        headers=operator_headers,
+        json={"enabled": False},
+    )
     assert updated.status_code == 200
     assert updated.json()["enabled"] is False
 
-    deleted = client.delete(f"/subscription-policies/{policy_id}")
+    deleted = client.delete(f"/subscription-policies/{policy_id}", headers=operator_headers)
     assert deleted.status_code == 204
-    assert client.get(f"/subscription-policies?user_id={user['id']}").json() == []
+    assert (
+        client.get(
+            f"/subscription-policies?user_id={user['id']}",
+            headers=operator_headers,
+        ).json()
+        == []
+    )

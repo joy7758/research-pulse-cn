@@ -13,12 +13,13 @@
 ## Daily workflow
 1. Start infrastructure: `make docker-up`
 2. Apply migrations: `make migrate`
-3. Seed demo data if needed: `make seed`
-4. Run API: `make run-api`
-5. Run worker once: `make worker`
-6. Run scheduler once: `make scheduler-tick`
-7. Run long-lived worker if needed: `make run-worker`
-8. Run long-lived scheduler if needed: `make run-scheduler`
+3. Bootstrap an admin: `make bootstrap-admin EMAIL=admin@example.com PASSWORD='ChangeMe123!'`
+4. Seed demo data if needed: `make seed`
+5. Run API: `make run-api`
+6. Run worker once: `make worker`
+7. Run scheduler once: `make scheduler-tick`
+8. Run long-lived worker if needed: `make run-worker`
+9. Run long-lived scheduler if needed: `make run-scheduler`
 
 ## Checks
 - Lint: `make lint`
@@ -40,6 +41,26 @@
 - If `schedule` is omitted, the service falls back to app-level defaults
 - Event policies stay manual in v1
 
+## Auth and admin boundary
+- `UserProfile` remains a business entity and is not used for login.
+- Human admins authenticate through `/auth/login` and receive:
+  - a short-lived JWT access token
+  - a server-revocable refresh token
+- Internal service callers use `APP_INTERNAL_SERVICE_TOKEN`.
+- Role matrix:
+  - `viewer`: read-only business endpoints and pulse preview
+  - `operator`: business writes, pulse run, scheduler tick, replay, and requeue
+  - `super_admin`: operator permissions plus admin-account management and audit-log access
+- `GET /health/live` stays public.
+- `GET /health/ready` and `/ops/*` require operator/super_admin or the internal service token.
+
+## Bootstrap flow
+- Create or update the initial super admin:
+  - `make bootstrap-admin EMAIL=admin@example.com PASSWORD='ChangeMe123!'`
+- Optional display name:
+  - `make bootstrap-admin EMAIL=admin@example.com PASSWORD='ChangeMe123!' DISPLAY_NAME='Ops Admin'`
+- After bootstrap, obtain tokens from `/auth/login` before using protected business or admin routes.
+
 ## Database notes
 - Production target is PostgreSQL.
 - Tests use SQLite through `APP_DATABASE_URL`.
@@ -52,7 +73,7 @@
 
 ## Ops endpoints
 - `GET /health/live`: lightweight process liveness
-- `GET /health/ready`: database readiness and component details
+- `GET /health/ready`: database readiness and component details, protected by operator/admin or internal service auth
 - `GET /ops/metrics`: Prometheus-style counters
 - `GET /ops/heartbeats`: scheduler and worker heartbeat rows
 - `GET /ops/pulse-jobs`: pulse job lifecycle inspection
@@ -72,3 +93,5 @@
 - Replace `DummyModelProvider` with a real provider adapter.
 - Expand deterministic facts into richer signal scoring and portfolio context.
 - Add authenticated channel delivery implementations.
+- Add customer-facing auth separately from `AdminAccount`.
+- Add SSO/OIDC only after the internal admin boundary stabilizes.

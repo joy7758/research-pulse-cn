@@ -7,12 +7,19 @@ from pydantic import BaseModel
 
 from research_pulse_cn import __version__
 from research_pulse_cn.api.dependencies import get_ops_service
+from research_pulse_cn.api.security import require_admin_or_service
 from research_pulse_cn.core.config import Settings, get_settings
+from research_pulse_cn.domain.auth import ActorContext
+from research_pulse_cn.domain.enums import AdminRole
 from research_pulse_cn.schemas.ops import ReadinessResponse
 from research_pulse_cn.services.ops import OpsService
 
 router = APIRouter()
 OpsServiceDep = Annotated[OpsService, Depends(get_ops_service)]
+OperatorOrServiceDep = Annotated[
+    ActorContext,
+    Depends(require_admin_or_service(AdminRole.OPERATOR)),
+]
 
 
 class HealthResponse(BaseModel):
@@ -43,7 +50,11 @@ def live(request: Request) -> HealthResponse:
 
 
 @router.get("/health/ready", response_model=ReadinessResponse)
-def ready(response: Response, service: OpsServiceDep) -> ReadinessResponse:
+def ready(
+    response: Response,
+    _actor: OperatorOrServiceDep,
+    service: OpsServiceDep,
+) -> ReadinessResponse:
     """Return dependency readiness details for operators."""
     payload, healthy = service.readiness()
     if not healthy:

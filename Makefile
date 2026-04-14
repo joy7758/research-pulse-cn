@@ -1,7 +1,7 @@
 PYTHON ?= python3
 PACKAGE = research_pulse_cn
 
-.PHONY: install run run-api migrate seed worker run-worker run-scheduler scheduler-tick lint format test check docker-up docker-down
+.PHONY: install run run-api migrate seed worker run-worker run-scheduler scheduler-tick bootstrap-admin lint format test check docker-up docker-down
 
 install:
 	$(PYTHON) -m pip install --upgrade pip
@@ -11,10 +11,10 @@ run:
 	$(MAKE) run-api
 
 run-api:
-	uvicorn $(PACKAGE).main:app --factory --reload --host 127.0.0.1 --port 8000
+	$(PYTHON) -m uvicorn $(PACKAGE).main:app --factory --reload --host 127.0.0.1 --port 8000
 
 migrate:
-	alembic upgrade head
+	$(PYTHON) -m alembic upgrade head
 
 seed:
 	$(PYTHON) -m $(PACKAGE).seed
@@ -31,14 +31,19 @@ run-scheduler:
 scheduler-tick:
 	$(PYTHON) -m $(PACKAGE).scheduler.main --once
 
+bootstrap-admin:
+	@test -n "$(EMAIL)" || (echo "EMAIL is required" && exit 1)
+	@test -n "$(PASSWORD)" || (echo "PASSWORD is required" && exit 1)
+	$(PYTHON) -m $(PACKAGE).auth.bootstrap --email "$(EMAIL)" --password "$(PASSWORD)" $(if $(DISPLAY_NAME),--display-name "$(DISPLAY_NAME)",)
+
 lint:
-	ruff check .
+	$(PYTHON) -m ruff check .
 
 format:
-	ruff format .
+	$(PYTHON) -m ruff format .
 
 test:
-	pytest
+	$(PYTHON) -m pytest
 
 check: lint test
 

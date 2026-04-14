@@ -69,6 +69,30 @@ class Settings(BaseSettings):
         default=15, validation_alias="APP_WORKER_HEARTBEAT_INTERVAL_SECONDS"
     )
     worker_lease_seconds: int = Field(default=120, validation_alias="APP_WORKER_LEASE_SECONDS")
+    auth_access_token_ttl_minutes: int = Field(
+        default=30,
+        validation_alias="APP_AUTH_ACCESS_TOKEN_TTL_MINUTES",
+    )
+    auth_refresh_token_ttl_days: int = Field(
+        default=14,
+        validation_alias="APP_AUTH_REFRESH_TOKEN_TTL_DAYS",
+    )
+    auth_jwt_secret: str = Field(
+        default="change-me-for-production",
+        validation_alias="APP_AUTH_JWT_SECRET",
+    )
+    auth_jwt_issuer: str = Field(
+        default="research-pulse-cn",
+        validation_alias="APP_AUTH_JWT_ISSUER",
+    )
+    auth_jwt_audience: str = Field(
+        default="research-pulse-cn-admin",
+        validation_alias="APP_AUTH_JWT_AUDIENCE",
+    )
+    internal_service_token: str = Field(
+        default="change-me-internal-service-token",
+        validation_alias="APP_INTERNAL_SERVICE_TOKEN",
+    )
 
     postgres_host: str = Field(default="localhost", validation_alias="POSTGRES_HOST")
     postgres_port: int = Field(default=5432, validation_alias="POSTGRES_PORT")

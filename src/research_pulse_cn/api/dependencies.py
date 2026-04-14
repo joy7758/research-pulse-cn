@@ -7,6 +7,9 @@ from fastapi import Depends
 from sqlalchemy.orm import Session
 
 from research_pulse_cn.db.session import get_db_session
+from research_pulse_cn.services.admin import AdminService
+from research_pulse_cn.services.audit import AuditService
+from research_pulse_cn.services.auth import AuthService
 from research_pulse_cn.services.delivery import DeliveryService
 from research_pulse_cn.services.ops import OpsService
 from research_pulse_cn.services.paper import PaperService
@@ -49,3 +52,15 @@ def get_scheduler_service(session: SessionDep) -> SchedulerService:
 
 def get_ops_service(session: SessionDep) -> OpsService:
     return OpsService(session)
+
+
+def get_admin_service(session: SessionDep) -> AdminService:
+    return AdminService(session)
+
+
+def get_auth_service(session: SessionDep) -> AuthService:
+    return AuthService(session)
+
+
+def get_audit_service(session: SessionDep) -> AuditService:
+    return AuditService(session)

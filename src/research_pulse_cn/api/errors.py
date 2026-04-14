@@ -3,7 +3,13 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from research_pulse_cn.core.errors import ConflictError, NotFoundError, ValidationFailedError
+from research_pulse_cn.core.errors import (
+    AuthenticationError,
+    AuthorizationError,
+    ConflictError,
+    NotFoundError,
+    ValidationFailedError,
+)
 
 
 def register_exception_handlers(app: FastAPI) -> None:
@@ -20,3 +26,11 @@ def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(ValidationFailedError)
     async def handle_validation(_: Request, exc: ValidationFailedError) -> JSONResponse:
         return JSONResponse(status_code=422, content={"detail": str(exc)})
+
+    @app.exception_handler(AuthenticationError)
+    async def handle_authentication(_: Request, exc: AuthenticationError) -> JSONResponse:
+        return JSONResponse(status_code=401, content={"detail": str(exc)})
+
+    @app.exception_handler(AuthorizationError)
+    async def handle_authorization(_: Request, exc: AuthorizationError) -> JSONResponse:
+        return JSONResponse(status_code=403, content={"detail": str(exc)})

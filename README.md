@@ -50,13 +50,15 @@ The code keeps pulse generation behind stable interfaces such as `FactCollector`
    `make docker-up`
 5. Run migrations:
    `make migrate`
-6. Seed demo data:
+6. Bootstrap a super admin for protected routes:
+   `make bootstrap-admin EMAIL=admin@example.com PASSWORD='ChangeMe123!'`
+7. Seed demo data:
    `make seed`
-7. Run the API:
+8. Run the API:
    `make run-api`
-8. Run the delivery worker:
+9. Run the delivery worker:
    `make run-worker`
-9. Run the daily scheduler:
+10. Run the daily scheduler:
    `make run-scheduler`
 
 Open API docs at `http://127.0.0.1:8000/docs`.
@@ -70,6 +72,7 @@ Open API docs at `http://127.0.0.1:8000/docs`.
 - `make run-worker`: run the polling delivery worker
 - `make scheduler-tick`: run one scheduler tick
 - `make run-scheduler`: run the polling scheduler
+- `make bootstrap-admin EMAIL=... PASSWORD=...`: create or update the bootstrap super admin
 - `make lint`: run Ruff checks
 - `make format`: run Ruff formatting
 - `make test`: run the test suite
@@ -91,6 +94,12 @@ Important values:
 - `APP_DELIVERY_RETRY_DELAY_SECONDS`: retry backoff in seconds
 - `APP_WORKER_HEARTBEAT_INTERVAL_SECONDS`: expected heartbeat cadence for local workers
 - `APP_WORKER_LEASE_SECONDS`: lease duration when a worker claims a pulse job
+- `APP_AUTH_ACCESS_TOKEN_TTL_MINUTES`: admin access token lifetime
+- `APP_AUTH_REFRESH_TOKEN_TTL_DAYS`: server-revocable refresh token lifetime
+- `APP_AUTH_JWT_SECRET`: JWT signing secret for admin access tokens
+- `APP_AUTH_JWT_ISSUER`: expected issuer claim for admin access tokens
+- `APP_AUTH_JWT_AUDIENCE`: expected audience claim for admin access tokens
+- `APP_INTERNAL_SERVICE_TOKEN`: bearer token for internal `/ops/*` and readiness callers
 
 ## Running workers and scheduler
 Run one-off local cycles:
@@ -108,6 +117,17 @@ Run long-lived local loops:
 With Docker Compose, the codebase now exposes separate `api`, `worker`, and `scheduler` services.
 
 ## Operations surface
+- Auth:
+  - `POST /auth/login`
+  - `POST /auth/refresh`
+  - `POST /auth/logout`
+  - `GET /auth/me`
+- Admin:
+  - `GET /admin/admin-accounts`
+  - `POST /admin/admin-accounts`
+  - `PATCH /admin/admin-accounts/{admin_account_id}`
+  - `POST /admin/admin-accounts/{admin_account_id}/set-password`
+  - `GET /admin/audit-logs`
 - Health:
   - `GET /health`
   - `GET /health/live`
@@ -142,3 +162,6 @@ The ranking pipeline is documented in [docs/pulse_scoring.md](docs/pulse_scoring
 
 ## Operations guide
 Operational scheduling, replay, requeue, heartbeats, attempts, and metrics are documented in [docs/operations.md](docs/operations.md).
+
+## Auth and admin boundary
+Admin authentication, RBAC, internal service auth, audit logs, and bootstrap flow are documented in [docs/auth_admin_boundary.md](docs/auth_admin_boundary.md).

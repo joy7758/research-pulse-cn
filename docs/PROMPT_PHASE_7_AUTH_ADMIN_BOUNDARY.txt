@@ -1,0 +1,262 @@
+Read AGENTS.md, docs/BUILD_SPEC.md, docs/architecture.md, docs/development.md, docs/pulse_scoring.md, and docs/operations.md before editing.
+
+Implement Phase 7 only: authentication and admin boundary v1.
+
+Hard boundaries for this phase:
+- Do not add customer-facing end-user login.
+- Do not make UserProfile double as an auth identity.
+- Do not add multi-tenant or institution features.
+- Do not integrate SSO/OAuth/OIDC in this phase.
+- Do not add email workflows such as password reset email.
+- Do not add frontend work beyond API/OpenAPI responses and docs.
+- Do not replace the current modular monolith architecture.
+
+Primary goal:
+Introduce a production-friendly auth boundary for internal commercial use:
+- human admin authentication
+- internal service authentication
+- role-based access control
+- admin management surface
+- audit trail for sensitive actions
+
+This phase should make the backend suitable for:
+- protected business/admin APIs
+- protected ops APIs
+- future admin console integration
+- future customer auth separation without refactoring core business entities
+
+Required changes:
+
+1. Separate auth identity from business user profile
+Keep UserProfile unchanged as a business/domain entity.
+Add separate auth/admin models. Suggested model names are acceptable to refine if needed:
+- AdminAccount
+- AdminSession or RefreshToken
+- AuditLog
+
+Minimum AdminAccount fields:
+- id UUID pk
+- email unique
+- password_hash
+- role enum [super_admin, operator, viewer]
+- display_name nullable
+- is_active bool
+- must_change_password bool default true
+- last_login_at nullable
+- created_at
+- updated_at
+
+Minimum session/refresh storage:
+- id UUID pk
+- admin_account_id fk
+- token_hash or refresh_token_hash
+- issued_at
+- expires_at
+- revoked_at nullable
+- last_used_at nullable
+- created_ip nullable
+- user_agent nullable
+
+Minimum AuditLog fields:
+- id UUID pk
+- actor_type enum [admin, service, anonymous]
+- actor_id nullable
+- actor_label nullable
+- action string
+- resource_type nullable
+- resource_id nullable
+- request_id nullable
+- route nullable
+- method nullable
+- status_code nullable
+- metadata JSON nullable
+- created_at
+
+Use minimal, production-friendly schema changes.
+Add Alembic migration(s).
+
+2. Authentication model
+Implement two auth modes:
+
+A. Human admin auth
+- email + password login
+- short-lived access token
+- refresh token with server-side revocation support
+- logout should revoke the current refresh token/session
+- access token should carry admin role and actor identity
+- expose /auth/me
+
+B. Internal service auth
+- simple bearer token from settings/env
+- intended for internal callers such as metrics scraping or future system integrations
+- must NOT be allowed to use business CRUD endpoints unless explicitly required below
+- allowed for internal ops endpoints and readiness checks
+
+Keep implementation simple and readable.
+Do not add external identity providers.
+
+3. RBAC and route protection
+Protect the API with clear role boundaries.
+
+Role expectations:
+- viewer:
+  - read-only business endpoints (GETs)
+  - pulse preview
+- operator:
+  - all viewer permissions
+  - business write endpoints
+  - pulse run
+  - replay/requeue ops actions
+  - scheduler tick
+- super_admin:
+  - all operator permissions
+  - admin account management
+  - audit log access
+
+Internal service token:
+- allowed on:
+  - GET /health/ready
+  - GET /ops/*
+  - POST /ops/scheduler/tick
+  - POST /ops/delivery-jobs/{delivery_job_id}/requeue
+  - POST /ops/pulse-jobs/{pulse_job_id}/replay
+- not allowed on:
+  - /users
+  - /papers
+  - /subscription-policies
+  - other business CRUD endpoints
+
+Health behavior:
+- GET /health/live remains unauthenticated
+- GET /health/ready becomes protected by operator/super_admin or internal service token
+
+4. Auth and admin endpoints
+Add at minimum:
+- POST /auth/login
+- POST /auth/refresh
+- POST /auth/logout
+- GET /auth/me
+
+Add admin management endpoints under /admin:
+- GET /admin/admin-accounts
+- POST /admin/admin-accounts
+- PATCH /admin/admin-accounts/{admin_account_id}
+- POST /admin/admin-accounts/{admin_account_id}/set-password
+- GET /admin/audit-logs
+
+Super admin only:
+- create admin accounts
+- change roles
+- deactivate/reactivate admin accounts
+- set another admin's password
+- read audit logs
+
+For safety:
+- prevent deleting the last active super_admin
+- prevent self-demotion if it would remove the last active super_admin
+- prevent inactive admins from logging in
+
+5. Bootstrap and local admin creation
+Add a production-friendly bootstrap path.
+
+Implement one of:
+- CLI command to create/update a bootstrap super admin
+or
+- Makefile target wrapping a Python CLI
+
+Requirements:
+- usable locally and in deployment bootstrap scripts
+- no secrets committed to repo
+- document clearly in README and docs/development.md
+
+6. Audit logging
+Persist audit records for sensitive events.
+
+At minimum record:
+- login success
+- login failure
+- token refresh
+- logout
+- admin account create/update/password change
+- business write actions on core entities
+- pulse run
+- scheduler tick
+- replay/requeue actions
+
+Audit logging should be lightweight and should not break the request if logging fails unexpectedly; handle that gracefully and document the tradeoff.
+
+7. API security ergonomics
+Requirements:
+- add OpenAPI security schemes so protected endpoints are visible in docs
+- add reusable auth dependencies
+- propagate actor context where useful for logs and audit entries
+- include request_id in audit metadata when available
+
+8. Settings and commands
+Add only necessary settings, such as:
+- auth_access_token_ttl_minutes
+- auth_refresh_token_ttl_days
+- auth_jwt_secret
+- auth_jwt_issuer
+- auth_jwt_audience
+- internal_service_token
+
+Update:
+- .env.example
+- README.md
+- docs/development.md
+- Makefile
+
+Add useful commands, for example:
+- make bootstrap-admin EMAIL=... PASSWORD=...
+- make run-api
+- make test
+- make lint
+
+9. Tests
+Add or update tests covering at minimum:
+- unauthenticated access blocked on protected routes
+- /health/live stays public
+- /health/ready requires proper auth
+- admin login success and failure
+- inactive admin cannot log in
+- viewer can read but cannot write
+- operator can write business data and run pulse
+- operator cannot manage admin accounts
+- super_admin can manage admin accounts
+- internal service token can access ops endpoints but not business CRUD endpoints
+- refresh token flow works and logout revokes the active session
+- audit logs are written for sensitive actions
+- protection against removing the last active super_admin
+
+Keep existing tests passing.
+
+10. Documentation
+Add docs/auth_admin_boundary.md.
+
+It should explain:
+- identity separation: AdminAccount vs UserProfile
+- token model
+- role matrix
+- internal service token boundary
+- audit log model
+- bootstrap workflow
+- local development flow
+- known limitations
+- future work, especially future customer auth and SSO
+
+Update README.md and docs/development.md accordingly.
+
+11. Quality bar
+- Keep schema changes minimal and justified
+- Keep naming clear and production-friendly
+- Prefer typed, readable code
+- Add only necessary dependencies
+- Run available checks
+- Fix obvious lint/test issues
+- End with a concise summary:
+  - files changed
+  - migrations created
+  - new settings
+  - new commands
+  - next-phase recommendations only

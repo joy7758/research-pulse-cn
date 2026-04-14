@@ -78,3 +78,15 @@ class DeliveryAttemptStatus(StrEnum):
     STARTED = "started"
     SENT = "sent"
     FAILED = "failed"
+
+
+class AdminRole(StrEnum):
+    SUPER_ADMIN = "super_admin"
+    OPERATOR = "operator"
+    VIEWER = "viewer"
+
+
+class AuditActorType(StrEnum):
+    ADMIN = "admin"
+    SERVICE = "service"
+    ANONYMOUS = "anonymous"

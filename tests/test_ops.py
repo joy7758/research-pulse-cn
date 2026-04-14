@@ -1,6 +1,6 @@
 from datetime import timedelta
 
-from research_pulse_cn.db.models import utcnow
+from research_pulse_cn.db.models import AuditLog, utcnow
 from research_pulse_cn.domain.enums import (
     ChannelType,
     PaperType,
@@ -20,9 +20,10 @@ from research_pulse_cn.services.subscription_policy import SubscriptionPolicySer
 from research_pulse_cn.services.user import UserService
 
 
-def create_user(client, *, email: str):
+def create_user(client, *, email: str, headers: dict[str, str]):
     response = client.post(
         "/users",
+        headers=headers,
         json={
             "name": "Ops User",
             "email": email,
@@ -38,9 +39,10 @@ def create_user(client, *, email: str):
     return response.json()
 
 
-def create_paper(client, *, user_id: str, title: str):
+def create_paper(client, *, user_id: str, title: str, headers: dict[str, str]):
     response = client.post(
         "/papers",
+        headers=headers,
         json={
             "user_id": user_id,
             "title": title,
@@ -58,7 +60,7 @@ def create_paper(client, *, user_id: str, title: str):
     return response.json()
 
 
-def add_signal_pair(client, *, paper_id: str) -> None:
+def add_signal_pair(client, *, paper_id: str, headers: dict[str, str]) -> None:
     older = utcnow() - timedelta(days=1)
     newer = utcnow() - timedelta(hours=1)
     for citation_count, download_count, read_count, fetched_at in (
@@ -67,6 +69,7 @@ def add_signal_pair(client, *, paper_id: str) -> None:
     ):
         response = client.post(
             f"/papers/{paper_id}/signal-snapshots",
+            headers=headers,
             json={
                 "source": SignalSource.GOOGLE_SCHOLAR,
                 "citation_count": citation_count,
@@ -84,12 +87,14 @@ def create_policy(
     *,
     user_id: str,
     frequency: SubscriptionFrequency,
+    headers: dict[str, str],
     channel: str = "in_app",
     endpoint: str = "console://local",
     policy: dict | None = None,
 ):
     response = client.post(
         "/subscription-policies",
+        headers=headers,
         json={
             "user_id": user_id,
             "channel": channel,
@@ -104,13 +109,17 @@ def create_policy(
     return response.json()
 
 
-def test_scheduler_creates_one_daily_job_per_local_date_and_dedupes(client) -> None:
-    user = create_user(client, email="scheduler@example.com")
+def test_scheduler_creates_one_daily_job_per_local_date_and_dedupes(
+    client,
+    operator_headers,
+) -> None:
+    user = create_user(client, email="scheduler@example.com", headers=operator_headers)
     now = utcnow()
     daily_policy = create_policy(
         client,
         user_id=user["id"],
         frequency=SubscriptionFrequency.DAILY,
+        headers=operator_headers,
         policy={
             "schedule": {
                 "timezone": "UTC",
@@ -120,8 +129,8 @@ def test_scheduler_creates_one_daily_job_per_local_date_and_dedupes(client) -> N
         },
     )
 
-    first = client.post("/ops/scheduler/tick")
-    second = client.post("/ops/scheduler/tick")
+    first = client.post("/ops/scheduler/tick", headers=operator_headers)
+    second = client.post("/ops/scheduler/tick", headers=operator_headers)
 
     assert first.status_code == 200
     assert first.json()["jobs_created"] == 1
@@ -131,38 +140,55 @@ def test_scheduler_creates_one_daily_job_per_local_date_and_dedupes(client) -> N
     assert second.json()["jobs_created"] == 0
     assert second.json()["jobs_existing"] == 1
 
-    jobs = client.get("/ops/pulse-jobs").json()
+    jobs = client.get("/ops/pulse-jobs", headers=operator_headers).json()
     assert len(jobs) == 1
     assert jobs[0]["scheduled_reason"] == "daily_schedule"
     assert jobs[0]["schedule_key"].startswith("daily:")
 
 
-def test_event_policies_are_not_auto_scheduled(client) -> None:
-    user = create_user(client, email="event-only@example.com")
+def test_event_policies_are_not_auto_scheduled(client, operator_headers) -> None:
+    user = create_user(client, email="event-only@example.com", headers=operator_headers)
     create_policy(
         client,
         user_id=user["id"],
         frequency=SubscriptionFrequency.EVENT,
+        headers=operator_headers,
     )
 
-    response = client.post("/ops/scheduler/tick")
+    response = client.post("/ops/scheduler/tick", headers=operator_headers)
 
     assert response.status_code == 200
     assert response.json()["daily_policies_seen"] == 0
     assert response.json()["jobs_created"] == 0
 
 
-def test_replay_endpoint_creates_or_reuses_active_replay(client) -> None:
-    user = create_user(client, email="replay@example.com")
-    paper = create_paper(client, user_id=user["id"], title="Replay paper")
-    add_signal_pair(client, paper_id=paper["id"])
-    create_policy(client, user_id=user["id"], frequency=SubscriptionFrequency.EVENT)
+def test_replay_endpoint_creates_or_reuses_active_replay(client, operator_headers) -> None:
+    user = create_user(client, email="replay@example.com", headers=operator_headers)
+    paper = create_paper(
+        client,
+        user_id=user["id"],
+        title="Replay paper",
+        headers=operator_headers,
+    )
+    add_signal_pair(client, paper_id=paper["id"], headers=operator_headers)
+    create_policy(
+        client,
+        user_id=user["id"],
+        frequency=SubscriptionFrequency.EVENT,
+        headers=operator_headers,
+    )
 
-    run_response = client.post(f"/pulse/run/{user['id']}")
+    run_response = client.post(f"/pulse/run/{user['id']}", headers=operator_headers)
     source_job_id = run_response.json()["job"]["id"]
 
-    first = client.post(f"/ops/pulse-jobs/{source_job_id}/replay")
-    second = client.post(f"/ops/pulse-jobs/{source_job_id}/replay")
+    first = client.post(
+        f"/ops/pulse-jobs/{source_job_id}/replay",
+        headers=operator_headers,
+    )
+    second = client.post(
+        f"/ops/pulse-jobs/{source_job_id}/replay",
+        headers=operator_headers,
+    )
 
     assert first.status_code == 200
     assert first.json()["action"] == "replay_created"
@@ -172,30 +198,43 @@ def test_replay_endpoint_creates_or_reuses_active_replay(client) -> None:
     assert second.json()["action"] == "existing_active_replay"
 
 
-def test_requeue_endpoint_moves_dead_letter_delivery_back_to_pending(client, session) -> None:
-    user = create_user(client, email="requeue@example.com")
-    paper = create_paper(client, user_id=user["id"], title="Requeue paper")
-    add_signal_pair(client, paper_id=paper["id"])
+def test_requeue_endpoint_moves_dead_letter_delivery_back_to_pending(
+    client,
+    session,
+    operator_headers,
+) -> None:
+    user = create_user(client, email="requeue@example.com", headers=operator_headers)
+    paper = create_paper(
+        client,
+        user_id=user["id"],
+        title="Requeue paper",
+        headers=operator_headers,
+    )
+    add_signal_pair(client, paper_id=paper["id"], headers=operator_headers)
     create_policy(
         client,
         user_id=user["id"],
         frequency=SubscriptionFrequency.EVENT,
+        headers=operator_headers,
         channel=ChannelType.DINGTALK.value,
         endpoint="https://fail.example.local/webhook",
     )
 
-    run_response = client.post(f"/pulse/run/{user['id']}")
+    run_response = client.post(f"/pulse/run/{user['id']}", headers=operator_headers)
     delivery_job_id = run_response.json()["delivery_jobs"][0]["id"]
     DeliveryService(session).dispatch_due_jobs()
 
-    redrive = client.post(f"/ops/delivery-jobs/{delivery_job_id}/requeue")
+    redrive = client.post(
+        f"/ops/delivery-jobs/{delivery_job_id}/requeue",
+        headers=operator_headers,
+    )
 
     assert redrive.status_code == 200
     assert redrive.json()["action"] == "requeued"
     assert redrive.json()["status"] == "pending"
 
 
-def test_worker_heartbeats_are_visible(session, client) -> None:
+def test_worker_heartbeats_are_visible(session, client, internal_service_headers) -> None:
     WorkerHeartbeatService(session).beat(
         worker_name="test-scheduler",
         worker_role=WorkerRole.SCHEDULER,
@@ -204,25 +243,44 @@ def test_worker_heartbeats_are_visible(session, client) -> None:
         now=utcnow(),
     )
 
-    response = client.get("/ops/heartbeats")
+    response = client.get("/ops/heartbeats", headers=internal_service_headers)
 
     assert response.status_code == 200
     assert response.json()[0]["worker_name"] == "test-scheduler"
     assert response.json()[0]["metadata"]["jobs_created"] == 1
 
 
-def test_delivery_attempts_metrics_and_ready_endpoint(client) -> None:
-    user = create_user(client, email="ops-metrics@example.com")
-    paper = create_paper(client, user_id=user["id"], title="Metrics paper")
-    add_signal_pair(client, paper_id=paper["id"])
-    create_policy(client, user_id=user["id"], frequency=SubscriptionFrequency.EVENT)
+def test_delivery_attempts_metrics_and_ready_endpoint(
+    client,
+    session,
+    operator_headers,
+    internal_service_headers,
+) -> None:
+    user = create_user(client, email="ops-metrics@example.com", headers=operator_headers)
+    paper = create_paper(
+        client,
+        user_id=user["id"],
+        title="Metrics paper",
+        headers=operator_headers,
+    )
+    add_signal_pair(client, paper_id=paper["id"], headers=operator_headers)
+    create_policy(
+        client,
+        user_id=user["id"],
+        frequency=SubscriptionFrequency.EVENT,
+        headers=operator_headers,
+    )
 
-    run_response = client.post(f"/pulse/run/{user['id']}")
+    run_response = client.post(f"/pulse/run/{user['id']}", headers=operator_headers)
     delivery_job_id = run_response.json()["delivery_jobs"][0]["id"]
 
-    attempts = client.get("/ops/delivery-attempts").json()
-    metrics = client.get("/ops/metrics")
-    ready = client.get("/health/ready")
+    attempts = client.get(
+        "/ops/delivery-attempts",
+        headers=internal_service_headers,
+    ).json()
+    metrics = client.get("/ops/metrics", headers=internal_service_headers)
+    ready = client.get("/health/ready", headers=internal_service_headers)
+    session.expire_all()
 
     assert any(attempt["delivery_job_id"] == delivery_job_id for attempt in attempts)
     assert "pulse_jobs_completed_total" in metrics.text
@@ -231,6 +289,7 @@ def test_delivery_attempts_metrics_and_ready_endpoint(client) -> None:
     assert ready.status_code == 200
     assert ready.json()["status"] == "ok"
     assert ready.json()["components"]["database"]["status"] == "ok"
+    assert session.query(AuditLog).filter(AuditLog.action == "pulse.run").count() == 1
 
 
 def test_run_endpoint_sets_started_and_completed_timestamps(session) -> None:

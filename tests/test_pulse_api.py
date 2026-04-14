@@ -4,9 +4,10 @@ from research_pulse_cn.db.models import utcnow
 from research_pulse_cn.domain.enums import PaperType, SignalSource, SubscriptionFrequency
 
 
-def create_api_user(client, *, email: str):
+def create_api_user(client, *, email: str, headers: dict[str, str]):
     response = client.post(
         "/users",
+        headers=headers,
         json={
             "name": "API Pulse User",
             "email": email,
@@ -22,9 +23,10 @@ def create_api_user(client, *, email: str):
     return response.json()
 
 
-def create_api_paper(client, *, user_id: str, title: str):
+def create_api_paper(client, *, user_id: str, title: str, headers: dict[str, str]):
     response = client.post(
         "/papers",
+        headers=headers,
         json={
             "user_id": user_id,
             "title": title,
@@ -42,7 +44,7 @@ def create_api_paper(client, *, user_id: str, title: str):
     return response.json()
 
 
-def add_api_signal_pair(client, *, paper_id: str) -> None:
+def add_api_signal_pair(client, *, paper_id: str, headers: dict[str, str]) -> None:
     older = utcnow() - timedelta(days=1)
     newer = utcnow() - timedelta(hours=1)
     for citation_count, download_count, read_count, fetched_at in (
@@ -51,6 +53,7 @@ def add_api_signal_pair(client, *, paper_id: str) -> None:
     ):
         response = client.post(
             f"/papers/{paper_id}/signal-snapshots",
+            headers=headers,
             json={
                 "source": SignalSource.GOOGLE_SCHOLAR,
                 "citation_count": citation_count,
@@ -63,9 +66,16 @@ def add_api_signal_pair(client, *, paper_id: str) -> None:
         assert response.status_code == 201
 
 
-def create_api_policy(client, *, user_id: str, quiet_hours: dict | None = None):
+def create_api_policy(
+    client,
+    *,
+    user_id: str,
+    headers: dict[str, str],
+    quiet_hours: dict | None = None,
+):
     response = client.post(
         "/subscription-policies",
+        headers=headers,
         json={
             "user_id": user_id,
             "channel": "in_app",
@@ -80,21 +90,31 @@ def create_api_policy(client, *, user_id: str, quiet_hours: dict | None = None):
     assert response.status_code == 201
 
 
-def test_preview_endpoint_exposes_suppression_reasons_and_score_breakdowns(client) -> None:
+def test_preview_endpoint_exposes_suppression_reasons_and_score_breakdowns(
+    client,
+    viewer_headers,
+    operator_headers,
+) -> None:
     now = utcnow()
     start = (now - timedelta(minutes=30)).time().replace(microsecond=0).isoformat()
     end = (now + timedelta(minutes=30)).time().replace(microsecond=0).isoformat()
 
-    user = create_api_user(client, email="preview-api@example.com")
-    paper = create_api_paper(client, user_id=user["id"], title="Preview API paper")
-    add_api_signal_pair(client, paper_id=paper["id"])
+    user = create_api_user(client, email="preview-api@example.com", headers=operator_headers)
+    paper = create_api_paper(
+        client,
+        user_id=user["id"],
+        title="Preview API paper",
+        headers=operator_headers,
+    )
+    add_api_signal_pair(client, paper_id=paper["id"], headers=operator_headers)
     create_api_policy(
         client,
         user_id=user["id"],
+        headers=operator_headers,
         quiet_hours={"start": start, "end": end, "timezone": "UTC"},
     )
 
-    response = client.post(f"/pulse/preview/{user['id']}")
+    response = client.post(f"/pulse/preview/{user['id']}", headers=viewer_headers)
 
     assert response.status_code == 200
     payload = response.json()
@@ -108,13 +128,18 @@ def test_preview_endpoint_exposes_suppression_reasons_and_score_breakdowns(clien
     )
 
 
-def test_run_endpoint_persists_selected_cards_with_score_fields(client) -> None:
-    user = create_api_user(client, email="run-api@example.com")
-    paper = create_api_paper(client, user_id=user["id"], title="Run API paper")
-    add_api_signal_pair(client, paper_id=paper["id"])
-    create_api_policy(client, user_id=user["id"])
+def test_run_endpoint_persists_selected_cards_with_score_fields(client, operator_headers) -> None:
+    user = create_api_user(client, email="run-api@example.com", headers=operator_headers)
+    paper = create_api_paper(
+        client,
+        user_id=user["id"],
+        title="Run API paper",
+        headers=operator_headers,
+    )
+    add_api_signal_pair(client, paper_id=paper["id"], headers=operator_headers)
+    create_api_policy(client, user_id=user["id"], headers=operator_headers)
 
-    response = client.post(f"/pulse/run/{user['id']}")
+    response = client.post(f"/pulse/run/{user['id']}", headers=operator_headers)
 
     assert response.status_code == 200
     payload = response.json()

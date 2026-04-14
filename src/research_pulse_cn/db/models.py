@@ -12,6 +12,8 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from research_pulse_cn.db.base import Base
 from research_pulse_cn.db.types import JSON_VARIANT
 from research_pulse_cn.domain.enums import (
+    AdminRole,
+    AuditActorType,
     ChannelType,
     DeliveryAttemptStatus,
     DeliveryJobStatus,
@@ -37,6 +39,27 @@ class TimestampMixin:
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
+class AdminAccount(TimestampMixin, Base):
+    __tablename__ = "admin_accounts"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    email: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    password_hash: Mapped[str] = mapped_column(String(500), nullable=False)
+    role: Mapped[AdminRole] = mapped_column(
+        Enum(AdminRole, native_enum=False),
+        nullable=False,
+    )
+    display_name: Mapped[str | None] = mapped_column(String(255))
+    is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
+    must_change_password: Mapped[bool] = mapped_column(default=True, nullable=False)
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    refresh_tokens: Mapped[list[AdminRefreshToken]] = relationship(
+        back_populates="admin_account",
+        cascade="all, delete-orphan",
     )
 
 
@@ -308,3 +331,42 @@ class DeliveryAttempt(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     delivery_job: Mapped[DeliveryJob] = relationship(back_populates="attempts")
+
+
+class AdminRefreshToken(Base):
+    __tablename__ = "admin_refresh_tokens"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    admin_account_id: Mapped[UUID] = mapped_column(
+        ForeignKey("admin_accounts.id", ondelete="CASCADE")
+    )
+    token_hash: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_ip: Mapped[str | None] = mapped_column(String(255))
+    user_agent: Mapped[str | None] = mapped_column(String(500))
+
+    admin_account: Mapped[AdminAccount] = relationship(back_populates="refresh_tokens")
+
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    actor_type: Mapped[AuditActorType] = mapped_column(
+        Enum(AuditActorType, native_enum=False),
+        nullable=False,
+    )
+    actor_id: Mapped[UUID | None] = mapped_column(Uuid)
+    actor_label: Mapped[str | None] = mapped_column(String(255))
+    action: Mapped[str] = mapped_column(String(255), nullable=False)
+    resource_type: Mapped[str | None] = mapped_column(String(255))
+    resource_id: Mapped[str | None] = mapped_column(String(255))
+    request_id: Mapped[str | None] = mapped_column(String(255))
+    route: Mapped[str | None] = mapped_column(String(255))
+    method: Mapped[str | None] = mapped_column(String(20))
+    status_code: Mapped[int | None] = mapped_column(Integer)
+    metadata_json: Mapped[dict[str, Any] | None] = mapped_column("metadata", JSON_VARIANT)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

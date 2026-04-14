@@ -18,6 +18,9 @@ def test_alembic_upgrade_creates_core_tables(tmp_path) -> None:
     inspector = inspect(engine)
     table_names = set(inspector.get_table_names())
     assert {
+        "admin_accounts",
+        "admin_refresh_tokens",
+        "audit_logs",
         "user_profiles",
         "paper_profiles",
         "progress_events",
@@ -47,3 +50,35 @@ def test_alembic_upgrade_creates_core_tables(tmp_path) -> None:
         "lease_owner",
         "lease_expires_at",
     }.issubset(pulse_job_columns)
+    admin_account_columns = {column["name"] for column in inspector.get_columns("admin_accounts")}
+    assert {
+        "email",
+        "password_hash",
+        "role",
+        "is_active",
+        "must_change_password",
+        "last_login_at",
+    }.issubset(admin_account_columns)
+    refresh_token_columns = {
+        column["name"] for column in inspector.get_columns("admin_refresh_tokens")
+    }
+    assert {
+        "admin_account_id",
+        "token_hash",
+        "issued_at",
+        "expires_at",
+        "revoked_at",
+        "last_used_at",
+    }.issubset(refresh_token_columns)
+    audit_log_columns = {column["name"] for column in inspector.get_columns("audit_logs")}
+    assert {
+        "actor_type",
+        "actor_id",
+        "action",
+        "request_id",
+        "route",
+        "method",
+        "status_code",
+        "metadata",
+        "created_at",
+    }.issubset(audit_log_columns)
