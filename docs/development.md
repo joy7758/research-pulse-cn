@@ -3,6 +3,9 @@
 ## Prerequisites
 - Python 3.12+
 - Docker and Docker Compose
+- Node.js 20+
+- Rust toolchain
+- macOS desktop work requires Xcode Command Line Tools for Tauri
 
 ## First-time setup
 1. `python3 -m venv .venv`
@@ -26,6 +29,25 @@
 - Format: `make format`
 - Tests: `make test`
 - Full local gate: `make check`
+
+## Desktop shell
+- Install desktop dependencies:
+  - `make desktop-install`
+- Run the desktop shell:
+  - `make desktop-dev`
+- Run desktop lint + typecheck:
+  - `make desktop-lint`
+- Run desktop tests:
+  - `make desktop-test`
+- Build the desktop web frontend:
+  - `make desktop-build-web`
+
+Desktop sync in this phase is read-only pull sync over:
+- `GET /sync/me`
+- `GET /sync/feed`
+- `POST /sync/ack`
+
+The desktop shell does not use admin login. It uses admin-issued device tokens and keeps the token on the Rust side.
 
 ## Pulse scoring knobs
 - Defaults live in application settings and `.env.example`
@@ -87,6 +109,27 @@
   - `APP_SYNC_FEED_MAX_LIMIT`
   - `APP_SYNC_PUSH_MAX_BATCH_SIZE`
 - Conflict handling in v1 is last-write-wins for supported patch operations.
+
+## Desktop read-only shell
+- The desktop shell lives under `apps/desktop`.
+- Tauri commands exposed to the frontend include:
+  - `appBootstrap`
+  - `connectDevice`
+  - `disconnectDevice`
+  - `clearLocalCache`
+  - `syncNow`
+  - `getSyncStatus`
+  - `getTodayOverview`
+  - `listPapers`
+  - `getPaperDetail`
+- Local cache tables:
+  - `sync_state`
+  - `paper_cache`
+  - `progress_event_cache`
+  - `signal_snapshot_cache`
+  - `digest_issue_cache`
+  - `sync_event_cache`
+- `progress_percentage` in desktop list/detail views is the same derived heuristic used by the mini read model, not a persisted workflow truth field.
 
 ## Official-account digest reserve
 - WeChat identity binding is admin-managed only in v1.

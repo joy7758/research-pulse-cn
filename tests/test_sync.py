@@ -394,3 +394,10 @@ def test_server_side_crud_and_pulse_actions_emit_sync_events(client, operator_he
     assert "signal_snapshot" in entity_types
     assert "subscription_policy" in entity_types
     assert "pulse_card" in entity_types
+    assert "pulse_digest_issue" in entity_types
+
+    digest_event = next(
+        event for event in feed.json()["events"] if event["entity_type"] == "pulse_digest_issue"
+    )
+    assert digest_event["payload"]["highlights"]
+    assert digest_event["payload"]["items"]

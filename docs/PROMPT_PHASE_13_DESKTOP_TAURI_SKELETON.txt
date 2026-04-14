@@ -1,0 +1,281 @@
+Read AGENTS.md, docs/BUILD_SPEC.md, docs/architecture.md, docs/development.md, docs/pulse_scoring.md, docs/operations.md, docs/auth_admin_boundary.md, docs/sync_foundation.md, docs/official_account_digest_reserve.md, docs/mini_program_readonly_reserve.md, docs/official_account_provider_boundary.md, and docs/official_account_real_send_v1.md before editing.
+
+Implement Phase 13 only: desktop Tauri skeleton v1.
+
+Hard boundaries for this phase:
+- Choose Tauri 2. Do not introduce Electron.
+- Do not add customer-facing OAuth login.
+- Do not add Mini Program frontend code.
+- Do not add PDF import, annotation, or local file knowledge management yet.
+- Do not add desktop write-back sync mutations yet.
+- Do not add embedded Python backend or bundled server mode.
+- Do not add auto-update, signing, installer hardening, or release packaging workflows.
+- Do not weaken existing admin auth, internal service auth, device-token sync auth, mini-read auth, or official-account provider boundaries.
+- Do not replace the current modular monolith backend architecture.
+
+Primary goal:
+Add a production-friendly desktop client skeleton under this monorepo using Tauri 2 + React + TypeScript + Vite, connected to the existing backend sync foundation in read-only pull-sync mode.
+
+This phase should make the repository suitable for:
+- a local desktop shell for future research workbench use
+- validating backend sync flows from a real client
+- local read-only cache and offline-ish browsing of previously synced data
+- future desktop write-back sync in a later phase
+- future local file and paper workspace features without reworking the shell
+
+Required changes:
+
+1. Repository layout and tooling
+Add a desktop app under:
+- apps/desktop
+
+Use:
+- Tauri 2
+- React
+- TypeScript
+- Vite
+
+Requirements:
+- keep the desktop app isolated from the Python backend
+- add appropriate .gitignore entries for node_modules, build artifacts, Tauri target output
+- keep the monorepo understandable
+- add root-level developer commands for desktop work
+
+2. Desktop app shell
+Implement a minimal but real app shell.
+
+Required routes/views:
+- Onboarding / Connection
+- Today
+- Papers
+- Paper Detail
+- Settings / Sync Status
+
+Requirements:
+- no heavy UI library unless clearly justified
+- simple, clean layout is enough
+- show current backend base URL, connection state, last sync time, and sync errors
+- show empty states clearly
+- show current linked user summary after successful device connect
+
+3. Connection and auth model
+Use the existing backend device-token sync auth for desktop bootstrap.
+
+Desktop connection flow:
+- user enters:
+  - backend base URL
+  - device token
+  - optional device display name label shown locally
+- desktop validates the token via backend /sync/me
+- on success:
+  - persist connection settings
+  - persist device token via a Rust-side secret boundary
+  - initialize or refresh local sync state
+- add commands/actions for:
+  - connectDevice
+  - disconnectDevice
+  - clearLocalCache
+  - syncNow
+  - getSyncStatus
+
+Important:
+- do not store device token in browser localStorage/sessionStorage
+- create a SecretStore abstraction on the Rust side
+- use a simple file-backed dev/local implementation for v1 if needed, but isolate it cleanly behind the abstraction and document that stronger secret storage is a later hardening step
+
+4. Local persistence and cache
+Add a lightweight local cache in the desktop app.
+
+Preferred approach:
+- SQLite in src-tauri via Rust
+
+Requirements:
+- initialize app-local database under the app data directory
+- keep schema small and read-focused
+- add simple initialization/migration handling
+
+At minimum support local cache/read models for:
+- sync_state
+- paper_cache
+- progress_event_cache
+- signal_snapshot_cache
+- digest_issue_cache
+- sync_event_cache
+
+If a separate digest_item_cache is justified, keep it minimal.
+
+Cache requirements:
+- support rebuilding derived read models from synced events where practical
+- preserve a stable paper ordering field or query ordering
+- preserve digest highlight ordering when available
+- keep the cache client-friendly and not overdesigned
+
+5. Pull-sync client
+Implement a desktop pull-sync flow against the existing backend.
+
+Required backend endpoints to consume:
+- GET /sync/me
+- GET /sync/feed
+- POST /sync/ack
+
+Requirements:
+- perform HTTP from the Rust side, not directly from the frontend
+- keep HTTP client and sync logic out of the React components
+- pull events after the local cursor
+- apply events sequentially to local cache
+- acknowledge only after successful local apply
+- support repeated sync until no more pages remain
+- expose compact sync status to the frontend:
+  - connected
+  - last_synced_at
+  - last_event_sequence
+  - last_error
+  - current_user_summary
+
+If the existing SyncEvent payload for pulse digest issues is insufficient for the desktop read models, minimally enrich backend sync emission in a backward-friendly way so desktop can show a useful Today view.
+
+6. Desktop read models and derived progress percentage
+Implement compact desktop read models for:
+- TodayOverviewRead
+- PaperListItemRead
+- PaperDetailRead
+- SyncStatusRead
+- UserConnectionRead
+
+Add derived progress_percentage as a read-model heuristic, not as a persisted source-of-truth field.
+
+Use this exact mapping:
+- published -> 100
+- revision -> 80
+- under_review -> 65
+- in_prep -> 35
+- paused -> 0
+
+Requirements:
+- use the same mapping consistently in desktop list/detail views
+- document clearly that this is a UI/read-model heuristic, not workflow truth
+
+7. Frontend behavior
+Implement minimal useful frontend behavior.
+
+Today view:
+- show latest available digest issue if present
+- otherwise show a valid empty state
+- show compact highlights and landing context
+
+Papers view:
+- list cached papers
+- support stable ordering and a simple filter by paper type/status if straightforward
+- show progress_percentage
+
+Paper detail view:
+- show paper summary
+- show recent progress events
+- show recent signal snapshots
+- show next_action/blocker when available
+
+Settings / Sync Status:
+- show base URL
+- show linked user
+- show cache/sync metadata
+- allow manual sync
+- allow disconnect / clear local cache
+
+8. Tauri command boundary
+Add Rust commands exposed to the frontend for at least:
+- appBootstrap
+- connectDevice
+- disconnectDevice
+- clearLocalCache
+- syncNow
+- getSyncStatus
+- getTodayOverview
+- listPapers
+- getPaperDetail
+
+Requirements:
+- commands should return typed payloads
+- avoid leaking internal-only secrets to the frontend
+- keep command naming clear and production-friendly
+
+9. Developer workflow and CI
+Add desktop developer commands.
+
+Update root Makefile with at minimum:
+- desktop-install
+- desktop-dev
+- desktop-lint
+- desktop-test
+- desktop-build-web
+
+Requirements:
+- keep current backend commands intact
+- do not require native Tauri packaging in CI
+- add reasonable desktop checks in CI, for example:
+  - npm install / ci in apps/desktop
+  - lint
+  - typecheck
+  - test
+- avoid fragile native bundle steps in CI for this phase
+
+10. Tests
+Add or update tests covering at minimum:
+
+Frontend / TS tests:
+- derived progress percentage mapping
+- Today empty state shaping
+- paper list ordering / shaping helper if implemented
+
+Rust tests where practical:
+- sync event application to local cache
+- repeated sync ack only after successful apply
+- connectDevice rejects invalid token path with mocked HTTP
+- clearLocalCache resets cache state
+- getPaperDetail returns derived progress_percentage
+
+Repo-level:
+- existing backend tests continue to pass
+
+Do not overinvest in GUI snapshot tests in this phase.
+
+11. Documentation
+Add docs/desktop_tauri_skeleton_v1.md
+
+It should explain:
+- why Tauri was chosen for the desktop shell in this project
+- repository layout
+- desktop connection model
+- local cache model
+- pull-sync flow
+- read models
+- derived progress percentage heuristic
+- local developer commands
+- current non-goals
+- future work:
+  - desktop write-back sync
+  - stronger secret storage
+  - local paper/file workspace
+  - packaging/signing/distribution
+  - richer desktop UX
+
+Also update:
+- README.md
+- docs/development.md
+- docs/architecture.md
+- docs/sync_foundation.md
+- any docs that should mention desktop shell and read-only pull-sync
+
+12. Quality bar
+- keep the desktop app typed and readable
+- keep backend changes minimal and justified
+- do not add unnecessary dependencies
+- do not require live backend credentials in tests
+- do not introduce Electron
+- run available checks
+- fix obvious lint/test issues
+- end with a concise summary:
+  - files changed
+  - whether any backend migrations were needed
+  - new desktop commands
+  - local cache tables/read models
+  - next-phase recommendation only
