@@ -1,0 +1,1 @@
+"""Outbound channel adapter implementations."""

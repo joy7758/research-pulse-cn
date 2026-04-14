@@ -1,0 +1,41 @@
+"""API dependencies."""
+
+from collections.abc import Iterator
+from typing import Annotated
+
+from fastapi import Depends
+from sqlalchemy.orm import Session
+
+from research_pulse_cn.db.session import get_db_session
+from research_pulse_cn.services.delivery import DeliveryService
+from research_pulse_cn.services.paper import PaperService
+from research_pulse_cn.services.pulse import PulseService
+from research_pulse_cn.services.subscription_policy import SubscriptionPolicyService
+from research_pulse_cn.services.user import UserService
+
+
+def get_session() -> Iterator[Session]:
+    yield from get_db_session()
+
+
+SessionDep = Annotated[Session, Depends(get_session)]
+
+
+def get_user_service(session: SessionDep) -> UserService:
+    return UserService(session)
+
+
+def get_paper_service(session: SessionDep) -> PaperService:
+    return PaperService(session)
+
+
+def get_subscription_policy_service(session: SessionDep) -> SubscriptionPolicyService:
+    return SubscriptionPolicyService(session)
+
+
+def get_pulse_service(session: SessionDep) -> PulseService:
+    return PulseService(session)
+
+
+def get_delivery_service(session: SessionDep) -> DeliveryService:
+    return DeliveryService(session)
