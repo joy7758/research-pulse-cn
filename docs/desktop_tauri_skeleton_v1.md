@@ -77,7 +77,7 @@ Direct app-local commands:
 - `cd apps/desktop && cargo test --manifest-path src-tauri/Cargo.toml`
 
 ## Current Non-Goals
-- no desktop write-back sync mutations
+- no desktop write-back sync beyond the limited Phase 14 mutation set
 - no local paper/file workspace
 - no PDF import or annotation
 - no embedded backend or bundled server mode
@@ -85,7 +85,7 @@ Direct app-local commands:
 - no Electron
 
 ## Future Work
-- desktop write-back sync
+- richer desktop write-back sync beyond paper patch, progress events, and subscription policy patch
 - stronger secret storage beyond the local dev file-backed abstraction
 - local paper/file workspace and annotation features
 - packaging, signing, and distribution workflows

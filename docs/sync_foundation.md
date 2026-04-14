@@ -79,10 +79,14 @@
 - Delivery job status changes are not yet emitted as sync events.
 - WeChat identity bindings and publication jobs are intentionally kept out of sync in v1.
 - Legacy `dingtalk` and `wechat` enum values remain only for compatibility with older rows and are rejected for new policy writes.
-- Desktop clients currently use read-only pull sync only; write-back mutations from the desktop shell are deferred to a later phase.
+- Desktop write-back now exists only for:
+  - `paper.patch`
+  - `progress_event.create`
+  - `subscription_policy.patch`
+- Desktop uses a local outbox and push-before-pull sync cycle; it still does not call business CRUD directly.
 
 ## Future Work
-- desktop write-back sync
+- richer desktop write-back sync and stronger conflict handling
 - official-account digest publishing
 - mini-program lightweight client access
 - richer sync conflict handling

@@ -1,7 +1,9 @@
 import type { PaperListItemRead } from "./types";
 import {
+  buildQuietHoursPatch,
   buildTodayEmptyState,
   deriveProgressPercentage,
+  extractQuietHoursDraft,
   sortPapers,
 } from "./readModels";
 
@@ -46,6 +48,8 @@ describe("desktop read model helpers", () => {
         lastTouchAt: "2026-04-14T00:00:00Z",
         progressPercentage: 100,
         updatedAt: "2026-04-14T00:00:00Z",
+        pendingMutationCount: 0,
+        lastMutationError: null,
       },
       {
         id: "paper-a",
@@ -60,6 +64,8 @@ describe("desktop read model helpers", () => {
         lastTouchAt: "2026-04-15T00:00:00Z",
         progressPercentage: 80,
         updatedAt: "2026-04-15T00:00:00Z",
+        pendingMutationCount: 0,
+        lastMutationError: null,
       },
       {
         id: "paper-c",
@@ -74,6 +80,8 @@ describe("desktop read model helpers", () => {
         lastTouchAt: "2026-04-14T00:00:00Z",
         progressPercentage: 80,
         updatedAt: "2026-04-13T00:00:00Z",
+        pendingMutationCount: 0,
+        lastMutationError: null,
       },
     ];
 
@@ -82,5 +90,30 @@ describe("desktop read model helpers", () => {
       "paper-c",
       "paper-b",
     ]);
+  });
+
+  it("shapes quiet-hours drafts and patches for subscription policy edits", () => {
+    expect(
+      extractQuietHoursDraft({
+        start: "22:00",
+        end: "07:00",
+        timezone: "Asia/Shanghai",
+      }),
+    ).toEqual({
+      start: "22:00",
+      end: "07:00",
+    });
+
+    expect(
+      buildQuietHoursPatch(
+        { start: "22:00", end: "07:00", timezone: "Asia/Shanghai" },
+        "23:00",
+        "08:00",
+      ),
+    ).toEqual({
+      start: "23:00",
+      end: "08:00",
+      timezone: "Asia/Shanghai",
+    });
   });
 });

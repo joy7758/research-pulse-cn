@@ -42,12 +42,13 @@
 - Build the desktop web frontend:
   - `make desktop-build-web`
 
-Desktop sync in this phase is read-only pull sync over:
+Desktop sync in this phase uses:
 - `GET /sync/me`
+- `POST /sync/push`
 - `GET /sync/feed`
 - `POST /sync/ack`
 
-The desktop shell does not use admin login. It uses admin-issued device tokens and keeps the token on the Rust side.
+The desktop shell does not use admin login. It uses admin-issued device tokens, keeps the token on the Rust side, and persists local mutations into a SQLite outbox before attempting sync.
 
 ## Pulse scoring knobs
 - Defaults live in application settings and `.env.example`
@@ -110,25 +111,37 @@ The desktop shell does not use admin login. It uses admin-issued device tokens a
   - `APP_SYNC_PUSH_MAX_BATCH_SIZE`
 - Conflict handling in v1 is last-write-wins for supported patch operations.
 
-## Desktop read-only shell
+## Desktop shell
 - The desktop shell lives under `apps/desktop`.
 - Tauri commands exposed to the frontend include:
   - `appBootstrap`
   - `connectDevice`
   - `disconnectDevice`
   - `clearLocalCache`
+  - `queuePaperPatch`
+  - `queueProgressEventCreate`
+  - `queueSubscriptionPolicyPatch`
   - `syncNow`
   - `getSyncStatus`
   - `getTodayOverview`
   - `listPapers`
   - `getPaperDetail`
+  - `listSubscriptionPolicies`
+  - `listPendingMutations`
 - Local cache tables:
   - `sync_state`
   - `paper_cache`
   - `progress_event_cache`
   - `signal_snapshot_cache`
+  - `subscription_policy_cache`
   - `digest_issue_cache`
   - `sync_event_cache`
+  - `mutation_outbox`
+- Desktop sync now runs:
+  - push queued mutations
+  - pull feed pages
+  - apply events
+  - ack only after successful apply
 - `progress_percentage` in desktop list/detail views is the same derived heuristic used by the mini read model, not a persisted workflow truth field.
 
 ## Official-account digest reserve

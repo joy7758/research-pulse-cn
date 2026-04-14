@@ -11,20 +11,54 @@ import {
 
 import "./App.css";
 import { desktopApi } from "./lib/desktopApi";
-import { buildTodayEmptyState, sortPapers } from "./lib/readModels";
+import {
+  buildQuietHoursPatch,
+  buildTodayEmptyState,
+  extractQuietHoursDraft,
+  sortPapers,
+} from "./lib/readModels";
 import type {
   ConnectDeviceInput,
   ListPapersInput,
   PaperDetailRead,
   PaperListItemRead,
+  PendingMutationRead,
+  QueuePaperPatchInput,
+  QueueProgressEventCreateInput,
+  QueueSubscriptionPolicyPatchInput,
+  SubscriptionPolicyRead,
+  SyncNowResponse,
   SyncStatusRead,
   TodayOverviewRead,
+  WriteActionResultRead,
 } from "./lib/types";
 
 const defaultConnectionForm: ConnectDeviceInput = {
   baseUrl: "http://127.0.0.1:8000",
   deviceToken: "",
   deviceDisplayName: "Research Pulse Desktop",
+};
+
+type PaperPatchDraft = {
+  stage: string;
+  venue: string;
+  nextAction: string;
+  blocker: string;
+  priority: string;
+};
+
+type ProgressEventDraft = {
+  stage: string;
+  happenedAt: string;
+  summary: string;
+  owner: string;
+};
+
+type SubscriptionPolicyDraft = {
+  enabled: boolean;
+  frequencyCap: string;
+  quietStart: string;
+  quietEnd: string;
 };
 
 function App() {
@@ -44,10 +78,20 @@ function DesktopShell() {
   const [connecting, setConnecting] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [dataVersion, setDataVersion] = useState(0);
+  const [lastSyncSummary, setLastSyncSummary] = useState<SyncNowResponse | null>(null);
   const [connectionForm, setConnectionForm] =
     useState<ConnectDeviceInput>(defaultConnectionForm);
 
   const connected = Boolean(syncStatus?.connected);
+
+  const refreshShellData = useCallback(async () => {
+    const [nextStatus, nextToday] = await Promise.all([
+      desktopApi.getSyncStatus(),
+      desktopApi.getTodayOverview(),
+    ]);
+    setSyncStatus(nextStatus);
+    setTodayOverview(nextToday);
+  }, []);
 
   const reloadBootstrap = useCallback(async () => {
     setLoadingBootstrap(true);
@@ -71,6 +115,9 @@ function DesktopShell() {
         lastSyncedAt: null,
         lastEventSequence: 0,
         lastError: null,
+        pendingMutationCount: 0,
+        failedMutationCount: 0,
+        recentOutboxErrors: [],
         currentUserSummary: null,
       });
       setTodayOverview(
@@ -99,6 +146,7 @@ function DesktopShell() {
         deviceToken: "",
       });
       setDesktopError(null);
+      setLastSyncSummary(null);
       setDataVersion((value) => value + 1);
       navigate("/today");
     } catch (error) {
@@ -115,6 +163,7 @@ function DesktopShell() {
       setSyncStatus(response.syncStatus);
       setTodayOverview(response.todayOverview);
       setDesktopError(null);
+      setLastSyncSummary(response);
       setDataVersion((value) => value + 1);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -138,6 +187,7 @@ function DesktopShell() {
       setSyncStatus(status);
       setTodayOverview(buildTodayEmptyState("Desktop device disconnected."));
       setDesktopError(null);
+      setLastSyncSummary(null);
       setDataVersion((value) => value + 1);
       navigate("/connect");
     } catch (error) {
@@ -151,11 +201,27 @@ function DesktopShell() {
       setSyncStatus(status);
       setTodayOverview(buildTodayEmptyState("Local cache cleared. Run sync to repopulate it."));
       setDesktopError(null);
+      setLastSyncSummary(null);
       setDataVersion((value) => value + 1);
     } catch (error) {
       setDesktopError(error instanceof Error ? error.message : String(error));
     }
   }
+
+  const handleWriteResult = useCallback(
+    async (result: WriteActionResultRead) => {
+      setSyncStatus(result.syncStatus);
+      if (result.syncError) {
+        setDesktopError(result.syncError);
+      } else {
+        setDesktopError(null);
+      }
+      await refreshShellData();
+      setDataVersion((value) => value + 1);
+      return result;
+    },
+    [refreshShellData],
+  );
 
   const shellHeader = useMemo(() => {
     if (!syncStatus?.currentUserSummary) {
@@ -209,9 +275,11 @@ function DesktopShell() {
                 syncStatus={syncStatus}
                 shellHeader={shellHeader}
                 syncing={syncing}
+                lastSyncSummary={lastSyncSummary}
                 onSyncNow={handleSyncNow}
                 onDisconnect={handleDisconnect}
                 onClearLocalCache={handleClearLocalCache}
+                onWriteResult={handleWriteResult}
                 todayOverview={todayOverview}
                 dataVersion={dataVersion}
               />
@@ -229,9 +297,11 @@ function ShellLayout({
   syncStatus,
   shellHeader,
   syncing,
+  lastSyncSummary,
   onSyncNow,
   onDisconnect,
   onClearLocalCache,
+  onWriteResult,
   todayOverview,
   dataVersion,
 }: {
@@ -242,9 +312,11 @@ function ShellLayout({
     lastEventSequence: number;
   } | null;
   syncing: boolean;
+  lastSyncSummary: SyncNowResponse | null;
   onSyncNow: () => Promise<void>;
   onDisconnect: () => Promise<void>;
   onClearLocalCache: () => Promise<void>;
+  onWriteResult: (result: WriteActionResultRead) => Promise<WriteActionResultRead>;
   todayOverview: TodayOverviewRead;
   dataVersion: number;
 }) {
@@ -255,7 +327,7 @@ function ShellLayout({
           <div className="brand-mark">RP</div>
           <div>
             <div className="brand-title">Research Pulse</div>
-            <div className="brand-subtitle">Tauri desktop shell</div>
+            <div className="brand-subtitle">Tauri desktop workbench</div>
           </div>
         </div>
 
@@ -285,18 +357,43 @@ function ShellLayout({
               ? `Last sync ${formatDateTime(syncStatus.lastSyncedAt)}`
               : "Never synced"}
           </div>
+          <div className="sidebar-meta">
+            Pending {syncStatus.pendingMutationCount} / Failed{" "}
+            {syncStatus.failedMutationCount}
+          </div>
           <div className="sidebar-actions">
             <button type="button" onClick={() => void onSyncNow()} disabled={syncing}>
               {syncing ? "Syncing..." : "Sync Now"}
             </button>
-            <button type="button" className="button-secondary" onClick={() => void onClearLocalCache()}>
+            <button
+              type="button"
+              className="button-secondary"
+              onClick={() => void onClearLocalCache()}
+            >
               Clear Cache
             </button>
-            <button type="button" className="button-secondary" onClick={() => void onDisconnect()}>
+            <button
+              type="button"
+              className="button-secondary"
+              onClick={() => void onDisconnect()}
+            >
               Disconnect
             </button>
           </div>
         </section>
+
+        {lastSyncSummary ? (
+          <section className="sidebar-card">
+            <div className="sidebar-label">Last Sync</div>
+            <div className="sidebar-meta">
+              Push {lastSyncSummary.pushedCount} / Apply {lastSyncSummary.appliedCount} /
+              Dup {lastSyncSummary.duplicateCount} / Fail {lastSyncSummary.failedCount}
+            </div>
+            <div className="sidebar-meta">
+              Feed {lastSyncSummary.eventsApplied} events, ack #{lastSyncSummary.acknowledgedSequence}
+            </div>
+          </section>
+        ) : null}
       </aside>
 
       <main className="content">
@@ -306,7 +403,9 @@ function ShellLayout({
           <Route path="/papers" element={<PapersView dataVersion={dataVersion} />} />
           <Route
             path="/papers/:paperId"
-            element={<PaperDetailView dataVersion={dataVersion} />}
+            element={
+              <PaperDetailView dataVersion={dataVersion} onWriteResult={onWriteResult} />
+            }
           />
           <Route
             path="/settings"
@@ -317,6 +416,8 @@ function ShellLayout({
                 onSyncNow={onSyncNow}
                 onDisconnect={onDisconnect}
                 onClearLocalCache={onClearLocalCache}
+                onWriteResult={onWriteResult}
+                dataVersion={dataVersion}
               />
             }
           />
@@ -349,10 +450,10 @@ function ConnectionScreen({
     <div className="connection-screen">
       <section className="connection-card">
         <div className="eyebrow">Desktop Connection</div>
-        <h1>Connect a read-only desktop device</h1>
+        <h1>Connect a write-capable desktop device</h1>
         <p className="lede">
-          This shell uses the existing device-token sync boundary. Admin auth stays
-          separate, and the token never touches localStorage or sessionStorage.
+          This shell uses the existing device-token sync boundary. Desktop writes go
+          through the local outbox and `/sync/push`, not business CRUD endpoints.
         </p>
 
         <label>
@@ -466,6 +567,11 @@ function TodayView({ todayOverview }: { todayOverview: TodayOverviewRead }) {
                   <span className="pill">
                     {highlight.paper.progressPercentage}% progress
                   </span>
+                  {highlight.paper.pendingMutationCount ? (
+                    <span className="pill pill-accent">
+                      {highlight.paper.pendingMutationCount} pending write
+                    </span>
+                  ) : null}
                 </div>
               ) : null}
             </article>
@@ -539,6 +645,14 @@ function PapersView({ dataVersion }: { dataVersion: number }) {
               <span className="pill">Priority {paper.priority}</span>
               {paper.venue ? <span className="pill">{paper.venue}</span> : null}
               <span className="pill">{paper.stage}</span>
+              {paper.pendingMutationCount ? (
+                <span className="pill pill-accent">
+                  {paper.pendingMutationCount} pending write
+                </span>
+              ) : null}
+              {paper.lastMutationError ? (
+                <span className="pill pill-danger">Sync failed</span>
+              ) : null}
             </div>
           </NavLink>
         ))}
@@ -547,11 +661,27 @@ function PapersView({ dataVersion }: { dataVersion: number }) {
   );
 }
 
-function PaperDetailView({ dataVersion }: { dataVersion: number }) {
+function PaperDetailView({
+  dataVersion,
+  onWriteResult,
+}: {
+  dataVersion: number;
+  onWriteResult: (result: WriteActionResultRead) => Promise<WriteActionResultRead>;
+}) {
   const { paperId } = useParams();
   const [paper, setPaper] = useState<PaperDetailRead | null>(null);
+  const [patchDraft, setPatchDraft] = useState<PaperPatchDraft | null>(null);
+  const [progressDraft, setProgressDraft] = useState<ProgressEventDraft>({
+    stage: "revision",
+    happenedAt: toDateTimeLocalValue(new Date().toISOString()),
+    summary: "",
+    owner: "desktop",
+  });
+  const [savingPatch, setSavingPatch] = useState(false);
+  const [savingProgress, setSavingProgress] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (!paperId) {
@@ -562,6 +692,17 @@ function PaperDetailView({ dataVersion }: { dataVersion: number }) {
       try {
         const detail = await desktopApi.getPaperDetail(paperId);
         setPaper(detail);
+        setPatchDraft({
+          stage: detail.stage,
+          venue: detail.venue ?? "",
+          nextAction: detail.nextAction ?? "",
+          blocker: detail.blocker ?? "",
+          priority: String(detail.priority),
+        });
+        setProgressDraft((current) => ({
+          ...current,
+          stage: detail.stage,
+        }));
         setError(null);
       } catch (loadError) {
         setError(loadError instanceof Error ? loadError.message : String(loadError));
@@ -579,7 +720,7 @@ function PaperDetailView({ dataVersion }: { dataVersion: number }) {
     return <LoadingState label="Loading paper detail" />;
   }
 
-  if (error || !paper) {
+  if (error || !paper || !patchDraft) {
     return (
       <section className="panel">
         <div className="eyebrow">Paper Detail</div>
@@ -587,6 +728,56 @@ function PaperDetailView({ dataVersion }: { dataVersion: number }) {
         <p className="panel-message">{error ?? "The paper is not cached yet."}</p>
       </section>
     );
+  }
+
+  const currentPaper = paper;
+  const currentPatchDraft = patchDraft;
+
+  async function handleSavePatch() {
+    setSavingPatch(true);
+    try {
+      const result = await desktopApi.queuePaperPatch({
+        paperId: currentPaper.id,
+        stage: currentPatchDraft.stage,
+        venue: currentPatchDraft.venue,
+        nextAction: currentPatchDraft.nextAction,
+        blocker: currentPatchDraft.blocker,
+        priority: Number(currentPatchDraft.priority),
+      } satisfies QueuePaperPatchInput);
+      await onWriteResult(result);
+      setActionMessage(buildWriteMessage(result, "Paper update queued"));
+    } catch (saveError) {
+      setActionMessage(
+        saveError instanceof Error ? saveError.message : String(saveError),
+      );
+    } finally {
+      setSavingPatch(false);
+    }
+  }
+
+  async function handleCreateProgressEvent() {
+    setSavingProgress(true);
+    try {
+      const result = await desktopApi.queueProgressEventCreate({
+        paperId: currentPaper.id,
+        stage: progressDraft.stage,
+        happenedAt: toIsoTimestamp(progressDraft.happenedAt),
+        summary: progressDraft.summary,
+        owner: progressDraft.owner,
+      } satisfies QueueProgressEventCreateInput);
+      await onWriteResult(result);
+      setProgressDraft((current) => ({
+        ...current,
+        summary: "",
+      }));
+      setActionMessage(buildWriteMessage(result, "Progress event queued"));
+    } catch (saveError) {
+      setActionMessage(
+        saveError instanceof Error ? saveError.message : String(saveError),
+      );
+    } finally {
+      setSavingProgress(false);
+    }
   }
 
   return (
@@ -598,6 +789,16 @@ function PaperDetailView({ dataVersion }: { dataVersion: number }) {
           <span className="pill">{paper.paperType}</span>
           <span className="pill">{paper.stage}</span>
           <span className="pill">{paper.progressPercentage}% progress</span>
+          {paper.pendingMutationCount ? (
+            <span className="pill pill-accent">
+              {paper.pendingMutationCount} pending write
+            </span>
+          ) : (
+            <span className="pill pill-success">Synced</span>
+          )}
+          {paper.lastMutationError ? (
+            <span className="pill pill-danger">{paper.lastMutationError}</span>
+          ) : null}
         </div>
         <p className="panel-message">
           {paper.nextAction ?? "No next action recorded."}
@@ -611,6 +812,177 @@ function PaperDetailView({ dataVersion }: { dataVersion: number }) {
             value={paper.lastTouchAt ? formatDateTime(paper.lastTouchAt) : "Unknown"}
           />
           <DetailRow label="Identifiers" value={JSON.stringify(paper.identifiers)} />
+        </div>
+      </div>
+
+      <div className="panel">
+        <div className="eyebrow">Edit Paper</div>
+        <div className="form-grid">
+          <label>
+            Stage
+            <select
+              value={patchDraft.stage}
+              onChange={(event) =>
+                setPatchDraft((current) =>
+                  current
+                    ? {
+                        ...current,
+                        stage: event.target.value,
+                      }
+                    : current,
+                )
+              }
+            >
+              <option value="published">published</option>
+              <option value="revision">revision</option>
+              <option value="under_review">under_review</option>
+              <option value="in_prep">in_prep</option>
+              <option value="paused">paused</option>
+            </select>
+          </label>
+          <label>
+            Venue
+            <input
+              value={patchDraft.venue}
+              onChange={(event) =>
+                setPatchDraft((current) =>
+                  current
+                    ? {
+                        ...current,
+                        venue: event.target.value,
+                      }
+                    : current,
+                )
+              }
+            />
+          </label>
+          <label>
+            Next Action
+            <input
+              value={patchDraft.nextAction}
+              onChange={(event) =>
+                setPatchDraft((current) =>
+                  current
+                    ? {
+                        ...current,
+                        nextAction: event.target.value,
+                      }
+                    : current,
+                )
+              }
+            />
+          </label>
+          <label>
+            Blocker
+            <input
+              value={patchDraft.blocker}
+              onChange={(event) =>
+                setPatchDraft((current) =>
+                  current
+                    ? {
+                        ...current,
+                        blocker: event.target.value,
+                      }
+                    : current,
+                )
+              }
+            />
+          </label>
+          <label>
+            Priority
+            <input
+              type="number"
+              min={1}
+              value={patchDraft.priority}
+              onChange={(event) =>
+                setPatchDraft((current) =>
+                  current
+                    ? {
+                        ...current,
+                        priority: event.target.value,
+                      }
+                    : current,
+                )
+              }
+            />
+          </label>
+        </div>
+        <div className="form-actions">
+          <button type="button" onClick={() => void handleSavePatch()} disabled={savingPatch}>
+            {savingPatch ? "Saving..." : "Queue Paper Patch"}
+          </button>
+        </div>
+        {actionMessage ? <p className="meta-note">{actionMessage}</p> : null}
+      </div>
+
+      <div className="panel">
+        <div className="eyebrow">Add Progress Event</div>
+        <div className="form-grid">
+          <label>
+            Stage
+            <select
+              value={progressDraft.stage}
+              onChange={(event) =>
+                setProgressDraft((current) => ({
+                  ...current,
+                  stage: event.target.value,
+                }))
+              }
+            >
+              <option value="published">published</option>
+              <option value="revision">revision</option>
+              <option value="under_review">under_review</option>
+              <option value="in_prep">in_prep</option>
+              <option value="paused">paused</option>
+            </select>
+          </label>
+          <label>
+            Happened At
+            <input
+              type="datetime-local"
+              value={progressDraft.happenedAt}
+              onChange={(event) =>
+                setProgressDraft((current) => ({
+                  ...current,
+                  happenedAt: event.target.value,
+                }))
+              }
+            />
+          </label>
+          <label className="form-full">
+            Summary
+            <textarea
+              rows={3}
+              value={progressDraft.summary}
+              onChange={(event) =>
+                setProgressDraft((current) => ({
+                  ...current,
+                  summary: event.target.value,
+                }))
+              }
+            />
+          </label>
+          <label>
+            Owner
+            <input
+              value={progressDraft.owner}
+              onChange={(event) =>
+                setProgressDraft((current) => ({
+                  ...current,
+                  owner: event.target.value,
+                }))
+              }
+            />
+          </label>
+        </div>
+        <div className="form-actions">
+          <button
+            type="button"
+            onClick={() => void handleCreateProgressEvent()}
+            disabled={savingProgress}
+          >
+            {savingProgress ? "Saving..." : "Queue Progress Event"}
+          </button>
         </div>
       </div>
 
@@ -664,46 +1036,282 @@ function SettingsView({
   onSyncNow,
   onDisconnect,
   onClearLocalCache,
+  onWriteResult,
+  dataVersion,
 }: {
   syncStatus: SyncStatusRead;
   syncing: boolean;
   onSyncNow: () => Promise<void>;
   onDisconnect: () => Promise<void>;
   onClearLocalCache: () => Promise<void>;
+  onWriteResult: (result: WriteActionResultRead) => Promise<WriteActionResultRead>;
+  dataVersion: number;
 }) {
+  const [policies, setPolicies] = useState<SubscriptionPolicyRead[]>([]);
+  const [pendingMutations, setPendingMutations] = useState<PendingMutationRead[]>([]);
+  const [drafts, setDrafts] = useState<Record<string, SubscriptionPolicyDraft>>({});
+  const [loading, setLoading] = useState(true);
+  const [savingPolicyId, setSavingPolicyId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    void (async () => {
+      setLoading(true);
+      try {
+        const [nextPolicies, nextPending] = await Promise.all([
+          desktopApi.listSubscriptionPolicies(),
+          desktopApi.listPendingMutations(),
+        ]);
+        setPolicies(nextPolicies);
+        setPendingMutations(nextPending);
+        setDrafts(
+          Object.fromEntries(
+            nextPolicies.map((policy) => [
+              policy.id,
+              {
+                enabled: policy.enabled,
+                frequencyCap: String(policy.frequencyCap),
+                quietStart: extractQuietHoursDraft(policy.quietHours).start,
+                quietEnd: extractQuietHoursDraft(policy.quietHours).end,
+              },
+            ]),
+          ),
+        );
+        setError(null);
+      } catch (loadError) {
+        setError(loadError instanceof Error ? loadError.message : String(loadError));
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [dataVersion]);
+
+  async function handleSavePolicy(policy: SubscriptionPolicyRead) {
+    const draft = drafts[policy.id];
+    if (!draft) {
+      return;
+    }
+    setSavingPolicyId(policy.id);
+    try {
+      const result = await desktopApi.queueSubscriptionPolicyPatch({
+        subscriptionPolicyId: policy.id,
+        enabled: draft.enabled,
+        frequencyCap: Number(draft.frequencyCap),
+        quietHours: buildQuietHoursPatch(policy.quietHours, draft.quietStart, draft.quietEnd),
+      } satisfies QueueSubscriptionPolicyPatchInput);
+      await onWriteResult(result);
+      setActionMessage(buildWriteMessage(result, "Subscription policy queued"));
+    } catch (saveError) {
+      setActionMessage(
+        saveError instanceof Error ? saveError.message : String(saveError),
+      );
+    } finally {
+      setSavingPolicyId(null);
+    }
+  }
+
   return (
-    <section className="panel">
-      <div className="eyebrow">Settings / Sync Status</div>
-      <h1>Desktop connection state</h1>
-      <div className="detail-grid">
-        <DetailRow label="Backend URL" value={syncStatus.baseUrl ?? "Not configured"} />
-        <DetailRow
-          label="Linked user"
-          value={syncStatus.currentUserSummary?.name ?? "Not connected"}
-        />
-        <DetailRow
-          label="Last sync"
-          value={
-            syncStatus.lastSyncedAt
-              ? formatDateTime(syncStatus.lastSyncedAt)
-              : "Never synced"
-          }
-        />
-        <DetailRow
-          label="Event cursor"
-          value={String(syncStatus.lastEventSequence)}
-        />
+    <section className="page-grid">
+      <div className="panel">
+        <div className="eyebrow">Settings / Sync Status</div>
+        <h1>Desktop connection state</h1>
+        <div className="detail-grid">
+          <DetailRow label="Backend URL" value={syncStatus.baseUrl ?? "Not configured"} />
+          <DetailRow
+            label="Linked user"
+            value={syncStatus.currentUserSummary?.name ?? "Not connected"}
+          />
+          <DetailRow
+            label="Last sync"
+            value={
+              syncStatus.lastSyncedAt
+                ? formatDateTime(syncStatus.lastSyncedAt)
+                : "Never synced"
+            }
+          />
+          <DetailRow label="Event cursor" value={String(syncStatus.lastEventSequence)} />
+          <DetailRow
+            label="Pending writes"
+            value={String(syncStatus.pendingMutationCount)}
+          />
+          <DetailRow
+            label="Failed writes"
+            value={String(syncStatus.failedMutationCount)}
+          />
+        </div>
+        <div className="sidebar-actions">
+          <button type="button" onClick={() => void onSyncNow()} disabled={syncing}>
+            {syncing ? "Syncing..." : "Manual Sync"}
+          </button>
+          <button
+            type="button"
+            className="button-secondary"
+            onClick={() => void onClearLocalCache()}
+          >
+            Clear Local Cache
+          </button>
+          <button
+            type="button"
+            className="button-secondary"
+            onClick={() => void onDisconnect()}
+          >
+            Disconnect Device
+          </button>
+        </div>
+        {syncStatus.recentOutboxErrors.length ? (
+          <div className="meta-list">
+            {syncStatus.recentOutboxErrors.map((entry) => (
+              <div key={entry} className="meta-note">
+                {entry}
+              </div>
+            ))}
+          </div>
+        ) : null}
       </div>
-      <div className="sidebar-actions">
-        <button type="button" onClick={() => void onSyncNow()} disabled={syncing}>
-          {syncing ? "Syncing..." : "Manual Sync"}
-        </button>
-        <button type="button" className="button-secondary" onClick={() => void onClearLocalCache()}>
-          Clear Local Cache
-        </button>
-        <button type="button" className="button-secondary" onClick={() => void onDisconnect()}>
-          Disconnect Device
-        </button>
+
+      <div className="panel">
+        <div className="eyebrow">Subscription Policies</div>
+        {loading ? <LoadingState label="Loading cached subscription policies" /> : null}
+        {error ? <p className="panel-message">{error}</p> : null}
+        {!loading && !policies.length ? (
+          <p className="panel-message">
+            No subscription policies are cached yet. Run sync to edit desktop-side pulse settings.
+          </p>
+        ) : null}
+        <div className="list-stack">
+          {policies.map((policy) => {
+            const draft = drafts[policy.id];
+            if (!draft) {
+              return null;
+            }
+            return (
+              <article className="list-card" key={policy.id}>
+                <div className="list-card-topline">
+                  <span>{policy.channel}</span>
+                  <span>{policy.frequency}</span>
+                </div>
+                <div className="form-grid">
+                  <label className="checkbox-field">
+                    <input
+                      type="checkbox"
+                      checked={draft.enabled}
+                      onChange={(event) =>
+                        setDrafts((current) => ({
+                          ...current,
+                          [policy.id]: {
+                            ...draft,
+                            enabled: event.target.checked,
+                          },
+                        }))
+                      }
+                    />
+                    Enabled
+                  </label>
+                  <label>
+                    Frequency cap
+                    <input
+                      type="number"
+                      min={1}
+                      value={draft.frequencyCap}
+                      onChange={(event) =>
+                        setDrafts((current) => ({
+                          ...current,
+                          [policy.id]: {
+                            ...draft,
+                            frequencyCap: event.target.value,
+                          },
+                        }))
+                      }
+                    />
+                  </label>
+                  <label>
+                    Quiet start
+                    <input
+                      type="time"
+                      value={draft.quietStart}
+                      onChange={(event) =>
+                        setDrafts((current) => ({
+                          ...current,
+                          [policy.id]: {
+                            ...draft,
+                            quietStart: event.target.value,
+                          },
+                        }))
+                      }
+                    />
+                  </label>
+                  <label>
+                    Quiet end
+                    <input
+                      type="time"
+                      value={draft.quietEnd}
+                      onChange={(event) =>
+                        setDrafts((current) => ({
+                          ...current,
+                          [policy.id]: {
+                            ...draft,
+                            quietEnd: event.target.value,
+                          },
+                        }))
+                      }
+                    />
+                  </label>
+                </div>
+                <div className="pill-row">
+                  {policy.pendingMutationCount ? (
+                    <span className="pill pill-accent">
+                      {policy.pendingMutationCount} pending write
+                    </span>
+                  ) : (
+                    <span className="pill pill-success">Synced</span>
+                  )}
+                  {policy.lastMutationError ? (
+                    <span className="pill pill-danger">{policy.lastMutationError}</span>
+                  ) : null}
+                </div>
+                <div className="form-actions">
+                  <button
+                    type="button"
+                    onClick={() => void handleSavePolicy(policy)}
+                    disabled={savingPolicyId === policy.id}
+                  >
+                    {savingPolicyId === policy.id ? "Saving..." : "Queue Policy Patch"}
+                  </button>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+        {actionMessage ? <p className="meta-note">{actionMessage}</p> : null}
+      </div>
+
+      <div className="panel">
+        <div className="eyebrow">Pending Outbox</div>
+        {!pendingMutations.length ? (
+          <p className="panel-message">No queued or failed mutations.</p>
+        ) : (
+          <div className="list-stack">
+            {pendingMutations.map((mutation) => (
+              <article className="list-card" key={mutation.id}>
+                <div className="list-card-topline">
+                  <span>{mutation.mutationType}</span>
+                  <span>{mutation.status}</span>
+                </div>
+                <p>
+                  Resource {mutation.resourceType}
+                  {mutation.resourceId ? ` / ${mutation.resourceId}` : ""}
+                </p>
+                <div className="pill-row">
+                  <span className="pill">Attempts {mutation.attemptCount}</span>
+                  {mutation.lastError ? (
+                    <span className="pill pill-danger">{mutation.lastError}</span>
+                  ) : null}
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
       </div>
     </section>
   );
@@ -734,6 +1342,36 @@ function DetailRow({ label, value }: { label: string; value: string }) {
       <strong>{value}</strong>
     </div>
   );
+}
+
+function buildWriteMessage(result: WriteActionResultRead, prefix: string) {
+  if (result.syncSucceeded) {
+    return `${prefix}. Sync applied or queued successfully.`;
+  }
+  if (result.syncError) {
+    return `${prefix}. Kept in local outbox: ${result.syncError}`;
+  }
+  if (!result.syncAttempted) {
+    return `${prefix}. Stored in local outbox until the next sync.`;
+  }
+  return prefix;
+}
+
+function toDateTimeLocalValue(isoTimestamp: string) {
+  const date = new Date(isoTimestamp);
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+  const hours = `${date.getHours()}`.padStart(2, "0");
+  const minutes = `${date.getMinutes()}`.padStart(2, "0");
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
+function toIsoTimestamp(value: string) {
+  if (!value) {
+    return new Date().toISOString();
+  }
+  return new Date(value).toISOString();
 }
 
 function formatDateTime(value: string) {

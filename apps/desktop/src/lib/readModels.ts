@@ -49,3 +49,28 @@ export function sortPapers(papers: PaperListItemRead[]): PaperListItemRead[] {
     return left.id.localeCompare(right.id);
   });
 }
+
+export function extractQuietHoursDraft(quietHours: Record<string, unknown> | null) {
+  return {
+    start:
+      quietHours && typeof quietHours.start === "string" ? quietHours.start : "",
+    end: quietHours && typeof quietHours.end === "string" ? quietHours.end : "",
+  };
+}
+
+export function buildQuietHoursPatch(
+  currentQuietHours: Record<string, unknown> | null,
+  start: string,
+  end: string,
+) {
+  const nextStart = start.trim();
+  const nextEnd = end.trim();
+  if (!nextStart && !nextEnd) {
+    return null;
+  }
+  return {
+    ...(currentQuietHours ?? {}),
+    start: nextStart,
+    end: nextEnd,
+  };
+}

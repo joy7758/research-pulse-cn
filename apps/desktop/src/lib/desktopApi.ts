@@ -7,9 +7,15 @@ import type {
   ListPapersInput,
   PaperDetailRead,
   PaperListItemRead,
+  PendingMutationRead,
+  QueuePaperPatchInput,
+  QueueProgressEventCreateInput,
+  QueueSubscriptionPolicyPatchInput,
+  SubscriptionPolicyRead,
   SyncNowResponse,
   SyncStatusRead,
   TodayOverviewRead,
+  WriteActionResultRead,
 } from "./types";
 
 export const desktopApi = {
@@ -25,4 +31,14 @@ export const desktopApi = {
     invoke<PaperListItemRead[]>("listPapers", { filters }),
   getPaperDetail: (paperId: string) =>
     invoke<PaperDetailRead>("getPaperDetail", { paperId }),
+  listSubscriptionPolicies: () =>
+    invoke<SubscriptionPolicyRead[]>("listSubscriptionPolicies"),
+  listPendingMutations: () =>
+    invoke<PendingMutationRead[]>("listPendingMutations"),
+  queuePaperPatch: (input: QueuePaperPatchInput) =>
+    invoke<WriteActionResultRead>("queuePaperPatch", { input }),
+  queueProgressEventCreate: (input: QueueProgressEventCreateInput) =>
+    invoke<WriteActionResultRead>("queueProgressEventCreate", { input }),
+  queueSubscriptionPolicyPatch: (input: QueueSubscriptionPolicyPatchInput) =>
+    invoke<WriteActionResultRead>("queueSubscriptionPolicyPatch", { input }),
 };

@@ -3,10 +3,13 @@ use reqwest::blocking::{Client, Response};
 use reqwest::StatusCode;
 use serde_json::json;
 
-use crate::models::{RemoteSyncAck, RemoteSyncFeed, RemoteSyncMe};
+use crate::models::{
+    RemoteSyncAck, RemoteSyncFeed, RemoteSyncMe, RemoteSyncPushRequest, RemoteSyncPushResponse,
+};
 
 pub trait SyncBackendApi {
     fn sync_me(&self) -> Result<RemoteSyncMe>;
+    fn push(&self, payload: &RemoteSyncPushRequest) -> Result<RemoteSyncPushResponse>;
     fn feed(&self, after_sequence: i64, limit: usize) -> Result<RemoteSyncFeed>;
     fn ack(&self, last_event_sequence: i64) -> Result<RemoteSyncAck>;
 }
@@ -60,6 +63,16 @@ impl SyncBackendApi for ReqwestSyncBackendApi {
             .get("/sync/me", &[])?
             .json::<RemoteSyncMe>()
             .context("failed to decode /sync/me response")?)
+    }
+
+    fn push(&self, payload: &RemoteSyncPushRequest) -> Result<RemoteSyncPushResponse> {
+        Ok(self
+            .post_json(
+                "/sync/push",
+                serde_json::to_value(payload).context("failed to encode /sync/push body")?,
+            )?
+            .json::<RemoteSyncPushResponse>()
+            .context("failed to decode /sync/push response")?)
     }
 
     fn feed(&self, after_sequence: i64, limit: usize) -> Result<RemoteSyncFeed> {

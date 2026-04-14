@@ -16,7 +16,40 @@ export type SyncStatusRead = {
   lastSyncedAt: string | null;
   lastEventSequence: number;
   lastError: string | null;
+  pendingMutationCount: number;
+  failedMutationCount: number;
+  recentOutboxErrors: string[];
   currentUserSummary: UserConnectionRead | null;
+};
+
+export type PendingMutationRead = {
+  id: string;
+  clientMutationId: string;
+  mutationType: string;
+  resourceType: string;
+  resourceId: string | null;
+  payload: Record<string, unknown>;
+  status: string;
+  attemptCount: number;
+  lastError: string | null;
+  resultingEventSequence: number | null;
+  createdAt: string;
+  updatedAt: string;
+  lastAttemptedAt: string | null;
+};
+
+export type SubscriptionPolicyRead = {
+  id: string;
+  userId: string;
+  channel: string;
+  enabled: boolean;
+  frequency: string;
+  quietHours: Record<string, unknown> | null;
+  frequencyCap: number;
+  policy: Record<string, unknown>;
+  updatedAt: string | null;
+  pendingMutationCount: number;
+  lastMutationError: string | null;
 };
 
 export type PaperListItemRead = {
@@ -32,6 +65,8 @@ export type PaperListItemRead = {
   lastTouchAt: string | null;
   progressPercentage: number;
   updatedAt: string | null;
+  pendingMutationCount: number;
+  lastMutationError: string | null;
 };
 
 export type DigestHighlightRead = {
@@ -97,6 +132,8 @@ export type PaperDetailRead = {
   sourceLinks: string[];
   progressEvents: ProgressEventRead[];
   signalSnapshots: SignalSnapshotRead[];
+  pendingMutationCount: number;
+  lastMutationError: string | null;
 };
 
 export type AppBootstrapRead = {
@@ -118,9 +155,15 @@ export type ConnectDeviceResponse = {
 
 export type SyncNowResponse = {
   syncStatus: SyncStatusRead;
+  pushedCount: number;
+  appliedCount: number;
+  duplicateCount: number;
+  failedCount: number;
   pagesFetched: number;
   eventsApplied: number;
   acknowledgedSequence: number;
+  pendingMutationCount: number;
+  failedMutationCount: number;
   todayOverview: TodayOverviewRead;
 };
 
@@ -128,4 +171,40 @@ export type ListPapersInput = {
   limit?: number;
   paperType?: string;
   stage?: string;
+};
+
+export type QueuePaperPatchInput = {
+  paperId: string;
+  stage?: string | null;
+  venue?: string | null;
+  nextAction?: string | null;
+  blocker?: string | null;
+  priority?: number | null;
+  lastTouchAt?: string | null;
+};
+
+export type QueueProgressEventCreateInput = {
+  paperId: string;
+  stage: string;
+  happenedAt: string;
+  summary: string;
+  owner?: string | null;
+};
+
+export type QueueSubscriptionPolicyPatchInput = {
+  subscriptionPolicyId: string;
+  enabled?: boolean | null;
+  quietHours?: Record<string, unknown> | null;
+  frequencyCap?: number | null;
+  policy?: Record<string, unknown> | null;
+};
+
+export type WriteActionResultRead = {
+  mutation: PendingMutationRead;
+  syncAttempted: boolean;
+  syncSucceeded: boolean;
+  syncError: string | null;
+  syncStatus: SyncStatusRead;
+  pendingMutationCount: number;
+  failedMutationCount: number;
 };

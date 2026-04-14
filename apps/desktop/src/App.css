@@ -293,9 +293,51 @@ h3 {
   font-size: 0.84rem;
 }
 
+.pill-accent {
+  background: #d7f2ea;
+  color: #136355;
+}
+
+.pill-success {
+  background: #e5f3df;
+  color: #2d6a1f;
+}
+
+.pill-danger {
+  background: #fdeaea;
+  color: #8f2727;
+}
+
 .detail-grid {
   display: grid;
   gap: 0.8rem;
+  margin-top: 1rem;
+}
+
+.form-grid {
+  display: grid;
+  gap: 0.9rem;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.form-full {
+  grid-column: 1 / -1;
+}
+
+.checkbox-field {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.checkbox-field input {
+  width: auto;
+  margin-top: 0;
+}
+
+.meta-list {
+  display: grid;
+  gap: 0.5rem;
   margin-top: 1rem;
 }
 

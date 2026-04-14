@@ -17,7 +17,7 @@ Private repository. Proprietary and confidential.
 - Device-token sync backbone for desktop and future lightweight clients
 - WeChat identity bindings plus digest issue/publication reserve objects for future official-account and mini-program flows
 - Official-account provider boundary with `disabled` / `dry_run` / explicit `real` mode, callback ingress, and token-backed real-send activation
-- Tauri 2 desktop shell with Rust-side read-only pull sync, local SQLite cache, and compact desktop read models
+- Tauri 2 desktop shell with Rust-side pull sync, local SQLite cache, mutation outbox, and minimal writeback for paper/progress/subscription policy edits
 - Seed data, Docker Compose, pytest, Ruff, and CI
 
 ## Architecture
@@ -78,8 +78,9 @@ The repository now includes a desktop client skeleton under `apps/desktop` using
 - TypeScript
 - Vite
 
-The shell currently uses read-only pull sync against:
+The shell currently uses device-token sync against:
 - `GET /sync/me`
+- `POST /sync/push`
 - `GET /sync/feed`
 - `POST /sync/ack`
 
@@ -223,8 +224,13 @@ With Docker Compose, the codebase now exposes separate `api`, `worker`, and `sch
 - Sync:
   - `GET /sync/me`
   - `GET /sync/feed`
-  - `POST /sync/push`
-  - `POST /sync/ack`
+- `POST /sync/push`
+- `POST /sync/ack`
+
+Desktop writeback in v1 is intentionally narrow:
+- `paper.patch`
+- `progress_event.create`
+- `subscription_policy.patch`
 - Mini:
   - `GET /mini/bootstrap`
   - `GET /mini/today`
