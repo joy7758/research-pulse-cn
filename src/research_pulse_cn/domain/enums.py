@@ -280,6 +280,12 @@ class MiniReadGrantStatus(StrEnum):
     EXPIRED = "expired"
 
 
+class SubscriptionSelfServiceGrantStatus(StrEnum):
+    ACTIVE = "active"
+    REVOKED = "revoked"
+    EXPIRED = "expired"
+
+
 ACTIVE_DELIVERY_CHANNELS = frozenset(
     {
         ChannelType.IN_APP,

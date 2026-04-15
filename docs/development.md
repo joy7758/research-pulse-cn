@@ -241,6 +241,16 @@ Desktop Settings can now also edit synced `SubscriptionPolicy` delivery-control 
   - delivery control is evaluated before issue-level dispatch and is exposed separately from provider readiness through:
     - `GET /admin/digest-issues/{digest_issue_id}/delivery-control-preview`
     - `GET /admin/digest-delivery-decisions`
+- User-side self-service reserve now adds a separate auth boundary on top of those same policy fields:
+  - `GET /admin/subscription-self-service-grants`
+  - `POST /admin/subscription-self-service-grants`
+  - `POST /admin/subscription-self-service-grants/{grant_id}/revoke`
+  - `GET /subscription-self-service/bootstrap`
+  - `GET /subscription-self-service/settings`
+  - `PATCH /subscription-self-service/settings`
+  - `GET /subscription-self-service/delivery-control-preview`
+- Self-service grant tokens are valid only on `/subscription-self-service/*` and cannot access `/admin/*`, `/ops/*`, `/sync/*`, `/mini/*`, or business CRUD routes.
+- Self-service patching preserves unknown existing `SubscriptionPolicy.policy` keys while allowing only the supported safe subset to change.
 - Publication preparation is stub-only:
   - jobs move to `prepared`
   - no real external send occurs

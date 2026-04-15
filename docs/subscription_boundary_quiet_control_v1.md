@@ -115,6 +115,18 @@
 - Desktop still writes only through `queueSubscriptionPolicyPatch -> /sync/push`.
 - Desktop local hints are best-effort only and do not replace backend delivery-control evaluation.
 
+## Self-Service Reserve Compatibility
+- A separate self-service reserve boundary can now reuse the same normalized delivery-control fields without reusing admin auth.
+- `/subscription-self-service/settings` supports only the same safe editable subset:
+  - `enabled`
+  - `quiet_hours`
+  - `timezone`
+  - `allowed_weekdays`
+  - `muted_until`
+  - `minimum_selected_cards`
+  - `skip_if_no_today_focus`
+- `/subscription-self-service/delivery-control-preview` is authoritative for current backend state, unlike desktop local hints.
+
 ## Provider Readiness Vs Policy Eligibility Distinction
 - Provider readiness answers:
   - can the official-account provider execute safely?

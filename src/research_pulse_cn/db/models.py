@@ -54,6 +54,7 @@ from research_pulse_cn.domain.enums import (
     ResearchWatchProfileSourceMode,
     SignalSource,
     SubscriptionFrequency,
+    SubscriptionSelfServiceGrantStatus,
     SyncEventSource,
     SyncEventType,
     SyncMutationStatus,
@@ -102,6 +103,11 @@ class AdminAccount(TimestampMixin, Base):
     created_mini_read_grants: Mapped[list[MiniReadGrant]] = relationship(
         back_populates="created_by_admin",
     )
+    issued_subscription_self_service_grants: Mapped[list[SubscriptionSelfServiceGrant]] = (
+        relationship(
+            back_populates="issued_by_admin",
+        )
+    )
 
 
 class UserProfile(TimestampMixin, Base):
@@ -142,6 +148,10 @@ class UserProfile(TimestampMixin, Base):
         order_by="PulseDigestIssue.issue_date",
     )
     mini_read_grants: Mapped[list[MiniReadGrant]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    subscription_self_service_grants: Mapped[list[SubscriptionSelfServiceGrant]] = relationship(
         back_populates="user",
         cascade="all, delete-orphan",
     )
@@ -417,6 +427,9 @@ class WeChatIdentityBinding(TimestampMixin, Base):
     mini_read_grants: Mapped[list[MiniReadGrant]] = relationship(
         back_populates="binding",
     )
+    subscription_self_service_grants: Mapped[list[SubscriptionSelfServiceGrant]] = relationship(
+        back_populates="binding",
+    )
 
 
 class PulseDigestIssue(TimestampMixin, Base):
@@ -507,6 +520,54 @@ class MiniReadGrant(TimestampMixin, Base):
     digest_issue: Mapped[PulseDigestIssue | None] = relationship(back_populates="mini_read_grants")
     created_by_admin: Mapped[AdminAccount | None] = relationship(
         back_populates="created_mini_read_grants"
+    )
+
+
+class SubscriptionSelfServiceGrant(TimestampMixin, Base):
+    __tablename__ = "subscription_self_service_grants"
+    __table_args__ = (
+        Index(
+            "ix_subscription_self_service_grants_user_channel_created_at",
+            "user_id",
+            "channel",
+            "created_at",
+        ),
+        Index(
+            "ix_subscription_self_service_grants_status_expires_at",
+            "status",
+            "expires_at",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("user_profiles.id", ondelete="CASCADE"))
+    binding_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("wechat_identity_bindings.id", ondelete="SET NULL")
+    )
+    channel: Mapped[ChannelType] = mapped_column(
+        Enum(ChannelType, native_enum=False),
+        nullable=False,
+    )
+    grant_scope_json: Mapped[dict[str, Any] | None] = mapped_column("grant_scope", JSON_VARIANT)
+    token_hash: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    status: Mapped[SubscriptionSelfServiceGrantStatus] = mapped_column(
+        Enum(SubscriptionSelfServiceGrantStatus, native_enum=False),
+        nullable=False,
+        default=SubscriptionSelfServiceGrantStatus.ACTIVE,
+    )
+    display_label: Mapped[str | None] = mapped_column(String(255))
+    issued_by_admin_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("admin_accounts.id", ondelete="SET NULL")
+    )
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    user: Mapped[UserProfile] = relationship(back_populates="subscription_self_service_grants")
+    binding: Mapped[WeChatIdentityBinding | None] = relationship(
+        back_populates="subscription_self_service_grants"
+    )
+    issued_by_admin: Mapped[AdminAccount | None] = relationship(
+        back_populates="issued_subscription_self_service_grants"
     )
 
 

@@ -25,6 +25,12 @@ from research_pulse_cn.api.routes.research_watch_profiles import (
 from research_pulse_cn.api.routes.subscription_policies import (
     router as subscription_policies_router,
 )
+from research_pulse_cn.api.routes.subscription_self_service import (
+    router as subscription_self_service_router,
+)
+from research_pulse_cn.api.routes.subscription_self_service_admin import (
+    router as subscription_self_service_admin_router,
+)
 from research_pulse_cn.api.routes.sync import router as sync_router
 from research_pulse_cn.api.routes.users import router as users_router
 from research_pulse_cn.api.routes.work_activity import router as work_activity_router
@@ -36,7 +42,9 @@ api_router.include_router(admin_router)
 api_router.include_router(client_devices_router)
 api_router.include_router(digest_admin_router)
 api_router.include_router(mini_admin_router)
+api_router.include_router(subscription_self_service_admin_router)
 api_router.include_router(mini_router)
+api_router.include_router(subscription_self_service_router)
 api_router.include_router(official_account_integration_router)
 api_router.include_router(users_router)
 api_router.include_router(papers_router)

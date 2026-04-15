@@ -521,6 +521,30 @@ class DigestService:
             current_time=current_time,
         )
 
+    def evaluate_delivery_control_for_issue(
+        self,
+        issue: PulseDigestIssue,
+        *,
+        channel: ChannelType = ChannelType.OFFICIAL_ACCOUNT,
+        policy: SubscriptionPolicy | None = None,
+        now: datetime | None = None,
+    ) -> DigestDeliveryControlPreview:
+        current_time = self.now_provider() if now is None else now
+        if current_time.tzinfo is None:
+            current_time = current_time.replace(tzinfo=UTC)
+        effective_policy = policy
+        if effective_policy is None:
+            effective_policy = self._matching_subscription_policy(
+                user_id=issue.user_id,
+                channel=channel,
+            )
+        return self._evaluate_delivery_control(
+            issue=issue,
+            channel=channel,
+            policy=effective_policy,
+            current_time=current_time,
+        )
+
     def list_delivery_decisions(
         self,
         *,

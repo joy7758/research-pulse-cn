@@ -60,6 +60,10 @@ COUNTER_NAMES = (
     "digest_delivery_decisions_evaluated_total",
     "digest_delivery_decisions_skipped_total",
     "digest_dispatch_policy_skips_total",
+    "subscription_self_service_grants_issued_total",
+    "subscription_self_service_bootstrap_requests_total",
+    "subscription_self_service_settings_updated_total",
+    "subscription_self_service_delivery_previews_total",
 )
 
 

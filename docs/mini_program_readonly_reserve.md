@@ -75,6 +75,7 @@
 - Treating mini routes as the primary product surface today
 
 ## Future Work
+- a separate subscription self-service reserve boundary that can later be linked from mini or official-account entry surfaces without exposing admin auth
 - official-account provider-boundary handoff into mini landing routes
 - real per-binding official-account sends that link into the same mini landing paths
 - real mini-program auth and session exchange

@@ -80,6 +80,7 @@
   - weekday allow-lists
   - digest-content thresholds
   - missing-today-focus policy
+- A later self-service reserve boundary can update the same `SubscriptionPolicy` fields and inspect an authoritative preview without crossing into admin/provider routes.
 
 ## Dry-Run Vs Real Behavior At Issue Level
 - `dry_run`

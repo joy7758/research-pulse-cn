@@ -12,10 +12,11 @@ Core flow:
 6. Digest issues are upserted from selected pulse cards, orchestrated into sectioned daily packets, and can be prepared for official-account publication.
 7. Official-account publication jobs can be dispatched through the provider boundary either per job or through issue-level dispatch runs, while a separate delivery-control layer decides whether user policy allows sending now.
 8. Mini read grants expose compact mobile-friendly read models for future mini-program landing without opening write access.
-9. Sync devices consume incremental `SyncEvent` feeds and push idempotent mutations back through the same service layer.
-10. A Tauri desktop shell consumes the same sync feed, keeps a local SQLite outbox, performs limited writeback through `/sync/push`, manages a local-only paper workspace, stores local markdown notes/templates, keeps local review-matrix / response-letter workflows, exposes synced `SubscriptionPolicy` quiet-control fields in Settings with non-authoritative local hints, and renders sectioned daily digests on the Today page when the synced cache includes structured digest payloads.
-11. A pulse input layer now records lightweight work activity and research watch profiles so future retrieval can start from explicit inputs instead of implicit guesses.
-12. An external retrieval boundary now converts those inputs into persisted source-specific plans, executes official-source fetches behind provider adapters, stores normalized scholarly results, and lets the pulse pipeline consume those persisted records for deterministic `related_paper` cards without executing retrieval inline.
+9. Subscription self-service grants expose a narrow user-side settings boundary for future official-account or mini entry without reusing admin or mini auth.
+10. Sync devices consume incremental `SyncEvent` feeds and push idempotent mutations back through the same service layer.
+11. A Tauri desktop shell consumes the same sync feed, keeps a local SQLite outbox, performs limited writeback through `/sync/push`, manages a local-only paper workspace, stores local markdown notes/templates, keeps local review-matrix / response-letter workflows, exposes synced `SubscriptionPolicy` quiet-control fields in Settings with non-authoritative local hints, and renders sectioned daily digests on the Today page when the synced cache includes structured digest payloads.
+12. A pulse input layer now records lightweight work activity and research watch profiles so future retrieval can start from explicit inputs instead of implicit guesses.
+13. An external retrieval boundary now converts those inputs into persisted source-specific plans, executes official-source fetches behind provider adapters, stores normalized scholarly results, and lets the pulse pipeline consume those persisted records for deterministic `related_paper` cards without executing retrieval inline.
 
 ## Module boundaries
 
@@ -149,6 +150,7 @@ Tie-break order is deterministic:
 - `DigestPublicationAttempt` records dispatch visibility for each provider-boundary invocation.
 - `DigestDispatchRun` aggregates one issue-level official-account dispatch over multiple prepared jobs.
 - `DigestDeliveryDecision` records user-side eligibility or skip decisions before official-account issue dispatch.
+- `SubscriptionSelfServiceGrant` adds a separate self-service auth boundary for reading and patching safe official-account subscription controls without exposing admin/provider APIs.
 - `OfficialAccountCallbackEvent` records inbound callback payloads and deduped handling state.
 - The publication layer now separates:
   - reserve objects and payload preparation
@@ -184,6 +186,33 @@ Tie-break order is deterministic:
   - paper summaries
   - paper detail
 - These views deliberately omit admin-only and provider-internal fields.
+
+## Subscription self-service reserve
+
+### Grant boundary
+- `SubscriptionSelfServiceGrant` is a dedicated bearer-token auth object for `/subscription-self-service/*`.
+- It is separate from:
+  - admin JWT auth
+  - internal service auth
+  - sync device-token auth
+  - mini read auth
+- Tokens are stored hashed at rest and returned in plaintext once at issuance time.
+
+### Safe self-service surface
+- Self-service endpoints only expose official-account subscription controls:
+  - `GET /subscription-self-service/bootstrap`
+  - `GET /subscription-self-service/settings`
+  - `PATCH /subscription-self-service/settings`
+  - `GET /subscription-self-service/delivery-control-preview`
+- Supported editable fields are intentionally narrow:
+  - `enabled`
+  - `quiet_hours`
+  - `policy.timezone`
+  - `policy.allowed_weekdays`
+  - `policy.muted_until`
+  - `policy.minimum_selected_cards`
+  - `policy.skip_if_no_today_focus`
+- The authoritative delivery preview reuses the backend evaluator but does not persist `DigestDeliveryDecision` rows in this phase.
 
 ### Derived progress percentage
 - Mini paper views expose a deterministic `progress_percentage` derived from `PaperProfile.type`.

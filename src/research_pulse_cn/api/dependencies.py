@@ -20,6 +20,9 @@ from research_pulse_cn.services.pulse import PulseService
 from research_pulse_cn.services.research_watch import ResearchWatchProfileService
 from research_pulse_cn.services.scheduler import SchedulerService
 from research_pulse_cn.services.subscription_policy import SubscriptionPolicyService
+from research_pulse_cn.services.subscription_self_service import (
+    SubscriptionSelfServiceService,
+)
 from research_pulse_cn.services.sync import SyncService
 from research_pulse_cn.services.user import UserService
 from research_pulse_cn.services.work_activity import WorkActivityService
@@ -70,6 +73,12 @@ def get_digest_service(session: SessionDep) -> DigestService:
 
 def get_mini_service(session: SessionDep) -> MiniService:
     return MiniService(session)
+
+
+def get_subscription_self_service_service(
+    session: SessionDep,
+) -> SubscriptionSelfServiceService:
+    return SubscriptionSelfServiceService(session)
 
 
 def get_scheduler_service(session: SessionDep) -> SchedulerService:

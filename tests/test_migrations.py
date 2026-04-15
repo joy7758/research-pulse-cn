@@ -27,6 +27,7 @@ def test_alembic_upgrade_creates_core_tables(tmp_path) -> None:
         "digest_publication_attempts",
         "digest_dispatch_runs",
         "mini_read_grants",
+        "subscription_self_service_grants",
         "official_account_callback_events",
         "sync_events",
         "sync_cursors",
@@ -332,6 +333,23 @@ def test_alembic_upgrade_creates_core_tables(tmp_path) -> None:
         "last_used_at",
         "created_by_admin_id",
     }.issubset(mini_grant_columns)
+    self_service_grant_columns = {
+        column["name"] for column in inspector.get_columns("subscription_self_service_grants")
+    }
+    assert {
+        "user_id",
+        "binding_id",
+        "channel",
+        "grant_scope",
+        "token_hash",
+        "status",
+        "display_label",
+        "issued_by_admin_id",
+        "expires_at",
+        "last_used_at",
+        "created_at",
+        "updated_at",
+    }.issubset(self_service_grant_columns)
     callback_event_columns = {
         column["name"] for column in inspector.get_columns("official_account_callback_events")
     }
