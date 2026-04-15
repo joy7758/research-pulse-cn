@@ -44,6 +44,10 @@ COUNTER_NAMES = (
     "external_retrieval_input_previews_total",
     "external_retrieval_plans_built_total",
     "external_retrieval_plans_persisted_total",
+    "external_retrieval_runs_started_total",
+    "external_retrieval_runs_completed_total",
+    "external_retrieval_runs_failed_total",
+    "external_retrieval_results_normalized_total",
 )
 
 

@@ -127,3 +127,13 @@
 - related-paper and related-news pulse candidates
 - retrieval feedback and quality loops
 - execution throttling, caching, and freshness controls
+
+## Relationship To Retrieval Execution
+- The next phase reuses the same planner boundary and adds:
+  - `ExternalRetrievalRun`
+  - `ExternalRetrievedRecord`
+  - official-source executors for OpenAlex, Crossref, and arXiv
+- Planning remains separate from execution:
+  - plans explain what the system intends to query
+  - runs and normalized records explain what the official APIs actually returned
+- Final pulse-card generation is still deferred beyond execution.

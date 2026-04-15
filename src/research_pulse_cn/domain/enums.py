@@ -148,6 +148,7 @@ class ResearchWatchProfileSourceMode(StrEnum):
 class ExternalRetrievalMode(StrEnum):
     DISABLED = "disabled"
     PLAN_ONLY = "plan_only"
+    EXECUTE = "execute"
 
 
 class ExternalRetrievalSourceKind(StrEnum):
@@ -165,6 +166,14 @@ class ExternalRetrievalScope(StrEnum):
 class ExternalRetrievalPlanStatus(StrEnum):
     PLANNED = "planned"
     PREVIEWED = "previewed"
+    SKIPPED = "skipped"
+
+
+class ExternalRetrievalRunStatus(StrEnum):
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
     SKIPPED = "skipped"
 
 

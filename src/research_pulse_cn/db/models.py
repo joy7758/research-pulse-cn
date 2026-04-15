@@ -35,6 +35,7 @@ from research_pulse_cn.domain.enums import (
     DigestPublicationStatus,
     DigestPublicationTarget,
     ExternalRetrievalPlanStatus,
+    ExternalRetrievalRunStatus,
     ExternalRetrievalScope,
     ExternalRetrievalSourceKind,
     MiniReadGrantStatus,
@@ -155,6 +156,16 @@ class UserProfile(TimestampMixin, Base):
         back_populates="user",
         cascade="all, delete-orphan",
         order_by="ExternalRetrievalPlan.updated_at.desc()",
+    )
+    external_retrieval_runs: Mapped[list[ExternalRetrievalRun]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+        order_by="ExternalRetrievalRun.created_at.desc()",
+    )
+    external_retrieval_results: Mapped[list[ExternalRetrievedRecord]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+        order_by="ExternalRetrievedRecord.created_at.desc()",
     )
     sync_events: Mapped[list[SyncEvent]] = relationship(
         back_populates="user",
@@ -971,3 +982,120 @@ class ExternalRetrievalPlan(TimestampMixin, Base):
         back_populates="external_retrieval_plans"
     )
     paper: Mapped[PaperProfile | None] = relationship(back_populates="external_retrieval_plans")
+    runs: Mapped[list[ExternalRetrievalRun]] = relationship(
+        back_populates="plan",
+        cascade="all, delete-orphan",
+        order_by="ExternalRetrievalRun.created_at.desc()",
+    )
+    results: Mapped[list[ExternalRetrievedRecord]] = relationship(
+        back_populates="plan",
+        cascade="all, delete-orphan",
+        order_by="ExternalRetrievedRecord.sort_order",
+    )
+
+
+class ExternalRetrievalRun(TimestampMixin, Base):
+    __tablename__ = "external_retrieval_runs"
+    __table_args__ = (
+        Index(
+            "ix_external_retrieval_runs_plan_status",
+            "plan_id",
+            "status",
+            "created_at",
+        ),
+        Index(
+            "ix_external_retrieval_runs_user_source",
+            "user_id",
+            "source_kind",
+            "created_at",
+        ),
+        Index("ix_external_retrieval_runs_scope", "retrieval_scope"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    plan_id: Mapped[UUID] = mapped_column(
+        ForeignKey("external_retrieval_plans.id", ondelete="CASCADE")
+    )
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("user_profiles.id", ondelete="CASCADE"))
+    source_kind: Mapped[ExternalRetrievalSourceKind] = mapped_column(
+        Enum(ExternalRetrievalSourceKind, native_enum=False),
+        nullable=False,
+    )
+    retrieval_scope: Mapped[ExternalRetrievalScope] = mapped_column(
+        Enum(ExternalRetrievalScope, native_enum=False),
+        nullable=False,
+    )
+    status: Mapped[ExternalRetrievalRunStatus] = mapped_column(
+        Enum(ExternalRetrievalRunStatus, native_enum=False),
+        nullable=False,
+        default=ExternalRetrievalRunStatus.PENDING,
+    )
+    request_url: Mapped[str | None] = mapped_column(Text)
+    request_payload: Mapped[dict[str, Any] | None] = mapped_column(JSON_VARIANT)
+    response_summary: Mapped[dict[str, Any] | None] = mapped_column(JSON_VARIANT)
+    raw_result_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    normalized_result_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error: Mapped[str | None] = mapped_column(Text)
+
+    plan: Mapped[ExternalRetrievalPlan] = relationship(back_populates="runs")
+    user: Mapped[UserProfile] = relationship(back_populates="external_retrieval_runs")
+    results: Mapped[list[ExternalRetrievedRecord]] = relationship(
+        back_populates="run",
+        cascade="all, delete-orphan",
+        order_by="ExternalRetrievedRecord.sort_order",
+    )
+
+
+class ExternalRetrievedRecord(TimestampMixin, Base):
+    __tablename__ = "external_retrieved_records"
+    __table_args__ = (
+        UniqueConstraint(
+            "run_id",
+            "external_id",
+            name="uq_external_retrieved_records_run_external_id",
+        ),
+        Index(
+            "ix_external_retrieved_records_user_source",
+            "user_id",
+            "source_kind",
+            "created_at",
+        ),
+        Index("ix_external_retrieved_records_run_sort", "run_id", "sort_order"),
+        Index("ix_external_retrieved_records_plan", "plan_id"),
+        Index("ix_external_retrieved_records_scope", "retrieval_scope"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    run_id: Mapped[UUID] = mapped_column(
+        ForeignKey("external_retrieval_runs.id", ondelete="CASCADE")
+    )
+    plan_id: Mapped[UUID] = mapped_column(
+        ForeignKey("external_retrieval_plans.id", ondelete="CASCADE")
+    )
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("user_profiles.id", ondelete="CASCADE"))
+    source_kind: Mapped[ExternalRetrievalSourceKind] = mapped_column(
+        Enum(ExternalRetrievalSourceKind, native_enum=False),
+        nullable=False,
+    )
+    retrieval_scope: Mapped[ExternalRetrievalScope] = mapped_column(
+        Enum(ExternalRetrievalScope, native_enum=False),
+        nullable=False,
+    )
+    external_id: Mapped[str] = mapped_column(String(500), nullable=False)
+    external_url: Mapped[str | None] = mapped_column(Text)
+    doi: Mapped[str | None] = mapped_column(String(255))
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    abstract_snippet: Mapped[str | None] = mapped_column(Text)
+    publication_year: Mapped[int | None] = mapped_column(Integer)
+    publication_date: Mapped[str | None] = mapped_column(String(64))
+    source_title: Mapped[str | None] = mapped_column(String(500))
+    authors: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON_VARIANT)
+    matched_reason_codes: Mapped[list[str] | None] = mapped_column(JSON_VARIANT)
+    raw_payload: Mapped[dict[str, Any]] = mapped_column(JSON_VARIANT, default=dict)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    run: Mapped[ExternalRetrievalRun] = relationship(back_populates="results")
+    plan: Mapped[ExternalRetrievalPlan] = relationship(back_populates="results")
+    user: Mapped[UserProfile] = relationship(back_populates="external_retrieval_results")

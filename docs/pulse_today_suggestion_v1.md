@@ -105,10 +105,11 @@
 
 ## Relationship To Retrieval Planning Boundary
 - `today_suggestion` remains fully internal in this phase.
-- The newly added external retrieval planning boundary does not affect today-suggestion generation:
+- The external retrieval planning and execution boundary does not affect today-suggestion generation:
   - no network calls
-  - no external result ranking
+  - no external result ranking inside today-suggestion
   - no related-paper/news cards
 - The two layers now coexist:
   - `today_suggestion` answers "what is the best internal next step today?"
   - retrieval planning answers "what would we query externally later?"
+  - retrieval execution answers "what official scholarly records did those plans return?"
