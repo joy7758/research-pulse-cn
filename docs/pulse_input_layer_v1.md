@@ -102,7 +102,7 @@
 - no new delivery channel behavior
 
 ## Future Work
-- external academic retrieval driven by watch seeds
+- external academic retrieval execution driven by the persisted planning boundary
 - richer multi-day activity cards built from `WorkActivityEvent`
 - related paper and research-news retrieval
 - richer watch-profile derivation from user portfolios
@@ -127,3 +127,15 @@
   - external retrieval
   - AI suggestion generation
   - local file or note content sync
+
+## Relationship To Retrieval Planning Boundary
+- The input layer now also feeds a planning-only external retrieval boundary.
+- `ExternalRetrievalPlan` does not fetch anything yet. It only persists deterministic source-specific plans built from:
+  - enabled `ResearchWatchProfile` rows
+  - recent non-system `WorkActivityEvent` context
+- `GET /pulse/input-preview/{user_id}` now includes a compact retrieval-planning section.
+- `GET /external-retrieval/input-preview/{user_id}` exposes the full planning preview:
+  - effective retrieval seeds
+  - recent activity context summary
+  - source plan previews for `openalex`, `crossref`, and `arxiv`
+- No external execution, AI rewriting, or result ranking is introduced in this step.

@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from research_pulse_cn.api.audit import audit_request_action
 from research_pulse_cn.api.dependencies import (
     get_audit_service,
+    get_external_retrieval_service,
     get_pulse_service,
     get_research_watch_profile_service,
     get_work_activity_service,
@@ -25,12 +26,17 @@ from research_pulse_cn.schemas.pulse import (
 )
 from research_pulse_cn.schemas.pulse_input import PulseInputPreviewResponse
 from research_pulse_cn.services.audit import AuditService
+from research_pulse_cn.services.external_retrieval import ExternalRetrievalService
 from research_pulse_cn.services.pulse import PulseService
 from research_pulse_cn.services.research_watch import ResearchWatchProfileService
 from research_pulse_cn.services.work_activity import WorkActivityService
 
 router = APIRouter(prefix="/pulse", tags=["pulse"])
 PulseServiceDep = Annotated[PulseService, Depends(get_pulse_service)]
+ExternalRetrievalServiceDep = Annotated[
+    ExternalRetrievalService,
+    Depends(get_external_retrieval_service),
+]
 WorkActivityServiceDep = Annotated[WorkActivityService, Depends(get_work_activity_service)]
 ResearchWatchServiceDep = Annotated[
     ResearchWatchProfileService,
@@ -71,6 +77,7 @@ def preview_pulse_inputs(
     _actor: ViewerDep,
     work_activity_service: WorkActivityServiceDep,
     research_watch_service: ResearchWatchServiceDep,
+    external_retrieval_service: ExternalRetrievalServiceDep,
 ) -> PulseInputPreviewResponse:
     preview_date, started_at, ended_at, work_summary, events = (
         work_activity_service.summary_and_events_for_previous_day(user_id=user_id)
@@ -83,6 +90,7 @@ def preview_pulse_inputs(
     effective_watch_seeds = research_watch_service.effective_watch_seeds_from_profiles(
         enabled_profiles
     )
+    retrieval_input_preview = external_retrieval_service.compact_preview(user_id=user_id)
     get_metrics().increment("pulse_input_previews_total")
     with bind_log_context(user_id=user_id):
         return PulseInputPreviewResponse(
@@ -94,12 +102,14 @@ def preview_pulse_inputs(
             work_activity_events=events,
             enabled_watch_profiles=enabled_profiles,
             effective_watch_seeds=effective_watch_seeds,
+            retrieval_input_preview=retrieval_input_preview,
             notes=[
                 "This preview shows only current pulse inputs.",
                 (
                     "External retrieval will later use effective watch seeds plus "
                     "recent work activity."
                 ),
+                "Retrieval planning below is still plan-only and does not execute external calls.",
             ],
         )
 

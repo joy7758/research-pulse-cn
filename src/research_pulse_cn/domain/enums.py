@@ -145,6 +145,29 @@ class ResearchWatchProfileSourceMode(StrEnum):
     PAPER_BOOTSTRAP = "paper_bootstrap"
 
 
+class ExternalRetrievalMode(StrEnum):
+    DISABLED = "disabled"
+    PLAN_ONLY = "plan_only"
+
+
+class ExternalRetrievalSourceKind(StrEnum):
+    OPENALEX = "openalex"
+    CROSSREF = "crossref"
+    ARXIV = "arxiv"
+
+
+class ExternalRetrievalScope(StrEnum):
+    RELATED_PAPER = "related_paper"
+    VENUE_UPDATE = "venue_update"
+    AUTHOR_WATCH = "author_watch"
+
+
+class ExternalRetrievalPlanStatus(StrEnum):
+    PLANNED = "planned"
+    PREVIEWED = "previewed"
+    SKIPPED = "skipped"
+
+
 class WeChatBindingChannelType(StrEnum):
     OFFICIAL_ACCOUNT = "official_account"
     MINI_PROGRAM = "mini_program"

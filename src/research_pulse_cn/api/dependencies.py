@@ -12,6 +12,7 @@ from research_pulse_cn.services.audit import AuditService
 from research_pulse_cn.services.auth import AuthService
 from research_pulse_cn.services.delivery import DeliveryService
 from research_pulse_cn.services.digest import DigestService
+from research_pulse_cn.services.external_retrieval import ExternalRetrievalService
 from research_pulse_cn.services.mini import MiniService
 from research_pulse_cn.services.ops import OpsService
 from research_pulse_cn.services.paper import PaperService
@@ -53,6 +54,10 @@ def get_work_activity_service(session: SessionDep) -> WorkActivityService:
 
 def get_research_watch_profile_service(session: SessionDep) -> ResearchWatchProfileService:
     return ResearchWatchProfileService(session)
+
+
+def get_external_retrieval_service(session: SessionDep) -> ExternalRetrievalService:
+    return ExternalRetrievalService(session)
 
 
 def get_delivery_service(session: SessionDep) -> DeliveryService:

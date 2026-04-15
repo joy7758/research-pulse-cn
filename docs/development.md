@@ -273,6 +273,7 @@ Desktop can now also emit lightweight `work_activity.record` mutations for local
 - New backend entities:
   - `WorkActivityEvent`
   - `ResearchWatchProfile`
+  - `ExternalRetrievalPlan`
 - New read/management endpoints:
   - `GET /work-activity-events`
   - `GET /research-watch-profiles`
@@ -281,6 +282,9 @@ Desktop can now also emit lightweight `work_activity.record` mutations for local
   - `DELETE /research-watch-profiles/{profile_id}`
   - `POST /research-watch-profiles/bootstrap/{paper_id}`
   - `GET /pulse/input-preview/{user_id}`
+  - `GET /external-retrieval/input-preview/{user_id}`
+  - `GET /external-retrieval/plans`
+  - `POST /external-retrieval/plans/build/{user_id}`
 - Cloud-side service actions auto-record work activity for:
   - `paper.patch`
   - `progress_event.create`
@@ -289,7 +293,11 @@ Desktop can now also emit lightweight `work_activity.record` mutations for local
 - `POST /pulse/preview/{user_id}` and `POST /pulse/run/{user_id}` now also accept an optional `timezone` query parameter for deterministic yesterday-summary inspection.
 - `today_suggestion` is now a first-party pulse card type generated only from internal paper/progress/signal state.
 - `yesterday_summary` is now a first-party pulse card type generated only from the previous local day of `WorkActivityEvent`.
-- No external retrieval or AI summarization is enabled in this phase.
+- External retrieval is now planning-only in this phase:
+  - `ExternalRetrievalPlan` persists source-specific plan inputs only
+  - `GET /pulse/input-preview/{user_id}` includes a compact retrieval-planning section
+  - no external execution or fetched results exist yet
+- No AI summarization is enabled in this phase.
 - Summary timezone resolution order is:
   - explicit request timezone
   - first enabled daily policy timezone
@@ -309,6 +317,14 @@ Desktop can now also emit lightweight `work_activity.record` mutations for local
 - `APP_PULSE_YESTERDAY_SUMMARY_MIN_EVENTS`
 - `APP_PULSE_MODIFIER_YESTERDAY_SUMMARY_ACTIVITY_DIVERSITY`
 - `APP_PULSE_MODIFIER_YESTERDAY_SUMMARY_MULTI_PAPER`
+
+### External retrieval planning knobs
+- `APP_EXTERNAL_RETRIEVAL_MODE`
+- `APP_EXTERNAL_RETRIEVAL_ENABLED_SOURCES`
+- `APP_EXTERNAL_RETRIEVAL_MAX_PLANS_PER_USER`
+- `APP_EXTERNAL_RETRIEVAL_MAX_KEYWORDS_PER_PLAN`
+- `APP_EXTERNAL_RETRIEVAL_MAX_TOPICS_PER_PLAN`
+- `APP_EXTERNAL_RETRIEVAL_LOOKBACK_DAYS_FOR_ACTIVITY_CONTEXT`
 - Unknown callback identities are stored for review and do not auto-create bindings.
 
 ## Ops endpoints

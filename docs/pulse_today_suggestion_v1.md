@@ -97,8 +97,18 @@
 - no syncing local file or note contents to the backend
 
 ## Future Work
-- external academic retrieval inputs
+- external academic retrieval planning inputs and later execution
 - related-paper and related-news cards
 - richer today-suggestion heuristics
 - user feedback loops for suggestion quality
 - smarter suppression across overlapping internal action cards
+
+## Relationship To Retrieval Planning Boundary
+- `today_suggestion` remains fully internal in this phase.
+- The newly added external retrieval planning boundary does not affect today-suggestion generation:
+  - no network calls
+  - no external result ranking
+  - no related-paper/news cards
+- The two layers now coexist:
+  - `today_suggestion` answers "what is the best internal next step today?"
+  - retrieval planning answers "what would we query externally later?"

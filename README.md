@@ -18,7 +18,7 @@ Private repository. Proprietary and confidential.
 - WeChat identity bindings plus digest issue/publication reserve objects for future official-account and mini-program flows
 - Official-account provider boundary with `disabled` / `dry_run` / explicit `real` mode, callback ingress, and token-backed real-send activation
 - Tauri 2 desktop shell with Rust-side pull sync, local SQLite cache, mutation outbox, minimal writeback for paper/progress/subscription policy edits, a local paper workspace layer, local markdown notes/templates, and a local review-matrix workflow that generates reviewer-matrix / response-letter drafts
-- Pulse input-layer foundation with lightweight `WorkActivityEvent` capture, `ResearchWatchProfile` management, desktop-emitted work activity mutations, deterministic pulse-input preview APIs, a deterministic `yesterday_summary` pulse card, and a deterministic `today_suggestion` pulse card generated from internal paper/progress/signal state only
+- Pulse input-layer foundation with lightweight `WorkActivityEvent` capture, `ResearchWatchProfile` management, deterministic external-retrieval input planning, desktop-emitted work activity mutations, deterministic pulse-input preview APIs, a deterministic `yesterday_summary` pulse card, and a deterministic `today_suggestion` pulse card generated from internal paper/progress/signal state only
 - Seed data, Docker Compose, pytest, Ruff, and CI
 
 ## Architecture
@@ -117,12 +117,15 @@ Selected desktop-local actions now also emit lightweight `work_activity.record` 
 The backend now includes a pulse input layer for future retrieval and recap work:
 - `WorkActivityEvent` for structured "what the user did" signals
 - `ResearchWatchProfile` for structured "what the user should watch" interests
-- `GET /pulse/input-preview/{user_id}` for a deterministic preview of the current input window, activity summary, and effective watch seeds
+- deterministic external retrieval planning through `ExternalRetrievalPlan`
+- `GET /pulse/input-preview/{user_id}` for a deterministic preview of the current input window, activity summary, effective watch seeds, and compact retrieval planning
+- `GET /external-retrieval/input-preview/{user_id}` for full retrieval-input preview
+- `POST /external-retrieval/plans/build/{user_id}` for plan-hash-upserted plan persistence
 - `yesterday_summary` pulse cards built only from previous-local-day `WorkActivityEvent` rows
 - `today_suggestion` pulse cards built only from internal paper, progress, signal, and policy-timezone context
 
 This phase still avoids external retrieval:
-- no external retrieval
+- no external retrieval execution
 - no AI summarization
 - no related-paper/news fetching from outside the portfolio
 
@@ -216,6 +219,12 @@ Important values:
 - `APP_PULSE_YESTERDAY_SUMMARY_MIN_EVENTS`: minimum qualifying previous-day activity events before candidate generation
 - `APP_PULSE_MODIFIER_YESTERDAY_SUMMARY_ACTIVITY_DIVERSITY`: bonus when multiple activity types were recorded
 - `APP_PULSE_MODIFIER_YESTERDAY_SUMMARY_MULTI_PAPER`: bonus when previous-day work touched multiple papers
+- `APP_EXTERNAL_RETRIEVAL_MODE`: `disabled` or `plan_only`
+- `APP_EXTERNAL_RETRIEVAL_ENABLED_SOURCES`: comma-separated enabled planning sources for this phase
+- `APP_EXTERNAL_RETRIEVAL_MAX_PLANS_PER_USER`: max persisted plans produced per build
+- `APP_EXTERNAL_RETRIEVAL_MAX_KEYWORDS_PER_PLAN`: keyword cap used by source plan builders
+- `APP_EXTERNAL_RETRIEVAL_MAX_TOPICS_PER_PLAN`: topic cap used by source plan builders
+- `APP_EXTERNAL_RETRIEVAL_LOOKBACK_DAYS_FOR_ACTIVITY_CONTEXT`: recent activity lookback used for touched-paper seed context
 
 Real official-account sending stays opt-in. Local and test setups do not require live WeChat credentials unless you intentionally enable `provider_mode=real` and `APP_OFFICIAL_ACCOUNT_REAL_SEND_ENABLED=true`.
 Mini-program access is reserve-only and read-only in this phase.

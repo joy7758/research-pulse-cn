@@ -41,6 +41,9 @@ COUNTER_NAMES = (
     "pulse_yesterday_summary_cards_selected_total",
     "pulse_today_suggestion_candidates_total",
     "pulse_today_suggestion_cards_selected_total",
+    "external_retrieval_input_previews_total",
+    "external_retrieval_plans_built_total",
+    "external_retrieval_plans_persisted_total",
 )
 
 
