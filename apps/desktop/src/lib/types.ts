@@ -52,6 +52,47 @@ export type SubscriptionPolicyRead = {
   lastMutationError: string | null;
 };
 
+export type QuietHoursWindowRead = {
+  start: string;
+  end: string;
+  timezone: string;
+};
+
+export type DeliveryControlSettingsRead = {
+  id: string;
+  userId: string;
+  channel: string;
+  enabled: boolean;
+  frequency: string;
+  quietHours: QuietHoursWindowRead[];
+  rawQuietHours: Record<string, unknown> | null;
+  timezone: string;
+  allowedWeekdays: number[];
+  mutedUntil: string | null;
+  minimumSelectedCards: number | null;
+  skipIfNoTodayFocus: boolean;
+  frequencyCap: number;
+  updatedAt: string | null;
+  pendingMutationCount: number;
+  lastMutationError: string | null;
+  rawPolicy: Record<string, unknown>;
+  localSettingsError: string | null;
+};
+
+export type DeliveryControlLocalHintRead = {
+  subscriptionPolicyId: string;
+  channel: string;
+  effectiveTimezone: string;
+  currentLocalTime: string;
+  localWeekday: number;
+  quietHoursActive: boolean;
+  mutedUntilActive: boolean;
+  weekdayBlocked: boolean;
+  nextAllowedAtApprox: string | null;
+  notes: string[];
+  localSettingsError: string | null;
+};
+
 export type WorkspaceStatusRead = {
   rootPath: string | null;
   status: "unconfigured" | "ready" | "missing" | "invalid" | string;

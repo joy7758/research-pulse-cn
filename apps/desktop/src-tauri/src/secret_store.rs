@@ -47,8 +47,9 @@ impl FileSecretStore {
 
     pub fn clear(&self) -> Result<()> {
         if self.path.exists() {
-            std::fs::remove_file(&self.path)
-                .with_context(|| format!("failed to remove secret store {}", self.path.display()))?;
+            std::fs::remove_file(&self.path).with_context(|| {
+                format!("failed to remove secret store {}", self.path.display())
+            })?;
         }
         Ok(())
     }

@@ -52,6 +52,8 @@ The desktop shell does not use admin login. It uses admin-issued device tokens, 
 
 Desktop can now also emit lightweight `work_activity.record` mutations for local-only actions such as attachment import, note create/save, and review-note generation. These mutations carry summary metadata only and never upload local file or note contents.
 
+Desktop Settings can now also edit synced `SubscriptionPolicy` delivery-control fields through the same mutation outbox. The Settings hint panel is local-only and does not call admin-only delivery-control preview or dispatch endpoints.
+
 ## Pulse scoring knobs
 - Defaults live in application settings and `.env.example`
 - Per-user overrides can be applied through `SubscriptionPolicy.policy["pulse"]`
@@ -130,6 +132,8 @@ Desktop can now also emit lightweight `work_activity.record` mutations for local
   - `listPapers`
   - `getPaperDetail`
   - `listSubscriptionPolicies`
+  - `getDeliveryControlSettings`
+  - `getDeliveryControlLocalHint`
   - `listPendingMutations`
   - `listReviewRounds`
   - `createReviewRound`
@@ -184,6 +188,11 @@ Desktop can now also emit lightweight `work_activity.record` mutations for local
   - store ordered reviewer comments with manual dispositions and response summaries
   - generate local `reviewer_matrix` and `response_letter` markdown notes from structured rows
   - update linked generated notes in place when regenerating the same round
+- Desktop delivery-control settings in v1:
+  - read cached `SubscriptionPolicy` rows through `getDeliveryControlSettings`
+  - edit quiet-control fields from Settings
+  - queue `subscription_policy.patch` mutations through the existing sync writeback path
+  - show a local-only hint panel from `getDeliveryControlLocalHint`
 - Changing or clearing the workspace root does not move or delete existing managed files.
 - `clearLocalCache` and `disconnectDevice` do not delete managed workspace files, local note files, or generated review notes.
 

@@ -286,12 +286,21 @@ fn render_paper_context(context: &NoteTemplateContext) -> String {
 }
 
 fn build_note_relative_path(layout: &WorkspaceLayoutPaths, file_name: &str) -> String {
-    path_to_string(&PathBuf::from(&layout.paper_rel_path).join("notes").join(file_name))
+    path_to_string(
+        &PathBuf::from(&layout.paper_rel_path)
+            .join("notes")
+            .join(file_name),
+    )
 }
 
 fn build_note_file_name(title: &str, created_at: &str, note_id: &str) -> String {
     let timestamp = DateTime::parse_from_rfc3339(created_at)
-        .map(|value| value.with_timezone(&Utc).format("%Y%m%dT%H%M%SZ").to_string())
+        .map(|value| {
+            value
+                .with_timezone(&Utc)
+                .format("%Y%m%dT%H%M%SZ")
+                .to_string()
+        })
         .unwrap_or_else(|_| Utc::now().format("%Y%m%dT%H%M%SZ").to_string());
     let id_prefix = note_id.chars().take(8).collect::<String>();
     let stem = sanitize_note_stem(title);
@@ -373,12 +382,17 @@ mod tests {
     fn lists_all_built_in_templates() {
         let templates = list_note_templates();
         assert_eq!(templates.len(), 6);
-        assert!(templates.iter().any(|template| template.kind == "response_letter"));
+        assert!(templates
+            .iter()
+            .any(|template| template.kind == "response_letter"));
     }
 
     #[test]
     fn validates_template_kind_membership() {
-        assert_eq!(validate_template_kind("research_note").unwrap(), "research_note");
+        assert_eq!(
+            validate_template_kind("research_note").unwrap(),
+            "research_note"
+        );
         assert!(validate_template_kind("not-real").is_err());
     }
 
@@ -415,7 +429,10 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(note_status_for_path(Some(&prepared.absolute_path)), "missing");
+        assert_eq!(
+            note_status_for_path(Some(&prepared.absolute_path)),
+            "missing"
+        );
     }
 
     #[test]
@@ -430,7 +447,10 @@ mod tests {
         let dir = tempdir().unwrap();
         let note_path = dir.path().join("note.md");
         std::fs::write(&note_path, b"# Note\n").unwrap();
-        assert_eq!(read_note_file(note_path.to_string_lossy().as_ref()).unwrap(), "# Note\n");
+        assert_eq!(
+            read_note_file(note_path.to_string_lossy().as_ref()).unwrap(),
+            "# Note\n"
+        );
     }
 
     #[test]

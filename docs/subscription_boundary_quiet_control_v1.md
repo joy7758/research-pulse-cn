@@ -102,6 +102,19 @@
   - this remains a provider skip
   - it is not rewritten into a policy skip
 
+## Desktop Settings Integration
+- Desktop now reuses the same normalized policy fields from cached `SubscriptionPolicy` rows.
+- The Settings screen can edit:
+  - `enabled`
+  - `quiet_hours`
+  - `timezone`
+  - `allowed_weekdays`
+  - `muted_until`
+  - `minimum_selected_cards`
+  - `skip_if_no_today_focus`
+- Desktop still writes only through `queueSubscriptionPolicyPatch -> /sync/push`.
+- Desktop local hints are best-effort only and do not replace backend delivery-control evaluation.
+
 ## Provider Readiness Vs Policy Eligibility Distinction
 - Provider readiness answers:
   - can the official-account provider execute safely?

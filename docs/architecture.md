@@ -13,7 +13,7 @@ Core flow:
 7. Official-account publication jobs can be dispatched through the provider boundary either per job or through issue-level dispatch runs, while a separate delivery-control layer decides whether user policy allows sending now.
 8. Mini read grants expose compact mobile-friendly read models for future mini-program landing without opening write access.
 9. Sync devices consume incremental `SyncEvent` feeds and push idempotent mutations back through the same service layer.
-10. A Tauri desktop shell consumes the same sync feed, keeps a local SQLite outbox, performs limited writeback through `/sync/push`, manages a local-only paper workspace, stores local markdown notes/templates, and keeps local review-matrix / response-letter workflows without bundling the backend.
+10. A Tauri desktop shell consumes the same sync feed, keeps a local SQLite outbox, performs limited writeback through `/sync/push`, manages a local-only paper workspace, stores local markdown notes/templates, keeps local review-matrix / response-letter workflows, and now exposes synced `SubscriptionPolicy` quiet-control fields in Settings with non-authoritative local hints.
 11. A pulse input layer now records lightweight work activity and research watch profiles so future retrieval can start from explicit inputs instead of implicit guesses.
 12. An external retrieval boundary now converts those inputs into persisted source-specific plans, executes official-source fetches behind provider adapters, stores normalized scholarly results, and lets the pulse pipeline consume those persisted records for deterministic `related_paper` cards without executing retrieval inline.
 

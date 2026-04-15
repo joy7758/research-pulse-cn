@@ -114,6 +114,17 @@ Review matrix data and generated drafts stay local in v1 and do not sync to the 
 
 Selected desktop-local actions now also emit lightweight `work_activity.record` mutations through the existing sync outbox so the cloud can build pulse inputs without receiving local file or note contents.
 
+Desktop Settings now also exposes synced delivery-control fields from cached `SubscriptionPolicy` rows:
+- `enabled`
+- `quiet_hours`
+- `policy.timezone`
+- `policy.allowed_weekdays`
+- `policy.muted_until`
+- `policy.minimum_selected_cards`
+- `policy.skip_if_no_today_focus`
+
+These edits still queue `subscription_policy.patch` through the existing sync writeback path. The Settings hint panel is local-only and is not an authoritative backend dispatch decision.
+
 ## Pulse input layer
 The backend now includes a pulse input layer for future retrieval and recap work:
 - `WorkActivityEvent` for structured "what the user did" signals
