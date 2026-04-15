@@ -6,9 +6,9 @@ use serde_json::Value;
 
 use crate::error::{ensure_parent_dir, invalid_state};
 use crate::models::{
-    DigestHighlightRead, PaperAttachmentRead, PaperDetailRead, PaperListItemRead,
-    PaperNoteSummaryRead, PaperWorkspaceRead, PendingMutationRead, ProgressEventRead,
-    GeneratedReviewNoteRead, RemoteSyncEvent, RemoteSyncMutationResult, ReviewCommentItemRead,
+    DigestHighlightRead, GeneratedReviewNoteRead, PaperAttachmentRead, PaperDetailRead,
+    PaperListItemRead, PaperNoteSummaryRead, PaperWorkspaceRead, PendingMutationRead,
+    ProgressEventRead, RemoteSyncEvent, RemoteSyncMutationResult, ReviewCommentItemRead,
     ReviewRoundDetailRead, ReviewRoundSummaryRead, SignalSnapshotRead, SubscriptionPolicyRead,
     SyncStatusRead, TodayOverviewRead, UserConnectionRead, WorkspaceStatusRead,
 };
@@ -491,11 +491,10 @@ impl LocalCache {
     pub fn workspace_status(&self) -> Result<WorkspaceStatusRead> {
         let connection = self.open()?;
         let root = self.workspace_root_record()?;
-        let managed_attachment_count = connection.query_row(
-            "SELECT COUNT(*) FROM paper_attachment_cache",
-            [],
-            |row| row.get(0),
-        )?;
+        let managed_attachment_count =
+            connection.query_row("SELECT COUNT(*) FROM paper_attachment_cache", [], |row| {
+                row.get(0)
+            })?;
         Ok(WorkspaceStatusRead {
             root_path: root.root_path,
             status: root.status,
@@ -656,7 +655,10 @@ impl LocalCache {
 
     pub fn clear_sync_error(&self) -> Result<()> {
         let connection = self.open()?;
-        connection.execute("UPDATE sync_state SET last_error = NULL WHERE singleton_id = 1", [])?;
+        connection.execute(
+            "UPDATE sync_state SET last_error = NULL WHERE singleton_id = 1",
+            [],
+        )?;
         Ok(())
     }
 
@@ -1379,7 +1381,10 @@ impl LocalCache {
         self.get_review_round_summary(id)
     }
 
-    pub fn get_review_round_summary(&self, review_round_id: &str) -> Result<ReviewRoundSummaryRead> {
+    pub fn get_review_round_summary(
+        &self,
+        review_round_id: &str,
+    ) -> Result<ReviewRoundSummaryRead> {
         let connection = self.open()?;
         connection
             .query_row(
@@ -1547,7 +1552,10 @@ impl LocalCache {
             .ok_or_else(|| invalid_state(format!("review comment {comment_id} is not indexed")))
     }
 
-    pub fn list_review_comments(&self, review_round_id: &str) -> Result<Vec<ReviewCommentItemRead>> {
+    pub fn list_review_comments(
+        &self,
+        review_round_id: &str,
+    ) -> Result<Vec<ReviewCommentItemRead>> {
         let connection = self.open()?;
         let mut statement = connection.prepare(
             r#"
@@ -1591,10 +1599,8 @@ impl LocalCache {
             round.generated_response_note_id.as_deref(),
             "response_letter",
         )?;
-        let generated_matrix_note = self.generated_review_note(
-            round.generated_matrix_note_id.as_deref(),
-            "reviewer_matrix",
-        )?;
+        let generated_matrix_note = self
+            .generated_review_note(round.generated_matrix_note_id.as_deref(), "reviewer_matrix")?;
         Ok(ReviewRoundDetailRead {
             round,
             comments,
@@ -1887,7 +1893,8 @@ impl LocalCache {
                 frequency: row.4,
                 quiet_hours: parse_json_value(row.5),
                 frequency_cap: row.6,
-                policy: parse_json_value(row.7).unwrap_or_else(|| Value::Object(Default::default())),
+                policy: parse_json_value(row.7)
+                    .unwrap_or_else(|| Value::Object(Default::default())),
                 updated_at: row.8,
                 pending_mutation_count: outbox_state.pending_count,
                 last_mutation_error: outbox_state.last_error,
@@ -2495,14 +2502,21 @@ fn upsert_subscription_policy(connection: &Connection, payload: &Value) -> Resul
             required_string(payload, "id")?,
             required_string(payload, "user_id")?,
             required_string(payload, "channel")?,
-            if payload.get("enabled").and_then(Value::as_bool).unwrap_or(true) {
+            if payload
+                .get("enabled")
+                .and_then(Value::as_bool)
+                .unwrap_or(true)
+            {
                 1
             } else {
                 0
             },
             required_string(payload, "frequency")?,
             maybe_json_string(payload.get("quiet_hours"))?,
-            payload.get("frequency_cap").and_then(Value::as_i64).unwrap_or(0),
+            payload
+                .get("frequency_cap")
+                .and_then(Value::as_i64)
+                .unwrap_or(0),
             serde_json::to_string(
                 payload
                     .get("policy")
@@ -2551,7 +2565,10 @@ fn upsert_digest_issue(connection: &Connection, payload: &Value) -> Result<()> {
             required_string(payload, "status")?,
             required_string(payload, "title")?,
             required_string(payload, "summary")?,
-            payload.get("highlight_count").and_then(Value::as_i64).unwrap_or(0),
+            payload
+                .get("highlight_count")
+                .and_then(Value::as_i64)
+                .unwrap_or(0),
             payload
                 .get("selected_card_count")
                 .and_then(Value::as_i64)
@@ -2570,11 +2587,7 @@ fn upsert_digest_issue(connection: &Connection, payload: &Value) -> Result<()> {
 }
 
 fn paper_outbox_state(connection: &Connection, paper_id: &str) -> Result<ResourceOutboxState> {
-    query_resource_outbox_state(
-        connection,
-        paper_id,
-        &["paper_profile", "progress_event"],
-    )
+    query_resource_outbox_state(connection, paper_id, &["paper_profile", "progress_event"])
 }
 
 fn subscription_policy_outbox_state(
@@ -2899,21 +2912,17 @@ fn build_sync_status(
         state.device_id.clone(),
         state.device_display_name.clone(),
     ) {
-        (
-            Some(user_id),
-            Some(name),
-            Some(base_url),
-            Some(device_id),
-            Some(device_display_name),
-        ) => Some(UserConnectionRead {
-            user_id,
-            name,
-            email: state.user_email.clone(),
-            field: state.user_field.clone(),
-            base_url,
-            device_id,
-            device_display_name,
-        }),
+        (Some(user_id), Some(name), Some(base_url), Some(device_id), Some(device_display_name)) => {
+            Some(UserConnectionRead {
+                user_id,
+                name,
+                email: state.user_email.clone(),
+                field: state.user_field.clone(),
+                base_url,
+                device_id,
+                device_display_name,
+            })
+        }
         _ => None,
     };
     SyncStatusRead {

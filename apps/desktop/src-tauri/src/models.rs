@@ -65,6 +65,53 @@ pub struct SubscriptionPolicyRead {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct QuietHoursWindowRead {
+    pub start: String,
+    pub end: String,
+    pub timezone: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeliveryControlSettingsRead {
+    pub id: String,
+    pub user_id: String,
+    pub channel: String,
+    pub enabled: bool,
+    pub frequency: String,
+    pub quiet_hours: Vec<QuietHoursWindowRead>,
+    pub raw_quiet_hours: Option<Value>,
+    pub timezone: String,
+    pub allowed_weekdays: Vec<i64>,
+    pub muted_until: Option<String>,
+    pub minimum_selected_cards: Option<i64>,
+    pub skip_if_no_today_focus: bool,
+    pub frequency_cap: i64,
+    pub updated_at: Option<String>,
+    pub pending_mutation_count: i64,
+    pub last_mutation_error: Option<String>,
+    pub raw_policy: Value,
+    pub local_settings_error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeliveryControlLocalHintRead {
+    pub subscription_policy_id: String,
+    pub channel: String,
+    pub effective_timezone: String,
+    pub current_local_time: String,
+    pub local_weekday: i64,
+    pub quiet_hours_active: bool,
+    pub muted_until_active: bool,
+    pub weekday_blocked: bool,
+    pub next_allowed_at_approx: Option<String>,
+    pub notes: Vec<String>,
+    pub local_settings_error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct WorkspaceStatusRead {
     pub root_path: Option<String>,
     pub status: String,
@@ -560,6 +607,12 @@ pub struct QueueSubscriptionPolicyPatchInput {
     pub quiet_hours: Option<Value>,
     pub frequency_cap: Option<i64>,
     pub policy: Option<Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeliveryControlHintLookupInput {
+    pub subscription_policy_id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

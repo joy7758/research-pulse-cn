@@ -364,6 +364,35 @@ h3 {
   margin-top: 1rem;
 }
 
+.hint-panel {
+  margin-top: 1rem;
+  padding: 0.9rem 1rem;
+  border-radius: 18px;
+  background: rgba(237, 243, 249, 0.9);
+}
+
+.weekday-grid {
+  display: grid;
+  gap: 0.7rem;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  margin-top: 0.7rem;
+}
+
+.weekday-option {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.75rem 0.85rem;
+  border-radius: 18px;
+  border: 1px solid #c4cfdb;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.weekday-option input {
+  width: auto;
+  margin: 0;
+}
+
 .detail-row {
   display: grid;
   gap: 0.3rem;

@@ -79,7 +79,10 @@ impl SyncBackendApi for ReqwestSyncBackendApi {
         Ok(self
             .get(
                 "/sync/feed",
-                &[("after_sequence", after_sequence.to_string()), ("limit", limit.to_string())],
+                &[
+                    ("after_sequence", after_sequence.to_string()),
+                    ("limit", limit.to_string()),
+                ],
             )?
             .json::<RemoteSyncFeed>()
             .context("failed to decode /sync/feed response")?)
@@ -87,7 +90,10 @@ impl SyncBackendApi for ReqwestSyncBackendApi {
 
     fn ack(&self, last_event_sequence: i64) -> Result<RemoteSyncAck> {
         Ok(self
-            .post_json("/sync/ack", json!({ "last_event_sequence": last_event_sequence }))?
+            .post_json(
+                "/sync/ack",
+                json!({ "last_event_sequence": last_event_sequence }),
+            )?
             .json::<RemoteSyncAck>()
             .context("failed to decode /sync/ack response")?)
     }

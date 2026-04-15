@@ -14,15 +14,18 @@ pub struct GeneratedReviewNoteContent {
 }
 
 const REVIEW_ROUND_STATUSES: [&str; 2] = ["open", "archived"];
-const REVIEW_DISPOSITIONS: [&str; 5] =
-    ["todo", "accepted", "rebutted", "not_applicable", "done"];
+const REVIEW_DISPOSITIONS: [&str; 5] = ["todo", "accepted", "rebutted", "not_applicable", "done"];
 
 pub fn validate_review_round_status(status: &str) -> Result<String> {
     validate_membership(status, &REVIEW_ROUND_STATUSES, "review round status")
 }
 
 pub fn validate_review_disposition(disposition: &str) -> Result<String> {
-    validate_membership(disposition, &REVIEW_DISPOSITIONS, "review comment disposition")
+    validate_membership(
+        disposition,
+        &REVIEW_DISPOSITIONS,
+        "review comment disposition",
+    )
 }
 
 pub fn default_review_disposition() -> String {
@@ -75,7 +78,9 @@ Below we provide a point-by-point response for review round **{}**.\n\n",
     output.push('\n');
 
     if comments.is_empty() {
-        output.push_str("## Reviewer Responses\n\n- No reviewer comments have been recorded yet.\n\n");
+        output.push_str(
+            "## Reviewer Responses\n\n- No reviewer comments have been recorded yet.\n\n",
+        );
     } else {
         for (reviewer_label, reviewer_comments) in grouped_comments(comments) {
             output.push_str(&format!("## {reviewer_label}\n\n"));
@@ -270,8 +275,12 @@ mod tests {
         let rendered = render_reviewer_matrix_note(&context(), &round(), &[comment()]);
         assert!(rendered.content.contains("# Reviewer Matrix"));
         assert!(rendered.content.contains("Reviewer 1"));
-        assert!(rendered.content.contains("Please clarify the experiment setup."));
-        assert!(rendered.content.contains("Add experimental setup paragraph."));
+        assert!(rendered
+            .content
+            .contains("Please clarify the experiment setup."));
+        assert!(rendered
+            .content
+            .contains("Add experimental setup paragraph."));
     }
 
     #[test]

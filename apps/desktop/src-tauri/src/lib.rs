@@ -11,19 +11,19 @@ mod workspace;
 
 use anyhow::{Context, Result};
 use models::{
-    AppBootstrapRead, ChooseWorkspaceRootInput, ConnectDeviceInput, ConnectDeviceResponse,
-    CreateBlankPaperNoteInput, CreatePaperNoteFromTemplateInput, EnsurePaperWorkspaceInput,
+    AddReviewCommentInput, AppBootstrapRead, ChooseWorkspaceRootInput, ConnectDeviceInput,
+    ConnectDeviceResponse, CreateBlankPaperNoteInput, CreatePaperNoteFromTemplateInput,
+    CreateReviewRoundInput, DeleteReviewCommentInput, DeliveryControlHintLookupInput,
+    DeliveryControlLocalHintRead, DeliveryControlSettingsRead, EnsurePaperWorkspaceInput,
     ImportPaperAttachmentsInput, ImportPaperAttachmentsResponse, ListPaperNotesInput,
     ListPapersInput, ListReviewCommentsInput, ListReviewRoundsInput, NoteActionResultRead,
-    NoteTemplateRead, PaperAttachmentRead, PaperDetailRead, PaperListItemRead,
-    PaperNoteDetailRead, PaperNoteSummaryRead, PaperWorkspaceRead, PendingMutationRead,
-    QueuePaperPatchInput, QueueProgressEventCreateInput, QueueSubscriptionPolicyPatchInput,
-    RefreshPaperNotesInput, RefreshPaperWorkspaceInput, ReviewActionResultRead,
-    ReviewCommentItemRead, ReviewRoundDetailRead, ReviewRoundLookupInput,
-    ReviewRoundSummaryRead, SavePaperNoteInput, SubscriptionPolicyRead, SyncNowResponse,
-    SyncStatusRead, TodayOverviewRead, WorkspaceStatusRead, WriteActionResultRead,
-    AddReviewCommentInput, CreateReviewRoundInput, DeleteReviewCommentInput,
-    UpdateReviewRoundInput, UpdateReviewCommentInput,
+    NoteTemplateRead, PaperAttachmentRead, PaperDetailRead, PaperListItemRead, PaperNoteDetailRead,
+    PaperNoteSummaryRead, PaperWorkspaceRead, PendingMutationRead, QueuePaperPatchInput,
+    QueueProgressEventCreateInput, QueueSubscriptionPolicyPatchInput, RefreshPaperNotesInput,
+    RefreshPaperWorkspaceInput, ReviewActionResultRead, ReviewCommentItemRead,
+    ReviewRoundDetailRead, ReviewRoundLookupInput, ReviewRoundSummaryRead, SavePaperNoteInput,
+    SubscriptionPolicyRead, SyncNowResponse, SyncStatusRead, TodayOverviewRead,
+    UpdateReviewCommentInput, UpdateReviewRoundInput, WorkspaceStatusRead, WriteActionResultRead,
 };
 use service::{DesktopPaths, DesktopService};
 use tauri::{Manager, State};
@@ -75,11 +75,9 @@ fn connectDevice(
     input: ConnectDeviceInput,
 ) -> Result<ConnectDeviceResponse, String> {
     let service = state.desktop_service().map_err(command_error)?;
-    let api = sync_client::ReqwestSyncBackendApi::new(
-        input.base_url.clone(),
-        input.device_token.clone(),
-    )
-    .map_err(command_error)?;
+    let api =
+        sync_client::ReqwestSyncBackendApi::new(input.base_url.clone(), input.device_token.clone())
+            .map_err(command_error)?;
     service.connect_with(input, &api).map_err(command_error)
 }
 
@@ -155,6 +153,29 @@ fn listSubscriptionPolicies(state: State<AppState>) -> Result<Vec<SubscriptionPo
     state
         .desktop_service()
         .and_then(|service| service.list_subscription_policies())
+        .map_err(command_error)
+}
+
+#[allow(non_snake_case)]
+#[tauri::command]
+fn getDeliveryControlSettings(
+    state: State<AppState>,
+) -> Result<Vec<DeliveryControlSettingsRead>, String> {
+    state
+        .desktop_service()
+        .and_then(|service| service.get_delivery_control_settings())
+        .map_err(command_error)
+}
+
+#[allow(non_snake_case)]
+#[tauri::command]
+fn getDeliveryControlLocalHint(
+    state: State<AppState>,
+    input: DeliveryControlHintLookupInput,
+) -> Result<DeliveryControlLocalHintRead, String> {
+    state
+        .desktop_service()
+        .and_then(|service| service.get_delivery_control_local_hint(input))
         .map_err(command_error)
 }
 
@@ -280,10 +301,7 @@ fn createBlankPaperNote(
 
 #[allow(non_snake_case)]
 #[tauri::command]
-fn getPaperNote(
-    state: State<AppState>,
-    noteId: String,
-) -> Result<PaperNoteDetailRead, String> {
+fn getPaperNote(state: State<AppState>, noteId: String) -> Result<PaperNoteDetailRead, String> {
     state
         .desktop_service()
         .and_then(|service| service.get_paper_note(&noteId))
@@ -516,6 +534,8 @@ pub fn run() {
             listPapers,
             getPaperDetail,
             listSubscriptionPolicies,
+            getDeliveryControlSettings,
+            getDeliveryControlLocalHint,
             listPendingMutations,
             getWorkspaceStatus,
             chooseWorkspaceRoot,

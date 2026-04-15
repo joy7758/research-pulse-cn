@@ -124,7 +124,8 @@ pub fn validate_workspace_root(root_path: Option<&str>) -> WorkspaceValidation {
         };
     };
 
-    match canonicalize_existing_dir(raw_path).and_then(|path| ensure_writable_dir(&path).map(|_| path))
+    match canonicalize_existing_dir(raw_path)
+        .and_then(|path| ensure_writable_dir(&path).map(|_| path))
     {
         Ok(path) => WorkspaceValidation {
             root_path: Some(path_to_string(&path)),
@@ -281,9 +282,9 @@ pub fn timestamp_now() -> String {
 }
 
 pub fn workspace_root_rebind_path(root_path: Option<&str>, relative_path: &str) -> Option<String> {
-    root_path.map(PathBuf::from).map(|root| {
-        path_to_string(&root.join(relative_path))
-    })
+    root_path
+        .map(PathBuf::from)
+        .map(|root| path_to_string(&root.join(relative_path)))
 }
 
 pub fn should_treat_as_duplicate(
@@ -330,8 +331,8 @@ fn write_workspace_metadata(
 }
 
 fn canonicalize_existing_dir(path: &str) -> Result<PathBuf> {
-    let canonical = fs::canonicalize(path)
-        .with_context(|| format!("workspace root does not exist: {path}"))?;
+    let canonical =
+        fs::canonicalize(path).with_context(|| format!("workspace root does not exist: {path}"))?;
     if !canonical.is_dir() {
         return Err(invalid_state(format!(
             "workspace root must be a directory: {}",
@@ -354,10 +355,7 @@ fn canonicalize_existing_file(path: &str) -> Result<PathBuf> {
 }
 
 fn ensure_writable_dir(path: &Path) -> Result<()> {
-    let probe_name = format!(
-        ".research-pulse-write-check-{}",
-        Uuid::new_v4().simple()
-    );
+    let probe_name = format!(".research-pulse-write-check-{}", Uuid::new_v4().simple());
     let probe_path = path.join(probe_name);
     OpenOptions::new()
         .create_new(true)
@@ -401,7 +399,12 @@ fn build_stored_file_name(
     attachment_id: &str,
 ) -> String {
     let timestamp = DateTime::parse_from_rfc3339(imported_at)
-        .map(|value| value.with_timezone(&Utc).format("%Y%m%dT%H%M%SZ").to_string())
+        .map(|value| {
+            value
+                .with_timezone(&Utc)
+                .format("%Y%m%dT%H%M%SZ")
+                .to_string()
+        })
         .unwrap_or_else(|_| Utc::now().format("%Y%m%dT%H%M%SZ").to_string());
     let hash_prefix = metadata
         .sha256
@@ -460,7 +463,10 @@ mod tests {
 
     #[test]
     fn validates_attachment_kind() {
-        assert_eq!(validate_attachment_kind("manuscript").unwrap(), "manuscript");
+        assert_eq!(
+            validate_attachment_kind("manuscript").unwrap(),
+            "manuscript"
+        );
         assert!(validate_attachment_kind("weird").is_err());
     }
 
@@ -489,16 +495,17 @@ mod tests {
         let layout = build_workspace_layout(dir.path(), "paper-1");
         std::fs::create_dir_all(&layout.attachments_abs_path).unwrap();
         let metadata = collect_file_import_metadata(source.to_string_lossy().as_ref()).unwrap();
-        let prepared = prepare_attachment_import(
-            &layout,
-            &metadata,
-            "2026-04-15T00:00:00Z",
-        )
-        .unwrap();
+        let prepared =
+            prepare_attachment_import(&layout, &metadata, "2026-04-15T00:00:00Z").unwrap();
 
-        assert!(prepared.relative_path.contains("papers/paper-1/attachments/"));
+        assert!(prepared
+            .relative_path
+            .contains("papers/paper-1/attachments/"));
         assert!(prepared.stored_file_name.ends_with(".pdf"));
-        assert_eq!(attachment_status_for_path(Some(&prepared.absolute_path)), "missing");
+        assert_eq!(
+            attachment_status_for_path(Some(&prepared.absolute_path)),
+            "missing"
+        );
         assert_eq!(WORKSPACE_LAYOUT_VERSION, 1);
     }
 }
