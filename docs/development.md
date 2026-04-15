@@ -128,6 +128,16 @@ The desktop shell does not use admin login. It uses admin-issued device tokens, 
   - `getPaperDetail`
   - `listSubscriptionPolicies`
   - `listPendingMutations`
+  - `listReviewRounds`
+  - `createReviewRound`
+  - `updateReviewRound`
+  - `listReviewComments`
+  - `addReviewComment`
+  - `updateReviewComment`
+  - `deleteReviewComment`
+  - `generateReviewerMatrixNote`
+  - `generateResponseLetterNote`
+  - `getReviewRoundDetail`
 - Local cache tables:
   - `sync_state`
   - `paper_cache`
@@ -141,6 +151,8 @@ The desktop shell does not use admin login. It uses admin-issued device tokens, 
   - `paper_workspace_cache`
   - `paper_attachment_cache`
   - `paper_note_cache`
+  - `paper_review_round_cache`
+  - `review_comment_item_cache`
 - Desktop sync now runs:
   - push queued mutations
   - pull feed pages
@@ -157,8 +169,13 @@ The desktop shell does not use admin login. It uses admin-issued device tokens, 
   - create from built-in templates or as blank notes
   - save note content to disk from the Paper Detail editor
   - refresh note metadata when files are missing or changed outside the app
+- Desktop local review matrix in v1:
+  - create local review rounds per paper
+  - store ordered reviewer comments with manual dispositions and response summaries
+  - generate local `reviewer_matrix` and `response_letter` markdown notes from structured rows
+  - update linked generated notes in place when regenerating the same round
 - Changing or clearing the workspace root does not move or delete existing managed files.
-- `clearLocalCache` and `disconnectDevice` do not delete managed workspace files or local note files.
+- `clearLocalCache` and `disconnectDevice` do not delete managed workspace files, local note files, or generated review notes.
 
 ## Official-account digest reserve
 - WeChat identity binding is admin-managed only in v1.

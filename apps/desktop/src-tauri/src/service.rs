@@ -9,17 +9,25 @@ use crate::error::invalid_state;
 use crate::models::{
     AppBootstrapRead, ChooseWorkspaceRootInput, ConnectDeviceInput, ConnectDeviceResponse,
     CreateBlankPaperNoteInput, CreatePaperNoteFromTemplateInput, ImportPaperAttachmentsInput,
-    ImportPaperAttachmentsResponse, ListPapersInput, NoteActionResultRead, NoteTemplateRead,
-    PaperAttachmentImportResultRead, PaperAttachmentRead, PaperDetailRead, PaperListItemRead,
-    PaperNoteDetailRead, PaperNoteSummaryRead, PaperWorkspaceRead, PendingMutationRead,
-    QueuePaperPatchInput, QueueProgressEventCreateInput, QueueSubscriptionPolicyPatchInput,
-    RemoteSyncMutationRequest, RemoteSyncPushRequest, SavePaperNoteInput,
-    SubscriptionPolicyRead, SyncNowResponse, SyncStatusRead, TodayOverviewRead,
+    ImportPaperAttachmentsResponse, ListPapersInput, ListReviewRoundsInput,
+    NoteActionResultRead, NoteTemplateRead, PaperAttachmentImportResultRead,
+    PaperAttachmentRead, PaperDetailRead, PaperListItemRead, PaperNoteDetailRead,
+    PaperNoteSummaryRead, PaperWorkspaceRead, PendingMutationRead, QueuePaperPatchInput,
+    QueueProgressEventCreateInput, QueueSubscriptionPolicyPatchInput,
+    RemoteSyncMutationRequest, RemoteSyncPushRequest, ReviewActionResultRead,
+    ReviewCommentItemRead, ReviewRoundDetailRead, ReviewRoundSummaryRead,
+    SavePaperNoteInput, SubscriptionPolicyRead, SyncNowResponse, SyncStatusRead,
+    TodayOverviewRead, UpdateReviewRoundInput, AddReviewCommentInput, CreateReviewRoundInput,
+    DeleteReviewCommentInput, ListReviewCommentsInput, ReviewRoundLookupInput,
     UserConnectionRead, WorkspaceStatusRead, WriteActionResultRead,
 };
 use crate::notes::{
-    list_note_templates, note_status_for_path, prepare_blank_note, prepare_template_note,
-    read_note_file, write_note_file, NoteTemplateContext,
+    list_note_templates, note_status_for_path, prepare_blank_note, prepare_generated_note,
+    prepare_template_note, read_note_file, write_note_file, NoteTemplateContext,
+};
+use crate::review::{
+    default_review_disposition, render_response_letter_note, render_reviewer_matrix_note,
+    validate_review_disposition, validate_review_round_status,
 };
 use crate::secret_store::FileSecretStore;
 use crate::sync_client::{ReqwestSyncBackendApi, SyncBackendApi};
@@ -365,6 +373,253 @@ impl DesktopService {
         let root_status = self.get_workspace_status()?;
         cache.refresh_note_statuses(root_status.root_path.as_deref(), paper_id)?;
         cache.list_paper_notes(paper_id)
+    }
+
+    pub fn list_review_rounds(
+        &self,
+        input: ListReviewRoundsInput,
+    ) -> Result<Vec<ReviewRoundSummaryRead>> {
+        if input.paper_id.trim().is_empty() {
+            return Err(invalid_state("paper_id is required"));
+        }
+        self.cache().list_review_rounds(&input.paper_id)
+    }
+
+    pub fn create_review_round(
+        &self,
+        input: CreateReviewRoundInput,
+    ) -> Result<ReviewActionResultRead> {
+        if input.paper_id.trim().is_empty() {
+            return Err(invalid_state("paper_id is required"));
+        }
+        let round_label = non_empty(input.round_label)
+            .ok_or_else(|| invalid_state("round_label is required"))?;
+        let cache = self.cache();
+        let paper = cache.get_paper_detail(&input.paper_id)?;
+        let round_id = Uuid::new_v4().to_string();
+        let created_at = chrono::Utc::now().to_rfc3339();
+        let round = cache.upsert_review_round(
+            &round_id,
+            &paper.id,
+            &round_label,
+            input.venue.as_deref().and_then(trimmed_optional),
+            input
+                .decision_label
+                .as_deref()
+                .and_then(trimmed_optional),
+            "open",
+            "manual",
+            0,
+            None,
+            None,
+            &created_at,
+            &created_at,
+        )?;
+        let detail = cache.get_review_round_detail(&round.id)?;
+        Ok(ReviewActionResultRead {
+            message: format!("Created review round {}.", round.round_label),
+            round: Some(round),
+            comment: None,
+            detail: Some(detail),
+            generated_note: None,
+        })
+    }
+
+    pub fn update_review_round(
+        &self,
+        input: UpdateReviewRoundInput,
+    ) -> Result<ReviewActionResultRead> {
+        if input.review_round_id.trim().is_empty() {
+            return Err(invalid_state("review_round_id is required"));
+        }
+        let cache = self.cache();
+        let existing = cache.get_review_round_summary(&input.review_round_id)?;
+        let round_label = match input.round_label {
+            Some(value) => {
+                non_empty(value).ok_or_else(|| invalid_state("round_label must not be empty"))?
+            }
+            None => existing.round_label.clone(),
+        };
+        let status = match input.status {
+            Some(value) => validate_review_round_status(&value)?,
+            None => existing.status.clone(),
+        };
+        let round = cache.upsert_review_round(
+            &existing.id,
+            &existing.paper_id,
+            &round_label,
+            option_override(existing.venue.as_deref(), input.venue.as_deref()),
+            option_override(
+                existing.decision_label.as_deref(),
+                input.decision_label.as_deref(),
+            ),
+            &status,
+            &existing.source_mode,
+            existing.reviewer_count,
+            existing.generated_response_note_id.as_deref(),
+            existing.generated_matrix_note_id.as_deref(),
+            &existing.created_at,
+            &chrono::Utc::now().to_rfc3339(),
+        )?;
+        let detail = cache.get_review_round_detail(&round.id)?;
+        Ok(ReviewActionResultRead {
+            message: format!("Updated review round {}.", round.round_label),
+            round: Some(round),
+            comment: None,
+            detail: Some(detail),
+            generated_note: None,
+        })
+    }
+
+    pub fn list_review_comments(
+        &self,
+        input: ListReviewCommentsInput,
+    ) -> Result<Vec<ReviewCommentItemRead>> {
+        if input.review_round_id.trim().is_empty() {
+            return Err(invalid_state("review_round_id is required"));
+        }
+        self.cache().list_review_comments(&input.review_round_id)
+    }
+
+    pub fn add_review_comment(
+        &self,
+        input: AddReviewCommentInput,
+    ) -> Result<ReviewActionResultRead> {
+        if input.review_round_id.trim().is_empty() {
+            return Err(invalid_state("review_round_id is required"));
+        }
+        let reviewer_label = non_empty(input.reviewer_label)
+            .ok_or_else(|| invalid_state("reviewer_label is required"))?;
+        let comment_text =
+            non_empty(input.comment_text).ok_or_else(|| invalid_state("comment_text is required"))?;
+        let cache = self.cache();
+        let round = cache.get_review_round_summary(&input.review_round_id)?;
+        let comment_id = Uuid::new_v4().to_string();
+        let created_at = chrono::Utc::now().to_rfc3339();
+        let comment = cache.upsert_review_comment(
+            &comment_id,
+            &round.id,
+            &round.paper_id,
+            &reviewer_label,
+            input.comment_code.as_deref().and_then(trimmed_optional),
+            cache.next_review_comment_sort_order(&round.id)?,
+            &comment_text,
+            input.category.as_deref().and_then(trimmed_optional),
+            &input
+                .disposition
+                .map(|value| validate_review_disposition(&value))
+                .transpose()?
+                .unwrap_or_else(default_review_disposition),
+            input.response_summary.as_deref().and_then(trimmed_optional),
+            input.action_note.as_deref().and_then(trimmed_optional),
+            &created_at,
+            &created_at,
+        )?;
+        let detail = cache.get_review_round_detail(&round.id)?;
+        Ok(ReviewActionResultRead {
+            message: format!("Added review comment for {}.", comment.reviewer_label),
+            round: Some(detail.round.clone()),
+            comment: Some(comment),
+            detail: Some(detail),
+            generated_note: None,
+        })
+    }
+
+    pub fn update_review_comment(
+        &self,
+        input: crate::models::UpdateReviewCommentInput,
+    ) -> Result<ReviewActionResultRead> {
+        if input.comment_id.trim().is_empty() {
+            return Err(invalid_state("comment_id is required"));
+        }
+        let cache = self.cache();
+        let existing = cache.get_review_comment(&input.comment_id)?;
+        let reviewer_label = match input.reviewer_label {
+            Some(value) => {
+                non_empty(value).ok_or_else(|| invalid_state("reviewer_label must not be empty"))?
+            }
+            None => existing.reviewer_label.clone(),
+        };
+        let comment_text = match input.comment_text {
+            Some(value) => {
+                non_empty(value).ok_or_else(|| invalid_state("comment_text must not be empty"))?
+            }
+            None => existing.comment_text.clone(),
+        };
+        let disposition = match input.disposition {
+            Some(value) => validate_review_disposition(&value)?,
+            None => existing.disposition.clone(),
+        };
+        let comment = cache.upsert_review_comment(
+            &existing.id,
+            &existing.review_round_id,
+            &existing.paper_id,
+            &reviewer_label,
+            option_override(existing.comment_code.as_deref(), input.comment_code.as_deref()),
+            existing.sort_order,
+            &comment_text,
+            option_override(existing.category.as_deref(), input.category.as_deref()),
+            &disposition,
+            option_override(
+                existing.response_summary.as_deref(),
+                input.response_summary.as_deref(),
+            ),
+            option_override(existing.action_note.as_deref(), input.action_note.as_deref()),
+            &existing.created_at,
+            &chrono::Utc::now().to_rfc3339(),
+        )?;
+        let detail = cache.get_review_round_detail(&existing.review_round_id)?;
+        Ok(ReviewActionResultRead {
+            message: format!("Updated review comment {}.", comment.id),
+            round: Some(detail.round.clone()),
+            comment: Some(comment),
+            detail: Some(detail),
+            generated_note: None,
+        })
+    }
+
+    pub fn delete_review_comment(
+        &self,
+        input: DeleteReviewCommentInput,
+    ) -> Result<ReviewActionResultRead> {
+        if input.comment_id.trim().is_empty() {
+            return Err(invalid_state("comment_id is required"));
+        }
+        let cache = self.cache();
+        let existing = cache.get_review_comment(&input.comment_id)?;
+        cache.delete_review_comment(&existing.id)?;
+        let detail = cache.get_review_round_detail(&existing.review_round_id)?;
+        Ok(ReviewActionResultRead {
+            message: format!("Deleted review comment {}.", existing.id),
+            round: Some(detail.round.clone()),
+            comment: None,
+            detail: Some(detail),
+            generated_note: None,
+        })
+    }
+
+    pub fn generate_reviewer_matrix_note(
+        &self,
+        input: ReviewRoundLookupInput,
+    ) -> Result<ReviewActionResultRead> {
+        self.generate_review_note(&input.review_round_id, "reviewer_matrix")
+    }
+
+    pub fn generate_response_letter_note(
+        &self,
+        input: ReviewRoundLookupInput,
+    ) -> Result<ReviewActionResultRead> {
+        self.generate_review_note(&input.review_round_id, "response_letter")
+    }
+
+    pub fn get_review_round_detail(
+        &self,
+        input: ReviewRoundLookupInput,
+    ) -> Result<ReviewRoundDetailRead> {
+        if input.review_round_id.trim().is_empty() {
+            return Err(invalid_state("review_round_id is required"));
+        }
+        self.cache().get_review_round_detail(&input.review_round_id)
     }
 
     pub fn import_paper_attachments(
@@ -848,6 +1103,191 @@ impl DesktopService {
         Ok(root)
     }
 
+    fn generate_review_note(
+        &self,
+        review_round_id: &str,
+        template_kind: &str,
+    ) -> Result<ReviewActionResultRead> {
+        if review_round_id.trim().is_empty() {
+            return Err(invalid_state("review_round_id is required"));
+        }
+        let cache = self.cache();
+        let detail = cache.get_review_round_detail(review_round_id)?;
+        let paper = cache.get_paper_detail(&detail.round.paper_id)?;
+        let root = self.ensure_workspace_root_ready()?;
+        let root_path = std::path::Path::new(root.root_path.as_deref().unwrap_or_default());
+        let layout = ensure_paper_workspace_layout(root_path, &paper.id, &paper.title)?;
+        cache.upsert_paper_workspace(
+            &paper.id,
+            &paper.title,
+            &layout.paper_rel_path,
+            Some(path_to_string(&layout.paper_abs_path).as_str()),
+            true,
+            paper.workspace.last_imported_at.as_deref(),
+        )?;
+
+        let rendered = match template_kind {
+            "reviewer_matrix" => {
+                render_reviewer_matrix_note(&build_note_context(&paper), &detail.round, &detail.comments)
+            }
+            "response_letter" => {
+                render_response_letter_note(&build_note_context(&paper), &detail.round, &detail.comments)
+            }
+            _ => {
+                return Err(invalid_state(format!(
+                    "unsupported review note template kind {template_kind}"
+                )));
+            }
+        };
+
+        let note_id = match template_kind {
+            "reviewer_matrix" => detail.round.generated_matrix_note_id.clone(),
+            "response_letter" => detail.round.generated_response_note_id.clone(),
+            _ => None,
+        };
+
+        let generated_note = if let Some(existing_note_id) = note_id {
+            self.update_generated_review_note(
+                &cache,
+                &paper.id,
+                &existing_note_id,
+                &rendered.title,
+                &rendered.content,
+                &rendered.template_kind,
+            )
+            .or_else(|_| {
+                self.create_generated_review_note(
+                    &cache,
+                    &paper.id,
+                    &layout,
+                    &rendered.title,
+                    &rendered.content,
+                    &rendered.template_kind,
+                )
+            })?
+        } else {
+            self.create_generated_review_note(
+                &cache,
+                &paper.id,
+                &layout,
+                &rendered.title,
+                &rendered.content,
+                &rendered.template_kind,
+            )?
+        };
+
+        let refreshed_round = cache.get_review_round_summary(review_round_id)?;
+        let updated_round = cache.upsert_review_round(
+            &refreshed_round.id,
+            &refreshed_round.paper_id,
+            &refreshed_round.round_label,
+            refreshed_round.venue.as_deref(),
+            refreshed_round.decision_label.as_deref(),
+            &refreshed_round.status,
+            &refreshed_round.source_mode,
+            refreshed_round.reviewer_count,
+            if template_kind == "response_letter" {
+                Some(generated_note.note_id.as_str())
+            } else {
+                refreshed_round.generated_response_note_id.as_deref()
+            },
+            if template_kind == "reviewer_matrix" {
+                Some(generated_note.note_id.as_str())
+            } else {
+                refreshed_round.generated_matrix_note_id.as_deref()
+            },
+            &refreshed_round.created_at,
+            &chrono::Utc::now().to_rfc3339(),
+        )?;
+        let updated_detail = cache.get_review_round_detail(review_round_id)?;
+        Ok(ReviewActionResultRead {
+            message: format!("Generated {} note for {}.", rendered.title, updated_round.round_label),
+            round: Some(updated_round),
+            comment: None,
+            detail: Some(updated_detail),
+            generated_note: Some(generated_note),
+        })
+    }
+
+    fn create_generated_review_note(
+        &self,
+        cache: &LocalCache,
+        paper_id: &str,
+        layout: &crate::workspace::WorkspaceLayoutPaths,
+        title: &str,
+        content: &str,
+        template_kind: &str,
+    ) -> Result<crate::models::GeneratedReviewNoteRead> {
+        let created_at = chrono::Utc::now().to_rfc3339();
+        let note_id = Uuid::new_v4().to_string();
+        let prepared = prepare_generated_note(
+            layout,
+            template_kind,
+            title,
+            content,
+            &note_id,
+            &created_at,
+        )?;
+        let file_stats = write_note_file(&prepared.absolute_path, &prepared.content)?;
+        let status = note_status_for_path(Some(&prepared.absolute_path));
+        cache.upsert_paper_note(
+            &prepared.note_id,
+            paper_id,
+            &prepared.template_kind,
+            &prepared.title,
+            &prepared.file_name,
+            &prepared.relative_path,
+            Some(&prepared.absolute_path),
+            "markdown",
+            &prepared.source_mode,
+            &status,
+            file_stats.size_bytes,
+            file_stats.sha256.as_deref(),
+            &prepared.created_at,
+            &prepared.created_at,
+            Some(&prepared.created_at),
+        )?;
+        cache.generated_review_note(Some(&prepared.note_id), template_kind)?
+            .ok_or_else(|| invalid_state("generated note was not indexed"))
+    }
+
+    fn update_generated_review_note(
+        &self,
+        cache: &LocalCache,
+        paper_id: &str,
+        note_id: &str,
+        title: &str,
+        content: &str,
+        template_kind: &str,
+    ) -> Result<crate::models::GeneratedReviewNoteRead> {
+        let existing = cache.get_paper_note_summary(note_id)?;
+        let absolute_path = existing.absolute_path.clone().ok_or_else(|| {
+            invalid_state("generated note path is not available because the workspace root is missing")
+        })?;
+        let updated_at = chrono::Utc::now().to_rfc3339();
+        let file_stats = write_note_file(&absolute_path, content)?;
+        let status = note_status_for_path(Some(&absolute_path));
+        cache.upsert_paper_note(
+            &existing.id,
+            paper_id,
+            template_kind,
+            title,
+            &existing.file_name,
+            &existing.relative_path,
+            Some(&absolute_path),
+            "markdown",
+            "generated",
+            &status,
+            file_stats.size_bytes,
+            file_stats.sha256.as_deref(),
+            &existing.created_at,
+            &updated_at,
+            Some(&updated_at),
+        )?;
+        cache.generated_review_note(Some(&existing.id), template_kind)?
+            .ok_or_else(|| invalid_state("generated note was not indexed"))
+    }
+
     fn import_single_attachment(
         &self,
         cache: &LocalCache,
@@ -929,6 +1369,22 @@ fn non_empty(value: impl Into<String>) -> Option<String> {
     }
 }
 
+fn trimmed_optional(value: &str) -> Option<&str> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed)
+    }
+}
+
+fn option_override<'a>(current: Option<&'a str>, incoming: Option<&'a str>) -> Option<&'a str> {
+    match incoming {
+        Some(value) => trimmed_optional(value),
+        None => current,
+    }
+}
+
 fn value_or_null(value: String) -> Value {
     match non_empty(value) {
         Some(text) => Value::String(text),
@@ -960,10 +1416,11 @@ mod tests {
 
     use super::{ChooseWorkspaceRootInput, ConnectDeviceInput, DesktopPaths, DesktopService, ListPapersInput};
     use crate::models::{
-        CreateBlankPaperNoteInput, CreatePaperNoteFromTemplateInput,
-        ImportPaperAttachmentsInput, QueuePaperPatchInput, QueueProgressEventCreateInput,
-        QueueSubscriptionPolicyPatchInput, SavePaperNoteInput, RemoteSyncAck, RemoteSyncDevice,
-        RemoteSyncEvent, RemoteSyncFeed, RemoteSyncMe, RemoteSyncMutationResult,
+        AddReviewCommentInput, CreateBlankPaperNoteInput, CreatePaperNoteFromTemplateInput,
+        CreateReviewRoundInput, DeleteReviewCommentInput, ImportPaperAttachmentsInput,
+        QueuePaperPatchInput, QueueProgressEventCreateInput, QueueSubscriptionPolicyPatchInput,
+        ReviewRoundLookupInput, SavePaperNoteInput, UpdateReviewCommentInput,
+        RemoteSyncAck, RemoteSyncDevice, RemoteSyncEvent, RemoteSyncFeed, RemoteSyncMe, RemoteSyncMutationResult,
         RemoteSyncPushRequest, RemoteSyncPushResponse, RemoteSyncUser,
     };
     use crate::sync_client::SyncBackendApi;
@@ -2094,5 +2551,268 @@ mod tests {
         service.disconnect_device().unwrap();
         assert!(note_path.exists());
         assert_eq!(service.list_paper_notes("paper-1").unwrap().len(), 1);
+    }
+
+    #[test]
+    fn create_review_round_creates_round_row() {
+        let service = service();
+        let api = FakeApi::default();
+        connect(
+            &service,
+            &api,
+            vec![Ok(RemoteSyncFeed {
+                events: vec![paper_event("revision", 1)],
+                next_after_sequence: 1,
+                has_more: false,
+            })],
+        );
+
+        let result = service
+            .create_review_round(CreateReviewRoundInput {
+                paper_id: "paper-1".to_string(),
+                round_label: "Round 1".to_string(),
+                venue: Some("JOM".to_string()),
+                decision_label: Some("Major revision".to_string()),
+            })
+            .unwrap();
+
+        assert_eq!(result.round.as_ref().map(|round| round.round_label.as_str()), Some("Round 1"));
+        assert_eq!(service.get_paper_detail("paper-1").unwrap().review_round_count, 1);
+    }
+
+    #[test]
+    fn review_comment_crud_and_ordering_work() {
+        let service = service();
+        let api = FakeApi::default();
+        connect(
+            &service,
+            &api,
+            vec![Ok(RemoteSyncFeed {
+                events: vec![paper_event("revision", 1)],
+                next_after_sequence: 1,
+                has_more: false,
+            })],
+        );
+        let round = service
+            .create_review_round(CreateReviewRoundInput {
+                paper_id: "paper-1".to_string(),
+                round_label: "Round 1".to_string(),
+                venue: None,
+                decision_label: None,
+            })
+            .unwrap()
+            .round
+            .unwrap();
+
+        service
+            .add_review_comment(AddReviewCommentInput {
+                review_round_id: round.id.clone(),
+                reviewer_label: "Reviewer 2".to_string(),
+                comment_code: Some("R2-1".to_string()),
+                comment_text: "Second reviewer comment".to_string(),
+                category: Some("clarity".to_string()),
+                disposition: Some("todo".to_string()),
+                response_summary: None,
+                action_note: None,
+            })
+            .unwrap();
+        let created = service
+            .add_review_comment(AddReviewCommentInput {
+                review_round_id: round.id.clone(),
+                reviewer_label: "Reviewer 1".to_string(),
+                comment_code: Some("R1-1".to_string()),
+                comment_text: "First reviewer comment".to_string(),
+                category: Some("method".to_string()),
+                disposition: Some("todo".to_string()),
+                response_summary: Some("Initial response".to_string()),
+                action_note: Some("Add clarification".to_string()),
+            })
+            .unwrap();
+
+        let ordered = service
+            .get_review_round_detail(ReviewRoundLookupInput {
+                review_round_id: round.id.clone(),
+            })
+            .unwrap();
+        assert_eq!(ordered.comments[0].reviewer_label, "Reviewer 1");
+        assert_eq!(ordered.round.reviewer_count, 2);
+
+        let updated = service
+            .update_review_comment(UpdateReviewCommentInput {
+                comment_id: created.comment.unwrap().id,
+                reviewer_label: None,
+                comment_code: None,
+                comment_text: None,
+                category: None,
+                disposition: Some("done".to_string()),
+                response_summary: Some("Updated response".to_string()),
+                action_note: Some("Revised action".to_string()),
+            })
+            .unwrap();
+        assert_eq!(
+            updated.comment.as_ref().and_then(|comment| comment.response_summary.as_deref()),
+            Some("Updated response")
+        );
+
+        let delete_target = ordered.comments[0].id.clone();
+        let deleted = service
+            .delete_review_comment(DeleteReviewCommentInput {
+                comment_id: delete_target,
+            })
+            .unwrap();
+        assert_eq!(deleted.detail.unwrap().comments.len(), 1);
+    }
+
+    #[test]
+    fn generate_review_notes_create_and_update_local_markdown_files() {
+        let service = service();
+        let api = FakeApi::default();
+        let workspace_root = new_temp_path();
+        connect(
+            &service,
+            &api,
+            vec![Ok(RemoteSyncFeed {
+                events: vec![paper_event("revision", 1)],
+                next_after_sequence: 1,
+                has_more: false,
+            })],
+        );
+        service
+            .choose_workspace_root(ChooseWorkspaceRootInput {
+                selected_path: workspace_root.to_string_lossy().into_owned(),
+            })
+            .unwrap();
+        let round = service
+            .create_review_round(CreateReviewRoundInput {
+                paper_id: "paper-1".to_string(),
+                round_label: "Round 1".to_string(),
+                venue: Some("JOM".to_string()),
+                decision_label: Some("Major revision".to_string()),
+            })
+            .unwrap()
+            .round
+            .unwrap();
+        service
+            .add_review_comment(AddReviewCommentInput {
+                review_round_id: round.id.clone(),
+                reviewer_label: "Reviewer 1".to_string(),
+                comment_code: Some("R1-1".to_string()),
+                comment_text: "Please expand the method section".to_string(),
+                category: Some("method".to_string()),
+                disposition: Some("todo".to_string()),
+                response_summary: Some("We expanded Section 2.".to_string()),
+                action_note: Some("Update methods text.".to_string()),
+            })
+            .unwrap();
+
+        let first = service
+            .generate_response_letter_note(ReviewRoundLookupInput {
+                review_round_id: round.id.clone(),
+            })
+            .unwrap();
+        let first_note = first.generated_note.unwrap();
+        let first_detail = service
+            .get_paper_note(&first_note.note_id)
+            .unwrap();
+        assert!(first_detail.content.unwrap_or_default().contains("We expanded Section 2."));
+
+        service
+            .add_review_comment(AddReviewCommentInput {
+                review_round_id: round.id.clone(),
+                reviewer_label: "Reviewer 1".to_string(),
+                comment_code: Some("R1-2".to_string()),
+                comment_text: "Please clarify limitations".to_string(),
+                category: Some("discussion".to_string()),
+                disposition: Some("todo".to_string()),
+                response_summary: Some("We added a limitations paragraph.".to_string()),
+                action_note: Some("Revise discussion.".to_string()),
+            })
+            .unwrap();
+        let second = service
+            .generate_response_letter_note(ReviewRoundLookupInput {
+                review_round_id: round.id.clone(),
+            })
+            .unwrap();
+        let second_note = second.generated_note.unwrap();
+        assert_eq!(first_note.note_id, second_note.note_id);
+        let updated_detail = service.get_paper_note(&second_note.note_id).unwrap();
+        assert!(updated_detail
+            .content
+            .unwrap_or_default()
+            .contains("limitations paragraph"));
+
+        let matrix = service
+            .generate_reviewer_matrix_note(ReviewRoundLookupInput {
+                review_round_id: round.id.clone(),
+            })
+            .unwrap();
+        assert_eq!(
+            matrix.generated_note.as_ref().map(|note| note.kind.as_str()),
+            Some("reviewer_matrix")
+        );
+    }
+
+    #[test]
+    fn clear_local_cache_and_disconnect_do_not_delete_generated_review_notes() {
+        let service = service();
+        let api = FakeApi::default();
+        let workspace_root = new_temp_path();
+        connect(
+            &service,
+            &api,
+            vec![Ok(RemoteSyncFeed {
+                events: vec![paper_event("revision", 1)],
+                next_after_sequence: 1,
+                has_more: false,
+            })],
+        );
+        service
+            .choose_workspace_root(ChooseWorkspaceRootInput {
+                selected_path: workspace_root.to_string_lossy().into_owned(),
+            })
+            .unwrap();
+        let round = service
+            .create_review_round(CreateReviewRoundInput {
+                paper_id: "paper-1".to_string(),
+                round_label: "Round 1".to_string(),
+                venue: Some("JOM".to_string()),
+                decision_label: None,
+            })
+            .unwrap()
+            .round
+            .unwrap();
+        service
+            .add_review_comment(AddReviewCommentInput {
+                review_round_id: round.id.clone(),
+                reviewer_label: "Reviewer 1".to_string(),
+                comment_code: Some("R1-1".to_string()),
+                comment_text: "Minor correction".to_string(),
+                category: None,
+                disposition: Some("todo".to_string()),
+                response_summary: Some("Corrected in the manuscript.".to_string()),
+                action_note: None,
+            })
+            .unwrap();
+        let generated = service
+            .generate_reviewer_matrix_note(ReviewRoundLookupInput {
+                review_round_id: round.id.clone(),
+            })
+            .unwrap()
+            .generated_note
+            .unwrap();
+        let note_path = PathBuf::from(
+            service
+                .get_paper_note(&generated.note_id)
+                .unwrap()
+                .note
+                .absolute_path
+                .unwrap(),
+        );
+
+        service.clear_local_cache().unwrap();
+        assert!(note_path.exists());
+
+        service.disconnect_device().unwrap();
+        assert!(note_path.exists());
     }
 }

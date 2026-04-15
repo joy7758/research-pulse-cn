@@ -19,10 +19,13 @@ import {
   sortPapers,
 } from "./lib/readModels";
 import type {
+  AddReviewCommentInput,
   ChooseWorkspaceRootInput,
   ConnectDeviceInput,
+  CreateReviewRoundInput,
   CreateBlankPaperNoteInput,
   CreatePaperNoteFromTemplateInput,
+  DeleteReviewCommentInput,
   ImportPaperAttachmentsResponse,
   ListPapersInput,
   NoteTemplateRead,
@@ -33,11 +36,14 @@ import type {
   QueuePaperPatchInput,
   QueueProgressEventCreateInput,
   QueueSubscriptionPolicyPatchInput,
+  ReviewRoundDetailRead,
   SavePaperNoteInput,
   SubscriptionPolicyRead,
   SyncNowResponse,
   SyncStatusRead,
   TodayOverviewRead,
+  UpdateReviewCommentInput,
+  UpdateReviewRoundInput,
   WorkspaceStatusRead,
   WriteActionResultRead,
 } from "./lib/types";
@@ -76,6 +82,23 @@ type AttachmentImportDraft = {
 
 type BlankNoteDraft = {
   title: string;
+};
+
+type ReviewRoundDraft = {
+  roundLabel: string;
+  venue: string;
+  decisionLabel: string;
+  status: string;
+};
+
+type ReviewCommentDraft = {
+  reviewerLabel: string;
+  commentCode: string;
+  commentText: string;
+  category: string;
+  disposition: string;
+  responseSummary: string;
+  actionNote: string;
 };
 
 function App() {
@@ -710,15 +733,36 @@ function PaperDetailView({
   const [selectedTemplateKind, setSelectedTemplateKind] = useState<string>("research_note");
   const [selectedNote, setSelectedNote] = useState<PaperNoteDetailRead | null>(null);
   const [noteContentDraft, setNoteContentDraft] = useState<string>("");
+  const [reviewRoundDraft, setReviewRoundDraft] = useState<ReviewRoundDraft>({
+    roundLabel: "Round 1",
+    venue: "",
+    decisionLabel: "",
+    status: "open",
+  });
+  const [selectedReviewRoundId, setSelectedReviewRoundId] = useState<string | null>(null);
+  const [selectedReviewRoundDetail, setSelectedReviewRoundDetail] =
+    useState<ReviewRoundDetailRead | null>(null);
+  const [selectedReviewCommentId, setSelectedReviewCommentId] = useState<string | null>(null);
+  const [reviewCommentDraft, setReviewCommentDraft] = useState<ReviewCommentDraft>({
+    reviewerLabel: "Reviewer 1",
+    commentCode: "",
+    commentText: "",
+    category: "",
+    disposition: "todo",
+    responseSummary: "",
+    actionNote: "",
+  });
   const [savingPatch, setSavingPatch] = useState(false);
   const [savingProgress, setSavingProgress] = useState(false);
   const [workspaceBusy, setWorkspaceBusy] = useState(false);
   const [notesBusy, setNotesBusy] = useState(false);
+  const [reviewBusy, setReviewBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [workspaceMessage, setWorkspaceMessage] = useState<string | null>(null);
   const [notesMessage, setNotesMessage] = useState<string | null>(null);
+  const [reviewMessage, setReviewMessage] = useState<string | null>(null);
 
   const loadPaperDetail = useCallback(async () => {
     if (!paperId) {
@@ -744,6 +788,12 @@ function PaperDetailView({
         ...current,
         stage: detail.stage,
       }));
+      setSelectedReviewRoundId((current) => {
+        if (current && detail.reviewRounds.some((round) => round.id === current)) {
+          return current;
+        }
+        return detail.reviewRounds[0]?.id ?? null;
+      });
       setError(null);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : String(loadError));
@@ -788,6 +838,68 @@ function PaperDetailView({
     selectedNote?.note.status,
     selectedNote?.note.absolutePath,
   ]);
+
+  useEffect(() => {
+    if (!selectedReviewRoundId) {
+      setSelectedReviewRoundDetail(null);
+      setSelectedReviewCommentId(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const detail = await desktopApi.getReviewRoundDetail(selectedReviewRoundId);
+        if (cancelled) {
+          return;
+        }
+        setSelectedReviewRoundDetail(detail);
+        setReviewRoundDraft({
+          roundLabel: detail.round.roundLabel,
+          venue: detail.round.venue ?? "",
+          decisionLabel: detail.round.decisionLabel ?? "",
+          status: detail.round.status,
+        });
+        setSelectedReviewCommentId((current) =>
+          current && detail.comments.some((comment) => comment.id === current)
+            ? current
+            : null,
+        );
+      } catch (reviewError) {
+        if (!cancelled) {
+          setReviewMessage(
+            reviewError instanceof Error ? reviewError.message : String(reviewError),
+          );
+          setSelectedReviewRoundDetail(null);
+          setSelectedReviewCommentId(null);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedReviewRoundId, dataVersion]);
+
+  useEffect(() => {
+    if (!selectedReviewRoundDetail || !selectedReviewCommentId) {
+      return;
+    }
+    const comment = selectedReviewRoundDetail.comments.find(
+      (item) => item.id === selectedReviewCommentId,
+    );
+    if (!comment) {
+      setSelectedReviewCommentId(null);
+      return;
+    }
+    setReviewCommentDraft({
+      reviewerLabel: comment.reviewerLabel,
+      commentCode: comment.commentCode ?? "",
+      commentText: comment.commentText,
+      category: comment.category ?? "",
+      disposition: comment.disposition,
+      responseSummary: comment.responseSummary ?? "",
+      actionNote: comment.actionNote ?? "",
+    });
+  }, [selectedReviewRoundDetail, selectedReviewCommentId]);
 
   if (!paperId) {
     return <Navigate to="/papers" replace />;
@@ -1023,6 +1135,156 @@ function PaperDetailView({
       setNotesMessage(noteError instanceof Error ? noteError.message : String(noteError));
     } finally {
       setNotesBusy(false);
+    }
+  }
+
+  function resetReviewCommentDraft(defaultReviewerLabel?: string) {
+    setSelectedReviewCommentId(null);
+    setReviewCommentDraft({
+      reviewerLabel: defaultReviewerLabel ?? "Reviewer 1",
+      commentCode: "",
+      commentText: "",
+      category: "",
+      disposition: "todo",
+      responseSummary: "",
+      actionNote: "",
+    });
+  }
+
+  async function handleCreateReviewRound() {
+    setReviewBusy(true);
+    try {
+      const result = await desktopApi.createReviewRound({
+        paperId: currentPaper.id,
+        roundLabel: reviewRoundDraft.roundLabel,
+        venue: reviewRoundDraft.venue,
+        decisionLabel: reviewRoundDraft.decisionLabel,
+      } satisfies CreateReviewRoundInput);
+      await loadPaperDetail();
+      if (result.round) {
+        setSelectedReviewRoundId(result.round.id);
+      }
+      resetReviewCommentDraft();
+      setReviewMessage(result.message);
+    } catch (reviewError) {
+      setReviewMessage(reviewError instanceof Error ? reviewError.message : String(reviewError));
+    } finally {
+      setReviewBusy(false);
+    }
+  }
+
+  async function handleUpdateReviewRound() {
+    if (!selectedReviewRoundDetail) {
+      return;
+    }
+    setReviewBusy(true);
+    try {
+      const result = await desktopApi.updateReviewRound({
+        reviewRoundId: selectedReviewRoundDetail.round.id,
+        roundLabel: reviewRoundDraft.roundLabel,
+        venue: reviewRoundDraft.venue,
+        decisionLabel: reviewRoundDraft.decisionLabel,
+        status: reviewRoundDraft.status,
+      } satisfies UpdateReviewRoundInput);
+      await loadPaperDetail();
+      if (result.round) {
+        setSelectedReviewRoundId(result.round.id);
+      }
+      setReviewMessage(result.message);
+    } catch (reviewError) {
+      setReviewMessage(reviewError instanceof Error ? reviewError.message : String(reviewError));
+    } finally {
+      setReviewBusy(false);
+    }
+  }
+
+  async function handleSaveReviewComment() {
+    if (!selectedReviewRoundId) {
+      return;
+    }
+    setReviewBusy(true);
+    try {
+      const payload = {
+        reviewerLabel: reviewCommentDraft.reviewerLabel,
+        commentCode: reviewCommentDraft.commentCode || undefined,
+        commentText: reviewCommentDraft.commentText,
+        category: reviewCommentDraft.category || undefined,
+        disposition: reviewCommentDraft.disposition,
+        responseSummary: reviewCommentDraft.responseSummary || undefined,
+        actionNote: reviewCommentDraft.actionNote || undefined,
+      };
+      const result = selectedReviewCommentId
+        ? await desktopApi.updateReviewComment({
+            commentId: selectedReviewCommentId,
+            ...payload,
+          } satisfies UpdateReviewCommentInput)
+        : await desktopApi.addReviewComment({
+            reviewRoundId: selectedReviewRoundId,
+            ...payload,
+          } satisfies AddReviewCommentInput);
+      await loadPaperDetail();
+      setSelectedReviewRoundDetail(result.detail ?? null);
+      setSelectedReviewRoundId(result.detail?.round.id ?? selectedReviewRoundId);
+      setSelectedReviewCommentId(result.comment?.id ?? null);
+      if (result.comment) {
+        setReviewCommentDraft({
+          reviewerLabel: result.comment.reviewerLabel,
+          commentCode: result.comment.commentCode ?? "",
+          commentText: result.comment.commentText,
+          category: result.comment.category ?? "",
+          disposition: result.comment.disposition,
+          responseSummary: result.comment.responseSummary ?? "",
+          actionNote: result.comment.actionNote ?? "",
+        });
+      }
+      setReviewMessage(result.message);
+    } catch (reviewError) {
+      setReviewMessage(reviewError instanceof Error ? reviewError.message : String(reviewError));
+    } finally {
+      setReviewBusy(false);
+    }
+  }
+
+  async function handleDeleteReviewComment() {
+    if (!selectedReviewCommentId) {
+      return;
+    }
+    setReviewBusy(true);
+    try {
+      const result = await desktopApi.deleteReviewComment(
+        selectedReviewCommentId satisfies DeleteReviewCommentInput["commentId"],
+      );
+      await loadPaperDetail();
+      setSelectedReviewRoundDetail(result.detail ?? null);
+      resetReviewCommentDraft();
+      setReviewMessage(result.message);
+    } catch (reviewError) {
+      setReviewMessage(reviewError instanceof Error ? reviewError.message : String(reviewError));
+    } finally {
+      setReviewBusy(false);
+    }
+  }
+
+  async function handleGenerateReviewNote(kind: "reviewer_matrix" | "response_letter") {
+    if (!selectedReviewRoundId) {
+      return;
+    }
+    setReviewBusy(true);
+    try {
+      const result =
+        kind === "reviewer_matrix"
+          ? await desktopApi.generateReviewerMatrixNote(selectedReviewRoundId)
+          : await desktopApi.generateResponseLetterNote(selectedReviewRoundId);
+      await loadPaperDetail();
+      setSelectedReviewRoundDetail(result.detail ?? null);
+      setReviewMessage(result.message);
+      if (result.generatedNote) {
+        await handleOpenNote(result.generatedNote.noteId);
+      }
+    } catch (reviewError) {
+      setReviewMessage(reviewError instanceof Error ? reviewError.message : String(reviewError));
+    } finally {
+      setReviewBusy(false);
     }
   }
 
@@ -1388,6 +1650,393 @@ function PaperDetailView({
               ) : (
                 <p className="panel-message">
                   Select a note to edit it. The editor is plain markdown in v1.
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="panel">
+        <div className="eyebrow">Review Matrix</div>
+        <div className="detail-grid">
+          <DetailRow label="Review rounds" value={String(paper.reviewRoundCount)} />
+          <DetailRow
+            label="Generated notes"
+            value={
+              selectedReviewRoundDetail
+                ? [
+                    selectedReviewRoundDetail.generatedMatrixNote ? "reviewer_matrix" : null,
+                    selectedReviewRoundDetail.generatedResponseNote ? "response_letter" : null,
+                  ]
+                    .filter(Boolean)
+                    .join(", ") || "None"
+                : "None"
+            }
+          />
+        </div>
+        <div className="form-grid">
+          <label>
+            Round label
+            <input
+              value={reviewRoundDraft.roundLabel}
+              onChange={(event) =>
+                setReviewRoundDraft((current) => ({
+                  ...current,
+                  roundLabel: event.target.value,
+                }))
+              }
+              placeholder="Round 1"
+            />
+          </label>
+          <label>
+            Venue
+            <input
+              value={reviewRoundDraft.venue}
+              onChange={(event) =>
+                setReviewRoundDraft((current) => ({
+                  ...current,
+                  venue: event.target.value,
+                }))
+              }
+              placeholder={paper.venue ?? "Venue"}
+            />
+          </label>
+          <label>
+            Decision
+            <input
+              value={reviewRoundDraft.decisionLabel}
+              onChange={(event) =>
+                setReviewRoundDraft((current) => ({
+                  ...current,
+                  decisionLabel: event.target.value,
+                }))
+              }
+              placeholder="Major revision"
+            />
+          </label>
+          <label>
+            Status
+            <select
+              value={reviewRoundDraft.status}
+              onChange={(event) =>
+                setReviewRoundDraft((current) => ({
+                  ...current,
+                  status: event.target.value,
+                }))
+              }
+            >
+              <option value="open">open</option>
+              <option value="archived">archived</option>
+            </select>
+          </label>
+        </div>
+        <div className="form-actions">
+          <button type="button" onClick={() => void handleCreateReviewRound()} disabled={reviewBusy}>
+            {reviewBusy ? "Working..." : "Create Review Round"}
+          </button>
+          <button
+            type="button"
+            className="button-secondary"
+            onClick={() => void handleUpdateReviewRound()}
+            disabled={reviewBusy || !selectedReviewRoundDetail}
+          >
+            Save Round
+          </button>
+          <button
+            type="button"
+            className="button-secondary"
+            onClick={() => void handleGenerateReviewNote("reviewer_matrix")}
+            disabled={reviewBusy || !selectedReviewRoundDetail}
+          >
+            Generate Reviewer Matrix Note
+          </button>
+          <button
+            type="button"
+            className="button-secondary"
+            onClick={() => void handleGenerateReviewNote("response_letter")}
+            disabled={reviewBusy || !selectedReviewRoundDetail}
+          >
+            Generate Response Letter Note
+          </button>
+        </div>
+        {reviewMessage ? <p className="meta-note">{reviewMessage}</p> : null}
+
+        {!paper.reviewRounds.length ? (
+          <p className="panel-message">
+            No local review rounds yet. Create one to track reviewer comments and generate markdown drafts.
+          </p>
+        ) : (
+          <div className="notes-layout">
+            <div className="list-stack">
+              {paper.reviewRounds.map((round) => (
+                <article
+                  className={`list-card ${selectedReviewRoundId === round.id ? "list-card-selected" : ""}`}
+                  key={round.id}
+                >
+                  <div className="list-card-topline">
+                    <span>{round.roundLabel}</span>
+                    <span>{round.status}</span>
+                  </div>
+                  <h3>{round.venue ?? paper.venue ?? "Venue pending"}</h3>
+                  <p>{round.decisionLabel ?? "Decision pending"}</p>
+                  <div className="pill-row">
+                    <span className="pill">{round.reviewerCount} reviewers</span>
+                    {round.generatedMatrixNoteId ? (
+                      <span className="pill pill-success">Matrix note linked</span>
+                    ) : null}
+                    {round.generatedResponseNoteId ? (
+                      <span className="pill pill-success">Response note linked</span>
+                    ) : null}
+                  </div>
+                  <div className="form-actions">
+                    <button
+                      type="button"
+                      className="button-secondary"
+                      onClick={() => {
+                        setSelectedReviewRoundId(round.id);
+                        resetReviewCommentDraft();
+                      }}
+                      disabled={reviewBusy}
+                    >
+                      Open Round
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+            <div className="note-editor-panel">
+              {selectedReviewRoundDetail ? (
+                <>
+                  <div className="detail-grid">
+                    <DetailRow
+                      label="Selected round"
+                      value={selectedReviewRoundDetail.round.roundLabel}
+                    />
+                    <DetailRow
+                      label="Comments"
+                      value={String(selectedReviewRoundDetail.comments.length)}
+                    />
+                    <DetailRow
+                      label="Generated matrix note"
+                      value={
+                        selectedReviewRoundDetail.generatedMatrixNote?.relativePath ??
+                        "Not generated"
+                      }
+                    />
+                    <DetailRow
+                      label="Generated response note"
+                      value={
+                        selectedReviewRoundDetail.generatedResponseNote?.relativePath ??
+                        "Not generated"
+                      }
+                    />
+                  </div>
+                  <div className="pill-row">
+                    {selectedReviewRoundDetail.generatedMatrixNote ? (
+                      <button
+                        type="button"
+                        className="button-secondary"
+                        onClick={() =>
+                          void handleOpenNote(selectedReviewRoundDetail.generatedMatrixNote!.noteId)
+                        }
+                        disabled={notesBusy}
+                      >
+                        Open Reviewer Matrix Note
+                      </button>
+                    ) : null}
+                    {selectedReviewRoundDetail.generatedResponseNote ? (
+                      <button
+                        type="button"
+                        className="button-secondary"
+                        onClick={() =>
+                          void handleOpenNote(
+                            selectedReviewRoundDetail.generatedResponseNote!.noteId,
+                          )
+                        }
+                        disabled={notesBusy}
+                      >
+                        Open Response Letter Note
+                      </button>
+                    ) : null}
+                  </div>
+                  <div className="list-stack">
+                    {selectedReviewRoundDetail.comments.length ? (
+                      selectedReviewRoundDetail.comments.map((comment) => (
+                        <article
+                          className={`list-card ${selectedReviewCommentId === comment.id ? "list-card-selected" : ""}`}
+                          key={comment.id}
+                        >
+                          <div className="list-card-topline">
+                            <span>{comment.reviewerLabel}</span>
+                            <span>{comment.disposition}</span>
+                          </div>
+                          <h3>{comment.commentCode ?? `Comment ${comment.sortOrder}`}</h3>
+                          <p>{comment.commentText}</p>
+                          <div className="pill-row">
+                            {comment.category ? <span className="pill">{comment.category}</span> : null}
+                            <span className="pill">Order {comment.sortOrder}</span>
+                          </div>
+                          <div className="form-actions">
+                            <button
+                              type="button"
+                              className="button-secondary"
+                              onClick={() => {
+                                setSelectedReviewCommentId(comment.id);
+                                setReviewCommentDraft({
+                                  reviewerLabel: comment.reviewerLabel,
+                                  commentCode: comment.commentCode ?? "",
+                                  commentText: comment.commentText,
+                                  category: comment.category ?? "",
+                                  disposition: comment.disposition,
+                                  responseSummary: comment.responseSummary ?? "",
+                                  actionNote: comment.actionNote ?? "",
+                                });
+                              }}
+                              disabled={reviewBusy}
+                            >
+                              Edit Comment
+                            </button>
+                          </div>
+                        </article>
+                      ))
+                    ) : (
+                      <p className="panel-message">
+                        No comments recorded for this round yet.
+                      </p>
+                    )}
+                  </div>
+                  <div className="form-grid">
+                    <label>
+                      Reviewer
+                      <input
+                        value={reviewCommentDraft.reviewerLabel}
+                        onChange={(event) =>
+                          setReviewCommentDraft((current) => ({
+                            ...current,
+                            reviewerLabel: event.target.value,
+                          }))
+                        }
+                        placeholder="Reviewer 1"
+                      />
+                    </label>
+                    <label>
+                      Comment code
+                      <input
+                        value={reviewCommentDraft.commentCode}
+                        onChange={(event) =>
+                          setReviewCommentDraft((current) => ({
+                            ...current,
+                            commentCode: event.target.value,
+                          }))
+                        }
+                        placeholder="R1-1"
+                      />
+                    </label>
+                    <label>
+                      Category
+                      <input
+                        value={reviewCommentDraft.category}
+                        onChange={(event) =>
+                          setReviewCommentDraft((current) => ({
+                            ...current,
+                            category: event.target.value,
+                          }))
+                        }
+                        placeholder="method"
+                      />
+                    </label>
+                    <label>
+                      Disposition
+                      <select
+                        value={reviewCommentDraft.disposition}
+                        onChange={(event) =>
+                          setReviewCommentDraft((current) => ({
+                            ...current,
+                            disposition: event.target.value,
+                          }))
+                        }
+                      >
+                        <option value="todo">todo</option>
+                        <option value="accepted">accepted</option>
+                        <option value="rebutted">rebutted</option>
+                        <option value="not_applicable">not_applicable</option>
+                        <option value="done">done</option>
+                      </select>
+                    </label>
+                    <label className="form-full">
+                      Comment text
+                      <textarea
+                        rows={4}
+                        value={reviewCommentDraft.commentText}
+                        onChange={(event) =>
+                          setReviewCommentDraft((current) => ({
+                            ...current,
+                            commentText: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+                    <label className="form-full">
+                      Response summary
+                      <textarea
+                        rows={3}
+                        value={reviewCommentDraft.responseSummary}
+                        onChange={(event) =>
+                          setReviewCommentDraft((current) => ({
+                            ...current,
+                            responseSummary: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+                    <label className="form-full">
+                      Action note
+                      <textarea
+                        rows={3}
+                        value={reviewCommentDraft.actionNote}
+                        onChange={(event) =>
+                          setReviewCommentDraft((current) => ({
+                            ...current,
+                            actionNote: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+                  </div>
+                  <div className="form-actions">
+                    <button
+                      type="button"
+                      onClick={() => void handleSaveReviewComment()}
+                      disabled={reviewBusy}
+                    >
+                      {reviewBusy
+                        ? "Working..."
+                        : selectedReviewCommentId
+                          ? "Save Comment"
+                          : "Add Comment"}
+                    </button>
+                    <button
+                      type="button"
+                      className="button-secondary"
+                      onClick={() => resetReviewCommentDraft()}
+                      disabled={reviewBusy}
+                    >
+                      Clear Draft
+                    </button>
+                    <button
+                      type="button"
+                      className="button-secondary"
+                      onClick={() => void handleDeleteReviewComment()}
+                      disabled={reviewBusy || !selectedReviewCommentId}
+                    >
+                      Delete Comment
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <p className="panel-message">
+                  Select a review round to manage structured reviewer comments.
                 </p>
               )}
             </div>

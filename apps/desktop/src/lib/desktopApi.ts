@@ -9,7 +9,12 @@ import type {
   CreatePaperNoteFromTemplateInput,
   ImportPaperAttachmentsInput,
   ImportPaperAttachmentsResponse,
+  ListReviewCommentsInput,
+  ListReviewRoundsInput,
   ListPapersInput,
+  AddReviewCommentInput,
+  CreateReviewRoundInput,
+  DeleteReviewCommentInput,
   NoteActionResultRead,
   NoteTemplateRead,
   PaperAttachmentRead,
@@ -22,11 +27,17 @@ import type {
   QueuePaperPatchInput,
   QueueProgressEventCreateInput,
   QueueSubscriptionPolicyPatchInput,
+  ReviewActionResultRead,
+  ReviewCommentItemRead,
+  ReviewRoundDetailRead,
+  ReviewRoundSummaryRead,
   SavePaperNoteInput,
   SubscriptionPolicyRead,
   SyncNowResponse,
   SyncStatusRead,
   TodayOverviewRead,
+  UpdateReviewCommentInput,
+  UpdateReviewRoundInput,
   WorkspaceStatusRead,
   WriteActionResultRead,
 } from "./types";
@@ -76,6 +87,38 @@ export const desktopApi = {
   refreshPaperNotes: (paperId: string) =>
     invoke<PaperNoteSummaryRead[]>("refreshPaperNotes", {
       input: { paperId },
+    }),
+  listReviewRounds: (paperId: string) =>
+    invoke<ReviewRoundSummaryRead[]>("listReviewRounds", {
+      input: { paperId } satisfies ListReviewRoundsInput,
+    }),
+  createReviewRound: (input: CreateReviewRoundInput) =>
+    invoke<ReviewActionResultRead>("createReviewRound", { input }),
+  updateReviewRound: (input: UpdateReviewRoundInput) =>
+    invoke<ReviewActionResultRead>("updateReviewRound", { input }),
+  listReviewComments: (reviewRoundId: string) =>
+    invoke<ReviewCommentItemRead[]>("listReviewComments", {
+      input: { reviewRoundId } satisfies ListReviewCommentsInput,
+    }),
+  addReviewComment: (input: AddReviewCommentInput) =>
+    invoke<ReviewActionResultRead>("addReviewComment", { input }),
+  updateReviewComment: (input: UpdateReviewCommentInput) =>
+    invoke<ReviewActionResultRead>("updateReviewComment", { input }),
+  deleteReviewComment: (commentId: string) =>
+    invoke<ReviewActionResultRead>("deleteReviewComment", {
+      input: { commentId } satisfies DeleteReviewCommentInput,
+    }),
+  generateReviewerMatrixNote: (reviewRoundId: string) =>
+    invoke<ReviewActionResultRead>("generateReviewerMatrixNote", {
+      input: { reviewRoundId },
+    }),
+  generateResponseLetterNote: (reviewRoundId: string) =>
+    invoke<ReviewActionResultRead>("generateResponseLetterNote", {
+      input: { reviewRoundId },
+    }),
+  getReviewRoundDetail: (reviewRoundId: string) =>
+    invoke<ReviewRoundDetailRead>("getReviewRoundDetail", {
+      input: { reviewRoundId },
     }),
   importPaperAttachments: (input: ImportPaperAttachmentsInput) =>
     invoke<ImportPaperAttachmentsResponse>("importPaperAttachments", { input }),

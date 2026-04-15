@@ -13,7 +13,7 @@ Core flow:
 7. Official-account publication jobs can be dispatched through a provider boundary in `disabled`, `dry_run`, or explicit `real` mode while callback events update existing bindings.
 8. Mini read grants expose compact mobile-friendly read models for future mini-program landing without opening write access.
 9. Sync devices consume incremental `SyncEvent` feeds and push idempotent mutations back through the same service layer.
-10. A Tauri desktop shell consumes the same sync feed, keeps a local SQLite outbox, performs limited writeback through `/sync/push`, manages a local-only paper workspace, and stores local markdown notes/templates without bundling the backend.
+10. A Tauri desktop shell consumes the same sync feed, keeps a local SQLite outbox, performs limited writeback through `/sync/push`, manages a local-only paper workspace, stores local markdown notes/templates, and keeps local review-matrix / response-letter workflows without bundling the backend.
 
 ## Module boundaries
 

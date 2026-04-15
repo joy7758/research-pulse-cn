@@ -1,0 +1,282 @@
+Read AGENTS.md, docs/BUILD_SPEC.md, docs/architecture.md, docs/development.md, docs/pulse_scoring.md, docs/operations.md, docs/auth_admin_boundary.md, docs/sync_foundation.md, docs/official_account_digest_reserve.md, docs/mini_program_readonly_reserve.md, docs/official_account_provider_boundary.md, docs/official_account_real_send_v1.md, docs/desktop_tauri_skeleton_v1.md, docs/desktop_writeback_sync_v1.md, docs/desktop_local_workspace_v1.md, and docs/desktop_local_notes_templates_v1.md before editing.
+
+Implement Phase 17 only: desktop review matrix and structured response-letter templates v1.
+
+Hard boundaries for this phase:
+- Do not introduce Electron.
+- Do not add customer-facing OAuth login.
+- Do not add Mini Program frontend code.
+- Do not add OCR, PDF text extraction, document parsing, metadata scraping, or any AI-assisted reviewer comment extraction or response generation.
+- Do not sync review matrix data or generated response files to the backend.
+- Do not add cloud collaboration, sharing, or commenting.
+- Do not add rich text / WYSIWYG editors.
+- Do not add automatic filesystem watching.
+- Do not delete existing local review notes automatically.
+- Do not weaken existing admin auth, internal service auth, device-token sync auth, mini-read auth, or official-account provider boundaries.
+- Do not replace the modular monolith backend architecture.
+
+Primary goal:
+Add a local-only per-paper review-matrix foundation to the Tauri desktop app:
+- review rounds
+- structured reviewer comment matrix
+- structured response fields
+- generated local markdown notes for reviewer matrix and response letter
+- simple Paper Detail review UI
+
+This phase should make the repository suitable for:
+- manually tracking reviewer comments in structured form
+- planning responses to reviewers in a consistent matrix
+- generating local response-letter drafts from structured data
+- supporting future richer revision workflows without changing the desktop shell
+
+Architectural intent:
+- Review matrix data is local-only in v1.
+- The source-of-truth for review matrix metadata is the local desktop DB.
+- Generated reviewer-matrix / response-letter note content is stored as local markdown files under the paper notes workspace.
+- Frontend may trigger review actions, but matrix persistence, template rendering, file creation, path validation, and note generation must happen in Rust commands.
+
+Required changes:
+
+1. Local review matrix persistence
+Extend the desktop local SQLite cache with:
+
+A. paper_review_round_cache
+Required fields:
+- id text/uuid pk
+- paper_id text
+- round_label text
+- venue text nullable
+- decision_label text nullable
+- status text/enum [open, archived]
+- source_mode text/enum [manual]
+- reviewer_count int default 0
+- generated_response_note_id text nullable
+- generated_matrix_note_id text nullable
+- created_at text
+- updated_at text
+
+B. review_comment_item_cache
+Required fields:
+- id text/uuid pk
+- review_round_id text
+- paper_id text
+- reviewer_label text
+- comment_code text nullable
+- sort_order int
+- comment_text text
+- category text nullable
+- disposition text/enum [todo, accepted, rebutted, not_applicable, done]
+- response_summary text nullable
+- action_note text nullable
+- created_at text
+- updated_at text
+
+Constraints:
+- keep schema small and production-friendly
+- query by paper_id and review_round_id efficiently
+- add local init/migration handling
+- no backend migrations expected in this phase
+
+2. Review matrix ordering and model
+Implement a deterministic ordering model.
+
+Requirements:
+- comments must have stable sort_order within a round
+- list ordering should be:
+  - reviewer_label asc
+  - sort_order asc
+  - created_at asc
+- allow multiple reviewers in one round
+- allow multiple comments per reviewer
+- keep the model simple and manual-entry-first
+
+3. Built-in structured response template rendering
+Implement deterministic local template renderers in Rust for:
+
+A. reviewer_matrix note
+B. response_letter note
+
+Requirements:
+- render plain markdown only
+- use review round + paper context + comment matrix
+- no AI generation
+- sparse, practical output
+- include at minimum:
+  - paper title
+  - paper id
+  - round label
+  - venue
+  - stage
+  - reviewer sections
+  - each comment text
+  - disposition
+  - response summary
+  - action note
+
+For response_letter rendering:
+- structure by reviewer
+- include salutation/opening and concise close
+- use response_summary as the main response body
+- if response_summary is empty, leave a visible placeholder
+
+4. Generated note integration
+Integrate generated notes with the existing local notes system.
+
+Requirements:
+- generated reviewer_matrix and response_letter notes must be created as managed local markdown notes under:
+  - papers/<paper_id>/notes/
+  or a stable subdirectory under notes if justified
+- generated notes must create/update paper_note_cache rows
+- generating again for the same review round may:
+  - update the existing generated note if linked
+  - or create a new versioned note
+  Choose one deterministic approach and document it clearly.
+- generated note linkage should update:
+  - generated_response_note_id
+  - generated_matrix_note_id
+  when applicable
+
+5. Review matrix commands
+Add/extend Tauri Rust commands for at least:
+- listReviewRounds
+- createReviewRound
+- updateReviewRound
+- listReviewComments
+- addReviewComment
+- updateReviewComment
+- deleteReviewComment
+- generateReviewerMatrixNote
+- generateResponseLetterNote
+- getReviewRoundDetail
+
+Behavior:
+- commands must return typed payloads
+- keep persistence and file IO in Rust, not React
+- note generation commands must ensure paper workspace exists
+- update/delete operations must fail clearly when round/comment is missing
+- deleting a comment should not silently renumber unrelated items unless the implementation documents and tests the chosen behavior
+- getReviewRoundDetail should return:
+  - round metadata
+  - ordered comments
+  - linked generated note summaries if available
+
+6. Desktop read models
+Add/update compact desktop read models for:
+- ReviewRoundSummaryRead
+- ReviewCommentItemRead
+- ReviewRoundDetailRead
+- GeneratedReviewNoteRead
+- ReviewActionResultRead
+
+Update PaperDetailRead where useful:
+- include review round summaries
+- include reviewRoundCount if straightforward
+
+Requirements:
+- keep read models compact and client-friendly
+- clearly separate local-only review state from synced cloud data
+- preserve current progress_percentage heuristic unchanged
+
+7. Desktop frontend behavior
+Add minimal useful review UI.
+
+Paper Detail view:
+- add a Review Matrix section
+- show list of review rounds
+- allow creating a review round
+- allow selecting a review round
+- show structured comment list for selected round
+- allow:
+  - add comment
+  - edit comment
+  - delete comment
+  - generate reviewer matrix note
+  - generate response letter note
+- show linked generated note summaries if available
+- use simple forms and textarea inputs
+- no spreadsheet widget required
+- no rich text editor
+
+Minimum comment fields in UI:
+- reviewerLabel
+- commentCode
+- commentText
+- category
+- disposition
+- responseSummary
+- actionNote
+
+8. Local consistency model
+Keep the review model simple.
+
+Requirements:
+- review matrix metadata is local-only in v1
+- generated note files are local-only
+- clearLocalCache should NOT delete generated review notes
+- disconnectDevice should NOT delete generated review notes
+- if workspace root is missing, generation should fail clearly and not fake success
+- if paper title changes from sync, existing review-note paths remain stable
+
+9. Tests
+Add or update tests covering at minimum:
+
+Rust desktop tests where practical:
+- createReviewRound creates a round row
+- addReviewComment creates comment rows
+- updateReviewComment updates response fields cleanly
+- deleteReviewComment removes the target row cleanly
+- listReviewComments returns stable ordering
+- generateReviewerMatrixNote creates/updates a local markdown note and note cache row
+- generateResponseLetterNote creates/updates a local markdown note and note cache row
+- clearLocalCache does not delete generated review notes
+- disconnectDevice does not delete generated review notes
+- progress_percentage mapping remains unchanged
+
+Frontend / TS tests where practical:
+- review read-model shaping helper if implemented
+- response placeholder shaping helper if implemented
+
+Repo-level:
+- existing backend tests continue to pass
+
+10. Documentation
+Add docs/desktop_review_matrix_response_v1.md
+
+It should explain:
+- why review matrix stays local-only in v1
+- review round model
+- comment matrix model
+- built-in generated outputs
+- generated note linkage model
+- local-only consistency model
+- current non-goals
+- future work:
+  - import helpers from pasted reviewer text
+  - note sync
+  - richer response drafting tools
+  - template customization
+  - review analytics
+
+Also update:
+- README.md
+- docs/development.md
+- docs/architecture.md
+- docs/desktop_local_notes_templates_v1.md
+- docs/desktop_local_workspace_v1.md
+- any docs that should mention local review matrix workflows
+
+11. Quality bar
+- keep desktop code typed and readable
+- keep backend changes zero or minimal
+- do not add unnecessary dependencies
+- do not require live backend credentials in tests
+- do not add AI reviewer extraction/generation
+- run available checks
+- fix obvious lint/test issues
+- end with a concise summary:
+  - files changed
+  - whether any backend migration was needed
+  - new local tables
+  - new commands
+  - generated note strategy
+  - next-phase recommendation only

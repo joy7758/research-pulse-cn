@@ -126,6 +126,61 @@ export type NoteActionResultRead = {
   message: string;
 };
 
+export type ReviewRoundSummaryRead = {
+  id: string;
+  paperId: string;
+  roundLabel: string;
+  venue: string | null;
+  decisionLabel: string | null;
+  status: "open" | "archived" | string;
+  sourceMode: "manual" | string;
+  reviewerCount: number;
+  generatedResponseNoteId: string | null;
+  generatedMatrixNoteId: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ReviewCommentItemRead = {
+  id: string;
+  reviewRoundId: string;
+  paperId: string;
+  reviewerLabel: string;
+  commentCode: string | null;
+  sortOrder: number;
+  commentText: string;
+  category: string | null;
+  disposition: "todo" | "accepted" | "rebutted" | "not_applicable" | "done" | string;
+  responseSummary: string | null;
+  actionNote: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type GeneratedReviewNoteRead = {
+  kind: "reviewer_matrix" | "response_letter" | string;
+  noteId: string;
+  title: string;
+  relativePath: string;
+  status: string;
+  updatedAt: string;
+};
+
+export type ReviewRoundDetailRead = {
+  round: ReviewRoundSummaryRead;
+  comments: ReviewCommentItemRead[];
+  generatedResponseNote: GeneratedReviewNoteRead | null;
+  generatedMatrixNote: GeneratedReviewNoteRead | null;
+};
+
+export type ReviewActionResultRead = {
+  message: string;
+  round: ReviewRoundSummaryRead | null;
+  comment: ReviewCommentItemRead | null;
+  detail: ReviewRoundDetailRead | null;
+  generatedNote: GeneratedReviewNoteRead | null;
+};
+
 export type PaperListItemRead = {
   id: string;
   userId: string;
@@ -214,6 +269,8 @@ export type PaperDetailRead = {
   attachments: PaperAttachmentRead[];
   notes: PaperNoteSummaryRead[];
   noteCount: number;
+  reviewRounds: ReviewRoundSummaryRead[];
+  reviewRoundCount: number;
 };
 
 export type AppBootstrapRead = {
@@ -296,6 +353,55 @@ export type SavePaperNoteInput = {
 
 export type RefreshPaperNotesInput = {
   paperId: string;
+};
+
+export type ListReviewRoundsInput = {
+  paperId: string;
+};
+
+export type CreateReviewRoundInput = {
+  paperId: string;
+  roundLabel: string;
+  venue?: string | null;
+  decisionLabel?: string | null;
+};
+
+export type UpdateReviewRoundInput = {
+  reviewRoundId: string;
+  roundLabel?: string | null;
+  venue?: string | null;
+  decisionLabel?: string | null;
+  status?: string | null;
+};
+
+export type ListReviewCommentsInput = {
+  reviewRoundId: string;
+};
+
+export type AddReviewCommentInput = {
+  reviewRoundId: string;
+  reviewerLabel: string;
+  commentCode?: string | null;
+  commentText: string;
+  category?: string | null;
+  disposition?: string | null;
+  responseSummary?: string | null;
+  actionNote?: string | null;
+};
+
+export type UpdateReviewCommentInput = {
+  commentId: string;
+  reviewerLabel?: string | null;
+  commentCode?: string | null;
+  commentText?: string | null;
+  category?: string | null;
+  disposition?: string | null;
+  responseSummary?: string | null;
+  actionNote?: string | null;
+};
+
+export type DeleteReviewCommentInput = {
+  commentId: string;
 };
 
 export type QueuePaperPatchInput = {

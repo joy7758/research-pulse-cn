@@ -61,3 +61,5 @@ Each template is rendered on the Rust side from deterministic markdown generator
 - per-user template customization
 - markdown preview and richer note navigation
 - local backlinks, search, and indexing across notes
+
+The local review-matrix layer added later reuses this same note system for generated `reviewer_matrix` and `response_letter` markdown files while keeping review metadata local in desktop SQLite.
