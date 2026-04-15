@@ -140,7 +140,6 @@ pub struct PaperNoteSummaryRead {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PaperNoteDetailRead {
-    #[serde(flatten)]
     pub note: PaperNoteSummaryRead,
     pub content: Option<String>,
 }
