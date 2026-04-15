@@ -11,7 +11,7 @@ Core flow:
 5. The worker dispatches delivery jobs through current supported channel adapters and manages retry and dead-letter transitions.
 6. Digest issues are upserted from selected pulse cards, orchestrated into sectioned daily packets, and can be prepared for official-account publication.
 7. Official-account publication jobs can be dispatched through the provider boundary either per job or through issue-level dispatch runs, while a separate delivery-control layer decides whether user policy allows sending now.
-8. Mini read grants expose compact mobile-friendly read models for future mini-program landing without opening write access.
+8. Mini read grants expose compact mobile-friendly read models for future mini-program landing without opening write access, now including structured Today digest rendering and a read-only subscription reserve summary.
 9. Subscription self-service grants expose a narrow user-side settings boundary for future official-account or mini entry without reusing admin or mini auth.
 10. Sync devices consume incremental `SyncEvent` feeds and push idempotent mutations back through the same service layer.
 11. A Tauri desktop shell consumes the same sync feed, keeps a local SQLite outbox, performs limited writeback through `/sync/push`, manages a local-only paper workspace, stores local markdown notes/templates, keeps local review-matrix / response-letter workflows, exposes synced `SubscriptionPolicy` quiet-control fields in Settings with non-authoritative local hints, and renders sectioned daily digests on the Today page when the synced cache includes structured digest payloads.
@@ -183,9 +183,17 @@ Tie-break order is deterministic:
   - bootstrap context
   - today overview
   - digest detail
+  - subscription reserve summary
   - paper summaries
   - paper detail
 - These views deliberately omit admin-only and provider-internal fields.
+- Mini now prefers orchestrated digest structure when present:
+  - `section_order`
+  - `sections`
+  - `quick_stats`
+  - `focus_card`
+  - `publication_preview`
+- If structured fields are absent, mini falls back to a deterministic section mapping from legacy `highlights` / `items`.
 
 ## Subscription self-service reserve
 
@@ -213,6 +221,7 @@ Tie-break order is deterministic:
   - `policy.minimum_selected_cards`
   - `policy.skip_if_no_today_focus`
 - The authoritative delivery preview reuses the backend evaluator but does not persist `DigestDeliveryDecision` rows in this phase.
+- Mini read-only subscription reserve also reuses that evaluator for an authoritative preview, but mini grant auth remains read-only and separate from self-service edit auth.
 
 ### Derived progress percentage
 - Mini paper views expose a deterministic `progress_percentage` derived from `PaperProfile.type`.

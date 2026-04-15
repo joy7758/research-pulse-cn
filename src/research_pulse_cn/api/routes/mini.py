@@ -16,6 +16,7 @@ from research_pulse_cn.schemas.mini import (
     MiniDigestIssueDetailRead,
     MiniPaperDetailRead,
     MiniPaperSummaryRead,
+    MiniSubscriptionReserveRead,
     MiniTodayResponse,
 )
 from research_pulse_cn.services.mini import MiniService
@@ -40,6 +41,14 @@ def mini_today(
     service: MiniServiceDep,
 ) -> MiniTodayResponse:
     return MiniTodayResponse(**service.today(grant))
+
+
+@router.get("/subscription-reserve", response_model=MiniSubscriptionReserveRead)
+def mini_subscription_reserve(
+    grant: MiniGrantDep,
+    service: MiniServiceDep,
+) -> MiniSubscriptionReserveRead:
+    return MiniSubscriptionReserveRead(**service.subscription_reserve(grant))
 
 
 @router.get("/digest-issues/{digest_issue_id}", response_model=MiniDigestIssueDetailRead)

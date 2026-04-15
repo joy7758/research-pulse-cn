@@ -19,6 +19,7 @@ Private repository. Proprietary and confidential.
 - Official-account provider boundary with `disabled` / `dry_run` / explicit `real` mode, callback ingress, and token-backed real-send activation
 - Deterministic user-side delivery control on top of official-account digest dispatch, including quiet hours, mute-until, weekday allow-lists, minimum digest thresholds, and persisted delivery decisions
 - Admin-issued subscription self-service reserve grants that expose safe official-account settings reads, safe settings patching, and authoritative delivery-control preview without real WeChat OAuth
+- Mini read-only reserve endpoints that now consume structured digests, expose a safe subscription reserve summary, and keep mini grant auth separate from self-service grant auth
 - Tauri 2 desktop shell with Rust-side pull sync, local SQLite cache, mutation outbox, minimal writeback for paper/progress/subscription policy edits, a local paper workspace layer, local markdown notes/templates, and a local review-matrix workflow that generates reviewer-matrix / response-letter drafts
 - Pulse input-layer foundation with lightweight `WorkActivityEvent` capture, `ResearchWatchProfile` management, deterministic external-retrieval planning plus official-source execution/normalization boundaries, desktop-emitted work activity mutations, deterministic pulse-input preview APIs, a deterministic `yesterday_summary` pulse card, a deterministic `today_suggestion` pulse card generated from internal paper/progress/signal state only, and a deterministic `related_paper` pulse card generated only from persisted normalized external scholarly results
 - Seed data, Docker Compose, pytest, Ruff, and CI
@@ -135,6 +136,8 @@ Desktop Today now also prefers the orchestrated sectioned digest payload when av
 
 Older cached digests that only have `highlights` / `items` still render through a deterministic desktop fallback path.
 
+Mini read-only routes now also prefer the same orchestrated sectioned digest payload when available and fall back to legacy `highlights` / `items` when older digest content is all that exists.
+
 ## Pulse input layer
 The backend now includes a pulse input layer for future retrieval and recap work:
 - `WorkActivityEvent` for structured "what the user did" signals
@@ -236,6 +239,10 @@ Important values:
   - `skip_if_no_today_focus`
 - `SubscriptionPolicy.quiet_hours` remains the separate quiet-window field for user-side delivery gating
 - `SubscriptionSelfServiceGrant` now reserves a separate bearer-token auth boundary for `/subscription-self-service/*`
+- mini read-only subscription reserve is exposed through:
+  - `GET /mini/subscription-reserve`
+  - mini grant auth only
+  - authoritative delivery preview reuse without write access
 - `subscription-self-service` editable fields are limited to:
   - `enabled`
   - `quiet_hours`
