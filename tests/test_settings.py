@@ -20,3 +20,18 @@ def test_settings_builds_runtime_urls(monkeypatch) -> None:
     assert settings.app_env == "test"
     assert settings.database_url == "sqlite+pysqlite:///tmp/research-pulse-cn-test.db"
     assert settings.redis_url == "redis://cache:6380/2"
+
+
+def test_settings_parse_enabled_external_retrieval_sources(monkeypatch) -> None:
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("APP_DATABASE_URL", "sqlite+pysqlite:///tmp/research-pulse-cn-test.db")
+    monkeypatch.setenv("APP_EXTERNAL_RETRIEVAL_ENABLED_SOURCES", "openalex, crossref ,arxiv")
+    get_settings.cache_clear()
+
+    settings = get_settings()
+
+    assert [item.value for item in settings.external_retrieval_enabled_source_kinds] == [
+        "openalex",
+        "crossref",
+        "arxiv",
+    ]

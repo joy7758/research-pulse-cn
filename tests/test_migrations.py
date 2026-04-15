@@ -40,6 +40,7 @@ def test_alembic_upgrade_creates_core_tables(tmp_path) -> None:
         "pulse_digest_issues",
         "pulse_digest_items",
         "delivery_jobs",
+        "external_retrieval_plans",
         "wechat_identity_bindings",
         "worker_heartbeats",
         "delivery_attempts",
@@ -159,6 +160,25 @@ def test_alembic_upgrade_creates_core_tables(tmp_path) -> None:
         "digest_enabled",
         "metadata",
     }.issubset(binding_columns)
+    external_retrieval_columns = {
+        column["name"] for column in inspector.get_columns("external_retrieval_plans")
+    }
+    assert {
+        "user_id",
+        "source_kind",
+        "retrieval_scope",
+        "watch_profile_id",
+        "paper_id",
+        "plan_label",
+        "query_text",
+        "query_payload",
+        "effective_inputs",
+        "reason_codes",
+        "plan_hash",
+        "status",
+        "created_at",
+        "updated_at",
+    }.issubset(external_retrieval_columns)
     digest_issue_columns = {
         column["name"] for column in inspector.get_columns("pulse_digest_issues")
     }

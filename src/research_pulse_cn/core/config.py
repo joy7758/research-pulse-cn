@@ -6,6 +6,8 @@ from pydantic import Field, computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from research_pulse_cn.domain.enums import (
+    ExternalRetrievalMode,
+    ExternalRetrievalSourceKind,
     OfficialAccountProviderMode,
     OfficialAccountTransportKind,
 )
@@ -101,6 +103,30 @@ class Settings(BaseSettings):
     pulse_modifier_yesterday_summary_multi_paper: int = Field(
         default=4,
         validation_alias="APP_PULSE_MODIFIER_YESTERDAY_SUMMARY_MULTI_PAPER",
+    )
+    external_retrieval_mode: ExternalRetrievalMode = Field(
+        default=ExternalRetrievalMode.DISABLED,
+        validation_alias="APP_EXTERNAL_RETRIEVAL_MODE",
+    )
+    external_retrieval_enabled_sources: str = Field(
+        default="openalex,crossref,arxiv",
+        validation_alias="APP_EXTERNAL_RETRIEVAL_ENABLED_SOURCES",
+    )
+    external_retrieval_max_plans_per_user: int = Field(
+        default=6,
+        validation_alias="APP_EXTERNAL_RETRIEVAL_MAX_PLANS_PER_USER",
+    )
+    external_retrieval_max_keywords_per_plan: int = Field(
+        default=4,
+        validation_alias="APP_EXTERNAL_RETRIEVAL_MAX_KEYWORDS_PER_PLAN",
+    )
+    external_retrieval_max_topics_per_plan: int = Field(
+        default=3,
+        validation_alias="APP_EXTERNAL_RETRIEVAL_MAX_TOPICS_PER_PLAN",
+    )
+    external_retrieval_lookback_days_for_activity_context: int = Field(
+        default=7,
+        validation_alias="APP_EXTERNAL_RETRIEVAL_LOOKBACK_DAYS_FOR_ACTIVITY_CONTEXT",
     )
     default_timezone: str = Field(default="UTC", validation_alias="APP_DEFAULT_TIMEZONE")
     pulse_default_send_hour_local: int = Field(
@@ -267,6 +293,26 @@ class Settings(BaseSettings):
     def redis_url(self) -> str:
         """Build the Redis connection URL for queue and cache integrations."""
         return f"redis://{self.redis_host}:{self.redis_port}/{self.redis_db}"
+
+    @property
+    def external_retrieval_enabled_source_kinds(self) -> list[ExternalRetrievalSourceKind]:
+        """Return enabled retrieval sources parsed from the environment string."""
+        values: list[ExternalRetrievalSourceKind] = []
+        seen: set[ExternalRetrievalSourceKind] = set()
+        raw_values = str(self.external_retrieval_enabled_sources).replace(";", ",").split(",")
+        for raw_value in raw_values:
+            cleaned = raw_value.strip().lower()
+            if not cleaned:
+                continue
+            try:
+                source_kind = ExternalRetrievalSourceKind(cleaned)
+            except ValueError:
+                continue
+            if source_kind in seen:
+                continue
+            seen.add(source_kind)
+            values.append(source_kind)
+        return values
 
 
 @lru_cache(maxsize=1)

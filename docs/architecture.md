@@ -15,6 +15,7 @@ Core flow:
 9. Sync devices consume incremental `SyncEvent` feeds and push idempotent mutations back through the same service layer.
 10. A Tauri desktop shell consumes the same sync feed, keeps a local SQLite outbox, performs limited writeback through `/sync/push`, manages a local-only paper workspace, stores local markdown notes/templates, and keeps local review-matrix / response-letter workflows without bundling the backend.
 11. A pulse input layer now records lightweight work activity and research watch profiles so future retrieval can start from explicit inputs instead of implicit guesses.
+12. A planning-only external retrieval boundary now converts those inputs into persisted source-specific plans without executing any external fetches yet.
 
 ## Module boundaries
 
@@ -63,15 +64,22 @@ Future communication surfaces are intentionally outside the active delivery laye
   - subscription-policy changes
   - desktop attachment/note/review actions emitted through sync
 - `ResearchWatchProfile` stores compact user watch interests that can later drive retrieval.
+- `ExternalRetrievalPlan` stores deterministic source-specific planning records for later retrieval execution.
 - `GET /pulse/input-preview/{user_id}` exposes:
   - previous-day work activity summary
   - raw ordered activity events
   - enabled watch profiles
   - effective deduped watch seeds
+  - compact retrieval-planning preview
+- `GET /external-retrieval/input-preview/{user_id}` exposes:
+  - effective retrieval seeds
+  - recent activity context summary
+  - source-specific plan previews
+- `POST /external-retrieval/plans/build/{user_id}` persists deterministic plans using plan-hash upsert semantics.
 - This layer is intentionally upstream of retrieval and card generation:
-  - no external sources
+  - no external execution
   - no AI expansion
-  - no final pulse cards yet
+  - no final related-paper/news pulse cards yet
 
 ### Fact collection
 - `DeterministicFactCollector` inspects current paper state.
@@ -216,6 +224,29 @@ Tie-break order is deterministic:
   - `resolve_blocker`
   - `define_next_action`
 - Selected cards persist as normal `PulseCard` rows and usually keep a non-null `source_paper_id`.
+
+## External retrieval planning boundary
+- The external retrieval layer is planning-only in this phase.
+- It is driven by:
+  - enabled `ResearchWatchProfile` rows
+  - recent non-system `WorkActivityEvent` context
+- Builders currently exist for:
+  - `openalex`
+  - `crossref`
+  - `arxiv`
+- Supported retrieval scopes are:
+  - `related_paper`
+  - `venue_update`
+  - `author_watch`
+- Each plan persists:
+  - source kind
+  - retrieval scope
+  - query text
+  - structured query payload
+  - effective inputs
+  - reason codes
+  - deterministic `plan_hash`
+- No external fetch execution, normalized external-result storage, or final pulse-card generation exists in this phase.
 
 ### Desktop shell
 - `apps/desktop` is isolated from the Python backend.

@@ -9,6 +9,10 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from research_pulse_cn.domain.enums import (
+    ExternalRetrievalMode,
+    ExternalRetrievalPlanStatus,
+    ExternalRetrievalScope,
+    ExternalRetrievalSourceKind,
     ResearchWatchProfileSourceMode,
     WorkActivitySource,
     WorkActivityType,
@@ -88,6 +92,79 @@ class EffectiveWatchSeedsRead(BaseModel):
     authors_of_interest: list[str] = Field(default_factory=list)
 
 
+class EffectiveRetrievalSeedsRead(BaseModel):
+    topics: list[str] = Field(default_factory=list)
+    keywords: list[str] = Field(default_factory=list)
+    venues: list[str] = Field(default_factory=list)
+    authors_of_interest: list[str] = Field(default_factory=list)
+    touched_paper_titles: list[str] = Field(default_factory=list)
+
+
+class ExternalRetrievalPlanPreviewRead(BaseModel):
+    source_kind: ExternalRetrievalSourceKind
+    retrieval_scope: ExternalRetrievalScope
+    watch_profile_id: UUID | None = None
+    paper_id: UUID | None = None
+    plan_label: str
+    query_text: str
+    query_payload: dict[str, Any] = Field(default_factory=dict)
+    effective_inputs: dict[str, Any] = Field(default_factory=dict)
+    reason_codes: list[str] = Field(default_factory=list)
+    plan_hash: str
+
+
+class ExternalRetrievalPlanCompactRead(BaseModel):
+    source_kind: ExternalRetrievalSourceKind
+    retrieval_scope: ExternalRetrievalScope
+    plan_label: str
+    query_text: str
+    reason_codes: list[str] = Field(default_factory=list)
+
+
+class ExternalRetrievalPlanRead(ORMModel):
+    id: UUID
+    user_id: UUID
+    source_kind: ExternalRetrievalSourceKind
+    retrieval_scope: ExternalRetrievalScope
+    watch_profile_id: UUID | None
+    paper_id: UUID | None
+    plan_label: str
+    query_text: str
+    query_payload: dict[str, Any] = Field(default_factory=dict)
+    effective_inputs: dict[str, Any] = Field(default_factory=dict)
+    reason_codes: list[str] = Field(default_factory=list)
+    plan_hash: str
+    status: ExternalRetrievalPlanStatus
+    created_at: datetime
+    updated_at: datetime
+
+
+class ExternalRetrievalPlanningCompactRead(BaseModel):
+    mode: ExternalRetrievalMode
+    enabled_sources: list[ExternalRetrievalSourceKind] = Field(default_factory=list)
+    preview_plan_count: int
+    source_plan_previews: list[ExternalRetrievalPlanCompactRead] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
+
+
+class ExternalRetrievalInputPreviewResponse(BaseModel):
+    user_id: UUID
+    mode: ExternalRetrievalMode
+    enabled_sources: list[ExternalRetrievalSourceKind] = Field(default_factory=list)
+    enabled_watch_profiles: list[ResearchWatchProfileRead] = Field(default_factory=list)
+    effective_retrieval_seeds: EffectiveRetrievalSeedsRead
+    recent_activity_context_summary: WorkActivitySummaryRead
+    source_plan_previews: list[ExternalRetrievalPlanPreviewRead] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
+
+
+class ExternalRetrievalPlanBuildResponse(BaseModel):
+    user_id: UUID
+    mode: ExternalRetrievalMode
+    built_plans: list[ExternalRetrievalPlanRead] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
+
+
 class PulseInputPreviewResponse(BaseModel):
     user_id: UUID
     preview_date: date
@@ -97,4 +174,5 @@ class PulseInputPreviewResponse(BaseModel):
     work_activity_events: list[WorkActivityEventRead] = Field(default_factory=list)
     enabled_watch_profiles: list[ResearchWatchProfileRead] = Field(default_factory=list)
     effective_watch_seeds: EffectiveWatchSeedsRead
+    retrieval_input_preview: ExternalRetrievalPlanningCompactRead | None = None
     notes: list[str] = Field(default_factory=list)

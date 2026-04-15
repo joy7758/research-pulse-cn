@@ -34,6 +34,9 @@ from research_pulse_cn.domain.enums import (
     DigestPublicationMode,
     DigestPublicationStatus,
     DigestPublicationTarget,
+    ExternalRetrievalPlanStatus,
+    ExternalRetrievalScope,
+    ExternalRetrievalSourceKind,
     MiniReadGrantStatus,
     MiniReadGrantType,
     OfficialAccountCallbackPayloadFormat,
@@ -148,6 +151,11 @@ class UserProfile(TimestampMixin, Base):
         cascade="all, delete-orphan",
         order_by="ResearchWatchProfile.updated_at.desc()",
     )
+    external_retrieval_plans: Mapped[list[ExternalRetrievalPlan]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+        order_by="ExternalRetrievalPlan.updated_at.desc()",
+    )
     sync_events: Mapped[list[SyncEvent]] = relationship(
         back_populates="user",
         cascade="all, delete-orphan",
@@ -188,6 +196,9 @@ class PaperProfile(TimestampMixin, Base):
         back_populates="paper",
     )
     research_watch_profiles: Mapped[list[ResearchWatchProfile]] = relationship(
+        back_populates="paper",
+    )
+    external_retrieval_plans: Mapped[list[ExternalRetrievalPlan]] = relationship(
         back_populates="paper",
     )
 
@@ -908,3 +919,55 @@ class ResearchWatchProfile(TimestampMixin, Base):
 
     user: Mapped[UserProfile] = relationship(back_populates="research_watch_profiles")
     paper: Mapped[PaperProfile | None] = relationship(back_populates="research_watch_profiles")
+    external_retrieval_plans: Mapped[list[ExternalRetrievalPlan]] = relationship(
+        back_populates="watch_profile",
+    )
+
+
+class ExternalRetrievalPlan(TimestampMixin, Base):
+    __tablename__ = "external_retrieval_plans"
+    __table_args__ = (
+        Index(
+            "ix_external_retrieval_plans_user_source",
+            "user_id",
+            "source_kind",
+            "created_at",
+        ),
+        Index("ix_external_retrieval_plans_scope", "retrieval_scope"),
+        Index("ix_external_retrieval_plans_paper", "paper_id"),
+        Index("ix_external_retrieval_plans_watch_profile", "watch_profile_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("user_profiles.id", ondelete="CASCADE"))
+    source_kind: Mapped[ExternalRetrievalSourceKind] = mapped_column(
+        Enum(ExternalRetrievalSourceKind, native_enum=False),
+        nullable=False,
+    )
+    retrieval_scope: Mapped[ExternalRetrievalScope] = mapped_column(
+        Enum(ExternalRetrievalScope, native_enum=False),
+        nullable=False,
+    )
+    watch_profile_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("research_watch_profiles.id", ondelete="SET NULL")
+    )
+    paper_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("paper_profiles.id", ondelete="SET NULL")
+    )
+    plan_label: Mapped[str] = mapped_column(String(255), nullable=False)
+    query_text: Mapped[str] = mapped_column(Text, nullable=False)
+    query_payload: Mapped[dict[str, Any]] = mapped_column(JSON_VARIANT, default=dict)
+    effective_inputs: Mapped[dict[str, Any]] = mapped_column(JSON_VARIANT, default=dict)
+    reason_codes: Mapped[list[str]] = mapped_column(JSON_VARIANT, default=list)
+    plan_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    status: Mapped[ExternalRetrievalPlanStatus] = mapped_column(
+        Enum(ExternalRetrievalPlanStatus, native_enum=False),
+        nullable=False,
+        default=ExternalRetrievalPlanStatus.PLANNED,
+    )
+
+    user: Mapped[UserProfile] = relationship(back_populates="external_retrieval_plans")
+    watch_profile: Mapped[ResearchWatchProfile | None] = relationship(
+        back_populates="external_retrieval_plans"
+    )
+    paper: Mapped[PaperProfile | None] = relationship(back_populates="external_retrieval_plans")
