@@ -17,7 +17,7 @@ Private repository. Proprietary and confidential.
 - Device-token sync backbone for desktop and future lightweight clients
 - WeChat identity bindings plus digest issue/publication reserve objects for future official-account and mini-program flows
 - Official-account provider boundary with `disabled` / `dry_run` / explicit `real` mode, callback ingress, and token-backed real-send activation
-- Tauri 2 desktop shell with Rust-side pull sync, local SQLite cache, mutation outbox, minimal writeback for paper/progress/subscription policy edits, and a local paper workspace layer
+- Tauri 2 desktop shell with Rust-side pull sync, local SQLite cache, mutation outbox, minimal writeback for paper/progress/subscription policy edits, a local paper workspace layer, and local markdown notes/templates
 - Seed data, Docker Compose, pytest, Ruff, and CI
 
 ## Architecture
@@ -95,6 +95,13 @@ The desktop shell now also supports a local-only paper workspace:
 - local attachment metadata index in desktop SQLite
 
 This workspace layer does not upload files, sync attachments to the backend, or run OCR/AI analysis in v1.
+
+The desktop shell now also supports local-only per-paper notes:
+- markdown note files under `papers/<paper_id>/notes/`
+- built-in templates for research notes, revision planning, response letters, reviewer matrices, and submission checklists
+- note metadata indexed in desktop SQLite while note content remains file-backed on disk
+
+These notes do not sync to the backend and do not use AI generation in v1.
 
 ## Common commands
 - `make install`: install runtime and dev dependencies

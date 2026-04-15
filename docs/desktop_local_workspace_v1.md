@@ -59,6 +59,8 @@
 - `PaperWorkspaceRead`
 - `PaperAttachmentRead`
 
+The notes directory created under each paper workspace is now also used by the separate local notes/template layer, but note content and note metadata remain local-only and are documented in `docs/desktop_local_notes_templates_v1.md`.
+
 Existing paper read models are extended with local-only workspace state:
 - `PaperListItemRead`
   - `attachmentCount`

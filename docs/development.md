@@ -140,6 +140,7 @@ The desktop shell does not use admin login. It uses admin-issued device tokens, 
   - `workspace_settings`
   - `paper_workspace_cache`
   - `paper_attachment_cache`
+  - `paper_note_cache`
 - Desktop sync now runs:
   - push queued mutations
   - pull feed pages
@@ -151,8 +152,13 @@ The desktop shell does not use admin login. It uses admin-issued device tokens, 
   - ensure a deterministic paper workspace from Paper Detail
   - import attachments as managed local copies only
   - refresh attachment status when files disappear from disk
+- Desktop local notes/templates in v1:
+  - create markdown notes under `papers/<paper_id>/notes/`
+  - create from built-in templates or as blank notes
+  - save note content to disk from the Paper Detail editor
+  - refresh note metadata when files are missing or changed outside the app
 - Changing or clearing the workspace root does not move or delete existing managed files.
-- `clearLocalCache` and `disconnectDevice` do not delete managed workspace files.
+- `clearLocalCache` and `disconnectDevice` do not delete managed workspace files or local note files.
 
 ## Official-account digest reserve
 - WeChat identity binding is admin-managed only in v1.

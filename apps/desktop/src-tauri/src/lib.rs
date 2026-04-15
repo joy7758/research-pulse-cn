@@ -1,6 +1,7 @@
 mod cache;
 mod error;
 mod models;
+mod notes;
 mod progress;
 mod secret_store;
 mod service;
@@ -10,12 +11,15 @@ mod workspace;
 use anyhow::{Context, Result};
 use models::{
     AppBootstrapRead, ChooseWorkspaceRootInput, ConnectDeviceInput, ConnectDeviceResponse,
-    EnsurePaperWorkspaceInput, ImportPaperAttachmentsInput, ImportPaperAttachmentsResponse,
-    ListPapersInput, PaperAttachmentRead, PaperDetailRead, PaperListItemRead,
+    CreateBlankPaperNoteInput, CreatePaperNoteFromTemplateInput, EnsurePaperWorkspaceInput,
+    ImportPaperAttachmentsInput, ImportPaperAttachmentsResponse, ListPaperNotesInput,
+    ListPapersInput, NoteActionResultRead, NoteTemplateRead, PaperAttachmentRead,
+    PaperDetailRead, PaperListItemRead, PaperNoteDetailRead, PaperNoteSummaryRead,
     PaperWorkspaceRead, PendingMutationRead, QueuePaperPatchInput,
     QueueProgressEventCreateInput, QueueSubscriptionPolicyPatchInput,
-    RefreshPaperWorkspaceInput, SubscriptionPolicyRead, SyncNowResponse, SyncStatusRead,
-    TodayOverviewRead, WorkspaceStatusRead, WriteActionResultRead,
+    RefreshPaperNotesInput, RefreshPaperWorkspaceInput, SavePaperNoteInput,
+    SubscriptionPolicyRead, SyncNowResponse, SyncStatusRead, TodayOverviewRead,
+    WorkspaceStatusRead, WriteActionResultRead,
 };
 use service::{DesktopPaths, DesktopService};
 use tauri::{Manager, State};
@@ -227,6 +231,87 @@ fn listPaperAttachments(
 
 #[allow(non_snake_case)]
 #[tauri::command]
+fn listNoteTemplates(state: State<AppState>) -> Result<Vec<NoteTemplateRead>, String> {
+    state
+        .desktop_service()
+        .and_then(|service| service.list_note_templates())
+        .map_err(command_error)
+}
+
+#[allow(non_snake_case)]
+#[tauri::command]
+fn listPaperNotes(
+    state: State<AppState>,
+    input: ListPaperNotesInput,
+) -> Result<Vec<PaperNoteSummaryRead>, String> {
+    state
+        .desktop_service()
+        .and_then(|service| service.list_paper_notes(&input.paper_id))
+        .map_err(command_error)
+}
+
+#[allow(non_snake_case)]
+#[tauri::command]
+fn createPaperNoteFromTemplate(
+    state: State<AppState>,
+    input: CreatePaperNoteFromTemplateInput,
+) -> Result<NoteActionResultRead, String> {
+    state
+        .desktop_service()
+        .and_then(|service| service.create_paper_note_from_template(input))
+        .map_err(command_error)
+}
+
+#[allow(non_snake_case)]
+#[tauri::command]
+fn createBlankPaperNote(
+    state: State<AppState>,
+    input: CreateBlankPaperNoteInput,
+) -> Result<NoteActionResultRead, String> {
+    state
+        .desktop_service()
+        .and_then(|service| service.create_blank_paper_note(input))
+        .map_err(command_error)
+}
+
+#[allow(non_snake_case)]
+#[tauri::command]
+fn getPaperNote(
+    state: State<AppState>,
+    noteId: String,
+) -> Result<PaperNoteDetailRead, String> {
+    state
+        .desktop_service()
+        .and_then(|service| service.get_paper_note(&noteId))
+        .map_err(command_error)
+}
+
+#[allow(non_snake_case)]
+#[tauri::command]
+fn savePaperNote(
+    state: State<AppState>,
+    input: SavePaperNoteInput,
+) -> Result<NoteActionResultRead, String> {
+    state
+        .desktop_service()
+        .and_then(|service| service.save_paper_note(input))
+        .map_err(command_error)
+}
+
+#[allow(non_snake_case)]
+#[tauri::command]
+fn refreshPaperNotes(
+    state: State<AppState>,
+    input: RefreshPaperNotesInput,
+) -> Result<Vec<PaperNoteSummaryRead>, String> {
+    state
+        .desktop_service()
+        .and_then(|service| service.refresh_paper_notes(&input.paper_id))
+        .map_err(command_error)
+}
+
+#[allow(non_snake_case)]
+#[tauri::command]
 fn importPaperAttachments(
     state: State<AppState>,
     input: ImportPaperAttachmentsInput,
@@ -314,6 +399,13 @@ pub fn run() {
             ensurePaperWorkspace,
             getPaperWorkspace,
             listPaperAttachments,
+            listNoteTemplates,
+            listPaperNotes,
+            createPaperNoteFromTemplate,
+            createBlankPaperNote,
+            getPaperNote,
+            savePaperNote,
+            refreshPaperNotes,
             importPaperAttachments,
             refreshPaperWorkspace,
             queuePaperPatch,

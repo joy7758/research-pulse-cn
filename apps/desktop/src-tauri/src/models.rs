@@ -110,6 +110,50 @@ pub struct PaperAttachmentRead {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct NoteTemplateRead {
+    pub kind: String,
+    pub title: String,
+    pub description: String,
+    pub default_file_name_pattern: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PaperNoteSummaryRead {
+    pub id: String,
+    pub paper_id: String,
+    pub template_kind: String,
+    pub title: String,
+    pub file_name: String,
+    pub relative_path: String,
+    pub absolute_path: Option<String>,
+    pub content_format: String,
+    pub source_mode: String,
+    pub status: String,
+    pub size_bytes: Option<i64>,
+    pub sha256: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+    pub last_opened_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PaperNoteDetailRead {
+    #[serde(flatten)]
+    pub note: PaperNoteSummaryRead,
+    pub content: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteActionResultRead {
+    pub note: PaperNoteDetailRead,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DigestHighlightRead {
     pub sort_order: i64,
     pub pulse_card_id: String,
@@ -225,6 +269,8 @@ pub struct PaperDetailRead {
     pub last_mutation_error: Option<String>,
     pub workspace: PaperWorkspaceRead,
     pub attachments: Vec<PaperAttachmentRead>,
+    pub notes: Vec<PaperNoteSummaryRead>,
+    pub note_count: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -297,6 +343,39 @@ pub struct ImportPaperAttachmentsInput {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RefreshPaperWorkspaceInput {
+    pub paper_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListPaperNotesInput {
+    pub paper_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreatePaperNoteFromTemplateInput {
+    pub paper_id: String,
+    pub template_kind: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateBlankPaperNoteInput {
+    pub paper_id: String,
+    pub title: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavePaperNoteInput {
+    pub note_id: String,
+    pub content: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RefreshPaperNotesInput {
     pub paper_id: String,
 }
 

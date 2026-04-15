@@ -76,6 +76,7 @@ The authoritative local cache still comes from server events, not direct optimis
 - no CRDT or field-level merge sophistication
 - no offline background daemon
 - no synced attachment or workspace management
+- no synced local note files or note metadata
 - no customer auth
 
 ## Future Work

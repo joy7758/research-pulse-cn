@@ -7,10 +7,11 @@ use serde_json::Value;
 use crate::error::{ensure_parent_dir, invalid_state};
 use crate::models::{
     DigestHighlightRead, PaperAttachmentRead, PaperDetailRead, PaperListItemRead,
-    PaperWorkspaceRead, PendingMutationRead, ProgressEventRead, RemoteSyncEvent,
-    RemoteSyncMutationResult, SignalSnapshotRead, SubscriptionPolicyRead, SyncStatusRead,
-    TodayOverviewRead, UserConnectionRead, WorkspaceStatusRead,
+    PaperNoteSummaryRead, PaperWorkspaceRead, PendingMutationRead, ProgressEventRead,
+    RemoteSyncEvent, RemoteSyncMutationResult, SignalSnapshotRead, SubscriptionPolicyRead,
+    SyncStatusRead, TodayOverviewRead, UserConnectionRead, WorkspaceStatusRead,
 };
+use crate::notes::{note_status_for_path, read_note_file_stats};
 use crate::progress::derive_progress_percentage;
 use crate::workspace::{
     attachment_status_for_path, default_workspace_root_record, paper_workspace_ready_for_path,
@@ -265,7 +266,27 @@ impl LocalCache {
                 CREATE INDEX IF NOT EXISTS idx_paper_attachment_cache_sha
                     ON paper_attachment_cache (paper_id, sha256, size_bytes);
 
-                PRAGMA user_version = 3;
+                CREATE TABLE IF NOT EXISTS paper_note_cache (
+                    id TEXT PRIMARY KEY,
+                    paper_id TEXT NOT NULL,
+                    template_kind TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    file_name TEXT NOT NULL,
+                    relative_path TEXT NOT NULL,
+                    absolute_path TEXT,
+                    content_format TEXT NOT NULL,
+                    source_mode TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    size_bytes INTEGER,
+                    sha256 TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    last_opened_at TEXT
+                );
+                CREATE INDEX IF NOT EXISTS idx_paper_note_cache_paper
+                    ON paper_note_cache (paper_id, COALESCE(updated_at, '') DESC, id ASC);
+
+                PRAGMA user_version = 4;
                 "#,
             )
             .context("failed to initialize desktop cache schema")?;
@@ -510,6 +531,35 @@ impl LocalCache {
                     WHERE id = ?4
                     "#,
                     params![abs_path, status, now, attachment_id],
+                )?;
+            }
+        }
+
+        {
+            let mut statement = transaction.prepare(
+                r#"
+                SELECT id, relative_path
+                FROM paper_note_cache
+                ORDER BY id ASC
+                "#,
+            )?;
+            let rows = statement.query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })?;
+            for row in rows {
+                let (note_id, rel_path) = row?;
+                let abs_path = workspace_root_rebind_path(root_path, &rel_path);
+                let status = note_status_for_path(abs_path.as_deref());
+                transaction.execute(
+                    r#"
+                    UPDATE paper_note_cache
+                    SET
+                        absolute_path = ?1,
+                        status = ?2,
+                        updated_at = ?3
+                    WHERE id = ?4
+                    "#,
+                    params![abs_path, status, now, note_id],
                 )?;
             }
         }
@@ -1096,6 +1146,207 @@ impl LocalCache {
         collect_rows(rows)
     }
 
+    pub fn upsert_paper_note(
+        &self,
+        id: &str,
+        paper_id: &str,
+        template_kind: &str,
+        title: &str,
+        file_name: &str,
+        relative_path: &str,
+        absolute_path: Option<&str>,
+        content_format: &str,
+        source_mode: &str,
+        status: &str,
+        size_bytes: Option<i64>,
+        sha256: Option<&str>,
+        created_at: &str,
+        updated_at: &str,
+        last_opened_at: Option<&str>,
+    ) -> Result<()> {
+        let connection = self.open()?;
+        connection.execute(
+            r#"
+            INSERT INTO paper_note_cache (
+                id,
+                paper_id,
+                template_kind,
+                title,
+                file_name,
+                relative_path,
+                absolute_path,
+                content_format,
+                source_mode,
+                status,
+                size_bytes,
+                sha256,
+                created_at,
+                updated_at,
+                last_opened_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
+            ON CONFLICT(id) DO UPDATE SET
+                template_kind = excluded.template_kind,
+                title = excluded.title,
+                file_name = excluded.file_name,
+                relative_path = excluded.relative_path,
+                absolute_path = excluded.absolute_path,
+                content_format = excluded.content_format,
+                source_mode = excluded.source_mode,
+                status = excluded.status,
+                size_bytes = excluded.size_bytes,
+                sha256 = excluded.sha256,
+                updated_at = excluded.updated_at,
+                last_opened_at = excluded.last_opened_at
+            "#,
+            params![
+                id,
+                paper_id,
+                template_kind,
+                title,
+                file_name,
+                relative_path,
+                absolute_path,
+                content_format,
+                source_mode,
+                status,
+                size_bytes,
+                sha256,
+                created_at,
+                updated_at,
+                last_opened_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_paper_note_summary(&self, note_id: &str) -> Result<PaperNoteSummaryRead> {
+        let connection = self.open()?;
+        connection
+            .query_row(
+                r#"
+                SELECT
+                    id,
+                    paper_id,
+                    template_kind,
+                    title,
+                    file_name,
+                    relative_path,
+                    absolute_path,
+                    content_format,
+                    source_mode,
+                    status,
+                    size_bytes,
+                    sha256,
+                    created_at,
+                    updated_at,
+                    last_opened_at
+                FROM paper_note_cache
+                WHERE id = ?1
+                "#,
+                params![note_id],
+                map_note_row,
+            )
+            .optional()?
+            .ok_or_else(|| invalid_state(format!("note {note_id} is not indexed")))
+    }
+
+    pub fn list_paper_notes(&self, paper_id: &str) -> Result<Vec<PaperNoteSummaryRead>> {
+        let connection = self.open()?;
+        let mut statement = connection.prepare(
+            r#"
+            SELECT
+                id,
+                paper_id,
+                template_kind,
+                title,
+                file_name,
+                relative_path,
+                absolute_path,
+                content_format,
+                source_mode,
+                status,
+                size_bytes,
+                sha256,
+                created_at,
+                updated_at,
+                last_opened_at
+            FROM paper_note_cache
+            WHERE paper_id = ?1
+            ORDER BY updated_at DESC, created_at DESC, id ASC
+            "#,
+        )?;
+        let rows = statement.query_map(params![paper_id], map_note_row)?;
+        collect_rows(rows)
+    }
+
+    pub fn touch_paper_note_opened_at(
+        &self,
+        note_id: &str,
+        last_opened_at: &str,
+    ) -> Result<PaperNoteSummaryRead> {
+        let connection = self.open()?;
+        connection.execute(
+            r#"
+            UPDATE paper_note_cache
+            SET
+                last_opened_at = ?1,
+                updated_at = COALESCE(updated_at, ?1)
+            WHERE id = ?2
+            "#,
+            params![last_opened_at, note_id],
+        )?;
+        self.get_paper_note_summary(note_id)
+    }
+
+    pub fn refresh_note_statuses(&self, root_path: Option<&str>, paper_id: &str) -> Result<()> {
+        let mut connection = self.open()?;
+        let transaction = connection.transaction()?;
+        let now = timestamp_now();
+        {
+            let mut statement = transaction.prepare(
+                r#"
+                SELECT id, relative_path
+                FROM paper_note_cache
+                WHERE paper_id = ?1
+                ORDER BY id ASC
+                "#,
+            )?;
+            let rows = statement.query_map(params![paper_id], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })?;
+            for row in rows {
+                let (note_id, rel_path) = row?;
+                let absolute_path = workspace_root_rebind_path(root_path, &rel_path);
+                let status = note_status_for_path(absolute_path.as_deref());
+                let (size_bytes, sha256) = if status == "ready" {
+                    if let Some(path) = absolute_path.as_deref() {
+                        let stats = read_note_file_stats(std::path::Path::new(path))?;
+                        (stats.size_bytes, stats.sha256)
+                    } else {
+                        (None, None)
+                    }
+                } else {
+                    (None, None)
+                };
+                transaction.execute(
+                    r#"
+                    UPDATE paper_note_cache
+                    SET
+                        absolute_path = ?1,
+                        status = ?2,
+                        size_bytes = ?3,
+                        sha256 = ?4,
+                        updated_at = ?5
+                    WHERE id = ?6
+                    "#,
+                    params![absolute_path, status, size_bytes, sha256, now, note_id],
+                )?;
+            }
+        }
+        transaction.commit()?;
+        Ok(())
+    }
+
     pub fn find_duplicate_attachment(
         &self,
         paper_id: &str,
@@ -1536,6 +1787,7 @@ impl LocalCache {
         let outbox_state = paper_outbox_state(&connection, paper_id)?;
         let workspace = self.get_paper_workspace(paper_id)?;
         let attachments = self.list_paper_attachments(paper_id)?;
+        let notes = self.list_paper_notes(paper_id)?;
         Ok(PaperDetailRead {
             id: paper.0,
             user_id: paper.1,
@@ -1558,6 +1810,8 @@ impl LocalCache {
             last_mutation_error: outbox_state.last_error,
             workspace,
             attachments,
+            note_count: notes.len() as i64,
+            notes,
         })
     }
 
@@ -2157,6 +2411,26 @@ fn map_attachment_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<PaperAttachme
         imported_at: row.get(14)?,
         updated_at: row.get(15)?,
         last_opened_at: row.get(16)?,
+    })
+}
+
+fn map_note_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<PaperNoteSummaryRead> {
+    Ok(PaperNoteSummaryRead {
+        id: row.get(0)?,
+        paper_id: row.get(1)?,
+        template_kind: row.get(2)?,
+        title: row.get(3)?,
+        file_name: row.get(4)?,
+        relative_path: row.get(5)?,
+        absolute_path: row.get(6)?,
+        content_format: row.get(7)?,
+        source_mode: row.get(8)?,
+        status: row.get(9)?,
+        size_bytes: row.get(10)?,
+        sha256: row.get(11)?,
+        created_at: row.get(12)?,
+        updated_at: row.get(13)?,
+        last_opened_at: row.get(14)?,
     })
 }
 

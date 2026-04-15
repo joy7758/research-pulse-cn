@@ -91,6 +91,41 @@ export type PaperAttachmentRead = {
   lastOpenedAt: string | null;
 };
 
+export type NoteTemplateRead = {
+  kind: string;
+  title: string;
+  description: string;
+  defaultFileNamePattern: string;
+};
+
+export type PaperNoteSummaryRead = {
+  id: string;
+  paperId: string;
+  templateKind: string;
+  title: string;
+  fileName: string;
+  relativePath: string;
+  absolutePath: string | null;
+  contentFormat: "markdown" | string;
+  sourceMode: "template" | "blank" | string;
+  status: "ready" | "missing" | string;
+  sizeBytes: number | null;
+  sha256: string | null;
+  createdAt: string;
+  updatedAt: string;
+  lastOpenedAt: string | null;
+};
+
+export type PaperNoteDetailRead = {
+  note: PaperNoteSummaryRead;
+  content: string | null;
+};
+
+export type NoteActionResultRead = {
+  note: PaperNoteDetailRead;
+  message: string;
+};
+
 export type PaperListItemRead = {
   id: string;
   userId: string;
@@ -177,6 +212,8 @@ export type PaperDetailRead = {
   lastMutationError: string | null;
   workspace: PaperWorkspaceRead;
   attachments: PaperAttachmentRead[];
+  notes: PaperNoteSummaryRead[];
+  noteCount: number;
 };
 
 export type AppBootstrapRead = {
@@ -236,6 +273,29 @@ export type PaperAttachmentImportResultRead = {
 export type ImportPaperAttachmentsResponse = {
   workspace: PaperWorkspaceRead;
   results: PaperAttachmentImportResultRead[];
+};
+
+export type ListPaperNotesInput = {
+  paperId: string;
+};
+
+export type CreatePaperNoteFromTemplateInput = {
+  paperId: string;
+  templateKind: string;
+};
+
+export type CreateBlankPaperNoteInput = {
+  paperId: string;
+  title?: string | null;
+};
+
+export type SavePaperNoteInput = {
+  noteId: string;
+  content: string;
+};
+
+export type RefreshPaperNotesInput = {
+  paperId: string;
 };
 
 export type QueuePaperPatchInput = {
