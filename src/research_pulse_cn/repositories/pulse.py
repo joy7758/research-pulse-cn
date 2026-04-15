@@ -213,3 +213,29 @@ class PulseRepository:
                 action_context = ""
             contexts.add((str(card.source_paper_id), suggestion_kind, action_context))
         return contexts
+
+    def list_recent_related_paper_reference_keys(
+        self,
+        *,
+        user_id: UUID,
+        since: datetime,
+    ) -> set[str]:
+        statement = (
+            select(PulseCard)
+            .outerjoin(DeliveryJob, DeliveryJob.pulse_card_id == PulseCard.id)
+            .where(
+                PulseCard.user_id == user_id,
+                PulseCard.card_type == PulseCardType.RELATED_PAPER,
+                PulseCard.external_reference_key.is_not(None),
+                or_(
+                    PulseCard.generated_at >= since,
+                    DeliveryJob.created_at >= since,
+                    DeliveryJob.sent_at >= since,
+                ),
+            )
+        )
+        keys: set[str] = set()
+        for card in self.session.scalars(statement):
+            if card.external_reference_key:
+                keys.add(card.external_reference_key)
+        return keys

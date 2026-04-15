@@ -25,6 +25,7 @@ class DummyModelProvider:
         if card_type not in {
             PulseCardType.TODAY_SUGGESTION,
             PulseCardType.YESTERDAY_SUMMARY,
+            PulseCardType.RELATED_PAPER,
         }:
             title = f"{title_prefix}: {paper_title}"
         return {

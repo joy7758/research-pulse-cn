@@ -15,7 +15,7 @@ Core flow:
 9. Sync devices consume incremental `SyncEvent` feeds and push idempotent mutations back through the same service layer.
 10. A Tauri desktop shell consumes the same sync feed, keeps a local SQLite outbox, performs limited writeback through `/sync/push`, manages a local-only paper workspace, stores local markdown notes/templates, and keeps local review-matrix / response-letter workflows without bundling the backend.
 11. A pulse input layer now records lightweight work activity and research watch profiles so future retrieval can start from explicit inputs instead of implicit guesses.
-12. An external retrieval boundary now converts those inputs into persisted source-specific plans, executes official-source fetches behind provider adapters, and stores normalized scholarly results without generating pulse cards yet.
+12. An external retrieval boundary now converts those inputs into persisted source-specific plans, executes official-source fetches behind provider adapters, stores normalized scholarly results, and lets the pulse pipeline consume those persisted records for deterministic `related_paper` cards without executing retrieval inline.
 
 ## Module boundaries
 
@@ -81,9 +81,10 @@ Future communication surfaces are intentionally outside the active delivery laye
 - `GET /external-retrieval/provider-status` exposes safe execution readiness and source status.
 - `POST /external-retrieval/plans/execute/{plan_id}` executes one persisted plan through an official-source adapter.
 - `GET /external-retrieval/runs` and `GET /external-retrieval/results` expose run history and normalized records.
-- This layer is intentionally upstream of retrieval and card generation:
+- This layer stays intentionally upstream of pulse generation even after `related_paper` support:
   - no AI expansion
-  - no final related-paper/news pulse cards yet
+  - no related-news cards yet
+  - no inline retrieval during pulse preview/run
 
 ### Fact collection
 - `DeterministicFactCollector` inspects current paper state.
@@ -92,7 +93,7 @@ Future communication surfaces are intentionally outside the active delivery laye
   - stalled progress facts
   - signal change facts
   - deadline risk facts
-  - related paper placeholder facts
+- `RelatedPaperCandidateBuilder` separately turns persisted normalized scholarly records into related-paper facts.
 
 ### Rule selection
 - `DeterministicRuleEngine` converts facts into stable candidates.
@@ -229,6 +230,21 @@ Tie-break order is deterministic:
   - `define_next_action`
 - Selected cards persist as normal `PulseCard` rows and usually keep a non-null `source_paper_id`.
 
+## Pulse related-paper card
+- The pulse pipeline now supports deterministic `related_paper` cards sourced only from persisted normalized scholarly results.
+- Candidate sourcing requires:
+  - `ExternalRetrievedRecord`
+  - parent `ExternalRetrievalRun.status = completed`
+  - `retrieval_scope = related_paper`
+- The pipeline derives a canonical external reference key in this order:
+  - `doi`
+  - `source_kind + external_id`
+  - normalized title fallback
+- That key is used for:
+  - collapsing duplicate scholarly results across runs/sources
+  - suppressing resurfacing of the same scholarly result within the related-paper dedupe window
+- Selected cards persist as normal `PulseCard` rows and now also store `external_reference_key`.
+
 ## External retrieval planning and execution boundary
 - The external retrieval layer now covers deterministic planning plus official-source execution.
 - It is driven by:
@@ -258,7 +274,7 @@ Tie-break order is deterministic:
   - `ExternalRetrievalRun`
   - `ExternalRetrievedRecord`
 - The boundary still stops before:
-  - final related-paper/news pulse cards
+  - related-news pulse cards
   - AI rewriting, ranking, or summarization
   - generic web/news crawling
 

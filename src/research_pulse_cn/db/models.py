@@ -339,6 +339,7 @@ class PulseCard(Base):
     why_now: Mapped[str] = mapped_column(Text, nullable=False)
     action_text: Mapped[str | None] = mapped_column(String(500))
     deep_link: Mapped[str | None] = mapped_column(String(500))
+    external_reference_key: Mapped[str | None] = mapped_column(String(500))
     evidence_refs: Mapped[list[str]] = mapped_column(JSON_VARIANT, default=list)
     candidate_metadata: Mapped[dict[str, Any] | None] = mapped_column(JSON_VARIANT)
     generated_by: Mapped[dict[str, Any]] = mapped_column(JSON_VARIANT, default=dict)

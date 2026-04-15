@@ -104,6 +104,34 @@ class Settings(BaseSettings):
         default=4,
         validation_alias="APP_PULSE_MODIFIER_YESTERDAY_SUMMARY_MULTI_PAPER",
     )
+    pulse_modifier_related_paper_has_doi: int = Field(
+        default=2,
+        validation_alias="APP_PULSE_MODIFIER_RELATED_PAPER_HAS_DOI",
+    )
+    pulse_modifier_related_paper_match_reason_count: int = Field(
+        default=1,
+        validation_alias="APP_PULSE_MODIFIER_RELATED_PAPER_MATCH_REASON_COUNT",
+    )
+    pulse_modifier_related_paper_linked_paper: int = Field(
+        default=3,
+        validation_alias="APP_PULSE_MODIFIER_RELATED_PAPER_LINKED_PAPER",
+    )
+    pulse_modifier_related_paper_recent_retrieval: int = Field(
+        default=2,
+        validation_alias="APP_PULSE_MODIFIER_RELATED_PAPER_RECENT_RETRIEVAL",
+    )
+    pulse_related_paper_lookback_days: int = Field(
+        default=14,
+        validation_alias="APP_PULSE_RELATED_PAPER_LOOKBACK_DAYS",
+    )
+    pulse_related_paper_max_candidates_per_run: int = Field(
+        default=3,
+        validation_alias="APP_PULSE_RELATED_PAPER_MAX_CANDIDATES_PER_RUN",
+    )
+    pulse_related_paper_dedupe_days: int = Field(
+        default=7,
+        validation_alias="APP_PULSE_RELATED_PAPER_DEDUPE_DAYS",
+    )
     external_retrieval_mode: ExternalRetrievalMode = Field(
         default=ExternalRetrievalMode.DISABLED,
         validation_alias="APP_EXTERNAL_RETRIEVAL_MODE",

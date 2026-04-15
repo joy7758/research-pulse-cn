@@ -8,8 +8,9 @@
   - `GET /pulse/input-preview/{user_id}` for deterministic input inspection
   - `today_suggestion` facts built from internal paper/progress/signal state
   - `yesterday_summary` facts built from previous-local-day work activity only
+  - persisted normalized scholarly records available for downstream `related_paper` candidate generation
 - This scoring document still covers candidate generation, ranking, suppression, and selection only.
-- External retrieval is still deferred until the input layer is stable.
+- Retrieval execution is already separated behind the external-retrieval boundary, but pulse still consumes persisted normalized records only.
 
 ## Pipeline stages
 Pulse generation now follows an explainable deterministic pipeline:
@@ -44,7 +45,8 @@ Notes:
 - `today_suggestion` supports `execute_next_action`, `resolve_blocker`, and `define_next_action`.
 - `yesterday_summary` is global, not paper-centric, and may persist with `source_paper_id = null`.
 - `yesterday_summary` is generated only when the previous local day has qualifying non-system work activity.
-- `related_paper` is intentionally conservative in v1 and uses simple within-portfolio heuristics.
+- `related_paper` is now generated only from persisted `ExternalRetrievedRecord` rows whose parent run completed successfully.
+- `related_paper` never triggers retrieval during pulse preview/run.
 - `paused` papers do not produce candidates.
 
 ## Scoring knobs
@@ -67,6 +69,13 @@ Supported knobs:
 - `yesterday_summary_min_events`
 - `yesterday_summary_activity_diversity_bonus`
 - `yesterday_summary_multi_paper_bonus`
+- `related_paper_lookback_days`
+- `related_paper_max_candidates_per_run`
+- `related_paper_dedupe_days`
+- `related_paper_has_doi_bonus`
+- `related_paper_match_reason_count_bonus`
+- `related_paper_linked_paper_bonus`
+- `related_paper_recent_retrieval_bonus`
 
 Default urgency modifiers currently cover:
 - recent signal delta
@@ -90,6 +99,7 @@ Important behavior:
 - dedupe uses the same user + card type + source paper signature inside the configured dedupe window
 - `today_suggestion` dedupe uses user + source paper + suggestion kind + action context
 - `yesterday_summary` dedupe uses the same user + `summary_date` + card type inside the configured dedupe window
+- `related_paper` dedupe uses the same user + canonical `external_reference_key` inside `APP_PULSE_RELATED_PAPER_DEDUPE_DAYS`
 
 ## Tie-break behavior
 When scores tie, candidates are ordered by:
@@ -121,8 +131,8 @@ That keeps:
 - model cost limited to selected candidates only
 
 ## Known limitations in v1
-- `related_paper` uses simple heuristics and does not use external research graphs
-- upstream watch seeds are available, but external retrieval is not implemented yet
+- `related_paper` depends only on already-persisted normalized retrieval records and does not yet apply richer ranking beyond deterministic scoring
+- pulse preview/run intentionally do not trigger retrieval execution
 - `today_suggestion` is intentionally heuristic and does not yet suppress itself when a similar `next_action` card covers the same context
 - `yesterday_summary` is previous-day-only and does not yet support multi-day rollups
 - quiet hours use policy-local window definitions and assume valid timezones

@@ -18,7 +18,7 @@ Private repository. Proprietary and confidential.
 - WeChat identity bindings plus digest issue/publication reserve objects for future official-account and mini-program flows
 - Official-account provider boundary with `disabled` / `dry_run` / explicit `real` mode, callback ingress, and token-backed real-send activation
 - Tauri 2 desktop shell with Rust-side pull sync, local SQLite cache, mutation outbox, minimal writeback for paper/progress/subscription policy edits, a local paper workspace layer, local markdown notes/templates, and a local review-matrix workflow that generates reviewer-matrix / response-letter drafts
-- Pulse input-layer foundation with lightweight `WorkActivityEvent` capture, `ResearchWatchProfile` management, deterministic external-retrieval planning plus official-source execution/normalization boundaries, desktop-emitted work activity mutations, deterministic pulse-input preview APIs, a deterministic `yesterday_summary` pulse card, and a deterministic `today_suggestion` pulse card generated from internal paper/progress/signal state only
+- Pulse input-layer foundation with lightweight `WorkActivityEvent` capture, `ResearchWatchProfile` management, deterministic external-retrieval planning plus official-source execution/normalization boundaries, desktop-emitted work activity mutations, deterministic pulse-input preview APIs, a deterministic `yesterday_summary` pulse card, a deterministic `today_suggestion` pulse card generated from internal paper/progress/signal state only, and a deterministic `related_paper` pulse card generated only from persisted normalized external scholarly results
 - Seed data, Docker Compose, pytest, Ruff, and CI
 
 ## Architecture
@@ -128,9 +128,10 @@ The backend now includes a pulse input layer for future retrieval and recap work
 - `GET /external-retrieval/runs` and `GET /external-retrieval/results` for inspecting persisted runs and normalized records
 - `yesterday_summary` pulse cards built only from previous-local-day `WorkActivityEvent` rows
 - `today_suggestion` pulse cards built only from internal paper, progress, signal, and policy-timezone context
+- `related_paper` pulse cards built only from persisted `ExternalRetrievedRecord` rows whose runs completed successfully
 
-This phase still avoids external pulse-card consumption:
-- no final related-paper or related-news cards
+This phase still keeps external-card consumption narrow:
+- no related-news cards
 - no AI summarization
 - no AI ranking of fetched scholarly records
 
@@ -223,6 +224,15 @@ Important values:
 - `APP_PULSE_WEIGHT_YESTERDAY_SUMMARY`: base score weight for `yesterday_summary`
 - `APP_PULSE_YESTERDAY_SUMMARY_MIN_EVENTS`: minimum qualifying previous-day activity events before candidate generation
 - `APP_PULSE_MODIFIER_YESTERDAY_SUMMARY_ACTIVITY_DIVERSITY`: bonus when multiple activity types were recorded
+- `APP_PULSE_MODIFIER_YESTERDAY_SUMMARY_MULTI_PAPER`: bonus when previous-day work touched multiple papers
+- `APP_PULSE_WEIGHT_RELATED_PAPER`: base score weight for `related_paper`
+- `APP_PULSE_MODIFIER_RELATED_PAPER_HAS_DOI`: bonus when a normalized scholarly result has a DOI
+- `APP_PULSE_MODIFIER_RELATED_PAPER_MATCH_REASON_COUNT`: per-match-reason bonus for normalized related-paper candidates
+- `APP_PULSE_MODIFIER_RELATED_PAPER_LINKED_PAPER`: bonus when the normalized record links back to a known internal paper
+- `APP_PULSE_MODIFIER_RELATED_PAPER_RECENT_RETRIEVAL`: bonus when the source retrieval run completed recently
+- `APP_PULSE_RELATED_PAPER_LOOKBACK_DAYS`: lookback window for eligible completed related-paper retrieval results
+- `APP_PULSE_RELATED_PAPER_MAX_CANDIDATES_PER_RUN`: cap for deterministic related-paper candidates before scoring/selection
+- `APP_PULSE_RELATED_PAPER_DEDUPE_DAYS`: historical resurfacing window for the same canonical scholarly result
 - `APP_EXTERNAL_RETRIEVAL_MODE`: `disabled`, `plan_only`, or `execute`
 - `APP_EXTERNAL_RETRIEVAL_ENABLED_SOURCES`: enabled official sources for planning and execution
 - `APP_EXTERNAL_RETRIEVAL_MAX_PLANS_PER_USER`: cap for persisted planning rows built per user
@@ -236,7 +246,6 @@ Important values:
 - `APP_EXTERNAL_RETRIEVAL_OPENALEX_API_KEY`: optional OpenAlex API key
 - `APP_EXTERNAL_RETRIEVAL_CROSSREF_MAILTO`: optional Crossref polite-access email
 - `APP_EXTERNAL_RETRIEVAL_CROSSREF_USER_AGENT_APP_NAME`: optional Crossref user-agent app label
-- `APP_PULSE_MODIFIER_YESTERDAY_SUMMARY_MULTI_PAPER`: bonus when previous-day work touched multiple papers
 - `APP_EXTERNAL_RETRIEVAL_MODE`: `disabled` or `plan_only`
 - `APP_EXTERNAL_RETRIEVAL_ENABLED_SOURCES`: comma-separated enabled planning sources for this phase
 - `APP_EXTERNAL_RETRIEVAL_MAX_PLANS_PER_USER`: max persisted plans produced per build

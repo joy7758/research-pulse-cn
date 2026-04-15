@@ -151,6 +151,13 @@ class PulseScoringConfig:
     yesterday_summary_min_events: int
     yesterday_summary_activity_diversity_bonus: int
     yesterday_summary_multi_paper_bonus: int
+    related_paper_lookback_days: int
+    related_paper_max_candidates_per_run: int
+    related_paper_dedupe_days: int
+    related_paper_has_doi_bonus: int
+    related_paper_match_reason_count_bonus: int
+    related_paper_linked_paper_bonus: int
+    related_paper_recent_retrieval_bonus: int
     score_weights: dict[PulseCardType, int]
     urgency_modifiers: dict[str, int]
     quiet_hours: list[dict[str, Any]] = field(default_factory=list)
@@ -173,6 +180,13 @@ class PulseScoringConfig:
                 self.yesterday_summary_activity_diversity_bonus
             ),
             "yesterday_summary_multi_paper_bonus": (self.yesterday_summary_multi_paper_bonus),
+            "related_paper_lookback_days": self.related_paper_lookback_days,
+            "related_paper_max_candidates_per_run": self.related_paper_max_candidates_per_run,
+            "related_paper_dedupe_days": self.related_paper_dedupe_days,
+            "related_paper_has_doi_bonus": self.related_paper_has_doi_bonus,
+            "related_paper_match_reason_count_bonus": (self.related_paper_match_reason_count_bonus),
+            "related_paper_linked_paper_bonus": self.related_paper_linked_paper_bonus,
+            "related_paper_recent_retrieval_bonus": (self.related_paper_recent_retrieval_bonus),
             "score_weights": {
                 card_type.value: weight for card_type, weight in self.score_weights.items()
             },

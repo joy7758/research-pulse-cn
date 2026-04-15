@@ -12,7 +12,7 @@
 - This phase is still planning-only:
   - no live network calls
   - no fetched documents
-  - no related-paper or related-news pulse cards yet
+  - no related-paper or related-news pulse cards yet at the planning stage
 
 ## ExternalRetrievalPlan Model
 - `ExternalRetrievalPlan` stores persisted planning records only.
@@ -118,13 +118,13 @@
 - no live external credentials
 - no LLM query rewriting
 - no AI ranking or summarization
-- no related-paper or related-news final pulse cards
+- no related-paper or related-news final pulse cards in the planning phase
 - no desktop retrieval UI expansion
 
 ## Future Work
 - real retrieval execution behind the same planner boundary
 - normalized external result storage
-- related-paper and related-news pulse candidates
+- related-news pulse candidates
 - retrieval feedback and quality loops
 - execution throttling, caching, and freshness controls
 
@@ -136,4 +136,4 @@
 - Planning remains separate from execution:
   - plans explain what the system intends to query
   - runs and normalized records explain what the official APIs actually returned
-- Final pulse-card generation is still deferred beyond execution.
+- Final pulse-card generation was intentionally deferred beyond planning and later added for `related_paper` in a separate phase.

@@ -293,12 +293,13 @@ Desktop can now also emit lightweight `work_activity.record` mutations for local
 - `POST /pulse/preview/{user_id}` and `POST /pulse/run/{user_id}` now also accept an optional `timezone` query parameter for deterministic yesterday-summary inspection.
 - `today_suggestion` is now a first-party pulse card type generated only from internal paper/progress/signal state.
 - `yesterday_summary` is now a first-party pulse card type generated only from the previous local day of `WorkActivityEvent`.
+- `related_paper` is now a first-party pulse card type generated only from persisted normalized `ExternalRetrievedRecord` rows.
 - External retrieval now has a separate planning and execution boundary:
   - `ExternalRetrievalPlan` persists source-specific plan inputs
   - `ExternalRetrievalRun` persists one fetch attempt per plan
   - `ExternalRetrievedRecord` stores normalized official-source records
   - `GET /pulse/input-preview/{user_id}` includes compact planning and latest-run summaries
-  - no final related-paper/news pulse cards exist yet
+  - pulse preview/run consume normalized records only and never execute retrieval inline
 - No AI summarization is enabled in this phase.
 - Summary timezone resolution order is:
   - explicit request timezone
@@ -319,6 +320,16 @@ Desktop can now also emit lightweight `work_activity.record` mutations for local
 - `APP_PULSE_YESTERDAY_SUMMARY_MIN_EVENTS`
 - `APP_PULSE_MODIFIER_YESTERDAY_SUMMARY_ACTIVITY_DIVERSITY`
 - `APP_PULSE_MODIFIER_YESTERDAY_SUMMARY_MULTI_PAPER`
+
+### Related-paper scoring knobs
+- `APP_PULSE_WEIGHT_RELATED_PAPER`
+- `APP_PULSE_MODIFIER_RELATED_PAPER_HAS_DOI`
+- `APP_PULSE_MODIFIER_RELATED_PAPER_MATCH_REASON_COUNT`
+- `APP_PULSE_MODIFIER_RELATED_PAPER_LINKED_PAPER`
+- `APP_PULSE_MODIFIER_RELATED_PAPER_RECENT_RETRIEVAL`
+- `APP_PULSE_RELATED_PAPER_LOOKBACK_DAYS`
+- `APP_PULSE_RELATED_PAPER_MAX_CANDIDATES_PER_RUN`
+- `APP_PULSE_RELATED_PAPER_DEDUPE_DAYS`
 
 ### External retrieval planning knobs
 - `APP_EXTERNAL_RETRIEVAL_MODE`
@@ -347,8 +358,9 @@ Desktop can now also emit lightweight `work_activity.record` mutations for local
 - `GET /external-retrieval/runs`
 - `GET /external-retrieval/runs/{run_id}`
 - `GET /external-retrieval/results`
-- Execution remains separate from pulse-card generation in this phase:
-  - no related-paper/news cards yet
+- Retrieval execution remains separate from pulse preview/run:
+  - no inline retrieval during pulse generation
+  - no related-news cards yet
   - no AI ranking
   - no scraping
 

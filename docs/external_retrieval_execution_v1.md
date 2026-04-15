@@ -7,7 +7,7 @@
   - planning decides what to query
   - execution fetches and normalizes results
   - later pulse phases decide whether any result should become a card
-- This phase still stops short of `related_paper` or `related_news` pulse-card generation.
+- This phase still stops short of pulse-card generation during retrieval execution itself.
 
 ## ExternalRetrievalRun Model
 - `ExternalRetrievalRun` stores one execution attempt for one persisted plan.
@@ -127,7 +127,8 @@
   - fetched content payloads
 
 ## Current Non-Goals
-- no final `related_paper` or `related_news` pulse cards
+- no pulse-card generation during retrieval execution
+- no `related_news` pulse cards
 - no AI query rewriting
 - no AI ranking or summarization
 - no scraping or generic crawler layer
@@ -135,7 +136,7 @@
 - no desktop retrieval UI work
 
 ## Future Work
-- consume normalized retrieval results in `related_paper` pulse candidates
+- expand `related_paper` consumption with richer ranking over normalized results
 - add result-level dedupe across runs
 - add richer source-specific normalization and provenance
 - add scheduled execution and freshness policies

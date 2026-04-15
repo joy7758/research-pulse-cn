@@ -1,8 +1,18 @@
-from datetime import timedelta
-from uuid import UUID
+from datetime import UTC, datetime, timedelta
+from uuid import UUID, uuid4
 
-from research_pulse_cn.db.models import utcnow
+import research_pulse_cn.services.external_retrieval as external_retrieval_module
+from research_pulse_cn.db.models import (
+    ExternalRetrievalPlan,
+    ExternalRetrievalRun,
+    ExternalRetrievedRecord,
+    utcnow,
+)
 from research_pulse_cn.domain.enums import (
+    ExternalRetrievalPlanStatus,
+    ExternalRetrievalRunStatus,
+    ExternalRetrievalScope,
+    ExternalRetrievalSourceKind,
     PaperType,
     PulseCardType,
     SignalSource,
@@ -110,6 +120,76 @@ def create_api_policy(
         },
     )
     assert response.status_code == 201
+
+
+def create_completed_related_record(
+    session,
+    *,
+    user_id: str,
+    paper_id: str,
+    title: str,
+    doi: str = "10.1234/api-related-paper",
+    external_id: str = "https://openalex.org/W999",
+    finished_at: datetime | None = None,
+) -> ExternalRetrievedRecord:
+    finished_at = finished_at or datetime(2026, 4, 15, 8, 0, tzinfo=UTC)
+    plan = ExternalRetrievalPlan(
+        user_id=UUID(user_id),
+        source_kind=ExternalRetrievalSourceKind.OPENALEX,
+        retrieval_scope=ExternalRetrievalScope.RELATED_PAPER,
+        watch_profile_id=None,
+        paper_id=UUID(paper_id),
+        plan_label="OpenAlex related papers",
+        query_text=title,
+        query_payload={"keywords": [title]},
+        effective_inputs={"keywords": [title]},
+        reason_codes=["watch_keywords_present", "recent_touched_paper_context"],
+        plan_hash=f"api-related:{uuid4().hex}",
+        status=ExternalRetrievalPlanStatus.PLANNED,
+    )
+    session.add(plan)
+    session.flush()
+
+    run = ExternalRetrievalRun(
+        plan_id=plan.id,
+        user_id=UUID(user_id),
+        source_kind=ExternalRetrievalSourceKind.OPENALEX,
+        retrieval_scope=ExternalRetrievalScope.RELATED_PAPER,
+        status=ExternalRetrievalRunStatus.COMPLETED,
+        request_url="https://api.openalex.org/works?search=api-related",
+        request_payload={"params": {"search": title}},
+        response_summary={"raw_result_count": 1},
+        raw_result_count=1,
+        normalized_result_count=1,
+        started_at=finished_at,
+        finished_at=finished_at,
+        last_error=None,
+    )
+    session.add(run)
+    session.flush()
+
+    record = ExternalRetrievedRecord(
+        run_id=run.id,
+        plan_id=plan.id,
+        user_id=UUID(user_id),
+        source_kind=ExternalRetrievalSourceKind.OPENALEX,
+        retrieval_scope=ExternalRetrievalScope.RELATED_PAPER,
+        external_id=external_id,
+        external_url="https://example.org/api-related-result",
+        doi=doi,
+        title=title,
+        abstract_snippet="Compact related paper summary.",
+        publication_year=2024,
+        publication_date="2024-02-01",
+        source_title="Acta Materialia",
+        authors=[{"name": "Alice Zhang"}, {"name": "Bo Li"}],
+        matched_reason_codes=["watch_keywords_present", "recent_touched_paper_context"],
+        raw_payload={"title": title},
+        sort_order=1,
+    )
+    session.add(record)
+    session.commit()
+    return record
 
 
 def test_preview_endpoint_exposes_suppression_reasons_and_score_breakdowns(
@@ -303,3 +383,99 @@ def test_run_endpoint_persists_today_suggestion_card(
     )
     assert today_card["source_paper_id"] == paper["id"]
     assert today_card["candidate_metadata"]["suggestion_kind"] == "execute_next_action"
+
+
+def test_preview_endpoint_exposes_related_paper_details_without_executing_retrieval(
+    client,
+    operator_headers,
+    viewer_headers,
+    session,
+    monkeypatch,
+) -> None:
+    user = create_api_user(
+        client,
+        email="related-preview-api@example.com",
+        headers=operator_headers,
+    )
+    paper = create_api_paper(
+        client,
+        user_id=user["id"],
+        title="Related Preview Anchor",
+        headers=operator_headers,
+        paper_type=PaperType.PUBLISHED,
+        stage="published",
+        next_action=None,
+        last_touch_at=(utcnow() - timedelta(days=1)).isoformat(),
+    )
+    create_completed_related_record(
+        session,
+        user_id=user["id"],
+        paper_id=paper["id"],
+        title="Preview Related Paper",
+    )
+    monkeypatch.setattr(
+        external_retrieval_module,
+        "create_external_retrieval_http_client",
+        lambda _settings: (_ for _ in ()).throw(AssertionError("retrieval should not execute")),
+    )
+
+    response = client.post(f"/pulse/preview/{user['id']}", headers=viewer_headers)
+
+    assert response.status_code == 200
+    payload = response.json()
+    related_candidate = next(
+        candidate
+        for candidate in payload["candidates"]
+        if candidate["card_type"] == PulseCardType.RELATED_PAPER
+    )
+    assert related_candidate["source_paper_id"] == paper["id"]
+    assert related_candidate["candidate_metadata"]["linked_paper_title"] == paper["title"]
+    assert related_candidate["candidate_metadata"]["external_reference_key"].startswith("doi:")
+    assert related_candidate["score_breakdown"]["total"] >= 10
+
+
+def test_run_endpoint_persists_related_paper_card_without_executing_retrieval(
+    client,
+    operator_headers,
+    session,
+    monkeypatch,
+) -> None:
+    user = create_api_user(
+        client,
+        email="related-run-api@example.com",
+        headers=operator_headers,
+    )
+    paper = create_api_paper(
+        client,
+        user_id=user["id"],
+        title="Related Run Anchor",
+        headers=operator_headers,
+        paper_type=PaperType.PUBLISHED,
+        stage="published",
+        next_action=None,
+        last_touch_at=(utcnow() - timedelta(days=1)).isoformat(),
+    )
+    create_completed_related_record(
+        session,
+        user_id=user["id"],
+        paper_id=paper["id"],
+        title="Run Related Paper",
+        doi="10.1234/run-related-paper",
+        external_id="https://openalex.org/W1000",
+    )
+    monkeypatch.setattr(
+        external_retrieval_module,
+        "create_external_retrieval_http_client",
+        lambda _settings: (_ for _ in ()).throw(AssertionError("retrieval should not execute")),
+    )
+
+    response = client.post(f"/pulse/run/{user['id']}", headers=operator_headers)
+
+    assert response.status_code == 200
+    payload = response.json()
+    related_card = next(
+        card for card in payload["cards"] if card["card_type"] == PulseCardType.RELATED_PAPER
+    )
+    assert related_card["source_paper_id"] == paper["id"]
+    assert related_card["external_reference_key"] == "doi:10.1234/run-related-paper"
+    assert related_card["candidate_metadata"]["linked_paper_title"] == paper["title"]

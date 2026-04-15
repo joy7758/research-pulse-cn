@@ -82,7 +82,7 @@
 
 ## Future Work
 - external academic retrieval driven by watch seeds
-- related-paper and related-news cards
+- related-news cards
 - richer multi-day activity summarization
 - editorial controls for digest composition
 

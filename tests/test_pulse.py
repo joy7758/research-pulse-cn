@@ -1,9 +1,20 @@
 from datetime import UTC, datetime, timedelta
+from uuid import uuid4
 
-from research_pulse_cn.db.models import PaperProfile
+from research_pulse_cn.db.models import (
+    ExternalRetrievalPlan,
+    ExternalRetrievalRun,
+    ExternalRetrievedRecord,
+    PaperProfile,
+    utcnow,
+)
 from research_pulse_cn.domain.enums import (
     ChannelType,
     DeliveryJobStatus,
+    ExternalRetrievalPlanStatus,
+    ExternalRetrievalRunStatus,
+    ExternalRetrievalScope,
+    ExternalRetrievalSourceKind,
     PaperType,
     PulseCardType,
     SignalSource,
@@ -18,6 +29,7 @@ from research_pulse_cn.services.delivery import DeliveryService
 from research_pulse_cn.services.digest import DigestService
 from research_pulse_cn.services.paper import PaperService
 from research_pulse_cn.services.pulse import PulseService
+from research_pulse_cn.services.related_paper import canonical_external_reference_key
 from research_pulse_cn.services.subscription_policy import SubscriptionPolicyService
 from research_pulse_cn.services.user import UserService
 from research_pulse_cn.services.work_activity import WorkActivityService
@@ -141,6 +153,88 @@ def record_work_activity(
         happened_at=happened_at,
         source=source,
     )
+
+
+def create_retrieval_record(
+    session,
+    *,
+    user_id,
+    paper: PaperProfile | None = None,
+    source_kind: ExternalRetrievalSourceKind = ExternalRetrievalSourceKind.OPENALEX,
+    retrieval_scope: ExternalRetrievalScope = ExternalRetrievalScope.RELATED_PAPER,
+    external_id: str = "https://openalex.org/W123",
+    doi: str | None = "10.1234/example-doi",
+    title: str = "External Related Result",
+    external_url: str = "https://example.org/external-related-result",
+    publication_year: int | None = 2024,
+    publication_date: str | None = "2024-03-01",
+    source_title: str | None = "Acta Materialia",
+    matched_reason_codes: list[str] | None = None,
+    run_status: ExternalRetrievalRunStatus = ExternalRetrievalRunStatus.COMPLETED,
+    run_finished_at: datetime | None = None,
+    result_created_at: datetime | None = None,
+):
+    timestamp = result_created_at or run_finished_at or utcnow()
+    plan = ExternalRetrievalPlan(
+        user_id=user_id,
+        source_kind=source_kind,
+        retrieval_scope=retrieval_scope,
+        watch_profile_id=None,
+        paper_id=paper.id if paper is not None else None,
+        plan_label=f"{source_kind.value} {retrieval_scope.value}",
+        query_text=f"{title} query",
+        query_payload={"keywords": [title]},
+        effective_inputs={"keywords": [title]},
+        reason_codes=list(matched_reason_codes or ["watch_keywords_present"]),
+        plan_hash=f"{source_kind.value}:{retrieval_scope.value}:{uuid4().hex}",
+        status=ExternalRetrievalPlanStatus.PLANNED,
+    )
+    session.add(plan)
+    session.flush()
+
+    run = ExternalRetrievalRun(
+        plan_id=plan.id,
+        user_id=user_id,
+        source_kind=source_kind,
+        retrieval_scope=retrieval_scope,
+        status=run_status,
+        request_url="https://example.org/request",
+        request_payload={"query": title},
+        response_summary={"raw_result_count": 1},
+        raw_result_count=1,
+        normalized_result_count=1,
+        started_at=timestamp,
+        finished_at=run_finished_at or timestamp,
+        last_error=None,
+    )
+    session.add(run)
+    session.flush()
+
+    record = ExternalRetrievedRecord(
+        run_id=run.id,
+        plan_id=plan.id,
+        user_id=user_id,
+        source_kind=source_kind,
+        retrieval_scope=retrieval_scope,
+        external_id=external_id,
+        external_url=external_url,
+        doi=doi,
+        title=title,
+        abstract_snippet="Compact abstract snippet.",
+        publication_year=publication_year,
+        publication_date=publication_date,
+        source_title=source_title,
+        authors=[{"name": "Alice Zhang"}, {"name": "Bo Li"}],
+        matched_reason_codes=list(matched_reason_codes or ["watch_keywords_present"]),
+        raw_payload={"title": title},
+        sort_order=1,
+    )
+    if result_created_at is not None:
+        record.created_at = result_created_at
+        record.updated_at = result_created_at
+    session.add(record)
+    session.flush()
+    return record
 
 
 def test_signal_change_outranks_stalled_progress_when_weight_is_higher(session) -> None:
@@ -802,3 +896,201 @@ def test_run_persists_today_suggestion_card_and_digest_item(session) -> None:
     assert today_card.source_paper_id == paper.id
     assert today_card.candidate_metadata["suggestion_kind"] == "execute_next_action"
     assert any(item.card_type == PulseCardType.TODAY_SUGGESTION for item in digest_issue.items)
+
+
+def test_no_related_paper_candidate_when_no_completed_related_records_exist(session) -> None:
+    now = datetime(2026, 4, 16, 12, 0, tzinfo=UTC)
+    user = create_user(session, email="no-related-paper@example.com")
+
+    pipeline = build_service(session, now=now).preview(user.id)
+
+    assert all(
+        candidate.card_type != PulseCardType.RELATED_PAPER for candidate in pipeline.candidates
+    )
+
+
+def test_related_paper_candidate_appears_from_completed_related_records(session) -> None:
+    now = datetime(2026, 4, 16, 12, 0, tzinfo=UTC)
+    user = create_user(session, email="with-related-paper@example.com")
+    paper = create_paper(
+        session,
+        user_id=user.id,
+        title="Linked Internal Paper",
+        paper_type=PaperType.PUBLISHED,
+        last_touch_at=now - timedelta(days=2),
+        next_action=None,
+    )
+    record = create_retrieval_record(
+        session,
+        user_id=user.id,
+        paper=paper,
+        title="Real Related Paper",
+        matched_reason_codes=["watch_keywords_present", "recent_touched_paper_context"],
+        run_finished_at=now - timedelta(hours=2),
+        result_created_at=now - timedelta(hours=2),
+    )
+
+    pipeline = build_service(session, now=now).preview(user.id)
+    candidate = next(
+        candidate
+        for candidate in pipeline.candidates
+        if candidate.card_type == PulseCardType.RELATED_PAPER
+    )
+
+    assert candidate.source_paper_id == paper.id
+    assert candidate.candidate_metadata["external_record_id"] == str(record.id)
+    assert candidate.candidate_metadata[
+        "external_reference_key"
+    ] == canonical_external_reference_key(record)
+    assert candidate.candidate_metadata["linked_paper_title"] == paper.title
+    assert candidate.score_total >= 10
+
+
+def test_non_related_paper_retrieval_scope_is_excluded_from_related_paper_candidates(
+    session,
+) -> None:
+    now = datetime(2026, 4, 16, 12, 0, tzinfo=UTC)
+    user = create_user(session, email="venue-update-only@example.com")
+    paper = create_paper(
+        session,
+        user_id=user.id,
+        title="Venue Update Anchor",
+        paper_type=PaperType.PUBLISHED,
+        last_touch_at=now - timedelta(days=1),
+        next_action=None,
+    )
+    create_retrieval_record(
+        session,
+        user_id=user.id,
+        paper=paper,
+        retrieval_scope=ExternalRetrievalScope.VENUE_UPDATE,
+        title="Venue Update Result",
+        run_finished_at=now - timedelta(hours=1),
+        result_created_at=now - timedelta(hours=1),
+    )
+
+    pipeline = build_service(session, now=now).preview(user.id)
+
+    assert all(
+        candidate.card_type != PulseCardType.RELATED_PAPER for candidate in pipeline.candidates
+    )
+
+
+def test_related_paper_duplicates_across_runs_collapse_by_canonical_reference_key(session) -> None:
+    now = datetime(2026, 4, 16, 12, 0, tzinfo=UTC)
+    user = create_user(session, email="related-dedupe-collapse@example.com")
+    paper = create_paper(
+        session,
+        user_id=user.id,
+        title="Canonical Link Paper",
+        paper_type=PaperType.PUBLISHED,
+        last_touch_at=now - timedelta(days=1),
+        next_action=None,
+    )
+    first = create_retrieval_record(
+        session,
+        user_id=user.id,
+        paper=paper,
+        source_kind=ExternalRetrievalSourceKind.OPENALEX,
+        external_id="https://openalex.org/W111",
+        doi="10.5555/canonical-doi",
+        title="Canonical Related Paper",
+        run_finished_at=now - timedelta(days=1),
+        result_created_at=now - timedelta(days=1),
+    )
+    second = create_retrieval_record(
+        session,
+        user_id=user.id,
+        paper=paper,
+        source_kind=ExternalRetrievalSourceKind.CROSSREF,
+        external_id="10.5555/canonical-doi",
+        doi="10.5555/canonical-doi",
+        title="Canonical Related Paper Updated",
+        run_finished_at=now - timedelta(hours=1),
+        result_created_at=now - timedelta(hours=1),
+    )
+
+    pipeline = build_service(session, now=now).preview(user.id)
+    related_candidates = [
+        candidate
+        for candidate in pipeline.candidates
+        if candidate.card_type == PulseCardType.RELATED_PAPER
+    ]
+
+    assert len(related_candidates) == 1
+    assert related_candidates[0].candidate_metadata["external_record_id"] == str(second.id)
+    assert related_candidates[0].candidate_metadata[
+        "external_reference_key"
+    ] == canonical_external_reference_key(first)
+
+
+def test_related_paper_dedupe_blocks_same_external_reference_key(session) -> None:
+    now = datetime(2026, 4, 16, 12, 0, tzinfo=UTC)
+    user = create_user(session, email="related-dedupe-window@example.com")
+    paper = create_paper(
+        session,
+        user_id=user.id,
+        title="Related Dedupe Paper",
+        paper_type=PaperType.PUBLISHED,
+        last_touch_at=now - timedelta(days=1),
+        next_action=None,
+    )
+    create_retrieval_record(
+        session,
+        user_id=user.id,
+        paper=paper,
+        title="Repeated Related Result",
+        matched_reason_codes=["watch_keywords_present", "watch_topics_present"],
+        run_finished_at=now - timedelta(hours=2),
+        result_created_at=now - timedelta(hours=2),
+    )
+
+    first_job = build_service(session, now=now).run_now(user.id)
+    first_card = next(
+        card for card in first_job.cards if card.card_type == PulseCardType.RELATED_PAPER
+    )
+    pipeline = build_service(session, now=now + timedelta(hours=1)).preview(user.id)
+    suppressed = [
+        candidate
+        for candidate in pipeline.suppressed_candidates
+        if candidate.card_type == PulseCardType.RELATED_PAPER
+    ]
+
+    assert first_card.external_reference_key
+    assert suppressed
+    assert (
+        suppressed[0].candidate_metadata["external_reference_key"]
+        == first_card.external_reference_key
+    )
+    assert any(reason.code.value == "dedupe_window" for reason in suppressed[0].suppression_reasons)
+
+
+def test_run_persists_related_paper_card_and_digest_item(session) -> None:
+    now = datetime(2026, 4, 16, 12, 0, tzinfo=UTC)
+    user = create_user(session, email="related-run@example.com")
+    paper = create_paper(
+        session,
+        user_id=user.id,
+        title="Related Run Anchor",
+        paper_type=PaperType.PUBLISHED,
+        last_touch_at=now - timedelta(days=1),
+        next_action=None,
+    )
+    record = create_retrieval_record(
+        session,
+        user_id=user.id,
+        paper=paper,
+        title="Persisted Related Result",
+        matched_reason_codes=["watch_keywords_present", "recent_touched_paper_context"],
+        run_finished_at=now - timedelta(hours=2),
+        result_created_at=now - timedelta(hours=2),
+    )
+
+    job = build_service(session, now=now).run_now(user.id)
+    related_card = next(card for card in job.cards if card.card_type == PulseCardType.RELATED_PAPER)
+    digest_issue = DigestService(session).list_digest_issues(user_id=user.id)[0]
+
+    assert related_card.source_paper_id == paper.id
+    assert related_card.external_reference_key == canonical_external_reference_key(record)
+    assert related_card.candidate_metadata["external_record_id"] == str(record.id)
+    assert any(item.card_type == PulseCardType.RELATED_PAPER for item in digest_issue.items)

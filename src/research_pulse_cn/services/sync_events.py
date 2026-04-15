@@ -158,6 +158,7 @@ class SyncEventService:
                 "score_total": pulse_card.score_total,
                 "title": pulse_card.title,
                 "summary": pulse_card.summary,
+                "external_reference_key": pulse_card.external_reference_key,
                 "generated_at": pulse_card.generated_at.isoformat(),
             },
         )

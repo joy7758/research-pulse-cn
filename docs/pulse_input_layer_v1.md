@@ -151,6 +151,6 @@
 - `POST /external-retrieval/plans/execute/{plan_id}` executes a persisted plan only when `APP_EXTERNAL_RETRIEVAL_MODE=execute`.
 - `GET /external-retrieval/results` exposes normalized records for later pulse consumption.
 - This still does not add:
-  - final related-paper/news pulse cards
+  - related-news pulse cards
   - AI rewriting or ranking
   - generic crawler behavior

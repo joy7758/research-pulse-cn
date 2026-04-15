@@ -98,7 +98,7 @@
 
 ## Future Work
 - external academic retrieval planning inputs and later execution
-- related-paper and related-news cards
+- related-news cards
 - richer today-suggestion heuristics
 - user feedback loops for suggestion quality
 - smarter suppression across overlapping internal action cards
@@ -108,8 +108,9 @@
 - The external retrieval planning and execution boundary does not affect today-suggestion generation:
   - no network calls
   - no external result ranking inside today-suggestion
-  - no related-paper/news cards
+  - no related-news cards
 - The two layers now coexist:
   - `today_suggestion` answers "what is the best internal next step today?"
   - retrieval planning answers "what would we query externally later?"
   - retrieval execution answers "what official scholarly records did those plans return?"
+  - `related_paper` later answers "which persisted normalized scholarly result is worth reviewing now?"

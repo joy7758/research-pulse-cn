@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from research_pulse_cn.db.models import (
@@ -205,4 +205,37 @@ class ExternalRetrievedRecordRepository:
             statement = statement.where(ExternalRetrievedRecord.source_kind == source_kind)
         if retrieval_scope is not None:
             statement = statement.where(ExternalRetrievedRecord.retrieval_scope == retrieval_scope)
+        return list(self.session.scalars(statement))
+
+    def list_recent_completed_records(
+        self,
+        *,
+        user_id: UUID,
+        retrieval_scope: ExternalRetrievalScope,
+        not_before: datetime,
+    ) -> list[ExternalRetrievedRecord]:
+        statement = (
+            select(ExternalRetrievedRecord)
+            .join(ExternalRetrievedRecord.run)
+            .options(
+                selectinload(ExternalRetrievedRecord.run).selectinload(ExternalRetrievalRun.plan),
+                selectinload(ExternalRetrievedRecord.plan).selectinload(
+                    ExternalRetrievalPlan.paper
+                ),
+            )
+            .where(
+                ExternalRetrievedRecord.user_id == user_id,
+                ExternalRetrievedRecord.retrieval_scope == retrieval_scope,
+                ExternalRetrievalRun.status == ExternalRetrievalRunStatus.COMPLETED,
+                or_(
+                    ExternalRetrievedRecord.created_at >= not_before,
+                    ExternalRetrievalRun.finished_at >= not_before,
+                ),
+            )
+            .order_by(
+                ExternalRetrievalRun.finished_at.desc(),
+                ExternalRetrievedRecord.created_at.desc(),
+                ExternalRetrievedRecord.sort_order.asc(),
+            )
+        )
         return list(self.session.scalars(statement))
