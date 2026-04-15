@@ -5,17 +5,24 @@ import type {
   ChooseWorkspaceRootInput,
   ConnectDeviceInput,
   ConnectDeviceResponse,
+  CreateBlankPaperNoteInput,
+  CreatePaperNoteFromTemplateInput,
   ImportPaperAttachmentsInput,
   ImportPaperAttachmentsResponse,
   ListPapersInput,
+  NoteActionResultRead,
+  NoteTemplateRead,
   PaperAttachmentRead,
   PaperDetailRead,
   PaperListItemRead,
+  PaperNoteDetailRead,
+  PaperNoteSummaryRead,
   PaperWorkspaceRead,
   PendingMutationRead,
   QueuePaperPatchInput,
   QueueProgressEventCreateInput,
   QueueSubscriptionPolicyPatchInput,
+  SavePaperNoteInput,
   SubscriptionPolicyRead,
   SyncNowResponse,
   SyncStatusRead,
@@ -53,6 +60,23 @@ export const desktopApi = {
     invoke<PaperWorkspaceRead>("getPaperWorkspace", { paperId }),
   listPaperAttachments: (paperId: string) =>
     invoke<PaperAttachmentRead[]>("listPaperAttachments", { paperId }),
+  listNoteTemplates: () => invoke<NoteTemplateRead[]>("listNoteTemplates"),
+  listPaperNotes: (paperId: string) =>
+    invoke<PaperNoteSummaryRead[]>("listPaperNotes", {
+      input: { paperId },
+    }),
+  createPaperNoteFromTemplate: (input: CreatePaperNoteFromTemplateInput) =>
+    invoke<NoteActionResultRead>("createPaperNoteFromTemplate", { input }),
+  createBlankPaperNote: (input: CreateBlankPaperNoteInput) =>
+    invoke<NoteActionResultRead>("createBlankPaperNote", { input }),
+  getPaperNote: (noteId: string) =>
+    invoke<PaperNoteDetailRead>("getPaperNote", { noteId }),
+  savePaperNote: (input: SavePaperNoteInput) =>
+    invoke<NoteActionResultRead>("savePaperNote", { input }),
+  refreshPaperNotes: (paperId: string) =>
+    invoke<PaperNoteSummaryRead[]>("refreshPaperNotes", {
+      input: { paperId },
+    }),
   importPaperAttachments: (input: ImportPaperAttachmentsInput) =>
     invoke<ImportPaperAttachmentsResponse>("importPaperAttachments", { input }),
   refreshPaperWorkspace: (paperId: string) =>

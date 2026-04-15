@@ -8,12 +8,18 @@ use crate::cache::{LocalCache, PushOutcomeSummary};
 use crate::error::invalid_state;
 use crate::models::{
     AppBootstrapRead, ChooseWorkspaceRootInput, ConnectDeviceInput, ConnectDeviceResponse,
-    ImportPaperAttachmentsInput, ImportPaperAttachmentsResponse, ListPapersInput,
+    CreateBlankPaperNoteInput, CreatePaperNoteFromTemplateInput, ImportPaperAttachmentsInput,
+    ImportPaperAttachmentsResponse, ListPapersInput, NoteActionResultRead, NoteTemplateRead,
     PaperAttachmentImportResultRead, PaperAttachmentRead, PaperDetailRead, PaperListItemRead,
-    PaperWorkspaceRead, PendingMutationRead, QueuePaperPatchInput,
-    QueueProgressEventCreateInput, QueueSubscriptionPolicyPatchInput, RemoteSyncMutationRequest,
-    RemoteSyncPushRequest, SubscriptionPolicyRead, SyncNowResponse, SyncStatusRead,
-    TodayOverviewRead, UserConnectionRead, WorkspaceStatusRead, WriteActionResultRead,
+    PaperNoteDetailRead, PaperNoteSummaryRead, PaperWorkspaceRead, PendingMutationRead,
+    QueuePaperPatchInput, QueueProgressEventCreateInput, QueueSubscriptionPolicyPatchInput,
+    RemoteSyncMutationRequest, RemoteSyncPushRequest, SavePaperNoteInput,
+    SubscriptionPolicyRead, SyncNowResponse, SyncStatusRead, TodayOverviewRead,
+    UserConnectionRead, WorkspaceStatusRead, WriteActionResultRead,
+};
+use crate::notes::{
+    list_note_templates, note_status_for_path, prepare_blank_note, prepare_template_note,
+    read_note_file, write_note_file, NoteTemplateContext,
 };
 use crate::secret_store::FileSecretStore;
 use crate::sync_client::{ReqwestSyncBackendApi, SyncBackendApi};
@@ -172,6 +178,195 @@ impl DesktopService {
         self.cache().list_paper_attachments(paper_id)
     }
 
+    pub fn list_note_templates(&self) -> Result<Vec<NoteTemplateRead>> {
+        Ok(list_note_templates())
+    }
+
+    pub fn list_paper_notes(&self, paper_id: &str) -> Result<Vec<PaperNoteSummaryRead>> {
+        if paper_id.trim().is_empty() {
+            return Err(invalid_state("paper_id is required"));
+        }
+        self.cache().list_paper_notes(paper_id)
+    }
+
+    pub fn create_paper_note_from_template(
+        &self,
+        input: CreatePaperNoteFromTemplateInput,
+    ) -> Result<NoteActionResultRead> {
+        if input.paper_id.trim().is_empty() {
+            return Err(invalid_state("paper_id is required"));
+        }
+        let cache = self.cache();
+        let paper = cache.get_paper_detail(&input.paper_id)?;
+        let root = self.ensure_workspace_root_ready()?;
+        let root_path = std::path::Path::new(root.root_path.as_deref().unwrap_or_default());
+        let layout = ensure_paper_workspace_layout(root_path, &paper.id, &paper.title)?;
+        cache.upsert_paper_workspace(
+            &paper.id,
+            &paper.title,
+            &layout.paper_rel_path,
+            Some(path_to_string(&layout.paper_abs_path).as_str()),
+            true,
+            paper.workspace.last_imported_at.as_deref(),
+        )?;
+
+        let created_at = chrono::Utc::now().to_rfc3339();
+        let note_id = Uuid::new_v4().to_string();
+        let prepared = prepare_template_note(
+            &layout,
+            &input.template_kind,
+            &build_note_context(&paper),
+            &note_id,
+            &created_at,
+        )?;
+        let file_stats = write_note_file(&prepared.absolute_path, &prepared.content)?;
+        let status = note_status_for_path(Some(&prepared.absolute_path));
+        cache.upsert_paper_note(
+            &prepared.note_id,
+            &paper.id,
+            &prepared.template_kind,
+            &prepared.title,
+            &prepared.file_name,
+            &prepared.relative_path,
+            Some(&prepared.absolute_path),
+            "markdown",
+            &prepared.source_mode,
+            &status,
+            file_stats.size_bytes,
+            file_stats.sha256.as_deref(),
+            &prepared.created_at,
+            &prepared.created_at,
+            None,
+        )?;
+        let note = self.get_paper_note(&prepared.note_id)?;
+        Ok(NoteActionResultRead {
+            note,
+            message: format!("Created {} from template.", prepared.title),
+        })
+    }
+
+    pub fn create_blank_paper_note(
+        &self,
+        input: CreateBlankPaperNoteInput,
+    ) -> Result<NoteActionResultRead> {
+        if input.paper_id.trim().is_empty() {
+            return Err(invalid_state("paper_id is required"));
+        }
+        let cache = self.cache();
+        let paper = cache.get_paper_detail(&input.paper_id)?;
+        let root = self.ensure_workspace_root_ready()?;
+        let root_path = std::path::Path::new(root.root_path.as_deref().unwrap_or_default());
+        let layout = ensure_paper_workspace_layout(root_path, &paper.id, &paper.title)?;
+        cache.upsert_paper_workspace(
+            &paper.id,
+            &paper.title,
+            &layout.paper_rel_path,
+            Some(path_to_string(&layout.paper_abs_path).as_str()),
+            true,
+            paper.workspace.last_imported_at.as_deref(),
+        )?;
+
+        let created_at = chrono::Utc::now().to_rfc3339();
+        let note_id = Uuid::new_v4().to_string();
+        let prepared = prepare_blank_note(
+            &layout,
+            input.title.as_deref(),
+            &build_note_context(&paper),
+            &note_id,
+            &created_at,
+        )?;
+        let file_stats = write_note_file(&prepared.absolute_path, &prepared.content)?;
+        let status = note_status_for_path(Some(&prepared.absolute_path));
+        cache.upsert_paper_note(
+            &prepared.note_id,
+            &paper.id,
+            &prepared.template_kind,
+            &prepared.title,
+            &prepared.file_name,
+            &prepared.relative_path,
+            Some(&prepared.absolute_path),
+            "markdown",
+            &prepared.source_mode,
+            &status,
+            file_stats.size_bytes,
+            file_stats.sha256.as_deref(),
+            &prepared.created_at,
+            &prepared.created_at,
+            None,
+        )?;
+        let note = self.get_paper_note(&prepared.note_id)?;
+        Ok(NoteActionResultRead {
+            note,
+            message: format!("Created {}.", prepared.title),
+        })
+    }
+
+    pub fn get_paper_note(&self, note_id: &str) -> Result<PaperNoteDetailRead> {
+        if note_id.trim().is_empty() {
+            return Err(invalid_state("note_id is required"));
+        }
+        let cache = self.cache();
+        cache.get_paper_note_summary(note_id)?;
+        let last_opened_at = chrono::Utc::now().to_rfc3339();
+        let note = cache.touch_paper_note_opened_at(note_id, &last_opened_at)?;
+        let content = if note.status == "ready" {
+            note.absolute_path
+                .as_deref()
+                .map(read_note_file)
+                .transpose()?
+        } else {
+            None
+        };
+        Ok(PaperNoteDetailRead { note, content })
+    }
+
+    pub fn save_paper_note(&self, input: SavePaperNoteInput) -> Result<NoteActionResultRead> {
+        if input.note_id.trim().is_empty() {
+            return Err(invalid_state("note_id is required"));
+        }
+        let cache = self.cache();
+        let existing = cache.get_paper_note_summary(&input.note_id)?;
+        let absolute_path = existing.absolute_path.clone().ok_or_else(|| {
+            invalid_state("note file path is not available because the workspace root is missing")
+        })?;
+        let _ = self.ensure_workspace_root_ready()?;
+        let file_stats = write_note_file(&absolute_path, &input.content)?;
+        let updated_at = chrono::Utc::now().to_rfc3339();
+        let status = note_status_for_path(Some(&absolute_path));
+        cache.upsert_paper_note(
+            &existing.id,
+            &existing.paper_id,
+            &existing.template_kind,
+            &existing.title,
+            &existing.file_name,
+            &existing.relative_path,
+            Some(&absolute_path),
+            &existing.content_format,
+            &existing.source_mode,
+            &status,
+            file_stats.size_bytes,
+            file_stats.sha256.as_deref(),
+            &existing.created_at,
+            &updated_at,
+            Some(&updated_at),
+        )?;
+        let note = self.get_paper_note(&existing.id)?;
+        Ok(NoteActionResultRead {
+            note,
+            message: format!("Saved {}.", existing.title),
+        })
+    }
+
+    pub fn refresh_paper_notes(&self, paper_id: &str) -> Result<Vec<PaperNoteSummaryRead>> {
+        if paper_id.trim().is_empty() {
+            return Err(invalid_state("paper_id is required"));
+        }
+        let cache = self.cache();
+        let root_status = self.get_workspace_status()?;
+        cache.refresh_note_statuses(root_status.root_path.as_deref(), paper_id)?;
+        cache.list_paper_notes(paper_id)
+    }
+
     pub fn import_paper_attachments(
         &self,
         input: ImportPaperAttachmentsInput,
@@ -277,6 +472,7 @@ impl DesktopService {
             current.last_imported_at.as_deref(),
         )?;
         cache.refresh_attachment_statuses(root_path, paper_id)?;
+        cache.refresh_note_statuses(root_path, paper_id)?;
         cache.get_paper_workspace(paper_id)
     }
 
@@ -744,6 +940,17 @@ fn error_to_string(error: anyhow::Error) -> String {
     format!("{error:#}")
 }
 
+fn build_note_context(paper: &PaperDetailRead) -> NoteTemplateContext {
+    NoteTemplateContext {
+        paper_id: paper.id.clone(),
+        paper_title: paper.title.clone(),
+        stage: paper.stage.clone(),
+        venue: paper.venue.clone(),
+        next_action: paper.next_action.clone(),
+        blocker: paper.blocker.clone(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::{cell::RefCell, path::PathBuf, rc::Rc};
@@ -753,10 +960,11 @@ mod tests {
 
     use super::{ChooseWorkspaceRootInput, ConnectDeviceInput, DesktopPaths, DesktopService, ListPapersInput};
     use crate::models::{
+        CreateBlankPaperNoteInput, CreatePaperNoteFromTemplateInput,
         ImportPaperAttachmentsInput, QueuePaperPatchInput, QueueProgressEventCreateInput,
-        QueueSubscriptionPolicyPatchInput,
-        RemoteSyncAck, RemoteSyncDevice, RemoteSyncEvent, RemoteSyncFeed, RemoteSyncMe,
-        RemoteSyncMutationResult, RemoteSyncPushRequest, RemoteSyncPushResponse, RemoteSyncUser,
+        QueueSubscriptionPolicyPatchInput, SavePaperNoteInput, RemoteSyncAck, RemoteSyncDevice,
+        RemoteSyncEvent, RemoteSyncFeed, RemoteSyncMe, RemoteSyncMutationResult,
+        RemoteSyncPushRequest, RemoteSyncPushResponse, RemoteSyncUser,
     };
     use crate::sync_client::SyncBackendApi;
 
@@ -1700,5 +1908,191 @@ mod tests {
         service.disconnect_device().unwrap();
         assert!(managed_path.exists());
         assert_eq!(service.list_paper_attachments("paper-1").unwrap().len(), 1);
+    }
+
+    #[test]
+    fn list_note_templates_returns_all_built_ins() {
+        let service = service();
+        let templates = service.list_note_templates().unwrap();
+        assert_eq!(templates.len(), 6);
+        assert!(templates.iter().any(|template| template.kind == "reviewer_matrix"));
+    }
+
+    #[test]
+    fn create_note_from_template_creates_file_and_metadata() {
+        let service = service();
+        let api = FakeApi::default();
+        let workspace_root = new_temp_path();
+        connect(
+            &service,
+            &api,
+            vec![Ok(RemoteSyncFeed {
+                events: vec![paper_event("revision", 1)],
+                next_after_sequence: 1,
+                has_more: false,
+            })],
+        );
+        service
+            .choose_workspace_root(ChooseWorkspaceRootInput {
+                selected_path: workspace_root.to_string_lossy().into_owned(),
+            })
+            .unwrap();
+
+        let created = service
+            .create_paper_note_from_template(CreatePaperNoteFromTemplateInput {
+                paper_id: "paper-1".to_string(),
+                template_kind: "research_note".to_string(),
+            })
+            .unwrap();
+
+        assert_eq!(created.note.note.template_kind, "research_note");
+        assert!(created.note.content.unwrap_or_default().contains("# Research Note"));
+        assert!(PathBuf::from(created.note.note.absolute_path.unwrap()).exists());
+        assert_eq!(service.list_paper_notes("paper-1").unwrap().len(), 1);
+    }
+
+    #[test]
+    fn create_blank_note_creates_markdown_file_under_notes_directory() {
+        let service = service();
+        let api = FakeApi::default();
+        let workspace_root = new_temp_path();
+        connect(
+            &service,
+            &api,
+            vec![Ok(RemoteSyncFeed {
+                events: vec![paper_event("revision", 1)],
+                next_after_sequence: 1,
+                has_more: false,
+            })],
+        );
+        service
+            .choose_workspace_root(ChooseWorkspaceRootInput {
+                selected_path: workspace_root.to_string_lossy().into_owned(),
+            })
+            .unwrap();
+
+        let created = service
+            .create_blank_paper_note(CreateBlankPaperNoteInput {
+                paper_id: "paper-1".to_string(),
+                title: Some("Working Draft".to_string()),
+            })
+            .unwrap();
+
+        let note = created.note.note;
+        assert_eq!(note.source_mode, "blank");
+        assert!(note.relative_path.contains("papers/paper-1/notes/"));
+        assert!(note.file_name.ends_with(".md"));
+    }
+
+    #[test]
+    fn get_and_save_paper_note_roundtrip_updates_disk_and_metadata() {
+        let service = service();
+        let api = FakeApi::default();
+        let workspace_root = new_temp_path();
+        connect(
+            &service,
+            &api,
+            vec![Ok(RemoteSyncFeed {
+                events: vec![paper_event("revision", 1)],
+                next_after_sequence: 1,
+                has_more: false,
+            })],
+        );
+        service
+            .choose_workspace_root(ChooseWorkspaceRootInput {
+                selected_path: workspace_root.to_string_lossy().into_owned(),
+            })
+            .unwrap();
+
+        let created = service
+            .create_paper_note_from_template(CreatePaperNoteFromTemplateInput {
+                paper_id: "paper-1".to_string(),
+                template_kind: "revision_plan".to_string(),
+            })
+            .unwrap();
+        let loaded = service.get_paper_note(&created.note.note.id).unwrap();
+        assert!(loaded.content.unwrap_or_default().contains("# Revision Plan"));
+
+        let saved = service
+            .save_paper_note(SavePaperNoteInput {
+                note_id: created.note.note.id.clone(),
+                content: "# Updated Note\n\nSaved locally.\n".to_string(),
+            })
+            .unwrap();
+        let absolute_path = PathBuf::from(saved.note.note.absolute_path.clone().unwrap());
+        let disk_content = std::fs::read_to_string(absolute_path).unwrap();
+        assert_eq!(disk_content, "# Updated Note\n\nSaved locally.\n");
+        assert_eq!(saved.note.content.unwrap_or_default(), "# Updated Note\n\nSaved locally.\n");
+        assert!(saved.note.note.sha256.is_some());
+    }
+
+    #[test]
+    fn refresh_notes_marks_missing_files_without_deleting_rows() {
+        let service = service();
+        let api = FakeApi::default();
+        let workspace_root = new_temp_path();
+        connect(
+            &service,
+            &api,
+            vec![Ok(RemoteSyncFeed {
+                events: vec![paper_event("revision", 1)],
+                next_after_sequence: 1,
+                has_more: false,
+            })],
+        );
+        service
+            .choose_workspace_root(ChooseWorkspaceRootInput {
+                selected_path: workspace_root.to_string_lossy().into_owned(),
+            })
+            .unwrap();
+
+        let created = service
+            .create_blank_paper_note(CreateBlankPaperNoteInput {
+                paper_id: "paper-1".to_string(),
+                title: Some("Scratchpad".to_string()),
+            })
+            .unwrap();
+        let note_path = PathBuf::from(created.note.note.absolute_path.unwrap());
+        std::fs::remove_file(&note_path).unwrap();
+
+        let notes = service.refresh_paper_notes("paper-1").unwrap();
+        assert_eq!(notes.len(), 1);
+        assert_eq!(notes[0].status, "missing");
+    }
+
+    #[test]
+    fn clear_local_cache_and_disconnect_do_not_delete_note_files() {
+        let service = service();
+        let api = FakeApi::default();
+        let workspace_root = new_temp_path();
+        connect(
+            &service,
+            &api,
+            vec![Ok(RemoteSyncFeed {
+                events: vec![paper_event("revision", 1)],
+                next_after_sequence: 1,
+                has_more: false,
+            })],
+        );
+        service
+            .choose_workspace_root(ChooseWorkspaceRootInput {
+                selected_path: workspace_root.to_string_lossy().into_owned(),
+            })
+            .unwrap();
+        let created = service
+            .create_blank_paper_note(CreateBlankPaperNoteInput {
+                paper_id: "paper-1".to_string(),
+                title: Some("Local Note".to_string()),
+            })
+            .unwrap();
+        let note_path = PathBuf::from(created.note.note.absolute_path.unwrap());
+
+        service.clear_local_cache().unwrap();
+        assert!(note_path.exists());
+        assert_eq!(service.list_paper_notes("paper-1").unwrap().len(), 1);
+
+        service.disconnect_device().unwrap();
+        assert!(note_path.exists());
+        assert_eq!(service.list_paper_notes("paper-1").unwrap().len(), 1);
     }
 }

@@ -21,14 +21,19 @@ import {
 import type {
   ChooseWorkspaceRootInput,
   ConnectDeviceInput,
+  CreateBlankPaperNoteInput,
+  CreatePaperNoteFromTemplateInput,
   ImportPaperAttachmentsResponse,
   ListPapersInput,
+  NoteTemplateRead,
   PaperDetailRead,
   PaperListItemRead,
+  PaperNoteDetailRead,
   PendingMutationRead,
   QueuePaperPatchInput,
   QueueProgressEventCreateInput,
   QueueSubscriptionPolicyPatchInput,
+  SavePaperNoteInput,
   SubscriptionPolicyRead,
   SyncNowResponse,
   SyncStatusRead,
@@ -67,6 +72,10 @@ type SubscriptionPolicyDraft = {
 
 type AttachmentImportDraft = {
   attachmentKind: string;
+};
+
+type BlankNoteDraft = {
+  title: string;
 };
 
 function App() {
@@ -694,13 +703,22 @@ function PaperDetailView({
   const [attachmentDraft, setAttachmentDraft] = useState<AttachmentImportDraft>({
     attachmentKind: "manuscript",
   });
+  const [blankNoteDraft, setBlankNoteDraft] = useState<BlankNoteDraft>({
+    title: "",
+  });
+  const [noteTemplates, setNoteTemplates] = useState<NoteTemplateRead[]>([]);
+  const [selectedTemplateKind, setSelectedTemplateKind] = useState<string>("research_note");
+  const [selectedNote, setSelectedNote] = useState<PaperNoteDetailRead | null>(null);
+  const [noteContentDraft, setNoteContentDraft] = useState<string>("");
   const [savingPatch, setSavingPatch] = useState(false);
   const [savingProgress, setSavingProgress] = useState(false);
   const [workspaceBusy, setWorkspaceBusy] = useState(false);
+  const [notesBusy, setNotesBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [workspaceMessage, setWorkspaceMessage] = useState<string | null>(null);
+  const [notesMessage, setNotesMessage] = useState<string | null>(null);
 
   const loadPaperDetail = useCallback(async () => {
     if (!paperId) {
@@ -708,8 +726,13 @@ function PaperDetailView({
     }
     setLoading(true);
     try {
-      const detail = await desktopApi.getPaperDetail(paperId);
+      const [detail, templates] = await Promise.all([
+        desktopApi.getPaperDetail(paperId),
+        desktopApi.listNoteTemplates(),
+      ]);
       setPaper(detail);
+      setNoteTemplates(templates);
+      setSelectedTemplateKind((current) => current || templates[0]?.kind || "research_note");
       setPatchDraft({
         stage: detail.stage,
         venue: detail.venue ?? "",
@@ -732,6 +755,39 @@ function PaperDetailView({
   useEffect(() => {
     void loadPaperDetail();
   }, [dataVersion, loadPaperDetail]);
+
+  useEffect(() => {
+    if (!paper || !selectedNote) {
+      return;
+    }
+    const matchingSummary = paper.notes.find((note) => note.id === selectedNote.note.id);
+    if (!matchingSummary) {
+      setSelectedNote(null);
+      setNoteContentDraft("");
+      return;
+    }
+    if (
+      matchingSummary.updatedAt !== selectedNote.note.updatedAt ||
+      matchingSummary.status !== selectedNote.note.status ||
+      matchingSummary.absolutePath !== selectedNote.note.absolutePath
+    ) {
+      setSelectedNote((current) =>
+        current
+          ? {
+              ...current,
+              note: matchingSummary,
+            }
+          : current,
+      );
+    }
+  }, [
+    paper,
+    selectedNote,
+    selectedNote?.note.id,
+    selectedNote?.note.updatedAt,
+    selectedNote?.note.status,
+    selectedNote?.note.absolutePath,
+  ]);
 
   if (!paperId) {
     return <Navigate to="/papers" replace />;
@@ -867,6 +923,106 @@ function PaperDetailView({
       );
     } finally {
       setWorkspaceBusy(false);
+    }
+  }
+
+  async function handleOpenNote(noteId: string) {
+    setNotesBusy(true);
+    try {
+      const note = await desktopApi.getPaperNote(noteId);
+      setSelectedNote(note);
+      setNoteContentDraft(note.content ?? "");
+      setNotesMessage(
+        note.note.status === "missing"
+          ? "Note file is missing on disk. Save to recreate it once the workspace root is available."
+          : `Opened ${note.note.title}.`,
+      );
+    } catch (noteError) {
+      setNotesMessage(noteError instanceof Error ? noteError.message : String(noteError));
+    } finally {
+      setNotesBusy(false);
+    }
+  }
+
+  async function handleCreateNoteFromTemplate() {
+    setNotesBusy(true);
+    try {
+      const result = await desktopApi.createPaperNoteFromTemplate({
+        paperId: currentPaper.id,
+        templateKind: selectedTemplateKind,
+      } satisfies CreatePaperNoteFromTemplateInput);
+      await loadPaperDetail();
+      setSelectedNote(result.note);
+      setNoteContentDraft(result.note.content ?? "");
+      setNotesMessage(result.message);
+    } catch (noteError) {
+      setNotesMessage(noteError instanceof Error ? noteError.message : String(noteError));
+    } finally {
+      setNotesBusy(false);
+    }
+  }
+
+  async function handleCreateBlankNote() {
+    setNotesBusy(true);
+    try {
+      const result = await desktopApi.createBlankPaperNote({
+        paperId: currentPaper.id,
+        title: blankNoteDraft.title.trim() || undefined,
+      } satisfies CreateBlankPaperNoteInput);
+      await loadPaperDetail();
+      setSelectedNote(result.note);
+      setNoteContentDraft(result.note.content ?? "");
+      setBlankNoteDraft({ title: "" });
+      setNotesMessage(result.message);
+    } catch (noteError) {
+      setNotesMessage(noteError instanceof Error ? noteError.message : String(noteError));
+    } finally {
+      setNotesBusy(false);
+    }
+  }
+
+  async function handleSaveNote() {
+    if (!selectedNote) {
+      return;
+    }
+    setNotesBusy(true);
+    try {
+      const result = await desktopApi.savePaperNote({
+        noteId: selectedNote.note.id,
+        content: noteContentDraft,
+      } satisfies SavePaperNoteInput);
+      await loadPaperDetail();
+      setSelectedNote(result.note);
+      setNoteContentDraft(result.note.content ?? "");
+      setNotesMessage(result.message);
+    } catch (noteError) {
+      setNotesMessage(noteError instanceof Error ? noteError.message : String(noteError));
+    } finally {
+      setNotesBusy(false);
+    }
+  }
+
+  async function handleRefreshNotes() {
+    setNotesBusy(true);
+    try {
+      const refreshed = await desktopApi.refreshPaperNotes(currentPaper.id);
+      await loadPaperDetail();
+      if (selectedNote) {
+        const stillExists = refreshed.find((note) => note.id === selectedNote.note.id);
+        if (stillExists) {
+          const detail = await desktopApi.getPaperNote(stillExists.id);
+          setSelectedNote(detail);
+          setNoteContentDraft(detail.content ?? "");
+        } else {
+          setSelectedNote(null);
+          setNoteContentDraft("");
+        }
+      }
+      setNotesMessage("Local note metadata refreshed.");
+    } catch (noteError) {
+      setNotesMessage(noteError instanceof Error ? noteError.message : String(noteError));
+    } finally {
+      setNotesBusy(false);
     }
   }
 
@@ -1104,6 +1260,137 @@ function PaperDetailView({
                 </div>
               </article>
             ))}
+          </div>
+        )}
+      </div>
+
+      <div className="panel">
+        <div className="eyebrow">Local Notes</div>
+        <div className="detail-grid">
+          <DetailRow label="Notes directory" value={`${paper.workspace.workspaceRelPath}/notes`} />
+          <DetailRow label="Indexed notes" value={String(paper.noteCount)} />
+          <DetailRow
+            label="Workspace root"
+            value={paper.workspace.workspaceAbsPath ?? "Workspace root not configured"}
+          />
+        </div>
+        <div className="form-grid">
+          <label>
+            Template
+            <select
+              value={selectedTemplateKind}
+              onChange={(event) => setSelectedTemplateKind(event.target.value)}
+            >
+              {noteTemplates.map((template) => (
+                <option key={template.kind} value={template.kind}>
+                  {template.title}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Blank note title
+            <input
+              value={blankNoteDraft.title}
+              onChange={(event) =>
+                setBlankNoteDraft({
+                  title: event.target.value,
+                })
+              }
+              placeholder="Blank Note"
+            />
+          </label>
+        </div>
+        <div className="form-actions">
+          <button type="button" onClick={() => void handleCreateNoteFromTemplate()} disabled={notesBusy}>
+            {notesBusy ? "Working..." : "Create From Template"}
+          </button>
+          <button
+            type="button"
+            className="button-secondary"
+            onClick={() => void handleCreateBlankNote()}
+            disabled={notesBusy}
+          >
+            Create Blank Note
+          </button>
+          <button
+            type="button"
+            className="button-secondary"
+            onClick={() => void handleRefreshNotes()}
+            disabled={notesBusy}
+          >
+            Refresh Notes
+          </button>
+        </div>
+        {notesMessage ? <p className="meta-note">{notesMessage}</p> : null}
+        {!paper.notes.length ? (
+          <p className="panel-message">
+            No local notes yet. Ensure the workspace root exists, then create a markdown note from a template or a blank note.
+          </p>
+        ) : (
+          <div className="notes-layout">
+            <div className="list-stack">
+              {paper.notes.map((note) => (
+                <article
+                  className={`list-card ${selectedNote?.note.id === note.id ? "list-card-selected" : ""}`}
+                  key={note.id}
+                >
+                  <div className="list-card-topline">
+                    <span>{note.templateKind}</span>
+                    <span>{note.status}</span>
+                  </div>
+                  <h3>{note.title}</h3>
+                  <p>{note.fileName}</p>
+                  <div className="pill-row">
+                    <span className="pill">{note.sourceMode}</span>
+                    <span className="pill">{formatDateTime(note.updatedAt)}</span>
+                    {note.status === "missing" ? (
+                      <span className="pill pill-danger">Missing on disk</span>
+                    ) : null}
+                  </div>
+                  <div className="form-actions">
+                    <button
+                      type="button"
+                      className="button-secondary"
+                      onClick={() => void handleOpenNote(note.id)}
+                      disabled={notesBusy}
+                    >
+                      Open Note
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+            <div className="note-editor-panel">
+              {selectedNote ? (
+                <>
+                  <div className="detail-grid">
+                    <DetailRow label="Title" value={selectedNote.note.title} />
+                    <DetailRow label="File" value={selectedNote.note.relativePath} />
+                    <DetailRow label="Status" value={selectedNote.note.status} />
+                  </div>
+                  <label className="form-full">
+                    Markdown
+                    <textarea
+                      className="note-editor"
+                      rows={18}
+                      value={noteContentDraft}
+                      onChange={(event) => setNoteContentDraft(event.target.value)}
+                      disabled={selectedNote.note.status === "missing" && !paper.workspace.workspaceAbsPath}
+                    />
+                  </label>
+                  <div className="form-actions">
+                    <button type="button" onClick={() => void handleSaveNote()} disabled={notesBusy}>
+                      {notesBusy ? "Saving..." : "Save Note"}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <p className="panel-message">
+                  Select a note to edit it. The editor is plain markdown in v1.
+                </p>
+              )}
+            </div>
           </div>
         )}
       </div>

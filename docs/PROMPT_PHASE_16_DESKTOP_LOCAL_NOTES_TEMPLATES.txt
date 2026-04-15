@@ -1,0 +1,241 @@
+Read AGENTS.md, docs/BUILD_SPEC.md, docs/architecture.md, docs/development.md, docs/pulse_scoring.md, docs/operations.md, docs/auth_admin_boundary.md, docs/sync_foundation.md, docs/official_account_digest_reserve.md, docs/mini_program_readonly_reserve.md, docs/official_account_provider_boundary.md, docs/official_account_real_send_v1.md, docs/desktop_tauri_skeleton_v1.md, docs/desktop_writeback_sync_v1.md, and docs/desktop_local_workspace_v1.md before editing.
+
+Implement Phase 16 only: desktop local notes and templates v1.
+
+Hard boundaries for this phase:
+- Do not introduce Electron.
+- Do not add customer-facing OAuth login.
+- Do not add Mini Program frontend code.
+- Do not add OCR, PDF text extraction, citation extraction, metadata scraping, or any AI-assisted note generation.
+- Do not sync note files or note metadata to the backend.
+- Do not add cloud collaboration, sharing, or commenting.
+- Do not add rich text / WYSIWYG editors.
+- Do not add automatic filesystem watching.
+- Do not delete existing user note files automatically.
+- Do not weaken existing admin auth, internal service auth, device-token sync auth, mini-read auth, or official-account provider boundaries.
+- Do not replace the modular monolith backend architecture.
+
+Primary goal:
+Add a local-only per-paper notes foundation to the Tauri desktop app:
+- built-in markdown note templates
+- per-paper local notes directory usage
+- note metadata index in local SQLite
+- create/read/save note flows
+- simple Paper Detail notes UI
+
+This phase should make the repository suitable for:
+- creating structured local research notes for each paper
+- creating local response-letter / revision planning notes from templates
+- editing and saving local markdown notes inside the desktop app
+- supporting future richer note workflows without changing the desktop shell
+
+Architectural intent:
+- Notes are local-only in v1.
+- The source-of-truth for note metadata is the local desktop DB.
+- The source-of-truth for note content is the local note file on disk.
+- Notes live under the existing per-paper workspace notes directory.
+- Frontend may trigger note actions, but template rendering, file creation, path validation, file IO, and metadata indexing must happen in Rust commands.
+
+Required changes:
+
+1. Local notes persistence
+Extend the desktop local SQLite cache with:
+
+A. paper_note_cache
+Required fields:
+- id text/uuid pk
+- paper_id text
+- template_kind text
+- title text
+- file_name text
+- relative_path text
+- absolute_path text nullable
+- content_format text/enum [markdown]
+- source_mode text/enum [template, blank]
+- status text/enum [ready, missing]
+- size_bytes int nullable
+- sha256 text nullable
+- created_at text
+- updated_at text
+- last_opened_at text nullable
+
+Constraints:
+- keep schema small and production-friendly
+- query by paper_id efficiently
+- add local init/migration handling
+- no backend migrations expected in this phase
+
+2. Built-in template registry
+Implement a deterministic local template registry in Rust, not in frontend constants only.
+
+Required template kinds:
+- blank_note
+- research_note
+- revision_plan
+- response_letter
+- reviewer_matrix
+- submission_checklist
+
+Requirements:
+- expose template metadata via command
+- each template should have:
+  - kind
+  - title
+  - description
+  - default_file_name pattern
+  - markdown content generator
+- template rendering must accept paper context:
+  - paper title
+  - paper id
+  - stage
+  - venue
+  - next_action
+  - blocker
+- template output must be plain markdown
+- no AI generation
+- keep content practical and sparse, not verbose
+
+3. Note file layout and creation
+Use the existing paper notes directory:
+- papers/<paper_id>/notes/
+
+Requirements:
+- create note files as managed local files under notes/
+- deterministic safe file naming
+- allow multiple notes per template kind
+- create from template or blank
+- do not overwrite an existing note unless explicitly saving that note later
+- create/update metadata in paper_note_cache
+- note creation must ensure paper workspace exists first
+
+4. Note commands
+Add/extend Tauri Rust commands for at least:
+- listNoteTemplates
+- listPaperNotes
+- createPaperNoteFromTemplate
+- createBlankPaperNote
+- getPaperNote
+- savePaperNote
+- refreshPaperNotes
+
+Behavior:
+- commands must return typed payloads
+- keep file IO in Rust, not React
+- getPaperNote returns both metadata and markdown content
+- savePaperNote writes content to disk and updates metadata hash/size/updated_at
+- refreshPaperNotes marks note status=missing if file is gone
+- if a note file is externally modified, refresh may update metadata only; content reload happens through getPaperNote
+- no optimistic fake success when disk write fails
+
+5. Desktop read models
+Add/update compact desktop read models for:
+- NoteTemplateRead
+- PaperNoteSummaryRead
+- PaperNoteDetailRead
+- NoteActionResultRead
+
+Update PaperDetailRead where useful:
+- include notes summary list
+- include note count if straightforward
+
+Requirements:
+- keep read models compact and client-friendly
+- clearly separate local-only note state from synced cloud data
+- preserve current progress_percentage heuristic unchanged
+
+6. Desktop frontend behavior
+Add minimal useful notes UI.
+
+Paper Detail view:
+- add a Local Notes section
+- show template picker / create actions
+- show notes list
+- show selected note editor
+- show save status and missing-file state clearly
+- allow:
+  - create from template
+  - create blank note
+  - open note
+  - save note
+  - refresh notes
+
+Requirements:
+- a plain markdown textarea editor is sufficient
+- no preview pane required unless trivial
+- no autosave required in this phase
+- no drag-and-drop
+- no rich editor dependency unless clearly justified
+
+7. Local consistency model
+Keep the notes model simple.
+
+Requirements:
+- note metadata is local-only in v1
+- note content is file-backed local state
+- clearLocalCache should NOT delete note files under workspace root
+- disconnectDevice should NOT delete note files
+- if workspace root is missing, note actions should fail clearly and not fake success
+- if paper title changes from sync, existing note paths remain stable
+
+8. Tests
+Add or update tests covering at minimum:
+
+Rust desktop tests where practical:
+- listNoteTemplates returns all built-in templates
+- createPaperNoteFromTemplate creates note file and metadata row
+- createBlankPaperNote creates a markdown file under notes/
+- getPaperNote returns content and metadata
+- savePaperNote updates file content and metadata
+- refreshPaperNotes marks missing files appropriately
+- clearLocalCache does not delete note files
+- disconnectDevice does not delete note files
+- progress_percentage mapping remains unchanged
+
+Frontend / TS tests where practical:
+- template/read-model shaping helper if implemented
+- note editor state shaping helper if implemented
+
+Repo-level:
+- existing backend tests continue to pass
+
+9. Documentation
+Add docs/desktop_local_notes_templates_v1.md
+
+It should explain:
+- why notes/templates are local-only in v1
+- built-in template kinds
+- note metadata model
+- note file layout
+- create/read/save flow
+- local-only consistency model
+- current non-goals
+- future work:
+  - note sync
+  - richer revision-response tooling
+  - template customization
+  - markdown preview
+  - local backlinks/indexing
+
+Also update:
+- README.md
+- docs/development.md
+- docs/architecture.md
+- docs/desktop_local_workspace_v1.md
+- docs/desktop_writeback_sync_v1.md
+- any docs that should mention local notes/templates
+
+10. Quality bar
+- keep desktop code typed and readable
+- keep backend changes zero or minimal
+- do not add unnecessary dependencies
+- do not require live backend credentials in tests
+- do not add AI note generation
+- run available checks
+- fix obvious lint/test issues
+- end with a concise summary:
+  - files changed
+  - whether any backend migration was needed
+  - new local tables
+  - new commands
+  - template kinds
+  - next-phase recommendation only
