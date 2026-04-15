@@ -263,6 +263,26 @@ class Settings(BaseSettings):
         default=False,
         validation_alias="APP_DIGEST_AUTO_PREPARE_OFFICIAL_ACCOUNT",
     )
+    digest_auto_dispatch_official_account: bool = Field(
+        default=False,
+        validation_alias="APP_DIGEST_AUTO_DISPATCH_OFFICIAL_ACCOUNT",
+    )
+    digest_dispatch_max_publication_jobs_per_run: int = Field(
+        default=20,
+        validation_alias="APP_DIGEST_DISPATCH_MAX_PUBLICATION_JOBS_PER_RUN",
+    )
+    digest_dispatch_retry_failed_jobs: bool = Field(
+        default=False,
+        validation_alias="APP_DIGEST_DISPATCH_RETRY_FAILED_JOBS",
+    )
+    digest_dispatch_prepare_if_missing: bool = Field(
+        default=False,
+        validation_alias="APP_DIGEST_DISPATCH_PREPARE_IF_MISSING",
+    )
+    digest_auto_dispatch_require_real_mode: bool = Field(
+        default=True,
+        validation_alias="APP_DIGEST_AUTO_DISPATCH_REQUIRE_REAL_MODE",
+    )
     official_account_provider_mode: OfficialAccountProviderMode = Field(
         default=OfficialAccountProviderMode.DISABLED,
         validation_alias="APP_OFFICIAL_ACCOUNT_PROVIDER_MODE",

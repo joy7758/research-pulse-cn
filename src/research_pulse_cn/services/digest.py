@@ -20,6 +20,7 @@ from research_pulse_cn.core.errors import ConflictError, NotFoundError
 from research_pulse_cn.core.metrics import get_metrics
 from research_pulse_cn.core.request_context import bind_log_context
 from research_pulse_cn.db.models import (
+    DigestDispatchRun,
     DigestPublicationAttempt,
     DigestPublicationJob,
     OfficialAccountCallbackEvent,
@@ -32,6 +33,8 @@ from research_pulse_cn.db.models import (
     utcnow,
 )
 from research_pulse_cn.domain.enums import (
+    DigestDispatchMode,
+    DigestDispatchRunStatus,
     DigestPublicationAttemptStatus,
     DigestPublicationMode,
     DigestPublicationStatus,
@@ -90,6 +93,28 @@ class DispatchPublicationResult:
     action: str
     publication_job: DigestPublicationJob
     attempt: DigestPublicationAttempt | None
+
+
+@dataclass(slots=True)
+class DigestIssueDispatchPreview:
+    issue: PulseDigestIssue
+    provider_status: dict[str, Any]
+    total_publication_jobs: int
+    eligible_jobs: list[DigestPublicationJob]
+    already_sent_jobs: list[DigestPublicationJob]
+    failed_jobs: list[DigestPublicationJob]
+    skipped_reasons: list[str]
+    would_prepare: bool
+    retry_failed: bool
+    force_prepare: bool
+
+
+@dataclass(slots=True)
+class DigestDispatchRunResult:
+    action: str
+    issue: PulseDigestIssue
+    dispatch_run: DigestDispatchRun
+    publication_jobs: list[DigestPublicationJob]
 
 
 @dataclass(slots=True)
@@ -372,6 +397,296 @@ class DigestService:
             ),
         }
 
+    def get_dispatch_preview(
+        self,
+        digest_issue_id: UUID,
+        *,
+        retry_failed: bool = False,
+        force_prepare: bool = False,
+    ) -> DigestIssueDispatchPreview:
+        issue = self.get_digest_issue(digest_issue_id)
+        provider_status = self.provider_status()
+        publication_jobs = [
+            job
+            for job in issue.publication_jobs
+            if job.publish_target == DigestPublicationTarget.OFFICIAL_ACCOUNT
+        ]
+        effective_retry_failed = retry_failed or self.settings.digest_dispatch_retry_failed_jobs
+        would_prepare = bool(
+            not publication_jobs
+            and (force_prepare or self.settings.digest_dispatch_prepare_if_missing)
+        )
+        eligible_jobs = self._select_dispatch_eligible_jobs(
+            publication_jobs,
+            retry_failed=effective_retry_failed,
+        )
+        already_sent_jobs = [
+            job for job in publication_jobs if job.status == DigestPublicationStatus.SENT
+        ]
+        failed_jobs = [
+            job for job in publication_jobs if job.status == DigestPublicationStatus.FAILED
+        ]
+        skipped_reasons: list[str] = []
+        running_run = self.repository.get_running_dispatch_run(
+            digest_issue_id=issue.id,
+            publish_target=DigestPublicationTarget.OFFICIAL_ACCOUNT,
+        )
+        if running_run is not None:
+            skipped_reasons.append("an official-account dispatch run is already in progress")
+        if provider_status["mode"] == OfficialAccountProviderMode.DISABLED:
+            skipped_reasons.append("official-account provider mode is disabled")
+        elif (
+            provider_status["mode"] == OfficialAccountProviderMode.REAL
+            and not provider_status["readiness"]
+        ):
+            skipped_reasons.append(
+                "official-account provider is not ready: "
+                + "; ".join(provider_status["readiness_failures"])
+            )
+        if not publication_jobs and not would_prepare:
+            skipped_reasons.append(
+                "no prepared official-account publication jobs exist for this issue"
+            )
+        if publication_jobs and not eligible_jobs:
+            skipped_reasons.append(
+                "no eligible official-account publication jobs remain for dispatch"
+            )
+        if len(eligible_jobs) > self.settings.digest_dispatch_max_publication_jobs_per_run:
+            skipped_reasons.append(
+                "eligible jobs exceed the per-run cap and will be truncated during dispatch"
+            )
+        return DigestIssueDispatchPreview(
+            issue=issue,
+            provider_status=provider_status,
+            total_publication_jobs=len(publication_jobs),
+            eligible_jobs=eligible_jobs[
+                : self.settings.digest_dispatch_max_publication_jobs_per_run
+            ],
+            already_sent_jobs=already_sent_jobs,
+            failed_jobs=failed_jobs,
+            skipped_reasons=skipped_reasons,
+            would_prepare=would_prepare,
+            retry_failed=effective_retry_failed,
+            force_prepare=force_prepare,
+        )
+
+    def list_dispatch_runs(
+        self,
+        *,
+        user_id: UUID | None = None,
+        digest_issue_id: UUID | None = None,
+        status: DigestDispatchRunStatus | None = None,
+        dispatch_mode: DigestDispatchMode | None = None,
+        publish_target: DigestPublicationTarget | None = None,
+    ) -> list[DigestDispatchRun]:
+        return self.repository.list_dispatch_runs(
+            user_id=user_id,
+            digest_issue_id=digest_issue_id,
+            status=status,
+            dispatch_mode=dispatch_mode,
+            publish_target=publish_target,
+        )
+
+    def get_dispatch_run(self, dispatch_run_id: UUID) -> DigestDispatchRun:
+        dispatch_run = self.repository.get_dispatch_run(dispatch_run_id)
+        if dispatch_run is None:
+            raise NotFoundError(f"digest dispatch run {dispatch_run_id} was not found")
+        return dispatch_run
+
+    def serialize_dispatch_run(self, dispatch_run: DigestDispatchRun) -> dict[str, Any]:
+        return {
+            "id": dispatch_run.id,
+            "digest_issue_id": dispatch_run.digest_issue_id,
+            "user_id": dispatch_run.user_id,
+            "publish_target": dispatch_run.publish_target,
+            "dispatch_mode": dispatch_run.dispatch_mode,
+            "provider_mode": dispatch_run.provider_mode,
+            "status": dispatch_run.status,
+            "total_jobs": dispatch_run.total_jobs,
+            "eligible_jobs": dispatch_run.eligible_jobs,
+            "previewed_jobs": dispatch_run.previewed_jobs,
+            "sent_jobs": dispatch_run.sent_jobs,
+            "failed_jobs": dispatch_run.failed_jobs,
+            "skipped_jobs": dispatch_run.skipped_jobs,
+            "started_at": dispatch_run.started_at,
+            "finished_at": dispatch_run.finished_at,
+            "last_error": dispatch_run.last_error,
+            "created_at": dispatch_run.created_at,
+            "updated_at": dispatch_run.updated_at,
+        }
+
+    def dispatch_digest_issue(
+        self,
+        digest_issue_id: UUID,
+        *,
+        dispatch_mode: DigestDispatchMode = DigestDispatchMode.MANUAL,
+        retry_failed: bool = False,
+        force_prepare: bool = False,
+        auto_commit: bool = True,
+        create_skipped_run_if_no_eligible: bool = True,
+    ) -> DigestDispatchRunResult | None:
+        issue = self.get_digest_issue(digest_issue_id)
+        effective_retry_failed = retry_failed or self.settings.digest_dispatch_retry_failed_jobs
+        preview = self.get_dispatch_preview(
+            digest_issue_id,
+            retry_failed=effective_retry_failed,
+            force_prepare=force_prepare,
+        )
+        provider_status = preview.provider_status
+        running_run = self.repository.get_running_dispatch_run(
+            digest_issue_id=issue.id,
+            publish_target=DigestPublicationTarget.OFFICIAL_ACCOUNT,
+        )
+        if running_run is not None:
+            raise ConflictError("an official-account dispatch run is already in progress")
+        self._validate_dispatch_provider_mode(
+            provider_status=provider_status,
+            dispatch_mode=dispatch_mode,
+        )
+
+        publication_jobs = [
+            job
+            for job in issue.publication_jobs
+            if job.publish_target == DigestPublicationTarget.OFFICIAL_ACCOUNT
+        ]
+        if not publication_jobs and preview.would_prepare:
+            self.prepare_publication(
+                issue.id,
+                publish_mode=DigestPublicationMode.MANUAL_PREVIEW,
+                auto_commit=False,
+            )
+            self.session.flush()
+            self.session.expire(issue, ["publication_jobs"])
+            issue = self.get_digest_issue(issue.id)
+            publication_jobs = [
+                job
+                for job in issue.publication_jobs
+                if job.publish_target == DigestPublicationTarget.OFFICIAL_ACCOUNT
+            ]
+
+        eligible_jobs = self._select_dispatch_eligible_jobs(
+            publication_jobs,
+            retry_failed=effective_retry_failed,
+        )[: self.settings.digest_dispatch_max_publication_jobs_per_run]
+        skipped_count = max(0, len(publication_jobs) - len(eligible_jobs))
+
+        if not eligible_jobs:
+            if not create_skipped_run_if_no_eligible:
+                return None
+            dispatch_run = DigestDispatchRun(
+                digest_issue_id=issue.id,
+                user_id=issue.user_id,
+                publish_target=DigestPublicationTarget.OFFICIAL_ACCOUNT,
+                dispatch_mode=dispatch_mode,
+                provider_mode=self.settings.official_account_provider_mode,
+                status=DigestDispatchRunStatus.SKIPPED,
+                total_jobs=len(publication_jobs),
+                eligible_jobs=0,
+                previewed_jobs=0,
+                sent_jobs=0,
+                failed_jobs=0,
+                skipped_jobs=len(publication_jobs),
+                started_at=self.now_provider(),
+                finished_at=self.now_provider(),
+                last_error=(
+                    None if not preview.skipped_reasons else "; ".join(preview.skipped_reasons[:3])
+                ),
+            )
+            self.repository.add_dispatch_run(dispatch_run)
+            if auto_commit:
+                commit_session(self.session)
+                issue = self.get_digest_issue(issue.id)
+                dispatch_run = self.get_dispatch_run(dispatch_run.id)
+            return DigestDispatchRunResult(
+                action="skipped",
+                issue=issue,
+                dispatch_run=dispatch_run,
+                publication_jobs=publication_jobs,
+            )
+
+        dispatch_run = DigestDispatchRun(
+            digest_issue_id=issue.id,
+            user_id=issue.user_id,
+            publish_target=DigestPublicationTarget.OFFICIAL_ACCOUNT,
+            dispatch_mode=dispatch_mode,
+            provider_mode=self.settings.official_account_provider_mode,
+            status=DigestDispatchRunStatus.RUNNING,
+            total_jobs=len(publication_jobs),
+            eligible_jobs=len(eligible_jobs),
+            previewed_jobs=0,
+            sent_jobs=0,
+            failed_jobs=0,
+            skipped_jobs=skipped_count,
+            started_at=self.now_provider(),
+        )
+        self.repository.add_dispatch_run(dispatch_run)
+        self.metrics.increment("digest_dispatch_runs_started_total")
+
+        previewed_jobs = 0
+        sent_jobs = 0
+        failed_jobs = 0
+        last_error: str | None = None
+
+        with bind_log_context(
+            digest_issue_id=issue.id,
+            dispatch_run_id=dispatch_run.id,
+            user_id=issue.user_id,
+        ):
+            for job in eligible_jobs:
+                try:
+                    result = self.dispatch_publication_job(
+                        job.id,
+                        force=True,
+                        dispatch_run_id=dispatch_run.id,
+                    )
+                except (ConflictError, RuntimeError) as exc:
+                    failed_jobs += 1
+                    last_error = str(exc)
+                    logger.warning(
+                        "digest publication job failed during issue dispatch",
+                        extra={"publication_job_id": str(job.id)},
+                    )
+                    continue
+                if result.action == "sent":
+                    sent_jobs += 1
+                elif result.action == "previewed":
+                    previewed_jobs += 1
+                else:
+                    failed_jobs += 1
+                    last_error = f"unexpected dispatch action: {result.action}"
+
+        dispatch_run.previewed_jobs = previewed_jobs
+        dispatch_run.sent_jobs = sent_jobs
+        dispatch_run.failed_jobs = failed_jobs
+        dispatch_run.last_error = last_error
+        dispatch_run.finished_at = self.now_provider()
+        dispatch_run.status = self._resolve_dispatch_run_status(
+            eligible_jobs=len(eligible_jobs),
+            previewed_jobs=previewed_jobs,
+            sent_jobs=sent_jobs,
+            failed_jobs=failed_jobs,
+        )
+        if sent_jobs:
+            self.metrics.increment("digest_dispatch_jobs_sent_total", sent_jobs)
+        if dispatch_run.status == DigestDispatchRunStatus.COMPLETED:
+            self.metrics.increment("digest_dispatch_runs_completed_total")
+        elif dispatch_run.status in (
+            DigestDispatchRunStatus.FAILED,
+            DigestDispatchRunStatus.PARTIAL_FAILED,
+        ):
+            self.metrics.increment("digest_dispatch_runs_failed_total")
+
+        if auto_commit:
+            commit_session(self.session)
+            issue = self.get_digest_issue(issue.id)
+            dispatch_run = self.get_dispatch_run(dispatch_run.id)
+        return DigestDispatchRunResult(
+            action=dispatch_run.status.value,
+            issue=issue,
+            dispatch_run=dispatch_run,
+            publication_jobs=self.list_publication_jobs(digest_issue_id=issue.id),
+        )
+
     def list_publication_jobs(
         self,
         *,
@@ -452,6 +767,7 @@ class DigestService:
         return {
             "id": attempt.id,
             "digest_publication_job_id": attempt.digest_publication_job_id,
+            "dispatch_run_id": attempt.dispatch_run_id,
             "digest_issue_id": job.digest_issue_id,
             "user_id": job.digest_issue.user_id,
             "binding_id": job.binding_id,
@@ -496,6 +812,7 @@ class DigestService:
         publication_job_id: UUID,
         *,
         force: bool = False,
+        dispatch_run_id: UUID | None = None,
     ) -> DispatchPublicationResult:
         job = self.get_publication_job(publication_job_id)
         if job.publish_target != DigestPublicationTarget.OFFICIAL_ACCOUNT:
@@ -519,6 +836,7 @@ class DigestService:
         latest_attempt = self.repository.get_latest_publication_attempt(publication_job_id=job.id)
         if (
             self.settings.official_account_provider_mode == OfficialAccountProviderMode.DRY_RUN
+            and not force
             and job.status == DigestPublicationStatus.PREVIEWED
             and latest_attempt is not None
             and latest_attempt.status == DigestPublicationAttemptStatus.PREVIEWED
@@ -533,6 +851,7 @@ class DigestService:
         attempt_number = 1 if latest_attempt is None else latest_attempt.attempt_number + 1
         attempt = DigestPublicationAttempt(
             digest_publication_job_id=job.id,
+            dispatch_run_id=dispatch_run_id,
             attempt_number=attempt_number,
             provider_name=publisher.provider_name,
             provider_mode=publisher.provider_mode,
@@ -787,6 +1106,61 @@ class DigestService:
             issue.title = str(content_payload["title"])
             issue.summary = str(content_payload["summary"])
             issue.highlight_count = int(content_payload["highlight_count"])
+            orchestration_metadata: dict[str, Any] = {
+                "section_order": list(content_payload.get("section_order") or []),
+                "section_item_counts": {
+                    str(section.get("kind")): int(section.get("item_count") or 0)
+                    for section in list(content_payload.get("sections") or [])
+                },
+                "auto_prepare_official_account": (
+                    self.settings.digest_auto_prepare_official_account
+                ),
+                "auto_dispatch_official_account": (
+                    self.settings.digest_auto_dispatch_official_account
+                ),
+            }
+            if ordered_cards and self.settings.digest_auto_prepare_official_account:
+                self.prepare_publication(
+                    issue.id,
+                    publish_mode=DigestPublicationMode.MANUAL_PREVIEW,
+                    auto_commit=False,
+                )
+                self.session.flush()
+                self.session.expire(issue, ["publication_jobs"])
+                if self.settings.digest_auto_dispatch_official_account:
+                    auto_dispatch_note: dict[str, Any] = {
+                        "attempted": True,
+                        "required_real_mode": self.settings.digest_auto_dispatch_require_real_mode,
+                    }
+                    try:
+                        auto_dispatch_result = self.dispatch_digest_issue(
+                            issue.id,
+                            dispatch_mode=DigestDispatchMode.AUTO_AFTER_ORCHESTRATION,
+                            retry_failed=self.settings.digest_dispatch_retry_failed_jobs,
+                            force_prepare=False,
+                            auto_commit=False,
+                            create_skipped_run_if_no_eligible=False,
+                        )
+                    except ConflictError as exc:
+                        auto_dispatch_note["result"] = "skipped"
+                        auto_dispatch_note["reason"] = str(exc)
+                        logger.info("digest issue auto-dispatch skipped", extra=auto_dispatch_note)
+                    else:
+                        if auto_dispatch_result is None:
+                            auto_dispatch_note["result"] = "skipped"
+                            auto_dispatch_note["reason"] = (
+                                "no eligible official-account publication jobs remained "
+                                "for dispatch"
+                            )
+                        else:
+                            auto_dispatch_note["result"] = auto_dispatch_result.action
+                            auto_dispatch_note["dispatch_run_id"] = str(
+                                auto_dispatch_result.dispatch_run.id
+                            )
+                            auto_dispatch_note["dispatch_status"] = (
+                                auto_dispatch_result.dispatch_run.status.value
+                            )
+                    orchestration_metadata["auto_dispatch"] = auto_dispatch_note
 
             issue.build_metadata = {
                 "selection_source": "selected_pulse_cards_only",
@@ -794,24 +1168,9 @@ class DigestService:
                 "selected_card_ids": [str(card.id) for card in ordered_cards],
                 "selection_order": "existing_issue_sort_order_or_generated_at_asc",
                 "result": issue.status.value,
-                "orchestration": {
-                    "section_order": list(content_payload.get("section_order") or []),
-                    "section_item_counts": {
-                        str(section.get("kind")): int(section.get("item_count") or 0)
-                        for section in list(content_payload.get("sections") or [])
-                    },
-                    "auto_prepare_official_account": (
-                        self.settings.digest_auto_prepare_official_account
-                    ),
-                },
+                "orchestration": orchestration_metadata,
             }
             issue.content_payload = content_payload
-            if ordered_cards and self.settings.digest_auto_prepare_official_account:
-                self.prepare_publication(
-                    issue.id,
-                    publish_mode=DigestPublicationMode.MANUAL_PREVIEW,
-                    auto_commit=False,
-                )
             sync_event_type = (
                 SyncEventType.UPDATED if action == "updated" else SyncEventType.CREATED
             )
@@ -835,6 +1194,70 @@ class DigestService:
             commit_session(self.session)
             issue = self.get_digest_issue(issue.id)
         return DigestBuildResult(issue=issue, action=action)
+
+    def _select_dispatch_eligible_jobs(
+        self,
+        publication_jobs: Sequence[DigestPublicationJob],
+        *,
+        retry_failed: bool,
+    ) -> list[DigestPublicationJob]:
+        eligible: list[DigestPublicationJob] = []
+        for job in publication_jobs:
+            if job.publish_target != DigestPublicationTarget.OFFICIAL_ACCOUNT:
+                continue
+            if job.status in (DigestPublicationStatus.PREPARED, DigestPublicationStatus.PREVIEWED):
+                eligible.append(job)
+                continue
+            if job.status == DigestPublicationStatus.FAILED and retry_failed:
+                eligible.append(job)
+        eligible.sort(
+            key=lambda job: (
+                0 if job.status == DigestPublicationStatus.PREPARED else 1,
+                0 if job.prepared_at is None else 1,
+                job.prepared_at or job.created_at,
+                str(job.id),
+            )
+        )
+        return eligible
+
+    def _validate_dispatch_provider_mode(
+        self,
+        *,
+        provider_status: dict[str, Any],
+        dispatch_mode: DigestDispatchMode,
+    ) -> None:
+        provider_mode = provider_status["mode"]
+        if provider_mode == OfficialAccountProviderMode.DISABLED:
+            raise ConflictError("official-account provider mode is disabled")
+        if dispatch_mode == DigestDispatchMode.AUTO_AFTER_ORCHESTRATION:
+            if self.settings.digest_auto_dispatch_require_real_mode and (
+                provider_mode != OfficialAccountProviderMode.REAL
+                or not provider_status["real_send_enabled"]
+            ):
+                raise ConflictError(
+                    "auto dispatch requires official-account real mode with real send enabled"
+                )
+        if provider_mode == OfficialAccountProviderMode.REAL and not provider_status["readiness"]:
+            raise ConflictError(
+                "official-account provider is not ready: "
+                + "; ".join(provider_status["readiness_failures"])
+            )
+
+    def _resolve_dispatch_run_status(
+        self,
+        *,
+        eligible_jobs: int,
+        previewed_jobs: int,
+        sent_jobs: int,
+        failed_jobs: int,
+    ) -> DigestDispatchRunStatus:
+        if eligible_jobs <= 0:
+            return DigestDispatchRunStatus.SKIPPED
+        if failed_jobs <= 0:
+            return DigestDispatchRunStatus.COMPLETED
+        if previewed_jobs > 0 or sent_jobs > 0:
+            return DigestDispatchRunStatus.PARTIAL_FAILED
+        return DigestDispatchRunStatus.FAILED
 
     def _resolve_source_job(
         self,

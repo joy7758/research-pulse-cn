@@ -9,6 +9,8 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from research_pulse_cn.domain.enums import (
+    DigestDispatchMode,
+    DigestDispatchRunStatus,
     DigestPublicationAttemptStatus,
     DigestPublicationMode,
     DigestPublicationStatus,
@@ -109,6 +111,7 @@ class DigestPublicationJobRead(ORMModel):
 class DigestPublicationAttemptRead(BaseModel):
     id: UUID
     digest_publication_job_id: UUID
+    dispatch_run_id: UUID | None
     digest_issue_id: UUID
     user_id: UUID
     binding_id: UUID | None
@@ -212,6 +215,31 @@ class PulseDigestIssueDetailRead(PulseDigestIssueRead):
     publication_jobs: list[DigestPublicationJobRead] = Field(default_factory=list)
 
 
+class DigestDispatchRunRead(ORMModel):
+    id: UUID
+    digest_issue_id: UUID
+    user_id: UUID
+    publish_target: DigestPublicationTarget
+    dispatch_mode: DigestDispatchMode
+    provider_mode: OfficialAccountProviderMode
+    status: DigestDispatchRunStatus
+    total_jobs: int
+    eligible_jobs: int
+    previewed_jobs: int
+    sent_jobs: int
+    failed_jobs: int
+    skipped_jobs: int
+    started_at: datetime | None
+    finished_at: datetime | None
+    last_error: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class DigestDispatchRunDetailRead(DigestDispatchRunRead):
+    attempts: list[DigestPublicationAttemptRead] = Field(default_factory=list)
+
+
 class DigestIssueBuildRequest(BaseModel):
     issue_date: date | None = None
     source_pulse_job_id: UUID | None = None
@@ -243,3 +271,28 @@ class DigestIssueDailyPreviewResponse(BaseModel):
     issue: PulseDigestIssueDetailRead
     content_payload: dict[str, Any]
     publication_preview: dict[str, Any] | None = None
+
+
+class DigestIssueDispatchRequest(BaseModel):
+    retry_failed: bool = False
+    force_prepare: bool = False
+
+
+class DigestIssueDispatchPreviewResponse(BaseModel):
+    issue: PulseDigestIssueDetailRead
+    provider_status: OfficialAccountProviderStatusRead
+    total_publication_jobs: int
+    eligible_jobs: int
+    already_sent_jobs: int
+    failed_jobs: int
+    skipped_reasons: list[str] = Field(default_factory=list)
+    would_prepare: bool
+    retry_failed: bool
+    force_prepare: bool
+
+
+class DigestIssueDispatchResponse(BaseModel):
+    action: str
+    issue: PulseDigestIssueDetailRead
+    dispatch_run: DigestDispatchRunRead
+    publication_jobs: list[DigestPublicationJobRead] = Field(default_factory=list)

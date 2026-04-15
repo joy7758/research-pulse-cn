@@ -53,6 +53,10 @@ COUNTER_NAMES = (
     "daily_digest_issues_orchestrated_total",
     "daily_digest_publication_prepared_total",
     "daily_digest_preview_requests_total",
+    "digest_dispatch_runs_started_total",
+    "digest_dispatch_runs_completed_total",
+    "digest_dispatch_runs_failed_total",
+    "digest_dispatch_jobs_sent_total",
 )
 
 

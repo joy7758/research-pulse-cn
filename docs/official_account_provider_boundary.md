@@ -63,6 +63,7 @@ Current behavior:
 - `DigestPublicationAttempt` records one dispatch attempt for one publication job.
 - Key fields:
   - `digest_publication_job_id`
+  - `dispatch_run_id`
   - `attempt_number`
   - `provider_name`
   - `provider_mode`
@@ -87,6 +88,20 @@ Current behavior:
 7. In `dry_run` mode the attempt becomes `previewed` and the job becomes `previewed`.
 8. In `real` mode a provider-backed attempt can become `sent` or `failed`.
 9. In `disabled` mode the attempt is recorded as failed and the request returns a controlled conflict.
+
+## Issue-Level Dispatch Orchestration
+- `DigestDispatchRun` adds a small orchestration layer above per-job dispatch.
+- It does not replace the provider boundary.
+- Instead it:
+  - loads one `PulseDigestIssue`
+  - gathers eligible `official_account` publication jobs
+  - dispatches them one by one through the existing job-level service
+  - aggregates counts such as `previewed_jobs`, `sent_jobs`, and `failed_jobs`
+- New admin endpoints:
+  - `GET /admin/digest-issues/{digest_issue_id}/dispatch-preview`
+  - `POST /admin/digest-issues/{digest_issue_id}/dispatch`
+  - `GET /admin/digest-dispatch-runs`
+  - `GET /admin/digest-dispatch-runs/{dispatch_run_id}`
 
 ## Inbound Callback Flow
 ### GET handshake

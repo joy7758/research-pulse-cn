@@ -15,9 +15,12 @@ from research_pulse_cn.core.errors import ConflictError
 from research_pulse_cn.domain.auth import ActorContext
 from research_pulse_cn.domain.enums import (
     AdminRole,
+    DigestDispatchMode,
+    DigestDispatchRunStatus,
     DigestPublicationAttemptStatus,
     DigestPublicationMode,
     DigestPublicationStatus,
+    DigestPublicationTarget,
     OfficialAccountCallbackProcessingStatus,
     OfficialAccountProviderMode,
     PulseDigestIssueStatus,
@@ -25,9 +28,14 @@ from research_pulse_cn.domain.enums import (
     WeChatBindingChannelType,
 )
 from research_pulse_cn.schemas.digest import (
+    DigestDispatchRunDetailRead,
+    DigestDispatchRunRead,
     DigestIssueBuildRequest,
     DigestIssueBuildResponse,
     DigestIssueDailyPreviewResponse,
+    DigestIssueDispatchPreviewResponse,
+    DigestIssueDispatchRequest,
+    DigestIssueDispatchResponse,
     DigestIssueOrchestrateResponse,
     DigestPublicationAttemptRead,
     DigestPublicationDispatchResponse,
@@ -339,6 +347,123 @@ def prepare_digest_publication(
     )
 
 
+@router.get(
+    "/digest-issues/{digest_issue_id}/dispatch-preview",
+    response_model=DigestIssueDispatchPreviewResponse,
+)
+def preview_digest_issue_dispatch(
+    digest_issue_id: UUID,
+    request: Request,
+    actor: OperatorDep,
+    service: DigestServiceDep,
+    audit_service: AuditServiceDep,
+    retry_failed: Annotated[bool, Query()] = False,
+    force_prepare: Annotated[bool, Query()] = False,
+) -> DigestIssueDispatchPreviewResponse:
+    preview = service.get_dispatch_preview(
+        digest_issue_id,
+        retry_failed=retry_failed,
+        force_prepare=force_prepare,
+    )
+    audit_request_action(
+        audit_service=audit_service,
+        request=request,
+        actor=actor,
+        action="digest_issue.dispatch_preview",
+        resource_type="pulse_digest_issue",
+        resource_id=str(preview.issue.id),
+        status_code=200,
+        metadata={
+            "user_id": str(preview.issue.user_id),
+            "issue_date": preview.issue.issue_date.isoformat(),
+            "eligible_jobs": len(preview.eligible_jobs),
+            "already_sent_jobs": len(preview.already_sent_jobs),
+            "would_prepare": preview.would_prepare,
+            "retry_failed": preview.retry_failed,
+            "force_prepare": preview.force_prepare,
+        },
+    )
+    return DigestIssueDispatchPreviewResponse(
+        issue=PulseDigestIssueDetailRead.model_validate(preview.issue),
+        provider_status=OfficialAccountProviderStatusRead(**preview.provider_status),
+        total_publication_jobs=preview.total_publication_jobs,
+        eligible_jobs=len(preview.eligible_jobs),
+        already_sent_jobs=len(preview.already_sent_jobs),
+        failed_jobs=len(preview.failed_jobs),
+        skipped_reasons=list(preview.skipped_reasons),
+        would_prepare=preview.would_prepare,
+        retry_failed=preview.retry_failed,
+        force_prepare=preview.force_prepare,
+    )
+
+
+@router.post(
+    "/digest-issues/{digest_issue_id}/dispatch",
+    response_model=DigestIssueDispatchResponse,
+)
+def dispatch_digest_issue(
+    digest_issue_id: UUID,
+    payload: DigestIssueDispatchRequest,
+    request: Request,
+    actor: OperatorDep,
+    service: DigestServiceDep,
+    audit_service: AuditServiceDep,
+) -> DigestIssueDispatchResponse:
+    try:
+        result = service.dispatch_digest_issue(
+            digest_issue_id,
+            dispatch_mode=(
+                DigestDispatchMode.RETRY_FAILED
+                if payload.retry_failed
+                else DigestDispatchMode.MANUAL
+            ),
+            retry_failed=payload.retry_failed,
+            force_prepare=payload.force_prepare,
+        )
+    except ConflictError:
+        audit_request_action(
+            audit_service=audit_service,
+            request=request,
+            actor=actor,
+            action="digest_issue.dispatch",
+            resource_type="pulse_digest_issue",
+            resource_id=str(digest_issue_id),
+            status_code=409,
+            metadata={
+                "retry_failed": payload.retry_failed,
+                "force_prepare": payload.force_prepare,
+                "action_result": "conflict",
+            },
+        )
+        raise
+    assert result is not None
+    audit_request_action(
+        audit_service=audit_service,
+        request=request,
+        actor=actor,
+        action="digest_issue.dispatch",
+        resource_type="pulse_digest_issue",
+        resource_id=str(result.issue.id),
+        status_code=200,
+        metadata={
+            "user_id": str(result.issue.user_id),
+            "issue_date": result.issue.issue_date.isoformat(),
+            "dispatch_run_id": str(result.dispatch_run.id),
+            "dispatch_status": result.dispatch_run.status.value,
+            "retry_failed": payload.retry_failed,
+            "force_prepare": payload.force_prepare,
+        },
+    )
+    return DigestIssueDispatchResponse(
+        action=result.action,
+        issue=PulseDigestIssueDetailRead.model_validate(result.issue),
+        dispatch_run=DigestDispatchRunRead(**service.serialize_dispatch_run(result.dispatch_run)),
+        publication_jobs=[
+            DigestPublicationJobRead.model_validate(job) for job in result.publication_jobs
+        ],
+    )
+
+
 @router.get("/digest-publication-jobs", response_model=list[DigestPublicationJobRead])
 def list_digest_publication_jobs(
     _actor: OperatorDep,
@@ -433,6 +558,47 @@ def list_digest_publication_attempts(
             provider_mode=provider_mode,
         )
     ]
+
+
+@router.get("/digest-dispatch-runs", response_model=list[DigestDispatchRunRead])
+def list_digest_dispatch_runs(
+    _actor: OperatorDep,
+    service: DigestServiceDep,
+    user_id: UserIdQuery = None,
+    digest_issue_id: Annotated[UUID | None, Query()] = None,
+    status: Annotated[DigestDispatchRunStatus | None, Query()] = None,
+    dispatch_mode: Annotated[DigestDispatchMode | None, Query()] = None,
+    publish_target: Annotated[DigestPublicationTarget | None, Query()] = None,
+) -> list[DigestDispatchRunRead]:
+    return [
+        DigestDispatchRunRead(**service.serialize_dispatch_run(dispatch_run))
+        for dispatch_run in service.list_dispatch_runs(
+            user_id=user_id,
+            digest_issue_id=digest_issue_id,
+            status=status,
+            dispatch_mode=dispatch_mode,
+            publish_target=publish_target,
+        )
+    ]
+
+
+@router.get(
+    "/digest-dispatch-runs/{dispatch_run_id}",
+    response_model=DigestDispatchRunDetailRead,
+)
+def get_digest_dispatch_run(
+    dispatch_run_id: UUID,
+    _actor: OperatorDep,
+    service: DigestServiceDep,
+) -> DigestDispatchRunDetailRead:
+    dispatch_run = service.get_dispatch_run(dispatch_run_id)
+    return DigestDispatchRunDetailRead(
+        **service.serialize_dispatch_run(dispatch_run),
+        attempts=[
+            DigestPublicationAttemptRead(**service.serialize_publication_attempt(attempt))
+            for attempt in dispatch_run.attempts
+        ],
+    )
 
 
 @router.get(

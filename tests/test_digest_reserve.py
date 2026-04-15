@@ -5,8 +5,11 @@ from uuid import UUID
 import httpx
 
 from research_pulse_cn.core.config import get_settings
-from research_pulse_cn.db.models import PaperProfile, PulseCard, PulseJob, utcnow
+from research_pulse_cn.db.models import DigestDispatchRun, PaperProfile, PulseCard, PulseJob, utcnow
 from research_pulse_cn.domain.enums import (
+    DigestDispatchMode,
+    DigestDispatchRunStatus,
+    DigestPublicationTarget,
     OfficialAccountProviderMode,
     PaperType,
     PulseCardType,
@@ -106,6 +109,24 @@ def create_device(client, headers, *, user_id: str) -> dict:
             "user_id": user_id,
             "client_type": "desktop",
             "display_name": "Digest Desktop",
+        },
+    )
+    assert response.status_code == 201
+    return response.json()
+
+
+def create_official_account_binding(client, headers, *, user_id: str, openid: str) -> dict:
+    response = client.post(
+        "/admin/wechat-bindings",
+        headers=headers,
+        json={
+            "user_id": user_id,
+            "channel_type": WeChatBindingChannelType.OFFICIAL_ACCOUNT.value,
+            "app_id": "wx-official-app",
+            "openid": openid,
+            "bind_state": WeChatBindingState.ACTIVE.value,
+            "subscribed": True,
+            "digest_enabled": True,
         },
     )
     assert response.status_code == 201
@@ -1349,6 +1370,492 @@ def test_already_sent_publication_job_is_not_redispatched_by_default(
     assert second.json()["action"] == "already_sent"
     assert len(attempts.json()) == 1
     assert calls["send"] == 1
+
+
+def test_issue_dispatch_preview_reports_eligible_and_already_sent_jobs(
+    client,
+    operator_headers,
+    monkeypatch,
+) -> None:
+    configure_official_account_settings(
+        monkeypatch,
+        provider_mode=OfficialAccountProviderMode.REAL.value,
+        real_send_enabled=True,
+    )
+    install_mock_official_account_http(monkeypatch)
+    user, _run_payload = create_digest_ready_user(
+        client,
+        operator_headers,
+        email="digest-issue-dispatch-preview@example.com",
+    )
+    digest_issue = client.get(
+        "/admin/digest-issues",
+        headers=operator_headers,
+        params={"user_id": user["id"]},
+    ).json()[0]
+    create_official_account_binding(
+        client,
+        operator_headers,
+        user_id=user["id"],
+        openid="issue-preview-openid-1",
+    )
+    create_official_account_binding(
+        client,
+        operator_headers,
+        user_id=user["id"],
+        openid="issue-preview-openid-2",
+    )
+    prepared = client.post(
+        f"/admin/digest-issues/{digest_issue['id']}/prepare-publication",
+        headers=operator_headers,
+    ).json()
+    first_job = prepared["publication_jobs"][0]
+    dispatched = client.post(
+        f"/admin/digest-publication-jobs/{first_job['id']}/dispatch",
+        headers=operator_headers,
+    )
+    assert dispatched.status_code == 200
+
+    preview = client.get(
+        f"/admin/digest-issues/{digest_issue['id']}/dispatch-preview",
+        headers=operator_headers,
+    )
+
+    assert preview.status_code == 200
+    assert preview.json()["provider_status"]["mode"] == "real"
+    assert preview.json()["total_publication_jobs"] == 2
+    assert preview.json()["eligible_jobs"] == 1
+    assert preview.json()["already_sent_jobs"] == 1
+    assert preview.json()["failed_jobs"] == 0
+    assert preview.json()["would_prepare"] is False
+
+
+def test_manual_issue_dispatch_in_dry_run_creates_completed_run(
+    client,
+    operator_headers,
+    monkeypatch,
+) -> None:
+    configure_official_account_settings(
+        monkeypatch,
+        provider_mode=OfficialAccountProviderMode.DRY_RUN.value,
+    )
+    user, _run_payload = create_digest_ready_user(
+        client,
+        operator_headers,
+        email="digest-issue-dry-run@example.com",
+    )
+    digest_issue = client.get(
+        "/admin/digest-issues",
+        headers=operator_headers,
+        params={"user_id": user["id"]},
+    ).json()[0]
+    create_official_account_binding(
+        client,
+        operator_headers,
+        user_id=user["id"],
+        openid="issue-dry-run-openid-1",
+    )
+    create_official_account_binding(
+        client,
+        operator_headers,
+        user_id=user["id"],
+        openid="issue-dry-run-openid-2",
+    )
+    client.post(
+        f"/admin/digest-issues/{digest_issue['id']}/prepare-publication",
+        headers=operator_headers,
+    )
+
+    dispatched = client.post(
+        f"/admin/digest-issues/{digest_issue['id']}/dispatch",
+        headers=operator_headers,
+        json={},
+    )
+
+    assert dispatched.status_code == 200
+    assert dispatched.json()["action"] == "completed"
+    assert dispatched.json()["dispatch_run"]["status"] == "completed"
+    assert dispatched.json()["dispatch_run"]["eligible_jobs"] == 2
+    assert dispatched.json()["dispatch_run"]["previewed_jobs"] == 2
+    assert dispatched.json()["dispatch_run"]["sent_jobs"] == 0
+    dispatch_run_id = dispatched.json()["dispatch_run"]["id"]
+
+    detail = client.get(
+        f"/admin/digest-dispatch-runs/{dispatch_run_id}",
+        headers=operator_headers,
+    )
+
+    assert detail.status_code == 200
+    assert len(detail.json()["attempts"]) == 2
+    assert all(
+        attempt["dispatch_run_id"] == dispatch_run_id for attempt in detail.json()["attempts"]
+    )
+
+
+def test_manual_issue_dispatch_in_real_mode_sends_all_eligible_jobs(
+    client,
+    operator_headers,
+    monkeypatch,
+) -> None:
+    configure_official_account_settings(
+        monkeypatch,
+        provider_mode=OfficialAccountProviderMode.REAL.value,
+        real_send_enabled=True,
+    )
+    calls = install_mock_official_account_http(monkeypatch)
+    user, _run_payload = create_digest_ready_user(
+        client,
+        operator_headers,
+        email="digest-issue-real-run@example.com",
+    )
+    digest_issue = client.get(
+        "/admin/digest-issues",
+        headers=operator_headers,
+        params={"user_id": user["id"]},
+    ).json()[0]
+    create_official_account_binding(
+        client,
+        operator_headers,
+        user_id=user["id"],
+        openid="issue-real-run-openid-1",
+    )
+    create_official_account_binding(
+        client,
+        operator_headers,
+        user_id=user["id"],
+        openid="issue-real-run-openid-2",
+    )
+    client.post(
+        f"/admin/digest-issues/{digest_issue['id']}/prepare-publication",
+        headers=operator_headers,
+    )
+
+    dispatched = client.post(
+        f"/admin/digest-issues/{digest_issue['id']}/dispatch",
+        headers=operator_headers,
+        json={},
+    )
+
+    assert dispatched.status_code == 200
+    assert dispatched.json()["action"] == "completed"
+    assert dispatched.json()["dispatch_run"]["status"] == "completed"
+    assert dispatched.json()["dispatch_run"]["sent_jobs"] == 2
+    assert dispatched.json()["dispatch_run"]["previewed_jobs"] == 0
+    assert calls["send"] == 2
+    dispatch_run_id = dispatched.json()["dispatch_run"]["id"]
+    detail = client.get(
+        f"/admin/digest-dispatch-runs/{dispatch_run_id}",
+        headers=operator_headers,
+    )
+    assert detail.status_code == 200
+    assert len(detail.json()["attempts"]) == 2
+    assert all(attempt["status"] == "sent" for attempt in detail.json()["attempts"])
+    assert all(
+        attempt["dispatch_run_id"] == dispatch_run_id for attempt in detail.json()["attempts"]
+    )
+
+
+def test_disabled_provider_mode_blocks_issue_dispatch_cleanly(
+    client,
+    operator_headers,
+    monkeypatch,
+) -> None:
+    configure_official_account_settings(
+        monkeypatch,
+        provider_mode=OfficialAccountProviderMode.DISABLED.value,
+    )
+    user, _run_payload = create_digest_ready_user(
+        client,
+        operator_headers,
+        email="digest-issue-dispatch-disabled@example.com",
+    )
+    digest_issue = client.get(
+        "/admin/digest-issues",
+        headers=operator_headers,
+        params={"user_id": user["id"]},
+    ).json()[0]
+    create_official_account_binding(
+        client,
+        operator_headers,
+        user_id=user["id"],
+        openid="issue-disabled-openid",
+    )
+    client.post(
+        f"/admin/digest-issues/{digest_issue['id']}/prepare-publication",
+        headers=operator_headers,
+    )
+
+    preview = client.get(
+        f"/admin/digest-issues/{digest_issue['id']}/dispatch-preview",
+        headers=operator_headers,
+    )
+    dispatched = client.post(
+        f"/admin/digest-issues/{digest_issue['id']}/dispatch",
+        headers=operator_headers,
+        json={},
+    )
+
+    assert preview.status_code == 200
+    assert "disabled" in " ".join(preview.json()["skipped_reasons"])
+    assert dispatched.status_code == 409
+    assert "disabled" in dispatched.json()["detail"]
+
+
+def test_issue_dispatch_skips_already_sent_jobs_by_default(
+    client,
+    operator_headers,
+    monkeypatch,
+) -> None:
+    configure_official_account_settings(
+        monkeypatch,
+        provider_mode=OfficialAccountProviderMode.REAL.value,
+        real_send_enabled=True,
+    )
+    calls = install_mock_official_account_http(monkeypatch)
+    user, _run_payload = create_digest_ready_user(
+        client,
+        operator_headers,
+        email="digest-issue-already-sent@example.com",
+    )
+    digest_issue = client.get(
+        "/admin/digest-issues",
+        headers=operator_headers,
+        params={"user_id": user["id"]},
+    ).json()[0]
+    create_official_account_binding(
+        client,
+        operator_headers,
+        user_id=user["id"],
+        openid="issue-already-sent-openid",
+    )
+    client.post(
+        f"/admin/digest-issues/{digest_issue['id']}/prepare-publication",
+        headers=operator_headers,
+    )
+
+    first = client.post(
+        f"/admin/digest-issues/{digest_issue['id']}/dispatch",
+        headers=operator_headers,
+        json={},
+    )
+    second = client.post(
+        f"/admin/digest-issues/{digest_issue['id']}/dispatch",
+        headers=operator_headers,
+        json={},
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert second.json()["action"] == "skipped"
+    assert second.json()["dispatch_run"]["status"] == "skipped"
+    assert second.json()["dispatch_run"]["eligible_jobs"] == 0
+    assert calls["send"] == 1
+
+
+def test_running_dispatch_run_blocks_concurrent_issue_dispatch(
+    client,
+    operator_headers,
+    session,
+    monkeypatch,
+) -> None:
+    configure_official_account_settings(
+        monkeypatch,
+        provider_mode=OfficialAccountProviderMode.DRY_RUN.value,
+    )
+    user, _run_payload = create_digest_ready_user(
+        client,
+        operator_headers,
+        email="digest-issue-concurrent@example.com",
+    )
+    digest_issue = client.get(
+        "/admin/digest-issues",
+        headers=operator_headers,
+        params={"user_id": user["id"]},
+    ).json()[0]
+    create_official_account_binding(
+        client,
+        operator_headers,
+        user_id=user["id"],
+        openid="issue-concurrent-openid",
+    )
+    client.post(
+        f"/admin/digest-issues/{digest_issue['id']}/prepare-publication",
+        headers=operator_headers,
+    )
+    session.add(
+        DigestDispatchRun(
+            digest_issue_id=UUID(digest_issue["id"]),
+            user_id=UUID(user["id"]),
+            publish_target=DigestPublicationTarget.OFFICIAL_ACCOUNT,
+            dispatch_mode=DigestDispatchMode.MANUAL,
+            provider_mode=OfficialAccountProviderMode.DRY_RUN,
+            status=DigestDispatchRunStatus.RUNNING,
+            total_jobs=1,
+            eligible_jobs=1,
+            started_at=utcnow(),
+        )
+    )
+    session.commit()
+
+    dispatched = client.post(
+        f"/admin/digest-issues/{digest_issue['id']}/dispatch",
+        headers=operator_headers,
+        json={},
+    )
+
+    assert dispatched.status_code == 409
+    assert "already in progress" in dispatched.json()["detail"]
+
+
+def test_issue_dispatch_can_prepare_missing_jobs_before_dispatch(
+    client,
+    operator_headers,
+    monkeypatch,
+) -> None:
+    configure_official_account_settings(
+        monkeypatch,
+        provider_mode=OfficialAccountProviderMode.DRY_RUN.value,
+    )
+    user, _run_payload = create_digest_ready_user(
+        client,
+        operator_headers,
+        email="digest-issue-force-prepare@example.com",
+    )
+    digest_issue = client.get(
+        "/admin/digest-issues",
+        headers=operator_headers,
+        params={"user_id": user["id"]},
+    ).json()[0]
+    create_official_account_binding(
+        client,
+        operator_headers,
+        user_id=user["id"],
+        openid="issue-force-prepare-openid",
+    )
+
+    preview = client.get(
+        f"/admin/digest-issues/{digest_issue['id']}/dispatch-preview",
+        headers=operator_headers,
+        params={"force_prepare": True},
+    )
+    dispatched = client.post(
+        f"/admin/digest-issues/{digest_issue['id']}/dispatch",
+        headers=operator_headers,
+        json={"force_prepare": True},
+    )
+
+    assert preview.status_code == 200
+    assert preview.json()["would_prepare"] is True
+    assert dispatched.status_code == 200
+    assert dispatched.json()["dispatch_run"]["status"] == "completed"
+    assert dispatched.json()["dispatch_run"]["previewed_jobs"] == 1
+    assert len(dispatched.json()["publication_jobs"]) == 1
+
+
+def test_auto_dispatch_runs_after_orchestration_when_enabled_and_ready(
+    client,
+    operator_headers,
+    session,
+    monkeypatch,
+) -> None:
+    configure_official_account_settings(
+        monkeypatch,
+        provider_mode=OfficialAccountProviderMode.REAL.value,
+        real_send_enabled=True,
+    )
+    monkeypatch.setenv("APP_DIGEST_AUTO_PREPARE_OFFICIAL_ACCOUNT", "true")
+    monkeypatch.setenv("APP_DIGEST_AUTO_DISPATCH_OFFICIAL_ACCOUNT", "true")
+    monkeypatch.setenv("APP_DIGEST_AUTO_DISPATCH_REQUIRE_REAL_MODE", "true")
+    get_settings.cache_clear()
+    calls = install_mock_official_account_http(monkeypatch)
+    user = create_user(client, operator_headers, email="digest-auto-dispatch-real@example.com")
+    create_official_account_binding(
+        client,
+        operator_headers,
+        user_id=user["id"],
+        openid="issue-auto-dispatch-real-openid",
+    )
+    seeded = seed_sectioned_digest_cards(session, user_id=user["id"])
+
+    orchestrated = client.post(
+        f"/admin/digest-issues/orchestrate/{user['id']}",
+        headers=operator_headers,
+        json={
+            "issue_date": seeded["issue_date"],
+            "source_pulse_job_id": seeded["pulse_job_id"],
+        },
+    )
+
+    assert orchestrated.status_code == 200
+    assert len(orchestrated.json()["publication_jobs"]) == 1
+    assert orchestrated.json()["publication_jobs"][0]["status"] == "sent"
+    dispatch_runs = client.get(
+        "/admin/digest-dispatch-runs",
+        headers=operator_headers,
+        params={"digest_issue_id": orchestrated.json()["issue"]["id"]},
+    )
+    assert dispatch_runs.status_code == 200
+    assert len(dispatch_runs.json()) == 1
+    assert dispatch_runs.json()[0]["dispatch_mode"] == "auto_after_orchestration"
+    assert dispatch_runs.json()[0]["status"] == "completed"
+    assert dispatch_runs.json()[0]["sent_jobs"] == 1
+    assert calls["send"] == 1
+
+
+def test_auto_dispatch_skips_dry_run_when_real_mode_is_required(
+    client,
+    operator_headers,
+    session,
+    monkeypatch,
+) -> None:
+    configure_official_account_settings(
+        monkeypatch,
+        provider_mode=OfficialAccountProviderMode.DRY_RUN.value,
+    )
+    monkeypatch.setenv("APP_DIGEST_AUTO_PREPARE_OFFICIAL_ACCOUNT", "true")
+    monkeypatch.setenv("APP_DIGEST_AUTO_DISPATCH_OFFICIAL_ACCOUNT", "true")
+    monkeypatch.setenv("APP_DIGEST_AUTO_DISPATCH_REQUIRE_REAL_MODE", "true")
+    get_settings.cache_clear()
+    user = create_user(client, operator_headers, email="digest-auto-dispatch-dry@example.com")
+    create_official_account_binding(
+        client,
+        operator_headers,
+        user_id=user["id"],
+        openid="issue-auto-dispatch-dry-openid",
+    )
+    seeded = seed_sectioned_digest_cards(session, user_id=user["id"])
+
+    orchestrated = client.post(
+        f"/admin/digest-issues/orchestrate/{user['id']}",
+        headers=operator_headers,
+        json={
+            "issue_date": seeded["issue_date"],
+            "source_pulse_job_id": seeded["pulse_job_id"],
+        },
+    )
+
+    assert orchestrated.status_code == 200
+    assert len(orchestrated.json()["publication_jobs"]) == 1
+    assert orchestrated.json()["publication_jobs"][0]["status"] == "prepared"
+    assert (
+        orchestrated.json()["issue"]["build_metadata"]["orchestration"]["auto_dispatch"]["result"]
+        == "skipped"
+    )
+    assert (
+        "real mode"
+        in (
+            orchestrated.json()["issue"]["build_metadata"]["orchestration"]["auto_dispatch"][
+                "reason"
+            ]
+        )
+    )
+    dispatch_runs = client.get(
+        "/admin/digest-dispatch-runs",
+        headers=operator_headers,
+        params={"digest_issue_id": orchestrated.json()["issue"]["id"]},
+    )
+    assert dispatch_runs.status_code == 200
+    assert dispatch_runs.json() == []
 
 
 def test_callback_verification_path_behaves_correctly_when_enabled(

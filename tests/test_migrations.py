@@ -25,6 +25,7 @@ def test_alembic_upgrade_creates_core_tables(tmp_path) -> None:
         "client_access_tokens",
         "digest_publication_jobs",
         "digest_publication_attempts",
+        "digest_dispatch_runs",
         "mini_read_grants",
         "official_account_callback_events",
         "sync_events",
@@ -225,6 +226,45 @@ def test_alembic_upgrade_creates_core_tables(tmp_path) -> None:
         "created_at",
         "updated_at",
     }.issubset(external_retrieved_record_columns)
+    digest_dispatch_run_columns = {
+        column["name"] for column in inspector.get_columns("digest_dispatch_runs")
+    }
+    assert {
+        "digest_issue_id",
+        "user_id",
+        "publish_target",
+        "dispatch_mode",
+        "provider_mode",
+        "status",
+        "total_jobs",
+        "eligible_jobs",
+        "previewed_jobs",
+        "sent_jobs",
+        "failed_jobs",
+        "skipped_jobs",
+        "started_at",
+        "finished_at",
+        "last_error",
+        "created_at",
+        "updated_at",
+    }.issubset(digest_dispatch_run_columns)
+    digest_publication_attempt_columns = {
+        column["name"] for column in inspector.get_columns("digest_publication_attempts")
+    }
+    assert {
+        "dispatch_run_id",
+        "provider_name",
+        "provider_mode",
+        "status",
+        "request_payload",
+        "response_payload",
+        "error_summary",
+        "external_message_id",
+        "provider_response_code",
+        "provider_response_message",
+        "started_at",
+        "finished_at",
+    }.issubset(digest_publication_attempt_columns)
     digest_issue_columns = {
         column["name"] for column in inspector.get_columns("pulse_digest_issues")
     }
