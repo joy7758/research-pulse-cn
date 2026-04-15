@@ -50,6 +50,7 @@ class PulseCardType(StrEnum):
     SIGNAL_CHANGE = "signal_change"
     STALLED_PROGRESS = "stalled_progress"
     DEADLINE_RISK = "deadline_risk"
+    TODAY_SUGGESTION = "today_suggestion"
     NEXT_ACTION = "next_action"
     YESTERDAY_SUMMARY = "yesterday_summary"
     RELATED_PAPER = "related_paper"

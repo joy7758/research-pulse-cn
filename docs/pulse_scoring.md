@@ -6,7 +6,8 @@
   - `WorkActivityEvent` for recent user-work signals
   - `ResearchWatchProfile` for compact watch interests
   - `GET /pulse/input-preview/{user_id}` for deterministic input inspection
-- `yesterday_summary` facts built from previous-local-day work activity only
+  - `today_suggestion` facts built from internal paper/progress/signal state
+  - `yesterday_summary` facts built from previous-local-day work activity only
 - This scoring document still covers candidate generation, ranking, suppression, and selection only.
 - External retrieval is still deferred until the input layer is stable.
 
@@ -33,11 +34,14 @@ Current candidate generation supports:
 - `signal_change`
 - `stalled_progress`
 - `deadline_risk`
+- `today_suggestion`
 - `next_action`
 - `yesterday_summary`
 - `related_paper`
 
 Notes:
+- `today_suggestion` is built from one selected actionable paper and usually persists with `source_paper_id`.
+- `today_suggestion` supports `execute_next_action`, `resolve_blocker`, and `define_next_action`.
 - `yesterday_summary` is global, not paper-centric, and may persist with `source_paper_id = null`.
 - `yesterday_summary` is generated only when the previous local day has qualifying non-system work activity.
 - `related_paper` is intentionally conservative in v1 and uses simple within-portfolio heuristics.
@@ -54,6 +58,12 @@ Supported knobs:
 - `max_cards_per_run`
 - `score_weights`
 - `urgency_modifiers`
+- `today_suggestion_stale_days_threshold`
+- `today_suggestion_priority_bonus`
+- `today_suggestion_has_next_action_bonus`
+- `today_suggestion_revision_stage_bonus`
+- `today_suggestion_stale_progress_bonus`
+- `today_suggestion_blocker_present_bonus`
 - `yesterday_summary_min_events`
 - `yesterday_summary_activity_diversity_bonus`
 - `yesterday_summary_multi_paper_bonus`
@@ -78,6 +88,7 @@ Important behavior:
 - quiet hours suppress candidates but keep them visible in preview diagnostics
 - frequency cap is applied only after other suppression rules are evaluated
 - dedupe uses the same user + card type + source paper signature inside the configured dedupe window
+- `today_suggestion` dedupe uses user + source paper + suggestion kind + action context
 - `yesterday_summary` dedupe uses the same user + `summary_date` + card type inside the configured dedupe window
 
 ## Tie-break behavior
@@ -112,6 +123,7 @@ That keeps:
 ## Known limitations in v1
 - `related_paper` uses simple heuristics and does not use external research graphs
 - upstream watch seeds are available, but external retrieval is not implemented yet
+- `today_suggestion` is intentionally heuristic and does not yet suppress itself when a similar `next_action` card covers the same context
 - `yesterday_summary` is previous-day-only and does not yet support multi-day rollups
 - quiet hours use policy-local window definitions and assume valid timezones
 - dedupe is signature-based and does not yet use richer semantic similarity

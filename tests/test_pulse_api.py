@@ -32,21 +32,34 @@ def create_api_user(client, *, email: str, headers: dict[str, str]):
     return response.json()
 
 
-def create_api_paper(client, *, user_id: str, title: str, headers: dict[str, str]):
+def create_api_paper(
+    client,
+    *,
+    user_id: str,
+    title: str,
+    headers: dict[str, str],
+    paper_type: PaperType = PaperType.PUBLISHED,
+    stage: str | None = None,
+    last_touch_at: str | None = None,
+    next_action: str | None = "Check the latest signal delta",
+    blocker: str | None = None,
+    priority: int = 4,
+):
     response = client.post(
         "/papers",
         headers=headers,
         json={
             "user_id": user_id,
             "title": title,
-            "type": PaperType.PUBLISHED,
-            "stage": "published",
+            "type": paper_type,
+            "stage": stage or paper_type.value,
             "venue": "JOM",
             "identifiers": {},
             "source_links": [f"https://example.local/papers/{title.replace(' ', '-').lower()}"],
-            "last_touch_at": (utcnow() - timedelta(days=14)).isoformat(),
-            "next_action": "Check the latest signal delta",
-            "priority": 4,
+            "last_touch_at": last_touch_at or (utcnow() - timedelta(days=14)).isoformat(),
+            "next_action": next_action,
+            "blocker": blocker,
+            "priority": priority,
         },
     )
     assert response.status_code == 201
@@ -222,3 +235,71 @@ def test_run_endpoint_persists_yesterday_summary_card(
     )
     assert yesterday_card["source_paper_id"] is None
     assert yesterday_card["candidate_metadata"]["summary_date"]
+
+
+def test_preview_endpoint_exposes_today_suggestion_details(
+    client,
+    operator_headers,
+    viewer_headers,
+) -> None:
+    user = create_api_user(
+        client,
+        email="today-preview-api@example.com",
+        headers=operator_headers,
+    )
+    paper = create_api_paper(
+        client,
+        user_id=user["id"],
+        title="Today Preview Paper",
+        headers=operator_headers,
+        paper_type=PaperType.REVISION,
+        stage="revision",
+        next_action="Finish the reviewer response appendix.",
+        priority=5,
+        last_touch_at=(utcnow() - timedelta(days=6)).isoformat(),
+    )
+
+    response = client.post(f"/pulse/preview/{user['id']}", headers=viewer_headers)
+
+    assert response.status_code == 200
+    payload = response.json()
+    today_candidate = next(
+        candidate
+        for candidate in payload["candidates"]
+        if candidate["card_type"] == PulseCardType.TODAY_SUGGESTION
+    )
+    assert today_candidate["source_paper_id"] == paper["id"]
+    assert today_candidate["candidate_metadata"]["suggestion_kind"] == "execute_next_action"
+    assert today_candidate["score_breakdown"]["total"] >= 10
+
+
+def test_run_endpoint_persists_today_suggestion_card(
+    client,
+    operator_headers,
+) -> None:
+    user = create_api_user(
+        client,
+        email="today-run-api@example.com",
+        headers=operator_headers,
+    )
+    paper = create_api_paper(
+        client,
+        user_id=user["id"],
+        title="Today Run Paper",
+        headers=operator_headers,
+        paper_type=PaperType.UNDER_REVIEW,
+        stage="under_review",
+        next_action="Reply to the open reviewer methods question.",
+        priority=4,
+        last_touch_at=(utcnow() - timedelta(days=5)).isoformat(),
+    )
+
+    response = client.post(f"/pulse/run/{user['id']}", headers=operator_headers)
+
+    assert response.status_code == 200
+    payload = response.json()
+    today_card = next(
+        card for card in payload["cards"] if card["card_type"] == PulseCardType.TODAY_SUGGESTION
+    )
+    assert today_card["source_paper_id"] == paper["id"]
+    assert today_card["candidate_metadata"]["suggestion_kind"] == "execute_next_action"

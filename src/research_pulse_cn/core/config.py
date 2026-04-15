@@ -45,6 +45,9 @@ class Settings(BaseSettings):
     pulse_weight_deadline_risk: int = Field(
         default=5, validation_alias="APP_PULSE_WEIGHT_DEADLINE_RISK"
     )
+    pulse_weight_today_suggestion: int = Field(
+        default=6, validation_alias="APP_PULSE_WEIGHT_TODAY_SUGGESTION"
+    )
     pulse_weight_next_action: int = Field(
         default=8, validation_alias="APP_PULSE_WEIGHT_NEXT_ACTION"
     )
@@ -57,6 +60,9 @@ class Settings(BaseSettings):
     pulse_yesterday_summary_min_events: int = Field(
         default=1, validation_alias="APP_PULSE_YESTERDAY_SUMMARY_MIN_EVENTS"
     )
+    pulse_today_suggestion_stale_days_threshold: int = Field(
+        default=5, validation_alias="APP_PULSE_TODAY_SUGGESTION_STALE_DAYS_THRESHOLD"
+    )
     pulse_modifier_recent_signal_delta: int = Field(
         default=8, validation_alias="APP_PULSE_MODIFIER_RECENT_SIGNAL_DELTA"
     )
@@ -68,6 +74,25 @@ class Settings(BaseSettings):
     )
     pulse_modifier_explicit_next_action: int = Field(
         default=4, validation_alias="APP_PULSE_MODIFIER_EXPLICIT_NEXT_ACTION"
+    )
+    pulse_modifier_today_suggestion_priority: int = Field(
+        default=1, validation_alias="APP_PULSE_MODIFIER_TODAY_SUGGESTION_PRIORITY"
+    )
+    pulse_modifier_today_suggestion_has_next_action: int = Field(
+        default=3,
+        validation_alias="APP_PULSE_MODIFIER_TODAY_SUGGESTION_HAS_NEXT_ACTION",
+    )
+    pulse_modifier_today_suggestion_revision_stage: int = Field(
+        default=3,
+        validation_alias="APP_PULSE_MODIFIER_TODAY_SUGGESTION_REVISION_STAGE",
+    )
+    pulse_modifier_today_suggestion_stale_progress: int = Field(
+        default=3,
+        validation_alias="APP_PULSE_MODIFIER_TODAY_SUGGESTION_STALE_PROGRESS",
+    )
+    pulse_modifier_today_suggestion_blocker_present: int = Field(
+        default=4,
+        validation_alias="APP_PULSE_MODIFIER_TODAY_SUGGESTION_BLOCKER_PRESENT",
     )
     pulse_modifier_yesterday_summary_activity_diversity: int = Field(
         default=3,

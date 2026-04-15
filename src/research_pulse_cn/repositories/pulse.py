@@ -179,3 +179,37 @@ class PulseRepository:
             if isinstance(summary_date, str) and summary_date:
                 summary_dates.add(summary_date)
         return summary_dates
+
+    def list_recent_today_suggestion_contexts(
+        self,
+        *,
+        user_id: UUID,
+        since: datetime,
+    ) -> set[tuple[str, str, str]]:
+        statement = (
+            select(PulseCard)
+            .outerjoin(DeliveryJob, DeliveryJob.pulse_card_id == PulseCard.id)
+            .where(
+                PulseCard.user_id == user_id,
+                PulseCard.card_type == PulseCardType.TODAY_SUGGESTION,
+                PulseCard.source_paper_id.is_not(None),
+                or_(
+                    PulseCard.generated_at >= since,
+                    DeliveryJob.created_at >= since,
+                    DeliveryJob.sent_at >= since,
+                ),
+            )
+        )
+        contexts: set[tuple[str, str, str]] = set()
+        for card in self.session.scalars(statement):
+            if card.source_paper_id is None:
+                continue
+            metadata = card.candidate_metadata if isinstance(card.candidate_metadata, dict) else {}
+            suggestion_kind = metadata.get("suggestion_kind")
+            action_context = metadata.get("action_context")
+            if not isinstance(suggestion_kind, str) or not suggestion_kind:
+                continue
+            if not isinstance(action_context, str):
+                action_context = ""
+            contexts.add((str(card.source_paper_id), suggestion_kind, action_context))
+        return contexts

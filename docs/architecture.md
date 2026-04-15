@@ -203,6 +203,20 @@ Tie-break order is deterministic:
   - app default timezone
 - Selected cards persist as normal `PulseCard` rows and may flow into digest items with `source_paper_id = null`.
 
+## Pulse today-suggestion card
+- The pulse pipeline now also supports a deterministic `today_suggestion` card type.
+- It is built only from internal structured state:
+  - `PaperProfile`
+  - `ProgressEvent`
+  - `SignalSnapshot`
+  - effective pulse timezone context from subscription policy or app default
+- It remains retrieval-free and model-free in this phase.
+- The builder selects at most one actionable paper per run and chooses one suggestion kind:
+  - `execute_next_action`
+  - `resolve_blocker`
+  - `define_next_action`
+- Selected cards persist as normal `PulseCard` rows and usually keep a non-null `source_paper_id`.
+
 ### Desktop shell
 - `apps/desktop` is isolated from the Python backend.
 - Rust owns:
