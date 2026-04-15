@@ -618,6 +618,9 @@ def test_mini_subscription_reserve_returns_safe_binding_summary_and_authoritativ
     assert "insufficient_selected_cards" in payload["delivery_control_preview"]["reason_codes"]
     assert payload["latest_digest_issue"]["id"] == digest_issue["id"]
     assert payload["self_service_reserve"]["editable_via_current_mini_grant"] is False
+    assert payload["self_service_entry"]["editable_via_current_mini_grant"] is False
+    assert payload["self_service_entry"]["editor_contract_available"] is True
+    assert payload["self_service_entry"]["editor_preview_available"] is True
 
 
 def test_mini_subscription_reserve_returns_empty_preview_when_digest_context_absent(
@@ -643,6 +646,7 @@ def test_mini_subscription_reserve_returns_empty_preview_when_digest_context_abs
     assert payload["delivery_control_preview"]["state"] == "empty"
     assert payload["delivery_control_preview"]["decision"] is None
     assert payload["latest_digest_issue"] is None
+    assert payload["self_service_entry"]["separate_self_service_grant_required"] is True
 
 
 def test_mini_grant_cannot_access_self_service_routes_and_self_service_grant_cannot_access_mini(
@@ -670,10 +674,21 @@ def test_mini_grant_cannot_access_self_service_routes_and_self_service_grant_can
         headers={"Authorization": f"Bearer {mini_grant['plain_text_token']}"},
         json={"enabled": False},
     )
+    mini_editor_bootstrap = client.get(
+        "/subscription-self-service/editor-bootstrap",
+        headers={"Authorization": f"Bearer {mini_grant['plain_text_token']}"},
+    )
+    mini_editor_preview = client.post(
+        "/subscription-self-service/settings/preview",
+        headers={"Authorization": f"Bearer {mini_grant['plain_text_token']}"},
+        json={"enabled": False},
+    )
 
     assert mini_on_self_service.status_code == 401
     assert self_service_on_mini.status_code == 401
     assert mini_patch_self_service.status_code == 401
+    assert mini_editor_bootstrap.status_code == 401
+    assert mini_editor_preview.status_code == 401
 
 
 def test_mini_paper_detail_exposes_derived_progress_percentage_mapping(

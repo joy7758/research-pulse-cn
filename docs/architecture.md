@@ -215,6 +215,9 @@ Tie-break order is deterministic:
   - `GET /subscription-self-service/settings`
   - `PATCH /subscription-self-service/settings`
   - `GET /subscription-self-service/delivery-control-preview`
+  - `GET /subscription-self-service/editor-bootstrap`
+  - `GET /subscription-self-service/editor-contract`
+  - `POST /subscription-self-service/settings/preview`
 - Supported editable fields are intentionally narrow:
   - `enabled`
   - `quiet_hours`
@@ -224,7 +227,9 @@ Tie-break order is deterministic:
   - `policy.minimum_selected_cards`
   - `policy.skip_if_no_today_focus`
 - The authoritative delivery preview reuses the backend evaluator but does not persist `DigestDeliveryDecision` rows in this phase.
+- The editor reserve adds a versioned machine-readable contract plus preview-before-save semantics without creating a second policy store.
 - Mini read-only subscription reserve also reuses that evaluator for an authoritative preview, but mini grant auth remains read-only and separate from self-service edit auth.
+- Mini read-only reserve also exposes a `self_service_entry` handoff summary so future UI clients know editor contract and preview endpoints exist without turning mini into a write surface yet.
 - Self-service grant auth can also create/read/cancel a reserve handshake session, but admin auth remains the only claim path in this phase.
 - Self-service grant auth can also issue an official-account OAuth authorize URL and inspect safe OAuth progress, while mini grant auth remains read-only.
 

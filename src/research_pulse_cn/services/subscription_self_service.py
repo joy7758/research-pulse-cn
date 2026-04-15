@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -16,7 +18,12 @@ from research_pulse_cn.core.errors import (
 )
 from research_pulse_cn.core.metrics import get_metrics
 from research_pulse_cn.core.request_context import bind_log_context
-from research_pulse_cn.db.models import PulseDigestIssue, SubscriptionSelfServiceGrant, utcnow
+from research_pulse_cn.db.models import (
+    PulseDigestIssue,
+    SubscriptionPolicy,
+    SubscriptionSelfServiceGrant,
+    utcnow,
+)
 from research_pulse_cn.domain.enums import (
     ChannelType,
     PulseDigestIssueStatus,
@@ -43,6 +50,7 @@ from research_pulse_cn.services.subscription_policy import (
     SubscriptionPolicyService,
     find_matching_delivery_policy,
     normalize_delivery_control_policy,
+    normalize_subscription_policy_payload,
 )
 
 SAFE_SELF_SERVICE_POLICY_KEYS = frozenset(
@@ -54,6 +62,26 @@ SAFE_SELF_SERVICE_POLICY_KEYS = frozenset(
         "skip_if_no_today_focus",
     }
 )
+SELF_SERVICE_EDITABLE_FIELD_IDS = (
+    "enabled",
+    "quiet_hours",
+    "timezone",
+    "allowed_weekdays",
+    "muted_until",
+    "minimum_selected_cards",
+    "skip_if_no_today_focus",
+)
+SELF_SERVICE_EDITOR_CONTRACT_VERSION = "v1"
+SELF_SERVICE_WEEKDAY_NUMBERING_NOTE = "Weekdays use 0 = Monday and 6 = Sunday."
+
+
+@dataclass(slots=True)
+class SubscriptionSettingsPreparationResult:
+    settings_payload: dict[str, Any]
+    effective_policy: SubscriptionPolicy
+    validation_errors: list[dict[str, str]]
+    validation_warnings: list[dict[str, str]]
+    changed_fields: list[str]
 
 
 class SubscriptionSelfServiceService:
@@ -209,88 +237,341 @@ class SubscriptionSelfServiceService:
             policy = self._current_official_account_policy(grant.user_id)
             return self._settings_payload(policy)
 
-    def patch_settings(
+    def get_editor_bootstrap(self, grant: SubscriptionSelfServiceGrantContext) -> dict:
+        with bind_log_context(
+            subscription_self_service_grant_id=grant.grant_id,
+            user_id=grant.user_id,
+        ):
+            self.metrics.increment("subscription_self_service_editor_bootstrap_requests_total")
+            stored = self.get_grant(grant.grant_id)
+            user = self._require_user(grant.user_id)
+            current_policy = self._current_official_account_policy(grant.user_id)
+            latest_issue = self._latest_digest_issue(grant.user_id)
+            return {
+                "contract_version": SELF_SERVICE_EDITOR_CONTRACT_VERSION,
+                "grant": self._serialize_grant_summary(stored),
+                "user": self._user_summary(user),
+                "official_account_binding_summary": self._safe_binding_summary(stored.binding),
+                "current_settings_draft": self._settings_draft_payload(
+                    current_policy,
+                    grant_status=grant.status,
+                ),
+                "latest_digest_summary": self._latest_digest_issue_summary(latest_issue),
+                "authoritative_preview_supported": True,
+                "self_service_entry": self._editor_entry_payload(),
+            }
+
+    def get_editor_contract(self) -> dict:
+        self.metrics.increment("subscription_self_service_editor_contract_requests_total")
+        return {
+            "contract_version": SELF_SERVICE_EDITOR_CONTRACT_VERSION,
+            "channel": ChannelType.OFFICIAL_ACCOUNT,
+            "editable_section_ids": [
+                "delivery_controls",
+                "schedule_controls",
+                "content_thresholds",
+            ],
+            "weekday_numbering_note": SELF_SERVICE_WEEKDAY_NUMBERING_NOTE,
+            "sections": [
+                {
+                    "section_id": "delivery_controls",
+                    "title": "Delivery Controls",
+                    "description": "Core on/off state and binding-aware context.",
+                    "editable": True,
+                    "field_ids": [
+                        "channel",
+                        "enabled",
+                        "official_account_binding_summary",
+                        "self_service_grant_status",
+                    ],
+                },
+                {
+                    "section_id": "schedule_controls",
+                    "title": "Schedule Controls",
+                    "description": "Quiet hours, timezone, weekdays, and temporary mute.",
+                    "editable": True,
+                    "field_ids": [
+                        "quiet_hours",
+                        "timezone",
+                        "allowed_weekdays",
+                        "muted_until",
+                    ],
+                },
+                {
+                    "section_id": "content_thresholds",
+                    "title": "Content Thresholds",
+                    "description": "Minimum digest thresholds before delivery is eligible.",
+                    "editable": True,
+                    "field_ids": [
+                        "minimum_selected_cards",
+                        "skip_if_no_today_focus",
+                    ],
+                },
+                {
+                    "section_id": "preview_context",
+                    "title": "Preview Context",
+                    "description": (
+                        "Read-only fields that help future clients explain preview outcomes."
+                    ),
+                    "editable": False,
+                    "field_ids": [
+                        "latest_digest_summary",
+                        "authoritative_preview_supported",
+                    ],
+                },
+            ],
+            "fields": [
+                {
+                    "field_id": "channel",
+                    "label": "Channel",
+                    "value_type": "enum",
+                    "editable": False,
+                    "required": True,
+                    "nullable": False,
+                    "description": "The delivery channel controlled by this editor reserve.",
+                    "validation_hints": {"allowed_values": [ChannelType.OFFICIAL_ACCOUNT.value]},
+                },
+                {
+                    "field_id": "enabled",
+                    "label": "Enabled",
+                    "value_type": "boolean",
+                    "editable": True,
+                    "required": True,
+                    "nullable": False,
+                    "description": "Enable or pause official-account digest delivery.",
+                    "validation_hints": {"type": "boolean"},
+                },
+                {
+                    "field_id": "quiet_hours",
+                    "label": "Quiet Hours",
+                    "value_type": "json",
+                    "editable": True,
+                    "required": False,
+                    "nullable": True,
+                    "description": "Quiet-hour windows with start/end HH:MM and timezone.",
+                    "validation_hints": {
+                        "shape": {
+                            "timezone": "string",
+                            "windows": [{"start": "HH:MM", "end": "HH:MM", "timezone": "IANA"}],
+                        },
+                    },
+                },
+                {
+                    "field_id": "timezone",
+                    "label": "Timezone",
+                    "value_type": "string",
+                    "editable": True,
+                    "required": True,
+                    "nullable": False,
+                    "description": "Effective IANA timezone for preview and weekday checks.",
+                    "validation_hints": {"non_empty": True, "examples": ["UTC", "Asia/Shanghai"]},
+                },
+                {
+                    "field_id": "allowed_weekdays",
+                    "label": "Allowed Weekdays",
+                    "value_type": "integer_list",
+                    "editable": True,
+                    "required": False,
+                    "nullable": False,
+                    "description": "Explicit allowed local weekdays.",
+                    "validation_hints": {
+                        "weekday_numbering": SELF_SERVICE_WEEKDAY_NUMBERING_NOTE,
+                        "allowed_range": [0, 6],
+                        "unique_sorted": True,
+                    },
+                },
+                {
+                    "field_id": "muted_until",
+                    "label": "Muted Until",
+                    "value_type": "datetime",
+                    "editable": True,
+                    "required": False,
+                    "nullable": True,
+                    "description": "Pause delivery until the given ISO 8601 datetime.",
+                    "validation_hints": {"format": "iso8601_datetime"},
+                },
+                {
+                    "field_id": "minimum_selected_cards",
+                    "label": "Minimum Selected Cards",
+                    "value_type": "integer",
+                    "editable": True,
+                    "required": False,
+                    "nullable": True,
+                    "description": "Minimum selected-card count required before sending.",
+                    "validation_hints": {"minimum": 0},
+                },
+                {
+                    "field_id": "skip_if_no_today_focus",
+                    "label": "Skip If No Today Focus",
+                    "value_type": "boolean",
+                    "editable": True,
+                    "required": True,
+                    "nullable": False,
+                    "description": "Skip delivery when no today-focus card exists in the digest.",
+                    "validation_hints": {"type": "boolean"},
+                },
+                {
+                    "field_id": "official_account_binding_summary",
+                    "label": "Official Account Binding Summary",
+                    "value_type": "object",
+                    "editable": False,
+                    "required": False,
+                    "nullable": True,
+                    "description": "Safe read-only binding summary for the current user.",
+                    "validation_hints": {"safe_summary_only": True},
+                },
+                {
+                    "field_id": "latest_digest_summary",
+                    "label": "Latest Digest Summary",
+                    "value_type": "object",
+                    "editable": False,
+                    "required": False,
+                    "nullable": True,
+                    "description": (
+                        "Latest digest context used for authoritative preview when available."
+                    ),
+                    "validation_hints": {"preview_context": True},
+                },
+                {
+                    "field_id": "authoritative_preview_supported",
+                    "label": "Authoritative Preview Supported",
+                    "value_type": "boolean",
+                    "editable": False,
+                    "required": True,
+                    "nullable": False,
+                    "description": "Whether preview-before-save is supported by the backend.",
+                    "validation_hints": {"constant": True},
+                },
+                {
+                    "field_id": "self_service_grant_status",
+                    "label": "Self-Service Grant Status",
+                    "value_type": "enum",
+                    "editable": False,
+                    "required": True,
+                    "nullable": False,
+                    "description": "Current self-service grant status for the editing session.",
+                    "validation_hints": {"read_only": True},
+                },
+            ],
+        }
+
+    def preview_settings(
         self,
         grant: SubscriptionSelfServiceGrantContext,
         *,
-        enabled: bool | None = None,
-        quiet_hours: dict | None = None,
-        timezone: str | None = None,
-        allowed_weekdays: list[int] | None = None,
-        muted_until: datetime | None = None,
-        minimum_selected_cards: int | None = None,
-        skip_if_no_today_focus: bool | None = None,
-        update_fields: set[str] | None = None,
+        payload: dict[str, Any],
     ) -> dict:
         with bind_log_context(
             subscription_self_service_grant_id=grant.grant_id,
             user_id=grant.user_id,
         ):
-            current_policy = self._current_official_account_policy(grant.user_id)
+            self.metrics.increment("subscription_self_service_settings_preview_requests_total")
+            prepared = self._prepare_settings_payload(
+                grant=grant,
+                payload=payload,
+            )
+            authoritative_preview = self._authoritative_preview_payload(
+                grant=grant,
+                policy=prepared.effective_policy,
+                validation_errors=prepared.validation_errors,
+            )
+            return {
+                "contract_version": SELF_SERVICE_EDITOR_CONTRACT_VERSION,
+                "normalized_draft": self._settings_draft_payload_from_settings(
+                    prepared.settings_payload,
+                    grant_status=grant.status,
+                ),
+                "changed_fields": list(prepared.changed_fields),
+                "validation_errors": list(prepared.validation_errors),
+                "validation_warnings": list(prepared.validation_warnings),
+                "authoritative_preview": authoritative_preview,
+            }
+
+    def patch_settings(
+        self,
+        grant: SubscriptionSelfServiceGrantContext,
+        *,
+        enabled=None,
+        quiet_hours=None,
+        timezone=None,
+        allowed_weekdays=None,
+        muted_until=None,
+        minimum_selected_cards=None,
+        skip_if_no_today_focus=None,
+        update_fields: set[str] | None = None,
+        include_preview: bool = False,
+    ) -> dict:
+        with bind_log_context(
+            subscription_self_service_grant_id=grant.grant_id,
+            user_id=grant.user_id,
+        ):
+            payload = {
+                "enabled": enabled,
+                "quiet_hours": quiet_hours,
+                "timezone": timezone,
+                "allowed_weekdays": allowed_weekdays,
+                "muted_until": muted_until,
+                "minimum_selected_cards": minimum_selected_cards,
+                "skip_if_no_today_focus": skip_if_no_today_focus,
+            }
             explicit_fields = update_fields or set()
-            merged_policy = dict(
-                (current_policy.policy or {}) if current_policy is not None else {}
+            payload = {
+                field_id: value
+                for field_id, value in payload.items()
+                if field_id in explicit_fields
+            }
+            prepared = self._prepare_settings_payload(
+                grant=grant,
+                payload=payload,
             )
+            if prepared.validation_errors:
+                raise ValidationFailedError(
+                    "subscription self-service settings validation failed",
+                    errors=prepared.validation_errors,
+                )
 
-            self._apply_supported_policy_field(
-                merged_policy,
-                field_name="timezone",
-                value=timezone,
-                explicit_fields=explicit_fields,
-            )
-            self._apply_supported_policy_field(
-                merged_policy,
-                field_name="allowed_weekdays",
-                value=allowed_weekdays,
-                explicit_fields=explicit_fields,
-            )
-            self._apply_supported_policy_field(
-                merged_policy,
-                field_name="muted_until",
-                value=muted_until,
-                explicit_fields=explicit_fields,
-            )
-            self._apply_supported_policy_field(
-                merged_policy,
-                field_name="minimum_selected_cards",
-                value=minimum_selected_cards,
-                explicit_fields=explicit_fields,
-            )
-            self._apply_supported_policy_field(
-                merged_policy,
-                field_name="skip_if_no_today_focus",
-                value=skip_if_no_today_focus,
-                explicit_fields=explicit_fields,
-            )
-
+            current_policy = self._current_official_account_policy(grant.user_id)
             if current_policy is None:
                 create_payload = SubscriptionPolicyCreate(
                     user_id=grant.user_id,
                     channel=ChannelType.OFFICIAL_ACCOUNT,
-                    enabled=True if "enabled" not in explicit_fields else bool(enabled),
+                    enabled=prepared.effective_policy.enabled,
                     frequency=SubscriptionFrequency.DAILY,
-                    quiet_hours=quiet_hours if "quiet_hours" in explicit_fields else None,
-                    frequency_cap=3,
-                    endpoint=None,
-                    policy=merged_policy,
+                    quiet_hours=prepared.effective_policy.quiet_hours,
+                    frequency_cap=prepared.effective_policy.frequency_cap,
+                    endpoint=prepared.effective_policy.endpoint,
+                    policy=dict(prepared.effective_policy.policy or {}),
                 )
                 policy = self.subscription_policy_service.create_policy(create_payload)
             else:
                 update_payload_data: dict[str, object] = {}
                 if "enabled" in explicit_fields:
-                    update_payload_data["enabled"] = enabled
+                    update_payload_data["enabled"] = prepared.effective_policy.enabled
                 if "quiet_hours" in explicit_fields:
-                    update_payload_data["quiet_hours"] = quiet_hours
+                    update_payload_data["quiet_hours"] = prepared.effective_policy.quiet_hours
                 if self._policy_fields_touched(explicit_fields):
-                    update_payload_data["policy"] = merged_policy
+                    update_payload_data["policy"] = dict(prepared.effective_policy.policy or {})
                 update_payload = SubscriptionPolicyUpdate(**update_payload_data)
                 policy = self.subscription_policy_service.update_policy(
                     current_policy.id,
                     update_payload,
                 )
 
+            saved_settings = self._settings_payload(policy)
+            self.metrics.increment("subscription_self_service_settings_saved_total")
             self.metrics.increment("subscription_self_service_settings_updated_total")
-            return self._settings_payload(policy)
+            if not include_preview:
+                return saved_settings
+            return {
+                "contract_version": SELF_SERVICE_EDITOR_CONTRACT_VERSION,
+                "saved_settings": saved_settings,
+                "changed_fields": list(prepared.changed_fields),
+                "authoritative_preview": self._authoritative_preview_payload(
+                    grant=grant,
+                    policy=policy,
+                    validation_errors=[],
+                ),
+            }
 
     def get_delivery_control_preview(self, grant: SubscriptionSelfServiceGrantContext) -> dict:
         with bind_log_context(
@@ -325,6 +606,430 @@ class SubscriptionSelfServiceService:
                 "next_allowed_at": preview.next_allowed_at,
                 "latest_digest_issue": self._latest_digest_issue_summary(latest_issue),
             }
+
+    def _prepare_settings_payload(
+        self,
+        *,
+        grant: SubscriptionSelfServiceGrantContext,
+        payload: dict[str, Any],
+    ) -> SubscriptionSettingsPreparationResult:
+        current_policy = self._current_official_account_policy(grant.user_id)
+        current_settings = self._settings_payload(current_policy)
+        explicit_fields = {
+            field_id for field_id in payload.keys() if field_id in SELF_SERVICE_EDITABLE_FIELD_IDS
+        }
+        validation_errors: list[dict[str, str]] = []
+        validation_warnings: list[dict[str, str]] = []
+        cleaned_payload: dict[str, Any] = {}
+
+        for field_id in explicit_fields:
+            value = payload.get(field_id)
+            if field_id == "enabled":
+                if isinstance(value, bool):
+                    cleaned_payload[field_id] = value
+                else:
+                    validation_errors.append(
+                        self._validation_issue(
+                            field_id,
+                            code="invalid_type",
+                            message="enabled must be a boolean",
+                        )
+                    )
+            elif field_id == "quiet_hours":
+                if value is None or isinstance(value, dict):
+                    cleaned_payload[field_id] = value
+                else:
+                    validation_errors.append(
+                        self._validation_issue(
+                            field_id,
+                            code="invalid_type",
+                            message="quiet_hours must be an object or null",
+                        )
+                    )
+            elif field_id == "timezone":
+                if not isinstance(value, str):
+                    validation_errors.append(
+                        self._validation_issue(
+                            field_id,
+                            code="invalid_type",
+                            message="timezone must be a non-empty string",
+                        )
+                    )
+                elif not value.strip():
+                    validation_errors.append(
+                        self._validation_issue(
+                            field_id,
+                            code="required",
+                            message="timezone must not be empty",
+                        )
+                    )
+                else:
+                    cleaned_payload[field_id] = value.strip()
+            elif field_id == "allowed_weekdays":
+                if not isinstance(value, list):
+                    validation_errors.append(
+                        self._validation_issue(
+                            field_id,
+                            code="invalid_type",
+                            message="allowed_weekdays must be an array of integers from 0 to 6",
+                        )
+                    )
+                elif any(not isinstance(day, int) or isinstance(day, bool) for day in value):
+                    validation_errors.append(
+                        self._validation_issue(
+                            field_id,
+                            code="invalid_type",
+                            message="allowed_weekdays values must be integers from 0 to 6",
+                        )
+                    )
+                elif any(day < 0 or day > 6 for day in value):
+                    validation_errors.append(
+                        self._validation_issue(
+                            field_id,
+                            code="out_of_range",
+                            message="allowed_weekdays values must be integers from 0 to 6",
+                        )
+                    )
+                else:
+                    cleaned_payload[field_id] = list(value)
+            elif field_id == "muted_until":
+                if value is None or isinstance(value, (datetime, str)):
+                    if isinstance(value, str) and not value.strip():
+                        validation_errors.append(
+                            self._validation_issue(
+                                field_id,
+                                code="invalid_format",
+                                message="muted_until must be null or an ISO 8601 datetime string",
+                            )
+                        )
+                    else:
+                        cleaned_payload[field_id] = value
+                else:
+                    validation_errors.append(
+                        self._validation_issue(
+                            field_id,
+                            code="invalid_type",
+                            message="muted_until must be null or an ISO 8601 datetime string",
+                        )
+                    )
+            elif field_id == "minimum_selected_cards":
+                if value is None:
+                    cleaned_payload[field_id] = None
+                elif not isinstance(value, int) or isinstance(value, bool):
+                    validation_errors.append(
+                        self._validation_issue(
+                            field_id,
+                            code="invalid_type",
+                            message=(
+                                "minimum_selected_cards must be an integer greater than "
+                                "or equal to 0"
+                            ),
+                        )
+                    )
+                elif value < 0:
+                    validation_errors.append(
+                        self._validation_issue(
+                            field_id,
+                            code="out_of_range",
+                            message="minimum_selected_cards must be greater than or equal to 0",
+                        )
+                    )
+                else:
+                    cleaned_payload[field_id] = value
+            elif field_id == "skip_if_no_today_focus":
+                if isinstance(value, bool):
+                    cleaned_payload[field_id] = value
+                else:
+                    validation_errors.append(
+                        self._validation_issue(
+                            field_id,
+                            code="invalid_type",
+                            message="skip_if_no_today_focus must be a boolean",
+                        )
+                    )
+
+        effective_enabled = bool(current_settings["enabled"])
+        if current_policy is None and explicit_fields and "enabled" not in cleaned_payload:
+            effective_enabled = True
+        elif "enabled" in cleaned_payload:
+            effective_enabled = bool(cleaned_payload["enabled"])
+
+        effective_quiet_hours = (
+            cleaned_payload["quiet_hours"]
+            if "quiet_hours" in cleaned_payload
+            else (None if current_policy is None else current_policy.quiet_hours)
+        )
+        merged_policy = dict((current_policy.policy or {}) if current_policy is not None else {})
+        for field_name in SAFE_SELF_SERVICE_POLICY_KEYS:
+            self._apply_supported_policy_field(
+                merged_policy,
+                field_name=field_name,
+                value=cleaned_payload.get(field_name),
+                explicit_fields=explicit_fields,
+            )
+
+        normalized_quiet_hours = effective_quiet_hours
+        normalized_policy = dict(merged_policy)
+        if not validation_errors:
+            try:
+                normalized_quiet_hours, normalized_policy = normalize_subscription_policy_payload(
+                    channel=ChannelType.OFFICIAL_ACCOUNT,
+                    quiet_hours=effective_quiet_hours,
+                    policy=merged_policy,
+                    default_timezone=self.settings.default_timezone,
+                )
+            except ValidationFailedError as exc:
+                validation_errors.append(
+                    self._validation_issue(
+                        self._validation_field_from_error(str(exc)),
+                        code="invalid_value",
+                        message=str(exc),
+                    )
+                )
+
+        effective_policy = SubscriptionPolicy(
+            id=None if current_policy is None else current_policy.id,
+            user_id=grant.user_id,
+            channel=ChannelType.OFFICIAL_ACCOUNT,
+            enabled=effective_enabled,
+            frequency=(
+                SubscriptionFrequency.DAILY if current_policy is None else current_policy.frequency
+            ),
+            quiet_hours=normalized_quiet_hours,
+            frequency_cap=3 if current_policy is None else current_policy.frequency_cap,
+            endpoint=None if current_policy is None else current_policy.endpoint,
+            policy=normalized_policy,
+        )
+        effective_policy.updated_at = None if current_policy is None else current_policy.updated_at
+
+        draft_settings = (
+            current_settings
+            if validation_errors
+            else self._settings_payload_from_policy(
+                effective_policy,
+                subscription_policy_id=None if current_policy is None else current_policy.id,
+                user_id=None if current_policy is None else current_policy.user_id,
+                updated_at=None if current_policy is None else current_policy.updated_at,
+            )
+        )
+        if validation_errors:
+            draft_settings = self._fallback_draft_settings(
+                current_settings=current_settings,
+                cleaned_payload=cleaned_payload,
+                explicit_fields=explicit_fields,
+                current_policy=current_policy,
+                effective_enabled=effective_enabled,
+            )
+
+        changed_fields = self._resolve_changed_fields(
+            current_settings=current_settings,
+            draft_settings=draft_settings,
+            explicit_fields=explicit_fields,
+        )
+        return SubscriptionSettingsPreparationResult(
+            settings_payload=draft_settings,
+            effective_policy=effective_policy,
+            validation_errors=validation_errors,
+            validation_warnings=validation_warnings,
+            changed_fields=changed_fields,
+        )
+
+    def _editor_entry_payload(self) -> dict[str, Any]:
+        return {
+            "supported": True,
+            "oauth_enabled": self.settings.official_account_oauth_enabled,
+            "editor_contract_available": True,
+            "editor_preview_available": True,
+            "supported_editable_fields": list(SELF_SERVICE_EDITABLE_FIELD_IDS),
+            "notes": [
+                "This reserve exposes the machine-readable contract for a future editing page.",
+                (
+                    "Authoritative preview-before-save is available through "
+                    "self-service grant endpoints."
+                ),
+            ],
+        }
+
+    def _settings_draft_payload(
+        self,
+        policy: SubscriptionPolicy | None,
+        *,
+        grant_status: SubscriptionSelfServiceGrantStatus,
+    ) -> dict[str, Any]:
+        return self._settings_draft_payload_from_settings(
+            self._settings_payload(policy),
+            grant_status=grant_status,
+        )
+
+    def _settings_draft_payload_from_settings(
+        self,
+        settings_payload: dict[str, Any],
+        *,
+        grant_status: SubscriptionSelfServiceGrantStatus,
+    ) -> dict[str, Any]:
+        return {
+            **settings_payload,
+            "self_service_grant_status": grant_status,
+        }
+
+    def _settings_payload_from_policy(
+        self,
+        policy: SubscriptionPolicy,
+        *,
+        subscription_policy_id: UUID | None,
+        user_id: UUID | None,
+        updated_at: datetime | None,
+    ) -> dict[str, Any]:
+        normalized = normalize_delivery_control_policy(
+            policy,
+            default_timezone=self.settings.default_timezone,
+        )
+        return {
+            "subscription_policy_id": subscription_policy_id,
+            "user_id": user_id,
+            "channel": ChannelType.OFFICIAL_ACCOUNT,
+            "enabled": policy.enabled,
+            "quiet_hours": normalized.quiet_hours,
+            "timezone": normalized.effective_timezone,
+            "allowed_weekdays": list(normalized.allowed_weekdays),
+            "muted_until": normalized.muted_until,
+            "minimum_selected_cards": normalized.minimum_selected_cards,
+            "skip_if_no_today_focus": normalized.skip_if_no_today_focus,
+            "updated_at": updated_at,
+        }
+
+    def _fallback_draft_settings(
+        self,
+        *,
+        current_settings: dict[str, Any],
+        cleaned_payload: dict[str, Any],
+        explicit_fields: set[str],
+        current_policy: SubscriptionPolicy | None,
+        effective_enabled: bool,
+    ) -> dict[str, Any]:
+        draft = dict(current_settings)
+        if current_policy is None and explicit_fields and "enabled" not in explicit_fields:
+            draft["enabled"] = effective_enabled
+        for field_id in explicit_fields:
+            if field_id not in cleaned_payload:
+                continue
+            if field_id == "muted_until":
+                value = cleaned_payload[field_id]
+                if isinstance(value, datetime):
+                    draft[field_id] = value.astimezone(UTC)
+                else:
+                    draft[field_id] = value
+                continue
+            draft[field_id] = cleaned_payload[field_id]
+        return draft
+
+    def _resolve_changed_fields(
+        self,
+        *,
+        current_settings: dict[str, Any],
+        draft_settings: dict[str, Any],
+        explicit_fields: set[str],
+    ) -> list[str]:
+        changed_fields: list[str] = []
+        for field_id in sorted(explicit_fields):
+            if self._field_value_changed(
+                current_settings.get(field_id),
+                draft_settings.get(field_id),
+            ):
+                changed_fields.append(field_id)
+        return changed_fields
+
+    def _field_value_changed(self, current_value: Any, next_value: Any) -> bool:
+        if isinstance(current_value, datetime):
+            current_value = self._coerce_utc(current_value)
+        if isinstance(next_value, datetime):
+            next_value = self._coerce_utc(next_value)
+        return current_value != next_value
+
+    def _authoritative_preview_payload(
+        self,
+        *,
+        grant: SubscriptionSelfServiceGrantContext,
+        policy: SubscriptionPolicy,
+        validation_errors: list[dict[str, str]],
+    ) -> dict[str, Any]:
+        if validation_errors:
+            return {
+                "state": "invalid_input",
+                "decision": None,
+                "reason_codes": [],
+                "normalized_control_policy": None,
+                "current_local_time": None,
+                "local_weekday": None,
+                "next_allowed_at": None,
+                "latest_digest_issue": None,
+            }
+
+        latest_issue = self._latest_digest_issue(grant.user_id)
+        current_time = self.now_provider()
+        if current_time.tzinfo is None:
+            current_time = current_time.replace(tzinfo=UTC)
+        if latest_issue is None:
+            normalized = normalize_delivery_control_policy(
+                policy,
+                default_timezone=self.settings.default_timezone,
+            )
+            local_now = current_time.astimezone(
+                self.digest_service._safe_zone(normalized.effective_timezone)
+            )
+            return {
+                "state": "no_digest_context",
+                "decision": None,
+                "reason_codes": [],
+                "normalized_control_policy": normalized.as_dict(),
+                "current_local_time": local_now,
+                "local_weekday": local_now.weekday(),
+                "next_allowed_at": None,
+                "latest_digest_issue": None,
+            }
+
+        preview = self.digest_service.evaluate_delivery_control_for_issue(
+            latest_issue,
+            channel=ChannelType.OFFICIAL_ACCOUNT,
+            policy=policy,
+            now=current_time,
+        )
+        return {
+            "state": "ready",
+            "decision": preview.decision,
+            "reason_codes": list(preview.reason_codes),
+            "normalized_control_policy": dict(preview.normalized_control_policy),
+            "current_local_time": preview.current_local_time,
+            "local_weekday": preview.local_weekday,
+            "next_allowed_at": preview.next_allowed_at,
+            "latest_digest_issue": self._latest_digest_issue_summary(latest_issue),
+        }
+
+    def _validation_issue(
+        self,
+        field_id: str,
+        *,
+        code: str,
+        message: str,
+    ) -> dict[str, str]:
+        return {
+            "field_id": field_id,
+            "code": code,
+            "message": message,
+        }
+
+    def _validation_field_from_error(self, message: str) -> str:
+        for field_id in (
+            "quiet_hours",
+            "timezone",
+            "allowed_weekdays",
+            "muted_until",
+            "minimum_selected_cards",
+            "skip_if_no_today_focus",
+        ):
+            if field_id in message:
+                return field_id
+        return "settings"
 
     def _require_channel(self, channel: ChannelType) -> None:
         if channel != ChannelType.OFFICIAL_ACCOUNT:
@@ -374,23 +1079,30 @@ class SubscriptionSelfServiceService:
         return find_matching_delivery_policy(policies, channel=ChannelType.OFFICIAL_ACCOUNT)
 
     def _settings_payload(self, policy) -> dict:
-        normalized = normalize_delivery_control_policy(
+        if policy is None:
+            normalized = normalize_delivery_control_policy(
+                policy,
+                default_timezone=self.settings.default_timezone,
+            )
+            return {
+                "subscription_policy_id": None,
+                "user_id": None,
+                "channel": ChannelType.OFFICIAL_ACCOUNT,
+                "enabled": False,
+                "quiet_hours": normalized.quiet_hours,
+                "timezone": normalized.effective_timezone,
+                "allowed_weekdays": list(normalized.allowed_weekdays),
+                "muted_until": normalized.muted_until,
+                "minimum_selected_cards": normalized.minimum_selected_cards,
+                "skip_if_no_today_focus": normalized.skip_if_no_today_focus,
+                "updated_at": None,
+            }
+        return self._settings_payload_from_policy(
             policy,
-            default_timezone=self.settings.default_timezone,
+            subscription_policy_id=policy.id,
+            user_id=policy.user_id,
+            updated_at=policy.updated_at,
         )
-        return {
-            "subscription_policy_id": None if policy is None else policy.id,
-            "user_id": None if policy is None else policy.user_id,
-            "channel": ChannelType.OFFICIAL_ACCOUNT,
-            "enabled": False if policy is None else policy.enabled,
-            "quiet_hours": normalized.quiet_hours,
-            "timezone": normalized.effective_timezone,
-            "allowed_weekdays": list(normalized.allowed_weekdays),
-            "muted_until": normalized.muted_until,
-            "minimum_selected_cards": normalized.minimum_selected_cards,
-            "skip_if_no_today_focus": normalized.skip_if_no_today_focus,
-            "updated_at": None if policy is None else policy.updated_at,
-        }
 
     def _apply_supported_policy_field(
         self,
