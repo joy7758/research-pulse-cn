@@ -46,6 +46,7 @@ def create_paper(
     paper_type: PaperType = PaperType.PUBLISHED,
     last_touch_at: datetime | None = None,
     next_action: str | None = None,
+    blocker: str | None = None,
     identifiers: dict | None = None,
     venue: str = "JOM",
     priority: int = 4,
@@ -61,6 +62,7 @@ def create_paper(
             source_links=[f"https://example.local/papers/{title.replace(' ', '-').lower()}"],
             last_touch_at=last_touch_at,
             next_action=next_action,
+            blocker=blocker,
             priority=priority,
         )
     )
@@ -392,6 +394,198 @@ def test_no_yesterday_summary_candidate_when_previous_local_day_has_zero_events(
     )
 
 
+def test_no_today_suggestion_candidate_when_no_actionable_papers(session) -> None:
+    now = datetime(2026, 4, 15, 12, 0, tzinfo=UTC)
+    user = create_user(session, email="no-today-suggestion@example.com")
+    create_paper(
+        session,
+        user_id=user.id,
+        title="Paused paper",
+        paper_type=PaperType.PAUSED,
+        last_touch_at=now - timedelta(days=20),
+        next_action="Do not surface this",
+    )
+
+    pipeline = build_service(session, now=now).preview(user.id)
+
+    assert all(fact.card_type != PulseCardType.TODAY_SUGGESTION for fact in pipeline.facts)
+    assert all(
+        candidate.card_type != PulseCardType.TODAY_SUGGESTION for candidate in pipeline.candidates
+    )
+
+
+def test_today_suggestion_candidate_appears_for_explicit_next_action(session) -> None:
+    now = datetime(2026, 4, 15, 12, 0, tzinfo=UTC)
+    user = create_user(session, email="today-next-action@example.com")
+    paper = create_paper(
+        session,
+        user_id=user.id,
+        title="Today action paper",
+        paper_type=PaperType.REVISION,
+        last_touch_at=now - timedelta(days=6),
+        next_action="Draft the revision cover letter.",
+        priority=5,
+    )
+
+    pipeline = build_service(session, now=now).preview(user.id)
+    candidate = next(
+        candidate
+        for candidate in pipeline.candidates
+        if candidate.card_type == PulseCardType.TODAY_SUGGESTION
+    )
+
+    assert candidate.source_paper_id == paper.id
+    assert candidate.candidate_metadata["suggestion_kind"] == "execute_next_action"
+    assert candidate.candidate_metadata["paper_title"] == paper.title
+    assert candidate.score_total >= 10
+
+
+def test_today_suggestion_candidate_can_resolve_blocker(session) -> None:
+    now = datetime(2026, 4, 15, 12, 0, tzinfo=UTC)
+    user = create_user(session, email="today-blocker@example.com")
+    create_paper(
+        session,
+        user_id=user.id,
+        title="Blocked revision paper",
+        paper_type=PaperType.REVISION,
+        last_touch_at=now - timedelta(days=4),
+        blocker="Need co-author approval on Figure 3.",
+        next_action="Submit the revision response package.",
+        priority=4,
+    )
+
+    pipeline = build_service(session, now=now).preview(user.id)
+    candidate = next(
+        candidate
+        for candidate in pipeline.candidates
+        if candidate.card_type == PulseCardType.TODAY_SUGGESTION
+    )
+
+    assert candidate.candidate_metadata["suggestion_kind"] == "resolve_blocker"
+    assert candidate.candidate_metadata["blocker"] == "Need co-author approval on Figure 3."
+
+
+def test_today_suggestion_candidate_can_define_next_action(session) -> None:
+    now = datetime(2026, 4, 15, 12, 0, tzinfo=UTC)
+    user = create_user(session, email="today-define-action@example.com")
+    create_paper(
+        session,
+        user_id=user.id,
+        title="Actionless prep paper",
+        paper_type=PaperType.IN_PREP,
+        last_touch_at=now - timedelta(days=8),
+        next_action=None,
+        priority=4,
+    )
+
+    pipeline = build_service(session, now=now).preview(user.id)
+    candidate = next(
+        candidate
+        for candidate in pipeline.candidates
+        if candidate.card_type == PulseCardType.TODAY_SUGGESTION
+    )
+
+    assert candidate.candidate_metadata["suggestion_kind"] == "define_next_action"
+    assert candidate.candidate_metadata["next_action"] is None
+
+
+def test_paused_papers_are_excluded_from_today_suggestion(session) -> None:
+    now = datetime(2026, 4, 15, 12, 0, tzinfo=UTC)
+    user = create_user(session, email="today-paused-excluded@example.com")
+    create_paper(
+        session,
+        user_id=user.id,
+        title="Paused but tempting",
+        paper_type=PaperType.PAUSED,
+        last_touch_at=now - timedelta(days=12),
+        next_action="Should not appear",
+        priority=5,
+    )
+    create_paper(
+        session,
+        user_id=user.id,
+        title="Active paper",
+        paper_type=PaperType.UNDER_REVIEW,
+        last_touch_at=now - timedelta(days=3),
+        next_action="Respond to the open reviewer question.",
+        priority=3,
+    )
+
+    pipeline = build_service(session, now=now).preview(user.id)
+    candidate = next(
+        candidate
+        for candidate in pipeline.candidates
+        if candidate.card_type == PulseCardType.TODAY_SUGGESTION
+    )
+
+    assert candidate.candidate_metadata["paper_title"] == "Active paper"
+
+
+def test_today_suggestion_scoring_is_deterministic_and_explainable(session) -> None:
+    now = datetime(2026, 4, 15, 12, 0, tzinfo=UTC)
+    user = create_user(session, email="today-score@example.com")
+    create_paper(
+        session,
+        user_id=user.id,
+        title="Deterministic revision",
+        paper_type=PaperType.REVISION,
+        last_touch_at=now - timedelta(days=7),
+        next_action="Update the reviewer response table.",
+        priority=5,
+    )
+
+    first = build_service(session, now=now).preview(user.id)
+    second = build_service(session, now=now).preview(user.id)
+    first_candidate = next(
+        candidate
+        for candidate in first.candidates
+        if candidate.card_type == PulseCardType.TODAY_SUGGESTION
+    )
+    second_candidate = next(
+        candidate
+        for candidate in second.candidates
+        if candidate.card_type == PulseCardType.TODAY_SUGGESTION
+    )
+
+    assert first_candidate.score_total == second_candidate.score_total
+    assert first_candidate.score_breakdown is not None
+    assert first_candidate.score_breakdown.modifiers == {
+        "today_suggestion_priority": 5,
+        "today_suggestion_has_next_action": 3,
+        "today_suggestion_revision_stage": 3,
+        "today_suggestion_stale_progress": 3,
+    }
+
+
+def test_today_suggestion_dedupe_blocks_same_context(session) -> None:
+    now = datetime(2026, 4, 15, 12, 0, tzinfo=UTC)
+    user = create_user(session, email="today-dedupe@example.com")
+    paper = create_paper(
+        session,
+        user_id=user.id,
+        title="Dedupe paper",
+        paper_type=PaperType.UNDER_REVIEW,
+        last_touch_at=now - timedelta(days=6),
+        next_action="Send the clarified methods paragraph.",
+        priority=4,
+    )
+
+    first_service = build_service(session, now=now)
+    job = first_service.run_now(user.id)
+    assert any(card.card_type == PulseCardType.TODAY_SUGGESTION for card in job.cards)
+
+    pipeline = build_service(session, now=now + timedelta(hours=1)).preview(user.id)
+    suppressed = [
+        candidate
+        for candidate in pipeline.suppressed_candidates
+        if candidate.card_type == PulseCardType.TODAY_SUGGESTION
+    ]
+
+    assert suppressed
+    assert suppressed[0].source_paper_id == paper.id
+    assert any(reason.code.value == "dedupe_window" for reason in suppressed[0].suppression_reasons)
+
+
 def test_yesterday_summary_candidate_appears_for_previous_day_activity(session) -> None:
     now = datetime(2026, 4, 15, 12, 0, tzinfo=UTC)
     user = create_user(session, email="with-yesterday-summary@example.com")
@@ -584,3 +778,27 @@ def test_run_persists_yesterday_summary_card_and_digest_item(session) -> None:
     assert yesterday_card.candidate_metadata["summary_date"] == "2026-04-14"
     assert digest_issue.items[0].card_type == PulseCardType.YESTERDAY_SUMMARY
     assert digest_issue.items[0].source_paper_id is None
+
+
+def test_run_persists_today_suggestion_card_and_digest_item(session) -> None:
+    now = datetime(2026, 4, 15, 12, 0, tzinfo=UTC)
+    user = create_user(session, email="today-run@example.com")
+    paper = create_paper(
+        session,
+        user_id=user.id,
+        title="Today run paper",
+        paper_type=PaperType.REVISION,
+        last_touch_at=now - timedelta(days=6),
+        next_action="Finalize the revision cover note.",
+        priority=5,
+    )
+
+    job = build_service(session, now=now).run_now(user.id)
+    today_card = next(
+        card for card in job.cards if card.card_type == PulseCardType.TODAY_SUGGESTION
+    )
+    digest_issue = DigestService(session).list_digest_issues(user_id=user.id)[0]
+
+    assert today_card.source_paper_id == paper.id
+    assert today_card.candidate_metadata["suggestion_kind"] == "execute_next_action"
+    assert any(item.card_type == PulseCardType.TODAY_SUGGESTION for item in digest_issue.items)

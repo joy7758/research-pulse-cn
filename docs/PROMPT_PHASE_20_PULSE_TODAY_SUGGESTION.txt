@@ -1,0 +1,295 @@
+Read AGENTS.md, docs/BUILD_SPEC.md, docs/architecture.md, docs/development.md, docs/pulse_scoring.md, docs/operations.md, docs/auth_admin_boundary.md, docs/sync_foundation.md, docs/official_account_digest_reserve.md, docs/mini_program_readonly_reserve.md, docs/official_account_provider_boundary.md, docs/official_account_real_send_v1.md, docs/desktop_tauri_skeleton_v1.md, docs/desktop_writeback_sync_v1.md, docs/desktop_local_workspace_v1.md, docs/desktop_local_notes_templates_v1.md, docs/desktop_review_matrix_response_v1.md, docs/pulse_input_layer_v1.md, and docs/pulse_yesterday_summary_v1.md before editing.
+
+Implement Phase 20 only: pulse today-suggestion card v1.
+
+Hard boundaries for this phase:
+- Do not implement any external web/news/paper retrieval.
+- Do not implement related-paper or related-news recommendation fetching.
+- Do not add AI suggestion generation, AI query generation, or LLM-based advice.
+- Do not add new delivery channels.
+- Do not add customer-facing UI beyond minimal compatibility needed for existing desktop/digest views.
+- Do not sync local file contents, note contents, or review-note contents to the backend.
+- Do not add multi-tenant or institution features.
+- Do not weaken existing admin auth, internal service auth, device-token sync auth, mini-read auth, or official-account provider boundaries.
+- Do not replace the modular monolith backend architecture.
+
+Primary goal:
+Add a deterministic "today suggestion" pulse card using only current internal data:
+- PaperProfile
+- ProgressEvent
+- SignalSnapshot
+- SubscriptionPolicy / pulse settings context
+
+This phase should make the repository suitable for:
+- generating one concise "best next step today" card per user per pulse run
+- previewing why this suggestion was chosen
+- persisting today-suggestion cards into PulseCard when selected
+- including today-suggestion cards in digest/today views without external retrieval
+
+Architectural intent:
+- Today suggestion is generated from internal structured data only.
+- No AI and no external retrieval are involved.
+- It should fit the existing facts -> candidates -> scoring -> suppression -> selection pipeline.
+- It should remain explainable and deterministic.
+- It should usually point to one paper and one concrete suggestion kind.
+
+Required changes:
+
+1. Extend pulse card model
+Add support for a new card type:
+- today_suggestion
+
+Requirements:
+- update enums / schemas / validators / API response models as needed
+- keep schema changes minimal
+- if a database migration is required for enum evolution, add the minimal Alembic migration
+- source_paper_id should usually be set for today_suggestion when a paper is chosen
+- candidate_metadata and score_breakdown must carry enough explanation for ops/debugging
+
+2. Deterministic today suggestion builder service
+Add a deterministic service for selecting the best current internal next step for a user.
+
+Requirements:
+- input:
+  - user_id
+  - effective timezone context
+- effective timezone resolution order:
+  1. explicit request parameter if provided
+  2. first enabled daily SubscriptionPolicy policy.timezone if available
+  3. app default timezone
+
+Eligible paper set:
+- include active papers:
+  - in_prep
+  - under_review
+  - revision
+- exclude:
+  - paused
+- published papers may be considered only if they have both:
+  - explicit next_action
+  - meaningful recent internal signal context already available
+  Keep this conservative and well documented.
+
+Evaluate each eligible paper using only existing internal fields/signals such as:
+- type / stage
+- priority
+- next_action
+- blocker
+- last_touch_at
+- latest progress events if helpful
+- latest signal snapshots if helpful and already easy to use cleanly
+
+The builder must produce at most one today_suggestion candidate per user per pulse run.
+
+If no actionable paper exists, do not generate a candidate.
+
+3. Suggestion kinds
+Implement deterministic suggestion kinds.
+
+Required supported suggestion kinds in v1:
+- execute_next_action
+- resolve_blocker
+- define_next_action
+
+Behavior:
+- execute_next_action:
+  - use when next_action exists and blocker is empty
+- resolve_blocker:
+  - use when blocker exists
+- define_next_action:
+  - use when paper is active but next_action is empty
+
+The builder must choose one suggestion kind for the selected paper and generate:
+- title
+- summary
+- why_now
+- candidate_metadata
+
+All text must be deterministic and concise.
+No AI generation.
+
+4. Candidate metadata
+today_suggestion candidate_metadata must include at minimum:
+- suggestion_kind
+- paper_id
+- paper_title
+- paper_type
+- stage
+- priority
+- next_action nullable
+- blocker nullable
+- last_touch_at nullable
+- days_since_last_touch nullable
+- latest_progress_event_at nullable
+- latest_signal_snapshot_at nullable
+- effective_timezone
+- considered_paper_count
+- top_reason_codes
+
+top_reason_codes should be deterministic and compact, such as:
+- high_priority
+- explicit_next_action
+- revision_stage
+- stale_progress
+- blocker_present
+- no_next_action_defined
+
+5. Scoring and ordering
+Integrate today_suggestion into scoring and tie-break logic.
+
+Add configurable scoring knobs, at minimum:
+- APP_PULSE_WEIGHT_TODAY_SUGGESTION
+- APP_PULSE_MODIFIER_TODAY_SUGGESTION_PRIORITY
+- APP_PULSE_MODIFIER_TODAY_SUGGESTION_HAS_NEXT_ACTION
+- APP_PULSE_MODIFIER_TODAY_SUGGESTION_REVISION_STAGE
+- APP_PULSE_MODIFIER_TODAY_SUGGESTION_STALE_PROGRESS
+- APP_PULSE_MODIFIER_TODAY_SUGGESTION_BLOCKER_PRESENT
+- APP_PULSE_TODAY_SUGGESTION_STALE_DAYS_THRESHOLD
+
+Score modifiers should be deterministic and explainable.
+
+Required score_breakdown modifier keys:
+- today_suggestion_priority
+- today_suggestion_has_next_action
+- today_suggestion_revision_stage
+- today_suggestion_stale_progress
+- today_suggestion_blocker_present
+
+Ordering:
+- update card_type ordering to include today_suggestion in a documented stable place
+- keep full tie-break determinism intact
+
+Suggested stable order position:
+- signal_change
+- deadline_risk
+- stalled_progress
+- today_suggestion
+- next_action
+- yesterday_summary
+- related_paper
+
+If implementation chooses a different position, document and test it clearly.
+
+6. Suppression and dedupe
+Add safe suppression behavior for today_suggestion.
+
+Requirements:
+- respect existing:
+  - quiet hours
+  - frequency cap
+  - low-score suppression
+- dedupe should prevent repeating the same today suggestion for the same:
+  - user
+  - source_paper_id
+  - suggestion_kind
+  - next_action/blocker summary context when applicable
+within the existing dedupe logic/window or a minimal explicit extension if needed
+
+Avoid trivial duplication:
+- if practical, suppress today_suggestion when an equal-or-higher-priority paper-centric action card already covers the same paper and same action context in the same run
+- if implemented, document the suppression reason clearly
+- if not implemented, document as deferred
+
+7. Pulse preview and run behavior
+Enhance existing endpoints:
+
+A. POST /pulse/preview/{user_id}
+Requirements:
+- include today_suggestion candidate when applicable
+- include its score breakdown and suppression reasons if suppressed
+- include enough metadata to inspect why this paper/action was chosen
+
+B. POST /pulse/run/{user_id}
+Requirements:
+- if today_suggestion is selected, persist it as a PulseCard
+- ensure existing outbox/delivery flow remains intact
+- candidate_metadata must preserve suggestion_kind and reason context
+
+8. Digest and today-view compatibility
+Update downstream consumers minimally so they tolerate today_suggestion cleanly.
+
+Requirements:
+- digest issue building must support selected cards with:
+  - card_type = today_suggestion
+  - source_paper_id usually present
+- compact digest payloads should not assume the same metadata shape as other card types
+- desktop read models / TS types should accept today_suggestion card_type where needed
+- no major desktop feature work beyond compatibility
+
+9. Metrics and logging
+Add minimal observability.
+
+Required metrics:
+- pulse_today_suggestion_candidates_total
+- pulse_today_suggestion_cards_selected_total
+
+Logging requirements:
+- include user_id where practical
+- include source_paper_id where practical
+- include suggestion_kind where practical
+- include request_id where available
+- do not log local file contents or note contents
+
+10. Tests
+Add or update tests covering at minimum:
+
+Backend:
+- no today_suggestion candidate when there are no actionable papers
+- today_suggestion candidate appears when an active paper has explicit next_action
+- today_suggestion candidate can use resolve_blocker when blocker exists
+- today_suggestion candidate can use define_next_action when active paper lacks next_action
+- paused papers are excluded
+- today_suggestion scoring is deterministic and explainable
+- dedupe prevents repeating the same today suggestion context
+- /pulse/preview/{user_id} exposes today_suggestion details
+- /pulse/run/{user_id} persists today_suggestion when selected
+- digest builder tolerates today_suggestion cards
+- existing tests continue to pass
+
+Desktop / TS where practical:
+- card type unions or view helpers accept today_suggestion without breaking today overview
+- no major desktop behavior change required beyond compatibility
+
+11. Documentation
+Add docs/pulse_today_suggestion_v1.md
+
+It should explain:
+- why today suggestion is being added before external retrieval
+- eligible paper selection rules
+- suggestion kinds
+- scoring / suppression / dedupe behavior
+- pulse preview/run implications
+- digest compatibility notes
+- current non-goals
+- future work:
+  - external academic retrieval
+  - related-paper/news cards
+  - richer suggestion heuristics
+  - user feedback loop for suggestion quality
+
+Also update:
+- README.md
+- docs/development.md
+- docs/architecture.md
+- docs/pulse_scoring.md
+- docs/pulse_input_layer_v1.md
+- docs/pulse_yesterday_summary_v1.md
+- docs/official_account_digest_reserve.md
+- docs/mini_program_readonly_reserve.md
+- any docs that should mention today_suggestion
+
+12. Quality bar
+- keep code typed and readable
+- keep backend schema additions minimal and justified
+- do not add unnecessary dependencies
+- do not require live backend credentials in tests
+- do not add external retrieval in this phase
+- run available checks
+- fix obvious lint/test issues
+- end with a concise summary:
+  - files changed
+  - migrations created if any
+  - new settings
+  - new/changed endpoints
+  - today_suggestion kinds and scoring knobs
+  - next-phase recommendation only

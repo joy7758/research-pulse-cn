@@ -204,6 +204,7 @@ export type PulseCardTypeRead =
   | "signal_change"
   | "stalled_progress"
   | "deadline_risk"
+  | "today_suggestion"
   | "next_action"
   | "yesterday_summary"
   | "related_paper"

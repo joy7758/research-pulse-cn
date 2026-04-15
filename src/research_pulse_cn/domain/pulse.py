@@ -142,6 +142,12 @@ class PulseScoringConfig:
     dedupe_window_hours: int
     min_score: int
     max_cards_per_run: int
+    today_suggestion_stale_days_threshold: int
+    today_suggestion_priority_bonus: int
+    today_suggestion_has_next_action_bonus: int
+    today_suggestion_revision_stage_bonus: int
+    today_suggestion_stale_progress_bonus: int
+    today_suggestion_blocker_present_bonus: int
     yesterday_summary_min_events: int
     yesterday_summary_activity_diversity_bonus: int
     yesterday_summary_multi_paper_bonus: int
@@ -156,6 +162,12 @@ class PulseScoringConfig:
             "dedupe_window_hours": self.dedupe_window_hours,
             "min_score": self.min_score,
             "max_cards_per_run": self.max_cards_per_run,
+            "today_suggestion_stale_days_threshold": self.today_suggestion_stale_days_threshold,
+            "today_suggestion_priority_bonus": self.today_suggestion_priority_bonus,
+            "today_suggestion_has_next_action_bonus": (self.today_suggestion_has_next_action_bonus),
+            "today_suggestion_revision_stage_bonus": (self.today_suggestion_revision_stage_bonus),
+            "today_suggestion_stale_progress_bonus": (self.today_suggestion_stale_progress_bonus),
+            "today_suggestion_blocker_present_bonus": (self.today_suggestion_blocker_present_bonus),
             "yesterday_summary_min_events": self.yesterday_summary_min_events,
             "yesterday_summary_activity_diversity_bonus": (
                 self.yesterday_summary_activity_diversity_bonus

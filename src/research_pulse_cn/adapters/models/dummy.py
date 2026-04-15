@@ -12,6 +12,7 @@ class DummyModelProvider:
         PulseCardType.STALLED_PROGRESS: "Progress appears stalled",
         PulseCardType.SIGNAL_CHANGE: "Signal update detected",
         PulseCardType.DEADLINE_RISK: "Deadline risk identified",
+        PulseCardType.TODAY_SUGGESTION: "Today suggestion ready",
         PulseCardType.YESTERDAY_SUMMARY: "Yesterday summary ready",
         PulseCardType.RELATED_PAPER: "Related paper worth reviewing",
     }
@@ -21,7 +22,10 @@ class DummyModelProvider:
         paper_title = payload.paper_title
         title_prefix = self.TITLES.get(card_type, "Pulse update")
         title = payload.title
-        if card_type != PulseCardType.YESTERDAY_SUMMARY:
+        if card_type not in {
+            PulseCardType.TODAY_SUGGESTION,
+            PulseCardType.YESTERDAY_SUMMARY,
+        }:
             title = f"{title_prefix}: {paper_title}"
         return {
             "card_type": card_type,

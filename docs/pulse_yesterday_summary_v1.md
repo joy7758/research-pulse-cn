@@ -81,8 +81,15 @@
 - no cloud sync of local file or note contents
 
 ## Future Work
-- today-suggestion cards from internal state
 - external academic retrieval driven by watch seeds
 - related-paper and related-news cards
 - richer multi-day activity summarization
 - editorial controls for digest composition
+
+## Relationship To Today Suggestion
+- `yesterday_summary` and `today_suggestion` now coexist in the same deterministic pulse pipeline.
+- `yesterday_summary` answers:
+  - what happened yesterday
+- `today_suggestion` answers:
+  - what is the best concrete internal next step today
+- Both remain retrieval-free and AI-free in this phase.

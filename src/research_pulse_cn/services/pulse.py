@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -53,6 +54,7 @@ from research_pulse_cn.services.common import commit_session
 from research_pulse_cn.services.delivery import DeliveryService
 from research_pulse_cn.services.digest import DigestService
 from research_pulse_cn.services.sync_events import SyncEventService
+from research_pulse_cn.services.today_suggestion import TodaySuggestionBuilder
 from research_pulse_cn.services.yesterday_summary import YesterdaySummaryBuilder
 
 logger = logging.getLogger(__name__)
@@ -61,15 +63,17 @@ CARD_TYPE_TIE_BREAK_ORDER: dict[PulseCardType, int] = {
     PulseCardType.SIGNAL_CHANGE: 0,
     PulseCardType.DEADLINE_RISK: 1,
     PulseCardType.STALLED_PROGRESS: 2,
-    PulseCardType.NEXT_ACTION: 3,
-    PulseCardType.YESTERDAY_SUMMARY: 4,
-    PulseCardType.RELATED_PAPER: 5,
+    PulseCardType.TODAY_SUGGESTION: 3,
+    PulseCardType.NEXT_ACTION: 4,
+    PulseCardType.YESTERDAY_SUMMARY: 5,
+    PulseCardType.RELATED_PAPER: 6,
 }
 
 TITLE_HINTS: dict[PulseCardType, str] = {
     PulseCardType.SIGNAL_CHANGE: "Signal update detected",
     PulseCardType.DEADLINE_RISK: "Deadline risk identified",
     PulseCardType.STALLED_PROGRESS: "Progress appears stalled",
+    PulseCardType.TODAY_SUGGESTION: "Today's best next step",
     PulseCardType.NEXT_ACTION: "Next action ready",
     PulseCardType.YESTERDAY_SUMMARY: "Yesterday summary ready",
     PulseCardType.RELATED_PAPER: "Related paper worth reviewing",
@@ -359,7 +363,9 @@ class DeterministicRuleEngine(RuleEngine):
         for fact in facts:
             title_hint = TITLE_HINTS[fact.card_type]
             title = f"{title_hint}: {fact.paper_title}"
-            if fact.card_type == PulseCardType.YESTERDAY_SUMMARY:
+            if fact.card_type == PulseCardType.TODAY_SUGGESTION:
+                title = str(fact.metadata.get("title", title))
+            elif fact.card_type == PulseCardType.YESTERDAY_SUMMARY:
                 title = f"Yesterday summary for {fact.metadata['summary_date']}"
             candidate = PulseCandidate(
                 id=f"{fact.card_type.value}:{fact.source_paper_id or 'global'}:{fact.id}",
@@ -419,6 +425,11 @@ class PulseService:
         self.digest_service = DigestService(session, now_provider=self.now_provider)
         self.sync_events = SyncEventService(session)
         self.yesterday_summary_builder = YesterdaySummaryBuilder(
+            session,
+            settings=self.settings,
+            now_provider=self.now_provider,
+        )
+        self.today_suggestion_builder = TodaySuggestionBuilder(
             session,
             settings=self.settings,
             now_provider=self.now_provider,
@@ -546,6 +557,14 @@ class PulseService:
                         "pulse_yesterday_summary_cards_selected_total",
                         yesterday_summary_count,
                     )
+                today_suggestion_count = sum(
+                    1 for card in cards if card.card_type == PulseCardType.TODAY_SUGGESTION
+                )
+                if today_suggestion_count:
+                    self.metrics.increment(
+                        "pulse_today_suggestion_cards_selected_total",
+                        today_suggestion_count,
+                    )
                 logger.info("pulse job completed", extra={"selected_cards": len(cards)})
             except Exception as exc:
                 self.session.rollback()
@@ -589,11 +608,23 @@ class PulseService:
             subscription_policy_id=subscription_policy_id,
         )
         resolved_policy = self._resolve_policy(policies)
+        effective_timezone_name = self._resolve_effective_timezone_name(
+            user_id=user_id,
+            timezone_name=timezone_name,
+        )
         facts = list(self.fact_collector.collect(str(user_id)))
+        today_suggestion_fact = self._build_today_suggestion_fact(
+            user_id=user_id,
+            config=resolved_policy.config,
+            timezone_name=effective_timezone_name,
+        )
+        if today_suggestion_fact is not None:
+            facts.append(today_suggestion_fact)
+            self.metrics.increment("pulse_today_suggestion_candidates_total")
         yesterday_summary_fact = self._build_yesterday_summary_fact(
             user_id=user_id,
             config=resolved_policy.config,
-            timezone_name=timezone_name,
+            timezone_name=effective_timezone_name,
         )
         if yesterday_summary_fact is not None:
             facts.append(yesterday_summary_fact)
@@ -619,6 +650,15 @@ class PulseService:
             user_id=user_id,
             since=self.now_provider() - timedelta(hours=resolved_policy.config.dedupe_window_hours),
         )
+        recent_today_suggestion_contexts = (
+            self.pulse_repository.list_recent_today_suggestion_contexts(
+                user_id=user_id,
+                since=(
+                    self.now_provider()
+                    - timedelta(hours=resolved_policy.config.dedupe_window_hours)
+                ),
+            )
+        )
         quiet_hour_window = self._matching_quiet_hours(
             self.now_provider(),
             resolved_policy.config.quiet_hours,
@@ -631,6 +671,7 @@ class PulseService:
                 resolved_policy.config,
                 recent_signatures,
                 recent_yesterday_summary_dates,
+                recent_today_suggestion_contexts,
                 quiet_hour_window,
             )
 
@@ -687,10 +728,27 @@ class PulseService:
             PulseCardType.SIGNAL_CHANGE: self.settings.pulse_weight_signal_change,
             PulseCardType.STALLED_PROGRESS: self.settings.pulse_weight_stalled_progress,
             PulseCardType.DEADLINE_RISK: self.settings.pulse_weight_deadline_risk,
+            PulseCardType.TODAY_SUGGESTION: self.settings.pulse_weight_today_suggestion,
             PulseCardType.NEXT_ACTION: self.settings.pulse_weight_next_action,
             PulseCardType.YESTERDAY_SUMMARY: self.settings.pulse_weight_yesterday_summary,
             PulseCardType.RELATED_PAPER: self.settings.pulse_weight_related_paper,
         }
+        today_suggestion_stale_days_threshold = (
+            self.settings.pulse_today_suggestion_stale_days_threshold
+        )
+        today_suggestion_priority_bonus = self.settings.pulse_modifier_today_suggestion_priority
+        today_suggestion_has_next_action_bonus = (
+            self.settings.pulse_modifier_today_suggestion_has_next_action
+        )
+        today_suggestion_revision_stage_bonus = (
+            self.settings.pulse_modifier_today_suggestion_revision_stage
+        )
+        today_suggestion_stale_progress_bonus = (
+            self.settings.pulse_modifier_today_suggestion_stale_progress
+        )
+        today_suggestion_blocker_present_bonus = (
+            self.settings.pulse_modifier_today_suggestion_blocker_present
+        )
         yesterday_summary_min_events = self.settings.pulse_yesterday_summary_min_events
         yesterday_summary_activity_diversity_bonus = (
             self.settings.pulse_modifier_yesterday_summary_activity_diversity
@@ -730,6 +788,28 @@ class PulseService:
                 min_score = int(overrides["min_score"])
             if "max_cards_per_run" in overrides:
                 max_cards_per_run = int(overrides["max_cards_per_run"])
+            if "today_suggestion_stale_days_threshold" in overrides:
+                today_suggestion_stale_days_threshold = int(
+                    overrides["today_suggestion_stale_days_threshold"]
+                )
+            if "today_suggestion_priority_bonus" in overrides:
+                today_suggestion_priority_bonus = int(overrides["today_suggestion_priority_bonus"])
+            if "today_suggestion_has_next_action_bonus" in overrides:
+                today_suggestion_has_next_action_bonus = int(
+                    overrides["today_suggestion_has_next_action_bonus"]
+                )
+            if "today_suggestion_revision_stage_bonus" in overrides:
+                today_suggestion_revision_stage_bonus = int(
+                    overrides["today_suggestion_revision_stage_bonus"]
+                )
+            if "today_suggestion_stale_progress_bonus" in overrides:
+                today_suggestion_stale_progress_bonus = int(
+                    overrides["today_suggestion_stale_progress_bonus"]
+                )
+            if "today_suggestion_blocker_present_bonus" in overrides:
+                today_suggestion_blocker_present_bonus = int(
+                    overrides["today_suggestion_blocker_present_bonus"]
+                )
             if "yesterday_summary_min_events" in overrides:
                 yesterday_summary_min_events = int(overrides["yesterday_summary_min_events"])
             if "yesterday_summary_activity_diversity_bonus" in overrides:
@@ -757,6 +837,12 @@ class PulseService:
             dedupe_window_hours=dedupe_window_hours,
             min_score=min_score,
             max_cards_per_run=max(1, max_cards_per_run),
+            today_suggestion_stale_days_threshold=max(1, today_suggestion_stale_days_threshold),
+            today_suggestion_priority_bonus=today_suggestion_priority_bonus,
+            today_suggestion_has_next_action_bonus=today_suggestion_has_next_action_bonus,
+            today_suggestion_revision_stage_bonus=today_suggestion_revision_stage_bonus,
+            today_suggestion_stale_progress_bonus=today_suggestion_stale_progress_bonus,
+            today_suggestion_blocker_present_bonus=today_suggestion_blocker_present_bonus,
             yesterday_summary_min_events=max(1, yesterday_summary_min_events),
             yesterday_summary_activity_diversity_bonus=yesterday_summary_activity_diversity_bonus,
             yesterday_summary_multi_paper_bonus=yesterday_summary_multi_paper_bonus,
@@ -768,6 +854,33 @@ class PulseService:
 
     def _score_candidate(self, candidate: PulseCandidate, config: PulseScoringConfig) -> None:
         breakdown = ScoreBreakdown(base_weight=config.score_weights[candidate.card_type])
+
+        if candidate.card_type == PulseCardType.TODAY_SUGGESTION:
+            priority = int(candidate.candidate_metadata.get("priority", 0))
+            suggestion_kind = str(candidate.candidate_metadata.get("suggestion_kind", ""))
+            paper_type = str(candidate.candidate_metadata.get("paper_type", ""))
+            days_since_last_touch = int(
+                candidate.candidate_metadata.get("days_since_last_touch", 0) or 0
+            )
+            priority_bonus = max(0, priority) * config.today_suggestion_priority_bonus
+            if priority_bonus:
+                breakdown.modifiers["today_suggestion_priority"] = priority_bonus
+            if suggestion_kind == "execute_next_action":
+                breakdown.modifiers["today_suggestion_has_next_action"] = (
+                    config.today_suggestion_has_next_action_bonus
+                )
+            if paper_type == PaperType.REVISION.value:
+                breakdown.modifiers["today_suggestion_revision_stage"] = (
+                    config.today_suggestion_revision_stage_bonus
+                )
+            if days_since_last_touch >= config.today_suggestion_stale_days_threshold:
+                breakdown.modifiers["today_suggestion_stale_progress"] = (
+                    config.today_suggestion_stale_progress_bonus
+                )
+            if suggestion_kind == "resolve_blocker":
+                breakdown.modifiers["today_suggestion_blocker_present"] = (
+                    config.today_suggestion_blocker_present_bonus
+                )
 
         if candidate.card_type == PulseCardType.YESTERDAY_SUMMARY:
             total_events = int(candidate.candidate_metadata.get("total_events", 0))
@@ -825,6 +938,7 @@ class PulseService:
         config: PulseScoringConfig,
         recent_signatures: set[tuple[str, str]],
         recent_yesterday_summary_dates: set[str],
+        recent_today_suggestion_contexts: set[tuple[str, str, str]],
         quiet_hour_window: dict[str, Any] | None,
     ) -> None:
         if candidate.candidate_metadata.get("paper_type") == PaperType.PAUSED.value:
@@ -859,7 +973,35 @@ class PulseService:
                 )
             )
 
-        if candidate.card_type == PulseCardType.YESTERDAY_SUMMARY:
+        if candidate.card_type == PulseCardType.TODAY_SUGGESTION:
+            if candidate.source_paper_id is not None:
+                context = (
+                    str(candidate.source_paper_id),
+                    str(candidate.candidate_metadata.get("suggestion_kind", "")),
+                    str(candidate.candidate_metadata.get("action_context", "")),
+                )
+                if context in recent_today_suggestion_contexts:
+                    candidate.add_suppression(
+                        SuppressionReason(
+                            code=SuppressionCode.DEDUPE_WINDOW,
+                            message=(
+                                "A matching user/paper/suggestion-kind/action-context card "
+                                "already exists in the dedupe window."
+                            ),
+                            details={
+                                "card_type": candidate.card_type.value,
+                                "source_paper_id": str(candidate.source_paper_id),
+                                "suggestion_kind": candidate.candidate_metadata.get(
+                                    "suggestion_kind"
+                                ),
+                                "action_context": candidate.candidate_metadata.get(
+                                    "action_context"
+                                ),
+                                "dedupe_window_hours": config.dedupe_window_hours,
+                            },
+                        )
+                    )
+        elif candidate.card_type == PulseCardType.YESTERDAY_SUMMARY:
             summary_date = str(candidate.candidate_metadata.get("summary_date", ""))
             if summary_date and summary_date in recent_yesterday_summary_dates:
                 candidate.add_suppression(
@@ -899,7 +1041,7 @@ class PulseService:
         *,
         user_id: UUID,
         config: PulseScoringConfig,
-        timezone_name: str | None,
+        timezone_name: str,
     ) -> PulseFact | None:
         snapshot = self.yesterday_summary_builder.build(
             user_id=user_id,
@@ -936,6 +1078,85 @@ class PulseService:
                 "touched_paper_titles": touched_paper_titles,
                 "touched_paper_count": len(touched_paper_ids),
             },
+        )
+
+    def _build_today_suggestion_fact(
+        self,
+        *,
+        user_id: UUID,
+        config: PulseScoringConfig,
+        timezone_name: str,
+    ) -> PulseFact | None:
+        decision = self.today_suggestion_builder.build(
+            user_id=user_id,
+            timezone_name=timezone_name,
+            stale_days_threshold=config.today_suggestion_stale_days_threshold,
+            reference=self.now_provider(),
+        )
+        if decision is None:
+            return None
+        context_signature = hashlib.sha1(
+            decision.action_context.encode("utf-8"),
+            usedforsecurity=False,
+        ).hexdigest()[:12]
+        return PulseFact(
+            id=(
+                f"today_suggestion:{user_id}:{decision.paper_id}:"
+                f"{decision.suggestion_kind}:{context_signature}"
+            ),
+            user_id=user_id,
+            card_type=PulseCardType.TODAY_SUGGESTION,
+            source_paper_id=decision.paper_id,
+            source_timestamp=(
+                decision.latest_progress_event_at or decision.last_touch_at or self.now_provider()
+            ),
+            paper_title=decision.paper_title,
+            summary=decision.summary,
+            why_now=decision.why_now,
+            action_text=decision.action_text,
+            deep_link=f"/papers/{decision.paper_id}",
+            evidence_refs=[],
+            metadata={
+                "title": decision.title,
+                "suggestion_kind": decision.suggestion_kind,
+                "paper_id": str(decision.paper_id),
+                "paper_title": decision.paper_title,
+                "paper_type": decision.paper_type,
+                "stage": decision.stage,
+                "priority": decision.priority,
+                "next_action": decision.next_action,
+                "blocker": decision.blocker,
+                "last_touch_at": (
+                    decision.last_touch_at.isoformat() if decision.last_touch_at else None
+                ),
+                "days_since_last_touch": decision.days_since_last_touch,
+                "latest_progress_event_at": (
+                    decision.latest_progress_event_at.isoformat()
+                    if decision.latest_progress_event_at
+                    else None
+                ),
+                "latest_signal_snapshot_at": (
+                    decision.latest_signal_snapshot_at.isoformat()
+                    if decision.latest_signal_snapshot_at
+                    else None
+                ),
+                "effective_timezone": decision.effective_timezone,
+                "considered_paper_count": decision.considered_paper_count,
+                "top_reason_codes": decision.top_reason_codes,
+                "action_context": decision.action_context,
+                "selection_score": decision.selection_score,
+            },
+        )
+
+    def _resolve_effective_timezone_name(
+        self,
+        *,
+        user_id: UUID,
+        timezone_name: str | None,
+    ) -> str:
+        return self.yesterday_summary_builder.resolve_timezone_name(
+            user_id=user_id,
+            explicit_timezone=timezone_name,
         )
 
     def _select_candidates(

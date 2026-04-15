@@ -115,3 +115,15 @@
   - subscription-policy timezone hints
   - application default timezone fallback
 - No external retrieval or AI recap text is involved.
+
+## Relationship To Today Suggestion
+- The current pulse pipeline also uses existing internal portfolio state to build one deterministic `today_suggestion` candidate per user.
+- That card uses only already-available internal objects:
+  - `PaperProfile`
+  - `ProgressEvent`
+  - `SignalSnapshot`
+  - subscription-policy timezone hints
+- It still does not use:
+  - external retrieval
+  - AI suggestion generation
+  - local file or note content sync

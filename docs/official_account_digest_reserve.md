@@ -42,6 +42,7 @@
 - Digest items are derived from existing `PulseCard` rows only.
 - The digest builder does not re-score or re-run pulse selection.
 - Some digest items may now be non-paper-centric, for example `yesterday_summary`, and may therefore keep `source_paper_id = null`.
+- Other internal pulse cards such as `today_suggestion` remain paper-centric but may carry different candidate metadata from signal or deadline cards.
 
 ## DigestPublicationJob Model
 - `DigestPublicationJob` is the future publication reserve record.

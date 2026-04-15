@@ -18,7 +18,7 @@ Private repository. Proprietary and confidential.
 - WeChat identity bindings plus digest issue/publication reserve objects for future official-account and mini-program flows
 - Official-account provider boundary with `disabled` / `dry_run` / explicit `real` mode, callback ingress, and token-backed real-send activation
 - Tauri 2 desktop shell with Rust-side pull sync, local SQLite cache, mutation outbox, minimal writeback for paper/progress/subscription policy edits, a local paper workspace layer, local markdown notes/templates, and a local review-matrix workflow that generates reviewer-matrix / response-letter drafts
-- Pulse input-layer foundation with lightweight `WorkActivityEvent` capture, `ResearchWatchProfile` management, desktop-emitted work activity mutations, deterministic pulse-input preview APIs, and a deterministic `yesterday_summary` pulse card generated from previous-day activity only
+- Pulse input-layer foundation with lightweight `WorkActivityEvent` capture, `ResearchWatchProfile` management, desktop-emitted work activity mutations, deterministic pulse-input preview APIs, a deterministic `yesterday_summary` pulse card, and a deterministic `today_suggestion` pulse card generated from internal paper/progress/signal state only
 - Seed data, Docker Compose, pytest, Ruff, and CI
 
 ## Architecture
@@ -119,6 +119,7 @@ The backend now includes a pulse input layer for future retrieval and recap work
 - `ResearchWatchProfile` for structured "what the user should watch" interests
 - `GET /pulse/input-preview/{user_id}` for a deterministic preview of the current input window, activity summary, and effective watch seeds
 - `yesterday_summary` pulse cards built only from previous-local-day `WorkActivityEvent` rows
+- `today_suggestion` pulse cards built only from internal paper, progress, signal, and policy-timezone context
 
 This phase still avoids external retrieval:
 - no external retrieval
@@ -129,6 +130,13 @@ Yesterday-summary behavior in this phase:
 - uses previous-local-day activity only
 - excludes `source=system` events
 - generates at most one summary candidate per user per run
+- persists as a normal `PulseCard` when selected
+
+Today-suggestion behavior in this phase:
+- uses current internal paper state only
+- excludes paused papers
+- generates at most one suggestion candidate per user per run
+- supports `execute_next_action`, `resolve_blocker`, and `define_next_action`
 - persists as a normal `PulseCard` when selected
 
 ## Common commands
@@ -197,6 +205,13 @@ Important values:
 - `APP_OFFICIAL_ACCOUNT_DEFAULT_MINI_PROGRAM_APP_ID`: default mini-program app id for landing payloads
 - `APP_OFFICIAL_ACCOUNT_DEFAULT_ARTICLE_BASE_URL`: optional base URL for future article landing payloads
 - `APP_OFFICIAL_ACCOUNT_DISPATCH_TIMEOUT_SECONDS`: dispatch timeout budget reported in provider status
+- `APP_PULSE_WEIGHT_TODAY_SUGGESTION`: base score weight for `today_suggestion`
+- `APP_PULSE_TODAY_SUGGESTION_STALE_DAYS_THRESHOLD`: stale-progress threshold used in today-suggestion selection and scoring
+- `APP_PULSE_MODIFIER_TODAY_SUGGESTION_PRIORITY`: multiplier for paper priority in today-suggestion scoring
+- `APP_PULSE_MODIFIER_TODAY_SUGGESTION_HAS_NEXT_ACTION`: bonus when the chosen paper already has a concrete next action
+- `APP_PULSE_MODIFIER_TODAY_SUGGESTION_REVISION_STAGE`: bonus when the chosen paper is in revision
+- `APP_PULSE_MODIFIER_TODAY_SUGGESTION_STALE_PROGRESS`: bonus when the chosen paper has gone stale past the threshold
+- `APP_PULSE_MODIFIER_TODAY_SUGGESTION_BLOCKER_PRESENT`: bonus when the chosen paper is currently blocked
 - `APP_PULSE_WEIGHT_YESTERDAY_SUMMARY`: base score weight for `yesterday_summary`
 - `APP_PULSE_YESTERDAY_SUMMARY_MIN_EVENTS`: minimum qualifying previous-day activity events before candidate generation
 - `APP_PULSE_MODIFIER_YESTERDAY_SUMMARY_ACTIVITY_DIVERSITY`: bonus when multiple activity types were recorded
