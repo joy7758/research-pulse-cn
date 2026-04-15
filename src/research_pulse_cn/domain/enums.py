@@ -222,6 +222,21 @@ class DigestPublicationAttemptStatus(StrEnum):
     FAILED = "failed"
 
 
+class DigestDispatchMode(StrEnum):
+    MANUAL = "manual"
+    AUTO_AFTER_ORCHESTRATION = "auto_after_orchestration"
+    RETRY_FAILED = "retry_failed"
+
+
+class DigestDispatchRunStatus(StrEnum):
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    PARTIAL_FAILED = "partial_failed"
+    FAILED = "failed"
+    SKIPPED = "skipped"
+
+
 class OfficialAccountProviderMode(StrEnum):
     DISABLED = "disabled"
     DRY_RUN = "dry_run"

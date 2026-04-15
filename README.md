@@ -15,7 +15,7 @@ Private repository. Proprietary and confidential.
 - Worker heartbeats, delivery-attempt tracking, readiness checks, and Prometheus-style metrics
 - Current delivery paths for `in_app`, `email`, and `webhook`, with console/webhook adapters for local development
 - Device-token sync backbone for desktop and future lightweight clients
-- WeChat identity bindings plus digest issue/publication reserve objects for future official-account and mini-program flows, including deterministic daily-digest orchestration for official-account publication preparation
+- WeChat identity bindings plus digest issue/publication reserve objects for future official-account and mini-program flows, including deterministic daily-digest orchestration and issue-level official-account dispatch orchestration
 - Official-account provider boundary with `disabled` / `dry_run` / explicit `real` mode, callback ingress, and token-backed real-send activation
 - Tauri 2 desktop shell with Rust-side pull sync, local SQLite cache, mutation outbox, minimal writeback for paper/progress/subscription policy edits, a local paper workspace layer, local markdown notes/templates, and a local review-matrix workflow that generates reviewer-matrix / response-letter drafts
 - Pulse input-layer foundation with lightweight `WorkActivityEvent` capture, `ResearchWatchProfile` management, deterministic external-retrieval planning plus official-source execution/normalization boundaries, desktop-emitted work activity mutations, deterministic pulse-input preview APIs, a deterministic `yesterday_summary` pulse card, a deterministic `today_suggestion` pulse card generated from internal paper/progress/signal state only, and a deterministic `related_paper` pulse card generated only from persisted normalized external scholarly results
@@ -201,6 +201,11 @@ Important values:
 - `APP_DIGEST_RELATED_PAPERS_MAX_ITEMS`: max `related_paper` cards kept in the `related_papers` digest section
 - `APP_DIGEST_OTHER_UPDATES_MAX_ITEMS`: max overflow cards kept in the `other_updates` digest section
 - `APP_DIGEST_AUTO_PREPARE_OFFICIAL_ACCOUNT`: when true, digest orchestration also upserts prepared official-account publication jobs without dispatching sends
+- `APP_DIGEST_AUTO_DISPATCH_OFFICIAL_ACCOUNT`: when true, orchestration may also trigger one issue-level official-account dispatch run
+- `APP_DIGEST_DISPATCH_MAX_PUBLICATION_JOBS_PER_RUN`: cap for eligible official-account jobs dispatched under one digest issue run
+- `APP_DIGEST_DISPATCH_RETRY_FAILED_JOBS`: allow failed official-account jobs to re-enter issue-level dispatch eligibility by default
+- `APP_DIGEST_DISPATCH_PREPARE_IF_MISSING`: allow issue-level dispatch to prepare official-account jobs first when none exist yet
+- `APP_DIGEST_AUTO_DISPATCH_REQUIRE_REAL_MODE`: when true, auto-dispatch only runs in `real` mode with real send enabled
 - `APP_OFFICIAL_ACCOUNT_PROVIDER_MODE`: official-account provider mode: `disabled`, `dry_run`, or `real`
 - `APP_OFFICIAL_ACCOUNT_TRANSPORT_KIND`: outbound transport strategy, currently `template_notice`
 - `APP_WECHAT_OFFICIAL_APP_ID`: official-account app id for provider readiness and callback matching
@@ -299,10 +304,14 @@ With Docker Compose, the codebase now exposes separate `api`, `worker`, and `sch
   - `POST /admin/digest-issues/build/{user_id}`
   - `POST /admin/digest-issues/orchestrate/{user_id}`
   - `GET /admin/digest-issues/{digest_issue_id}/daily-preview`
+  - `GET /admin/digest-issues/{digest_issue_id}/dispatch-preview`
+  - `POST /admin/digest-issues/{digest_issue_id}/dispatch`
   - `POST /admin/digest-issues/{digest_issue_id}/prepare-publication`
   - `GET /admin/digest-publication-jobs`
   - `POST /admin/digest-publication-jobs/{publication_job_id}/dispatch`
   - `GET /admin/digest-publication-attempts`
+  - `GET /admin/digest-dispatch-runs`
+  - `GET /admin/digest-dispatch-runs/{dispatch_run_id}`
   - `GET /admin/official-account/provider-status`
   - `POST /admin/official-account/provider-token/refresh`
   - `GET /admin/official-account/callback-events`
@@ -385,6 +394,8 @@ Desktop shell layout, local cache, pull-sync flow, and developer workflow are do
 Digest issues, WeChat identity binding, and publication preparation without real external sends are documented in [docs/official_account_digest_reserve.md](docs/official_account_digest_reserve.md).
 
 Deterministic sectioned daily-digest orchestration for official-account publication preparation is documented in [docs/official_account_daily_digest_orchestration_v1.md](docs/official_account_daily_digest_orchestration_v1.md).
+
+Issue-level official-account daily dispatch orchestration is documented in [docs/official_account_daily_dispatch_v1.md](docs/official_account_daily_dispatch_v1.md).
 
 ## Mini-program read-only reserve
 Mini preview grants, compact mobile read models, and derived paper progress percentages are documented in [docs/mini_program_readonly_reserve.md](docs/mini_program_readonly_reserve.md).

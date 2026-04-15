@@ -30,6 +30,8 @@ from research_pulse_cn.domain.enums import (
     ClientType,
     DeliveryAttemptStatus,
     DeliveryJobStatus,
+    DigestDispatchMode,
+    DigestDispatchRunStatus,
     DigestPublicationAttemptStatus,
     DigestPublicationMode,
     DigestPublicationStatus,
@@ -161,6 +163,11 @@ class UserProfile(TimestampMixin, Base):
         back_populates="user",
         cascade="all, delete-orphan",
         order_by="ExternalRetrievalRun.created_at.desc()",
+    )
+    digest_dispatch_runs: Mapped[list[DigestDispatchRun]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+        order_by="DigestDispatchRun.created_at.desc()",
     )
     external_retrieval_results: Mapped[list[ExternalRetrievedRecord]] = relationship(
         back_populates="user",
@@ -446,6 +453,11 @@ class PulseDigestIssue(TimestampMixin, Base):
         back_populates="digest_issue",
         cascade="all, delete-orphan",
     )
+    dispatch_runs: Mapped[list[DigestDispatchRun]] = relationship(
+        back_populates="digest_issue",
+        cascade="all, delete-orphan",
+        order_by="DigestDispatchRun.created_at.desc()",
+    )
     mini_read_grants: Mapped[list[MiniReadGrant]] = relationship(
         back_populates="digest_issue",
     )
@@ -568,6 +580,59 @@ class DigestPublicationJob(TimestampMixin, Base):
     )
 
 
+class DigestDispatchRun(TimestampMixin, Base):
+    __tablename__ = "digest_dispatch_runs"
+    __table_args__ = (
+        Index(
+            "ix_digest_dispatch_runs_issue_target_status",
+            "digest_issue_id",
+            "publish_target",
+            "status",
+        ),
+        Index("ix_digest_dispatch_runs_user_created_at", "user_id", "created_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    digest_issue_id: Mapped[UUID] = mapped_column(
+        ForeignKey("pulse_digest_issues.id", ondelete="CASCADE")
+    )
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("user_profiles.id", ondelete="CASCADE"))
+    publish_target: Mapped[DigestPublicationTarget] = mapped_column(
+        Enum(DigestPublicationTarget, native_enum=False),
+        nullable=False,
+    )
+    dispatch_mode: Mapped[DigestDispatchMode] = mapped_column(
+        Enum(DigestDispatchMode, native_enum=False),
+        nullable=False,
+        default=DigestDispatchMode.MANUAL,
+    )
+    provider_mode: Mapped[OfficialAccountProviderMode] = mapped_column(
+        Enum(OfficialAccountProviderMode, native_enum=False),
+        nullable=False,
+    )
+    status: Mapped[DigestDispatchRunStatus] = mapped_column(
+        Enum(DigestDispatchRunStatus, native_enum=False),
+        nullable=False,
+        default=DigestDispatchRunStatus.PENDING,
+    )
+    total_jobs: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    eligible_jobs: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    previewed_jobs: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    sent_jobs: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    failed_jobs: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    skipped_jobs: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error: Mapped[str | None] = mapped_column(Text)
+
+    digest_issue: Mapped[PulseDigestIssue] = relationship(back_populates="dispatch_runs")
+    user: Mapped[UserProfile] = relationship(back_populates="digest_dispatch_runs")
+    attempts: Mapped[list[DigestPublicationAttempt]] = relationship(
+        back_populates="dispatch_run",
+        order_by="DigestPublicationAttempt.started_at",
+    )
+
+
 class DigestPublicationAttempt(Base):
     __tablename__ = "digest_publication_attempts"
     __table_args__ = (
@@ -581,6 +646,9 @@ class DigestPublicationAttempt(Base):
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     digest_publication_job_id: Mapped[UUID] = mapped_column(
         ForeignKey("digest_publication_jobs.id", ondelete="CASCADE")
+    )
+    dispatch_run_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("digest_dispatch_runs.id", ondelete="SET NULL")
     )
     attempt_number: Mapped[int] = mapped_column(Integer, nullable=False)
     provider_name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -602,6 +670,7 @@ class DigestPublicationAttempt(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     digest_publication_job: Mapped[DigestPublicationJob] = relationship(back_populates="attempts")
+    dispatch_run: Mapped[DigestDispatchRun | None] = relationship(back_populates="attempts")
 
 
 class OfficialAccountCallbackEvent(Base):

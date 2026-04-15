@@ -213,6 +213,9 @@ Desktop can now also emit lightweight `work_activity.record` mutations for local
   - `APP_DIGEST_RELATED_PAPERS_MAX_ITEMS`
   - `APP_DIGEST_OTHER_UPDATES_MAX_ITEMS`
 - `APP_DIGEST_AUTO_PREPARE_OFFICIAL_ACCOUNT=true` only prepares publication jobs after orchestration; it does not dispatch sends.
+- `APP_DIGEST_AUTO_DISPATCH_OFFICIAL_ACCOUNT=true` adds one issue-level dispatch step after orchestration only when the provider boundary allows it.
+- `APP_DIGEST_AUTO_DISPATCH_REQUIRE_REAL_MODE=true` keeps auto-dispatch off in `dry_run`.
+- `APP_DIGEST_DISPATCH_PREPARE_IF_MISSING=true` allows issue-level dispatch to prepare missing official-account jobs first.
 - Publication preparation is stub-only:
   - jobs move to `prepared`
   - no real external send occurs
@@ -267,8 +270,12 @@ Desktop can now also emit lightweight `work_activity.record` mutations for local
   - `APP_OFFICIAL_ACCOUNT_DEFAULT_ARTICLE_BASE_URL`
   - `APP_OFFICIAL_ACCOUNT_DISPATCH_TIMEOUT_SECONDS`
 - Admin inspection and dispatch endpoints:
+  - `GET /admin/digest-issues/{digest_issue_id}/dispatch-preview`
+  - `POST /admin/digest-issues/{digest_issue_id}/dispatch`
   - `POST /admin/digest-publication-jobs/{publication_job_id}/dispatch`
   - `GET /admin/digest-publication-attempts`
+  - `GET /admin/digest-dispatch-runs`
+  - `GET /admin/digest-dispatch-runs/{dispatch_run_id}`
   - `GET /admin/official-account/provider-status`
   - `POST /admin/official-account/provider-token/refresh`
   - `GET /admin/official-account/callback-events`
@@ -398,7 +405,7 @@ Desktop can now also emit lightweight `work_activity.record` mutations for local
 ## Next extension points
 - Replace `DummyModelProvider` with a real provider adapter.
 - Expand deterministic facts into richer signal scoring and portfolio context.
-- Add official-account digest publishing on top of persisted pulse and sync data.
+- Add richer official-account digest sending strategy on top of persisted pulse, digest, and issue-dispatch data.
 - Add real mini-program auth and landing handoff on top of the read-only reserve.
 - Add customer-facing auth separately from `AdminAccount`.
 - Add SSO/OIDC only after the internal admin boundary stabilizes.

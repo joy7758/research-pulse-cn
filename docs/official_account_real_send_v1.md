@@ -57,6 +57,14 @@
    - `real -> sent` or `failed`
 5. Already sent jobs do not resend by default unless a future forced retry is introduced explicitly.
 
+## Issue-Level Dispatch Layer
+- A later issue-level orchestration layer can now batch multiple prepared official-account jobs under one `DigestDispatchRun`.
+- That layer still reuses the same per-job provider semantics:
+  - `disabled -> blocked`
+  - `dry_run -> previewed`
+  - `real -> sent` or `failed`
+- `DigestPublicationAttempt.dispatch_run_id` links each per-job attempt back to the issue-level run when dispatch happens through the batch path.
+
 ## Readiness Model
 - Provider readiness is true only when:
   - mode is not `disabled`

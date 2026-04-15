@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from research_pulse_cn.db.models import (
+    DigestDispatchRun,
     DigestPublicationAttempt,
     DigestPublicationJob,
     OfficialAccountCallbackEvent,
@@ -17,6 +18,8 @@ from research_pulse_cn.db.models import (
     WeChatIdentityBinding,
 )
 from research_pulse_cn.domain.enums import (
+    DigestDispatchMode,
+    DigestDispatchRunStatus,
     DigestPublicationAttemptStatus,
     DigestPublicationStatus,
     DigestPublicationTarget,
@@ -141,6 +144,9 @@ class DigestRepository:
                 selectinload(PulseDigestIssue.publication_jobs).selectinload(
                     DigestPublicationJob.binding
                 ),
+                selectinload(PulseDigestIssue.dispatch_runs).selectinload(
+                    DigestDispatchRun.attempts
+                ),
                 selectinload(PulseDigestIssue.user),
                 selectinload(PulseDigestIssue.source_pulse_job),
             )
@@ -161,6 +167,7 @@ class DigestRepository:
                 selectinload(PulseDigestIssue.publication_jobs).selectinload(
                     DigestPublicationJob.binding
                 ),
+                selectinload(PulseDigestIssue.dispatch_runs),
                 selectinload(PulseDigestIssue.source_pulse_job),
             )
             .where(
@@ -275,6 +282,7 @@ class DigestRepository:
                 selectinload(DigestPublicationAttempt.digest_publication_job).selectinload(
                     DigestPublicationJob.binding
                 ),
+                selectinload(DigestPublicationAttempt.dispatch_run),
             )
             .order_by(
                 DigestPublicationAttempt.started_at.desc(),
@@ -307,6 +315,80 @@ class DigestRepository:
                 DigestPublicationAttempt.attempt_number.desc(),
                 DigestPublicationAttempt.started_at.desc(),
             )
+            .limit(1)
+        )
+        return self.session.scalar(statement)
+
+    def add_dispatch_run(
+        self,
+        dispatch_run: DigestDispatchRun,
+    ) -> DigestDispatchRun:
+        self.session.add(dispatch_run)
+        self.session.flush()
+        self.session.refresh(dispatch_run)
+        return dispatch_run
+
+    def list_dispatch_runs(
+        self,
+        *,
+        user_id: UUID | None = None,
+        digest_issue_id: UUID | None = None,
+        status: DigestDispatchRunStatus | None = None,
+        dispatch_mode: DigestDispatchMode | None = None,
+        publish_target: DigestPublicationTarget | None = None,
+    ) -> list[DigestDispatchRun]:
+        statement = (
+            select(DigestDispatchRun)
+            .options(
+                selectinload(DigestDispatchRun.digest_issue),
+                selectinload(DigestDispatchRun.user),
+                selectinload(DigestDispatchRun.attempts).selectinload(
+                    DigestPublicationAttempt.digest_publication_job
+                ),
+            )
+            .order_by(DigestDispatchRun.created_at.desc(), DigestDispatchRun.id.desc())
+        )
+        if user_id is not None:
+            statement = statement.where(DigestDispatchRun.user_id == user_id)
+        if digest_issue_id is not None:
+            statement = statement.where(DigestDispatchRun.digest_issue_id == digest_issue_id)
+        if status is not None:
+            statement = statement.where(DigestDispatchRun.status == status)
+        if dispatch_mode is not None:
+            statement = statement.where(DigestDispatchRun.dispatch_mode == dispatch_mode)
+        if publish_target is not None:
+            statement = statement.where(DigestDispatchRun.publish_target == publish_target)
+        return list(self.session.scalars(statement))
+
+    def get_dispatch_run(self, dispatch_run_id: UUID) -> DigestDispatchRun | None:
+        statement = (
+            select(DigestDispatchRun)
+            .options(
+                selectinload(DigestDispatchRun.digest_issue),
+                selectinload(DigestDispatchRun.user),
+                selectinload(DigestDispatchRun.attempts).selectinload(
+                    DigestPublicationAttempt.digest_publication_job
+                ),
+            )
+            .where(DigestDispatchRun.id == dispatch_run_id)
+            .limit(1)
+        )
+        return self.session.scalar(statement)
+
+    def get_running_dispatch_run(
+        self,
+        *,
+        digest_issue_id: UUID,
+        publish_target: DigestPublicationTarget,
+    ) -> DigestDispatchRun | None:
+        statement = (
+            select(DigestDispatchRun)
+            .where(
+                DigestDispatchRun.digest_issue_id == digest_issue_id,
+                DigestDispatchRun.publish_target == publish_target,
+                DigestDispatchRun.status == DigestDispatchRunStatus.RUNNING,
+            )
+            .order_by(DigestDispatchRun.started_at.desc(), DigestDispatchRun.created_at.desc())
             .limit(1)
         )
         return self.session.scalar(statement)
