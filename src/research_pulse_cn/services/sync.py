@@ -25,7 +25,13 @@ from research_pulse_cn.db.models import (
     SyncMutation,
     utcnow,
 )
-from research_pulse_cn.domain.enums import ClientType, SyncEventSource, SyncMutationStatus
+from research_pulse_cn.domain.enums import (
+    ClientType,
+    SyncEventSource,
+    SyncMutationStatus,
+    WorkActivitySource,
+    WorkActivityType,
+)
 from research_pulse_cn.domain.sync import DeviceContext, IssuedClientDeviceToken
 from research_pulse_cn.repositories.sync import SyncRepository
 from research_pulse_cn.repositories.user import UserRepository
@@ -35,6 +41,7 @@ from research_pulse_cn.services.common import commit_session
 from research_pulse_cn.services.paper import PaperService
 from research_pulse_cn.services.subscription_policy import SubscriptionPolicyService
 from research_pulse_cn.services.sync_events import SyncEventService
+from research_pulse_cn.services.work_activity import WorkActivityService
 
 logger = logging.getLogger(__name__)
 
@@ -238,6 +245,7 @@ class SyncService:
         results: list[dict] = []
         paper_service = PaperService(self.session)
         subscription_policy_service = SubscriptionPolicyService(self.session)
+        work_activity_service = WorkActivityService(self.session)
 
         with bind_log_context(client_device_id=device.client_device_id, user_id=device.user_id):
             for payload in mutations:
@@ -275,6 +283,7 @@ class SyncService:
                         mutation=mutation,
                         paper_service=paper_service,
                         subscription_policy_service=subscription_policy_service,
+                        work_activity_service=work_activity_service,
                     )
                     mutation.status = SyncMutationStatus.APPLIED
                     mutation.resulting_event_sequence = resulting_event_sequence
@@ -319,7 +328,8 @@ class SyncService:
         mutation: SyncMutation,
         paper_service: PaperService,
         subscription_policy_service: SubscriptionPolicyService,
-    ) -> int:
+        work_activity_service: WorkActivityService,
+    ) -> int | None:
         if mutation.mutation_type == "paper.patch":
             if mutation.resource_id is None:
                 raise ValidationFailedError("paper.patch requires resource_id")
@@ -381,6 +391,22 @@ class SyncService:
             if event is None:
                 raise ConflictError("sync event for subscription_policy.patch was not recorded")
             return event.sequence
+
+        if mutation.mutation_type == "work_activity.record":
+            payload = self._validated_work_activity_record_payload(mutation.payload)
+            paper_id = payload.get("paper_id")
+            work_activity_type = payload["activity_type"]
+            work_activity_service.validate_desktop_activity_type(work_activity_type)
+            work_activity_service.record_event(
+                user_id=device.user_id,
+                paper_id=UUID(paper_id) if paper_id else None,
+                activity_type=work_activity_type,
+                summary=payload["summary"],
+                metadata=payload.get("metadata"),
+                happened_at=payload["happened_at"],
+                source=payload["source"],
+            )
+            return None
 
         raise ValidationFailedError(f"unsupported mutation_type {mutation.mutation_type}")
 
@@ -448,6 +474,53 @@ class SyncService:
                 f"{', '.join(unexpected)}"
             )
         return SubscriptionPolicyUpdate(**payload)
+
+    def _validated_work_activity_record_payload(self, payload: dict) -> dict:
+        allowed_keys = {
+            "paper_id",
+            "activity_type",
+            "summary",
+            "metadata",
+            "happened_at",
+        }
+        unexpected = sorted(set(payload) - allowed_keys)
+        if unexpected:
+            raise ValidationFailedError(
+                f"work_activity.record payload includes unsupported fields: {', '.join(unexpected)}"
+            )
+        activity_type = payload.get("activity_type")
+        summary = str(payload.get("summary") or "").strip()
+        happened_at = payload.get("happened_at")
+        if not activity_type:
+            raise ValidationFailedError("work_activity.record requires activity_type")
+        if not summary:
+            raise ValidationFailedError("work_activity.record requires summary")
+        if not happened_at:
+            raise ValidationFailedError("work_activity.record requires happened_at")
+        metadata = payload.get("metadata")
+        if metadata is not None and not isinstance(metadata, dict):
+            raise ValidationFailedError("work_activity.record metadata must be an object or null")
+        if payload.get("paper_id") is not None and not str(payload.get("paper_id")).strip():
+            raise ValidationFailedError("work_activity.record paper_id must not be blank")
+        try:
+            parsed_type = WorkActivityType(str(activity_type))
+        except ValueError as exc:
+            raise ValidationFailedError(f"unsupported work activity type {activity_type}") from exc
+        try:
+            parsed_happened_at = datetime.fromisoformat(str(happened_at))
+        except ValueError as exc:
+            raise ValidationFailedError(
+                "work_activity.record happened_at must be an ISO 8601 datetime"
+            ) from exc
+
+        return {
+            "paper_id": str(payload.get("paper_id")).strip() if payload.get("paper_id") else None,
+            "activity_type": parsed_type,
+            "summary": summary,
+            "metadata": metadata,
+            "happened_at": parsed_happened_at,
+            "source": WorkActivitySource.DESKTOP_LOCAL,
+        }
 
 
 def _coerce_utc(value: datetime) -> datetime:

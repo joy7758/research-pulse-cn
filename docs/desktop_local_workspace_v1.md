@@ -62,10 +62,18 @@
 The notes directory created under each paper workspace is now also used by:
 - the separate local notes/template layer
 - generated `reviewer_matrix` and `response_letter` markdown files from the local review-matrix workflow
+- lightweight cloud-side work-activity capture driven by attachment import summaries only
 
 Both note metadata and review-matrix metadata remain local-only and are documented in:
 - `docs/desktop_local_notes_templates_v1.md`
 - `docs/desktop_review_matrix_response_v1.md`
+
+Attachment import now also queues a local `work_activity.record` sync mutation with concise metadata only:
+- attachment kind
+- imported count
+- paper id
+
+The backend records this as `attachment_imported` without receiving local file contents.
 
 Existing paper read models are extended with local-only workspace state:
 - `PaperListItemRead`

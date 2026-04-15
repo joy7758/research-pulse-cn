@@ -1,0 +1,280 @@
+Read AGENTS.md, docs/BUILD_SPEC.md, docs/architecture.md, docs/development.md, docs/pulse_scoring.md, docs/operations.md, docs/auth_admin_boundary.md, docs/sync_foundation.md, docs/official_account_digest_reserve.md, docs/mini_program_readonly_reserve.md, docs/official_account_provider_boundary.md, docs/official_account_real_send_v1.md, docs/desktop_tauri_skeleton_v1.md, docs/desktop_writeback_sync_v1.md, docs/desktop_local_workspace_v1.md, docs/desktop_local_notes_templates_v1.md before editing.
+
+Implement Phase 18 only: pulse input layer v1.
+
+Hard boundaries for this phase:
+- Do not implement external web/news retrieval yet.
+- Do not implement paper/news recommendation fetching yet.
+- Do not change current delivery channels or add new channels.
+- Do not add customer-facing UI beyond minimal desktop integration already in place.
+- Do not sync local file contents, note contents, or generated review note contents to the backend.
+- Do not add AI summarization or AI query generation.
+- Do not add multi-tenant or institution features.
+- Do not weaken existing admin auth, internal service auth, device-token sync auth, mini-read auth, or official-account provider boundaries.
+- Do not replace the modular monolith backend architecture.
+
+Primary goal:
+Add the minimum backend + desktop input layer required for a future Research Pulse:
+1. WorkActivityEvent for "what the user did"
+2. ResearchWatchProfile for "what the user should watch"
+
+This phase should make the repository suitable for:
+- summarizing the previous day's work from structured activity events
+- building watch profiles from papers and manual user input
+- carrying lightweight desktop-local work activity metadata into the cloud
+- previewing effective pulse inputs before implementing external retrieval
+
+Architectural intent:
+- WorkActivityEvent stores lightweight activity metadata only.
+- It must never store local file contents or note contents.
+- ResearchWatchProfile stores compact watch interests tied to a user and optionally a paper.
+- Desktop local actions should emit lightweight work_activity.record sync mutations when appropriate.
+- This phase is input-layer only, not external retrieval or final Pulse content generation.
+
+Required changes:
+
+1. Backend persistence
+Add two backend models/tables plus Alembic migration(s):
+
+A. WorkActivityEvent
+Required fields:
+- id UUID pk
+- user_id FK to UserProfile
+- paper_id nullable FK to PaperProfile
+- activity_type string or enum
+- summary text
+- metadata JSON nullable
+- happened_at datetime
+- source string or enum [api, sync_mutation, desktop_local, system]
+- created_at datetime
+
+Required supported activity types in v1:
+- paper_updated
+- progress_event_created
+- subscription_policy_updated
+- attachment_imported
+- note_created
+- note_saved
+- review_round_created
+- reviewer_matrix_generated
+- response_letter_generated
+
+B. ResearchWatchProfile
+Required fields:
+- id UUID pk
+- user_id FK to UserProfile
+- paper_id nullable FK to PaperProfile
+- label string
+- enabled bool default true
+- source_mode string or enum [manual, paper_bootstrap]
+- topics JSON list
+- keywords JSON list
+- venues JSON list
+- authors_of_interest JSON list nullable
+- created_at datetime
+- updated_at datetime
+
+Constraints:
+- keep schema production-friendly
+- keep fields minimal and focused
+- no file/blob content
+- no backend storage of desktop note/file contents
+
+2. Backend services
+Add services for:
+- recording work activity events
+- summarizing work activity by date/user
+- building effective watch seeds from enabled ResearchWatchProfile rows
+
+Requirements:
+- activity summary should be deterministic and machine-readable
+- include counts by activity_type
+- include touched paper ids/titles where practical
+- effective watch seeds should return deduped:
+  - topics
+  - keywords
+  - venues
+  - authors_of_interest
+- keep implementation simple and explainable
+
+3. Auto-capture cloud-side activities
+Automatically record WorkActivityEvent rows for core server-side user work where appropriate.
+
+Required auto-capture in v1:
+- paper.patch application -> paper_updated
+- progress_event.create -> progress_event_created
+- subscription_policy.patch/create/update -> subscription_policy_updated
+
+Requirements:
+- avoid duplicate records from retries where the underlying mutation is already deduped
+- summaries should be concise and user-facing enough for future daily recap use
+- do not confuse audit logs with work activity; keep work activity user-work-centric
+
+4. Extend sync mutation model
+Extend backend /sync/push to accept a new mutation type:
+- work_activity.record
+
+Allowed payload fields:
+- paper_id nullable
+- activity_type
+- summary
+- metadata nullable
+- happened_at
+
+Allowed desktop-origin activity types in v1:
+- attachment_imported
+- note_created
+- note_saved
+- review_round_created
+- reviewer_matrix_generated
+- response_letter_generated
+
+Requirements:
+- reuse existing SyncMutation idempotency via client_mutation_id
+- applying this mutation must create a WorkActivityEvent row
+- keep backward compatibility for existing sync mutation types
+- do not require new auth mode
+
+5. Research watch profile API
+Add protected business/admin-facing endpoints for managing watch profiles.
+
+Required endpoints:
+- GET /research-watch-profiles
+- POST /research-watch-profiles
+- PATCH /research-watch-profiles/{profile_id}
+- DELETE /research-watch-profiles/{profile_id}
+- POST /research-watch-profiles/bootstrap/{paper_id}
+
+Behavior:
+- viewer can list/read
+- operator and super_admin can create/update/delete/bootstrap
+- bootstrap endpoint should create a simple deterministic profile from the paper:
+  - label from paper title
+  - keyword list should at minimum include the full paper title
+  - venue included if available
+  - keep bootstrap conservative, not over-smart
+- no NLP/AI inference in this phase
+
+6. Pulse input preview API
+Add protected preview/read endpoints.
+
+Required endpoints:
+- GET /work-activity-events
+- GET /pulse/input-preview/{user_id}
+
+Behavior:
+- GET /work-activity-events supports reasonable filters:
+  - user_id
+  - paper_id
+  - activity_type
+  - date_from
+  - date_to
+- GET /pulse/input-preview/{user_id} should return:
+  - preview_date or window
+  - work_activity_summary
+  - work_activity_events
+  - enabled_watch_profiles
+  - effective_watch_seeds
+  - notes on what external retrieval would use later
+
+Important:
+- this is an input preview, not final pulse/news retrieval
+- keep payload compact and deterministic
+
+7. Desktop integration
+Integrate the desktop app so selected local-only actions emit lightweight activity mutations into the existing local mutation outbox.
+
+At minimum hook these local actions:
+- importPaperAttachments -> attachment_imported
+- createPaperNoteFromTemplate -> note_created
+- createBlankPaperNote -> note_created
+- savePaperNote -> note_saved
+- createReviewRound -> review_round_created
+- generateReviewerMatrixNote -> reviewer_matrix_generated
+- generateResponseLetterNote -> response_letter_generated
+
+Requirements:
+- use the existing mutation_outbox and /sync/push flow
+- represent these as mutation_type = work_activity.record
+- do not sync file contents or note contents
+- only send concise summary + metadata
+- syncNow should handle this new mutation type cleanly
+- duplicate results must remain non-fatal
+
+8. Metrics and logging
+Add minimal observability.
+
+Required metrics:
+- work_activity_events_recorded_total
+- research_watch_profiles_total
+- pulse_input_previews_total
+
+Logging requirements:
+- include user_id and paper_id where practical
+- include activity_type where practical
+- include request_id where available
+- do not log local file contents or note contents
+
+9. Tests
+Add or update tests covering at minimum:
+
+Backend:
+- paper.patch auto-records paper_updated
+- progress_event.create auto-records progress_event_created
+- sync work_activity.record creates WorkActivityEvent
+- sync work_activity.record remains idempotent via client_mutation_id
+- bootstrap watch profile from paper works deterministically
+- pulse input preview returns work activity summary + effective watch seeds
+- existing tests continue to pass
+
+Desktop:
+- attachment import queues work_activity.record mutation
+- note create queues work_activity.record mutation
+- note save queues work_activity.record mutation
+- review round create queues work_activity.record mutation
+- response letter generation queues work_activity.record mutation
+- syncNow handles work_activity.record without breaking existing mutation flow
+
+10. Documentation
+Add docs/pulse_input_layer_v1.md
+
+It should explain:
+- why Pulse input layer is being added before external retrieval
+- WorkActivityEvent model
+- ResearchWatchProfile model
+- cloud auto-capture vs desktop-emitted activity
+- watch-profile bootstrap logic
+- pulse input preview endpoint
+- current non-goals
+- future work:
+  - external academic retrieval
+  - yesterday-summary pulse cards
+  - related-paper/news retrieval
+  - richer watch-profile derivation
+
+Also update:
+- README.md
+- docs/development.md
+- docs/architecture.md
+- docs/pulse_scoring.md
+- docs/sync_foundation.md
+- docs/desktop_local_workspace_v1.md
+- docs/desktop_local_notes_templates_v1.md
+- docs/desktop_review_matrix_response_v1.md
+- any docs that should mention Pulse input layer
+
+11. Quality bar
+- keep code typed and readable
+- keep backend schema additions minimal and justified
+- do not add unnecessary dependencies
+- do not require live backend credentials in tests
+- do not add external retrieval in this phase
+- run available checks
+- fix obvious lint/test issues
+- end with a concise summary:
+  - files changed
+  - migrations created
+  - new models
+  - new endpoints
+  - desktop hooks added
+  - next-phase recommendation only

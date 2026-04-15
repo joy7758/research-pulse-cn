@@ -16,11 +16,15 @@ from research_pulse_cn.api.routes.official_account_integration import (
 from research_pulse_cn.api.routes.ops import router as ops_router
 from research_pulse_cn.api.routes.papers import router as papers_router
 from research_pulse_cn.api.routes.pulse import router as pulse_router
+from research_pulse_cn.api.routes.research_watch_profiles import (
+    router as research_watch_profiles_router,
+)
 from research_pulse_cn.api.routes.subscription_policies import (
     router as subscription_policies_router,
 )
 from research_pulse_cn.api.routes.sync import router as sync_router
 from research_pulse_cn.api.routes.users import router as users_router
+from research_pulse_cn.api.routes.work_activity import router as work_activity_router
 
 api_router = APIRouter()
 api_router.include_router(health_router, tags=["health"])
@@ -34,6 +38,8 @@ api_router.include_router(official_account_integration_router)
 api_router.include_router(users_router)
 api_router.include_router(papers_router)
 api_router.include_router(subscription_policies_router)
+api_router.include_router(research_watch_profiles_router)
+api_router.include_router(work_activity_router)
 api_router.include_router(pulse_router)
 api_router.include_router(delivery_jobs_router)
 api_router.include_router(ops_router)

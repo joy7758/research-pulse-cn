@@ -69,6 +69,13 @@
 - `clearLocalCache` and `disconnectDevice` do not delete generated review notes.
 - If the workspace root is missing or invalid, generation fails clearly instead of faking success.
 
+The review workflow now also emits lightweight pulse-input activity metadata through sync:
+- `review_round_created`
+- `reviewer_matrix_generated`
+- `response_letter_generated`
+
+These activity events are summary-only and never upload comment bodies or generated markdown content to the backend.
+
 ## Current Non-Goals
 - no AI reviewer comment extraction
 - no OCR or PDF / DOCX parsing

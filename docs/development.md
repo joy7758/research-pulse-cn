@@ -50,6 +50,8 @@ Desktop sync in this phase uses:
 
 The desktop shell does not use admin login. It uses admin-issued device tokens, keeps the token on the Rust side, and persists local mutations into a SQLite outbox before attempting sync.
 
+Desktop can now also emit lightweight `work_activity.record` mutations for local-only actions such as attachment import, note create/save, and review-note generation. These mutations carry summary metadata only and never upload local file or note contents.
+
 ## Pulse scoring knobs
 - Defaults live in application settings and `.env.example`
 - Per-user overrides can be applied through `SubscriptionPolicy.policy["pulse"]`
@@ -110,6 +112,7 @@ The desktop shell does not use admin login. It uses admin-issued device tokens, 
   - `APP_SYNC_FEED_MAX_LIMIT`
   - `APP_SYNC_PUSH_MAX_BATCH_SIZE`
 - Conflict handling in v1 is last-write-wins for supported patch operations.
+- `POST /sync/push` now also accepts `work_activity.record` for lightweight desktop activity capture.
 
 ## Desktop shell
 - The desktop shell lives under `apps/desktop`.
@@ -158,6 +161,13 @@ The desktop shell does not use admin login. It uses admin-issued device tokens, 
   - pull feed pages
   - apply events
   - ack only after successful apply
+- Desktop local actions now also queue `work_activity.record` for:
+  - attachment import
+  - note create
+  - note save
+  - review round create
+  - reviewer-matrix note generation
+  - response-letter note generation
 - `progress_percentage` in desktop list/detail views is the same derived heuristic used by the mini read model, not a persisted workflow truth field.
 - Desktop local workspace in v1:
   - choose a workspace root from Settings
@@ -258,6 +268,25 @@ The desktop shell does not use admin login. It uses admin-issued device tokens, 
   - `APP_OFFICIAL_ACCOUNT_REAL_SEND_ENABLED=true`
   - configured app id, app secret, and digest template id
 - Real mode uses a client-credential access-token flow with Redis-preferred caching and in-memory fallback for local/test.
+
+## Pulse input layer
+- New backend entities:
+  - `WorkActivityEvent`
+  - `ResearchWatchProfile`
+- New read/management endpoints:
+  - `GET /work-activity-events`
+  - `GET /research-watch-profiles`
+  - `POST /research-watch-profiles`
+  - `PATCH /research-watch-profiles/{profile_id}`
+  - `DELETE /research-watch-profiles/{profile_id}`
+  - `POST /research-watch-profiles/bootstrap/{paper_id}`
+  - `GET /pulse/input-preview/{user_id}`
+- Cloud-side service actions auto-record work activity for:
+  - `paper.patch`
+  - `progress_event.create`
+  - `subscription_policy.patch`
+- Desktop-local attachment/note/review actions contribute through `work_activity.record`.
+- No external retrieval or AI summarization is enabled in this phase.
 - Unknown callback identities are stored for review and do not auto-create bindings.
 
 ## Ops endpoints

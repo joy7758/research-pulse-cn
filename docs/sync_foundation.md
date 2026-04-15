@@ -54,6 +54,7 @@
   - `paper.patch`
   - `progress_event.create`
   - `subscription_policy.patch`
+  - `work_activity.record`
 
 ## Feed Ack Push Flow
 1. Device authenticates with its bearer token.
@@ -64,6 +65,11 @@
 4. `POST /sync/ack` advances the server-side cursor forward only.
 5. `POST /sync/push` submits idempotent mutations with `client_mutation_id`.
 6. Successful mutations go through the existing service layer and emit new `SyncEvent` rows.
+7. `work_activity.record` is the exception:
+   - it creates a lightweight `WorkActivityEvent`
+   - it still participates in mutation idempotency
+   - it does not upload local file or note contents
+   - it does not need a follow-up `SyncEvent` for authoritative local-cache replay
 
 ## Idempotency Rules
 - `client_mutation_id` is unique per device.
@@ -83,7 +89,14 @@
   - `paper.patch`
   - `progress_event.create`
   - `subscription_policy.patch`
+- Desktop also emits lightweight local-activity metadata through:
+  - `work_activity.record`
 - Desktop uses a local outbox and push-before-pull sync cycle; it still does not call business CRUD directly.
+- Current desktop-local activity hooks include:
+  - attachment import
+  - note create/save
+  - review round create
+  - reviewer-matrix / response-letter generation
 
 ## Future Work
 - richer desktop write-back sync and stronger conflict handling

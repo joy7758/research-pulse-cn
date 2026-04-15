@@ -34,6 +34,9 @@ COUNTER_NAMES = (
     "official_account_access_token_refresh_failed_total",
     "official_account_real_dispatch_success_total",
     "official_account_real_dispatch_failure_total",
+    "work_activity_events_recorded_total",
+    "research_watch_profiles_total",
+    "pulse_input_previews_total",
 )
 
 
