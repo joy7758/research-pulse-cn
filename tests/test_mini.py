@@ -1,7 +1,9 @@
 from datetime import timedelta
+from uuid import UUID
 
-from research_pulse_cn.db.models import utcnow
+from research_pulse_cn.db.models import PulseDigestIssue, utcnow
 from research_pulse_cn.domain.enums import (
+    ChannelType,
     MiniReadGrantType,
     PaperType,
     SignalSource,
@@ -95,6 +97,95 @@ def create_policy(client, headers, *, user_id: str) -> None:
         },
     )
     assert response.status_code == 201
+
+
+def ensure_official_account_policy(
+    client,
+    headers,
+    *,
+    user_id: str,
+    enabled: bool = True,
+    quiet_hours: dict | None = None,
+    policy: dict | None = None,
+) -> dict:
+    response = client.get(
+        "/subscription-policies",
+        headers=headers,
+        params={"user_id": user_id},
+    )
+    assert response.status_code == 200
+    for existing in response.json():
+        if existing["channel"] != ChannelType.OFFICIAL_ACCOUNT.value:
+            continue
+        updated = client.put(
+            f"/subscription-policies/{existing['id']}",
+            headers=headers,
+            json={
+                "enabled": enabled,
+                "quiet_hours": quiet_hours if quiet_hours is not None else existing["quiet_hours"],
+                "policy": policy if policy is not None else existing["policy"],
+            },
+        )
+        assert updated.status_code == 200
+        return updated.json()
+    created = client.post(
+        "/subscription-policies",
+        headers=headers,
+        json={
+            "user_id": user_id,
+            "channel": ChannelType.OFFICIAL_ACCOUNT.value,
+            "enabled": enabled,
+            "frequency": SubscriptionFrequency.DAILY.value,
+            "frequency_cap": 3,
+            "endpoint": None,
+            "quiet_hours": quiet_hours,
+            "policy": policy or {"timezone": "UTC"},
+        },
+    )
+    assert created.status_code == 201
+    return created.json()
+
+
+def create_official_account_binding(client, headers, *, user_id: str, openid: str) -> dict:
+    response = client.post(
+        "/admin/wechat-bindings",
+        headers=headers,
+        json={
+            "user_id": user_id,
+            "channel_type": WeChatBindingChannelType.OFFICIAL_ACCOUNT.value,
+            "app_id": "wx-official-app",
+            "openid": openid,
+            "unionid": "mini-should-not-see-unionid",
+            "bind_state": WeChatBindingState.ACTIVE.value,
+            "subscribed": True,
+            "digest_enabled": True,
+            "display_label": "Official Account Binding",
+        },
+    )
+    assert response.status_code == 201
+    return response.json()
+
+
+def create_self_service_grant(
+    client,
+    headers,
+    *,
+    user_id: str,
+    binding_id: str | None = None,
+) -> dict:
+    payload: dict[str, object] = {
+        "user_id": user_id,
+        "channel": ChannelType.OFFICIAL_ACCOUNT.value,
+    }
+    if binding_id is not None:
+        payload["binding_id"] = binding_id
+    response = client.post(
+        "/admin/subscription-self-service-grants",
+        headers=headers,
+        json=payload,
+    )
+    assert response.status_code == 201
+    return response.json()
 
 
 def create_digest_ready_user(client, headers, *, email: str) -> tuple[dict, dict, dict]:
@@ -259,6 +350,14 @@ def test_mini_bootstrap_returns_stable_grant_context(client, operator_headers) -
     )
     assert payload["grant"]["digest_issue_id"] == digest_issue["id"]
     assert "/mini/digest-issues/{digest_issue_id}" in payload["available_routes"]
+    assert "/mini/subscription-reserve" in payload["available_routes"]
+    assert payload["subscription_reserve_summary"]["self_service_reserve"]["supported"] is True
+    assert (
+        payload["subscription_reserve_summary"]["self_service_reserve"][
+            "editable_via_current_mini_grant"
+        ]
+        is False
+    )
 
 
 def test_mini_today_returns_empty_state_when_no_digest_exists(client, operator_headers) -> None:
@@ -273,6 +372,44 @@ def test_mini_today_returns_empty_state_when_no_digest_exists(client, operator_h
     assert response.status_code == 200
     assert response.json()["state"] == "empty"
     assert response.json()["digest_issue"] is None
+
+
+def test_mini_today_returns_structured_sections_when_digest_payload_is_structured(
+    client,
+    operator_headers,
+) -> None:
+    user, _paper, digest_issue = create_digest_ready_user(
+        client,
+        operator_headers,
+        email="mini-today-structured@example.com",
+    )
+    created = create_mini_grant(
+        client,
+        operator_headers,
+        user_id=user["id"],
+        grant_type=MiniReadGrantType.DIGEST_LANDING.value,
+        digest_issue_id=digest_issue["id"],
+    )
+
+    response = client.get(
+        "/mini/today",
+        headers={"Authorization": f"Bearer {created['plain_text_token']}"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()["digest_issue"]
+    assert payload["is_structured"] is True
+    assert payload["fallback_mode"] == "structured"
+    assert payload["section_order"] == [
+        "today_focus",
+        "yesterday_recap",
+        "signal_updates",
+        "related_papers",
+        "other_updates",
+    ]
+    assert payload["sections"]
+    assert "quick_stats" in payload
+    assert "publication_preview" in payload
 
 
 def test_mini_digest_issue_preserves_sort_order(client, operator_headers) -> None:
@@ -297,6 +434,45 @@ def test_mini_digest_issue_preserves_sort_order(client, operator_headers) -> Non
     assert response.status_code == 200
     sort_orders = [item["sort_order"] for item in response.json()["items"]]
     assert sort_orders == sorted(sort_orders)
+
+
+def test_mini_today_falls_back_cleanly_on_legacy_highlight_only_digest(
+    client,
+    operator_headers,
+    session,
+) -> None:
+    user, _paper, digest_issue = create_digest_ready_user(
+        client,
+        operator_headers,
+        email="mini-today-legacy@example.com",
+    )
+    issue_model = session.get(PulseDigestIssue, UUID(digest_issue["id"]))
+    assert issue_model is not None
+    structured_item = dict((issue_model.content_payload or {})["items"][0])
+    issue_model.content_payload = {
+        "highlights": [structured_item],
+        "items": [structured_item],
+    }
+    session.commit()
+
+    created = create_mini_grant(
+        client,
+        operator_headers,
+        user_id=user["id"],
+        grant_type=MiniReadGrantType.DIGEST_LANDING.value,
+        digest_issue_id=digest_issue["id"],
+    )
+    response = client.get(
+        "/mini/today",
+        headers={"Authorization": f"Bearer {created['plain_text_token']}"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()["digest_issue"]
+    assert payload["is_structured"] is False
+    assert payload["fallback_mode"] == "highlights_only"
+    assert payload["sections"]
+    assert payload["sections"][0]["kind"] == "signal_updates"
 
 
 def test_mini_digest_issue_exposes_sectioned_digest_payload_compatibly(
@@ -330,6 +506,174 @@ def test_mini_digest_issue_exposes_sectioned_digest_payload_compatibly(
         "other_updates",
     ]
     assert "publication_preview" in response.json()
+
+
+def test_mini_digest_issue_handles_null_source_paper_in_structured_sections(
+    client,
+    operator_headers,
+    session,
+) -> None:
+    user, _paper, digest_issue = create_digest_ready_user(
+        client,
+        operator_headers,
+        email="mini-digest-null-source-paper@example.com",
+    )
+    issue_model = session.get(PulseDigestIssue, UUID(digest_issue["id"]))
+    assert issue_model is not None
+    legacy_item = {
+        "sort_order": 1,
+        "pulse_card_id": str(issue_model.items[0].pulse_card_id),
+        "card_type": "yesterday_summary",
+        "source_paper_id": None,
+        "title": "Yesterday summary for 2026-04-15",
+        "summary": "Yesterday recorded 2 work activities.",
+        "why_now": "This recap is still useful today.",
+        "action_text": None,
+        "deep_link": None,
+    }
+    issue_model.content_payload = {
+        "section_order": [
+            "today_focus",
+            "yesterday_recap",
+            "signal_updates",
+            "related_papers",
+            "other_updates",
+        ],
+        "sections": [
+            {
+                "kind": "yesterday_recap",
+                "title": "Yesterday Recap",
+                "item_count": 1,
+                "items": [legacy_item],
+            }
+        ],
+        "quick_stats": {
+            "selected_card_count": 1,
+            "related_paper_count": 0,
+            "signal_update_count": 0,
+            "touched_paper_count": 0,
+        },
+        "focus_card": None,
+        "publication_preview": None,
+        "highlights": [legacy_item],
+        "items": [legacy_item],
+    }
+    session.commit()
+
+    created = create_mini_grant(
+        client,
+        operator_headers,
+        user_id=user["id"],
+        grant_type=MiniReadGrantType.DIGEST_LANDING.value,
+        digest_issue_id=digest_issue["id"],
+    )
+    response = client.get(
+        f"/mini/digest-issues/{digest_issue['id']}",
+        headers={"Authorization": f"Bearer {created['plain_text_token']}"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["sections"][0]["kind"] == "yesterday_recap"
+    assert payload["sections"][0]["items"][0]["source_paper_id"] is None
+    assert payload["highlights"][0]["source_paper_id"] is None
+
+
+def test_mini_subscription_reserve_returns_safe_binding_summary_and_authoritative_preview(
+    client,
+    operator_headers,
+) -> None:
+    user, _paper, digest_issue = create_digest_ready_user(
+        client,
+        operator_headers,
+        email="mini-subscription-reserve@example.com",
+    )
+    ensure_official_account_policy(
+        client,
+        operator_headers,
+        user_id=user["id"],
+        policy={"timezone": "UTC", "minimum_selected_cards": 5},
+    )
+    create_official_account_binding(
+        client,
+        operator_headers,
+        user_id=user["id"],
+        openid="mini-subscription-openid",
+    )
+    created = create_mini_grant(client, operator_headers, user_id=user["id"])
+
+    response = client.get(
+        "/mini/subscription-reserve",
+        headers={"Authorization": f"Bearer {created['plain_text_token']}"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["official_account_binding"]["channel_type"] == "official_account"
+    assert "openid" not in payload["official_account_binding"]
+    assert "unionid" not in payload["official_account_binding"]
+    assert payload["subscription_settings"]["channel"] == "official_account"
+    assert payload["delivery_control_preview"]["state"] == "ready"
+    assert payload["delivery_control_preview"]["decision"] == "skipped"
+    assert "insufficient_selected_cards" in payload["delivery_control_preview"]["reason_codes"]
+    assert payload["latest_digest_issue"]["id"] == digest_issue["id"]
+    assert payload["self_service_reserve"]["editable_via_current_mini_grant"] is False
+
+
+def test_mini_subscription_reserve_returns_empty_preview_when_digest_context_absent(
+    client,
+    operator_headers,
+) -> None:
+    user = create_user(client, operator_headers, email="mini-subscription-empty@example.com")
+    ensure_official_account_policy(
+        client,
+        operator_headers,
+        user_id=user["id"],
+        policy={"timezone": "UTC", "skip_if_no_today_focus": True},
+    )
+    created = create_mini_grant(client, operator_headers, user_id=user["id"])
+
+    response = client.get(
+        "/mini/subscription-reserve",
+        headers={"Authorization": f"Bearer {created['plain_text_token']}"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["delivery_control_preview"]["state"] == "empty"
+    assert payload["delivery_control_preview"]["decision"] is None
+    assert payload["latest_digest_issue"] is None
+
+
+def test_mini_grant_cannot_access_self_service_routes_and_self_service_grant_cannot_access_mini(
+    client,
+    operator_headers,
+) -> None:
+    user = create_user(client, operator_headers, email="mini-vs-self-service@example.com")
+    mini_grant = create_mini_grant(client, operator_headers, user_id=user["id"])
+    self_service_grant = create_self_service_grant(
+        client,
+        operator_headers,
+        user_id=user["id"],
+    )
+
+    mini_on_self_service = client.get(
+        "/subscription-self-service/bootstrap",
+        headers={"Authorization": f"Bearer {mini_grant['plain_text_token']}"},
+    )
+    self_service_on_mini = client.get(
+        "/mini/subscription-reserve",
+        headers={"Authorization": f"Bearer {self_service_grant['plain_text_token']}"},
+    )
+    mini_patch_self_service = client.patch(
+        "/subscription-self-service/settings",
+        headers={"Authorization": f"Bearer {mini_grant['plain_text_token']}"},
+        json={"enabled": False},
+    )
+
+    assert mini_on_self_service.status_code == 401
+    assert self_service_on_mini.status_code == 401
+    assert mini_patch_self_service.status_code == 401
 
 
 def test_mini_paper_detail_exposes_derived_progress_percentage_mapping(

@@ -92,6 +92,10 @@
   - digest sync payloads continue to expose `highlights` and `items`
   - sectioned fields are added without requiring desktop admin/orchestration calls
   - desktop Today now prefers the structured digest payload when present and falls back to legacy highlights/items otherwise
+- Mini compatibility now also stays additive:
+  - mini read-only endpoints prefer the structured digest payload
+  - mini falls back deterministically to legacy highlights/items
+  - mini remains read-only and separate from self-service edit flows
 
 ## Current Non-Goals
 - AI copywriting or summary generation

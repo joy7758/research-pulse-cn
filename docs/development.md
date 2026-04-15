@@ -54,6 +54,14 @@ Desktop can now also emit lightweight `work_activity.record` mutations for local
 
 Desktop Settings can now also edit synced `SubscriptionPolicy` delivery-control fields through the same mutation outbox. The Settings hint panel is local-only and does not call admin-only delivery-control preview or dispatch endpoints.
 
+Mini read-only routes now also expose:
+- `GET /mini/bootstrap`
+- `GET /mini/today`
+- `GET /mini/digest-issues/{digest_issue_id}`
+- `GET /mini/subscription-reserve`
+
+Mini routes stay read-only and require mini-read grant auth only.
+
 ## Pulse scoring knobs
 - Defaults live in application settings and `.env.example`
 - Per-user overrides can be applied through `SubscriptionPolicy.policy["pulse"]`
@@ -250,13 +258,14 @@ Desktop Settings can now also edit synced `SubscriptionPolicy` delivery-control 
   - `PATCH /subscription-self-service/settings`
   - `GET /subscription-self-service/delivery-control-preview`
 - Self-service grant tokens are valid only on `/subscription-self-service/*` and cannot access `/admin/*`, `/ops/*`, `/sync/*`, `/mini/*`, or business CRUD routes.
+- Mini grant tokens remain valid only on `/mini/*` and cannot access `/subscription-self-service/*`.
 - Self-service patching preserves unknown existing `SubscriptionPolicy.policy` keys while allowing only the supported safe subset to change.
 - Publication preparation is stub-only:
   - jobs move to `prepared`
   - no real external send occurs
 - Future WeChat work remains:
   - official-account digest publishing
-  - mini-program read-only landing on top of sync
+  - mini-program read-only landing with structured Today and read-only subscription reserve
 
 ## Mini-program read-only reserve
 - Mini access is modeled as a separate read-only auth boundary.

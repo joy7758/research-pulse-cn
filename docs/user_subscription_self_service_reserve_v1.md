@@ -84,6 +84,7 @@
 ## Authoritative Preview Vs Desktop Local Hint Distinction
 - `/subscription-self-service/delivery-control-preview` uses the backend delivery-control evaluator and is authoritative for current backend state.
 - Desktop Settings local hints remain best-effort and cache-based only.
+- Mini read-only subscription reserve may now also expose an authoritative preview, but mini grant auth still cannot patch settings.
 - The authoritative preview does not create `DigestDeliveryDecision` rows in this phase.
 
 ## Current Non-Goals
