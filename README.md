@@ -19,7 +19,7 @@ Private repository. Proprietary and confidential.
 - Official-account provider boundary with `disabled` / `dry_run` / explicit `real` mode, callback ingress, and token-backed real-send activation
 - Deterministic user-side delivery control on top of official-account digest dispatch, including quiet hours, mute-until, weekday allow-lists, minimum digest thresholds, and persisted delivery decisions
 - Admin-issued subscription self-service reserve grants that expose safe official-account settings reads, safe settings patching, and authoritative delivery-control preview without real WeChat OAuth
-- Official-account binding handshake reserve sessions that connect callback evidence, existing bindings, and self-service grants without implementing real OAuth completion yet
+- Official-account binding handshake reserve sessions that connect callback evidence, existing bindings, and self-service grants, plus real official-account webpage OAuth completion for code/state exchange and safe binding create/reuse without introducing a generic app login system
 - Mini read-only reserve endpoints that now consume structured digests, expose a safe subscription reserve summary, and keep mini grant auth separate from self-service grant auth
 - Tauri 2 desktop shell with Rust-side pull sync, local SQLite cache, mutation outbox, minimal writeback for paper/progress/subscription policy edits, a local paper workspace layer, local markdown notes/templates, and a local review-matrix workflow that generates reviewer-matrix / response-letter drafts
 - Pulse input-layer foundation with lightweight `WorkActivityEvent` capture, `ResearchWatchProfile` management, deterministic external-retrieval planning plus official-source execution/normalization boundaries, desktop-emitted work activity mutations, deterministic pulse-input preview APIs, a deterministic `yesterday_summary` pulse card, a deterministic `today_suggestion` pulse card generated from internal paper/progress/signal state only, and a deterministic `related_paper` pulse card generated only from persisted normalized external scholarly results
@@ -145,6 +145,11 @@ Official-account binding reserve now also adds:
 - explicit callback-event claim into `WeChatIdentityBinding`
 - self-service handshake reserve bootstrap/create/read/cancel endpoints
 - mini read-only `binding_handoff_reserve` summary
+- real webpage OAuth completion on top of the reserve:
+  - self-service `oauth-start`
+  - admin authorize-url issuance
+  - public callback `code/state` exchange
+  - safe binding create/reuse and callback-evidence linking
 
 ## Pulse input layer
 The backend now includes a pulse input layer for future retrieval and recap work:

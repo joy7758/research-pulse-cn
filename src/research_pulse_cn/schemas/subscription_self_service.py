@@ -12,6 +12,7 @@ from research_pulse_cn.domain.enums import (
     ChannelType,
     DigestDeliveryDecisionStatus,
     OfficialAccountBindingHandshakeSessionStatus,
+    OfficialAccountOAuthScope,
     PulseDigestIssueStatus,
     SubscriptionSelfServiceGrantStatus,
     WeChatBindingChannelType,
@@ -144,13 +145,20 @@ class SubscriptionSelfServiceHandshakeSessionRead(BaseModel):
     app_id: str
     display_label: str | None
     self_service_grant_id: UUID | None
+    requested_scope: OfficialAccountOAuthScope
+    authorized_scope: OfficialAccountOAuthScope | None
     status: OfficialAccountBindingHandshakeSessionStatus
+    oauth_openid_hash: str | None
     matched_callback_event_id: UUID | None
     claimed_binding_id: UUID | None
     expires_at: datetime | None
     last_viewed_at: datetime | None
+    authorization_started_at: datetime | None
     matched_at: datetime | None
     claimed_at: datetime | None
+    oauth_completed_at: datetime | None
+    userinfo_fetched: bool
+    last_error: str | None
     created_at: datetime
     updated_at: datetime
 
@@ -160,6 +168,8 @@ class SubscriptionSelfServiceHandshakeBootstrapResponse(BaseModel):
     binding: SubscriptionSelfServiceBindingSummaryRead | None = None
     active_session: SubscriptionSelfServiceHandshakeSessionRead | None = None
     candidate_count_hint: int | None = None
+    oauth_start_supported: bool
+    oauth_enabled: bool
     notes: list[str] = Field(default_factory=list)
 
 
@@ -178,6 +188,30 @@ class SubscriptionSelfServiceHandshakeSessionIssueResponse(BaseModel):
 
 class SubscriptionSelfServiceHandshakeSessionResponse(BaseModel):
     session: SubscriptionSelfServiceHandshakeSessionRead | None = None
+
+
+class SubscriptionSelfServiceOAuthStartRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    app_id: str | None = Field(default=None, min_length=1, max_length=255)
+    display_label: str | None = Field(default=None, max_length=255)
+    requested_scope: OfficialAccountOAuthScope | None = None
+
+
+class SubscriptionSelfServiceOAuthStartResponse(BaseModel):
+    session: SubscriptionSelfServiceHandshakeSessionRead
+    authorize_url: str
+    requested_scope: OfficialAccountOAuthScope
+    expires_at: datetime | None
+    notes: list[str] = Field(default_factory=list)
+
+
+class SubscriptionSelfServiceOAuthStatusResponse(BaseModel):
+    oauth_start_supported: bool
+    oauth_enabled: bool
+    session: SubscriptionSelfServiceHandshakeSessionRead | None = None
+    claimed_binding: SubscriptionSelfServiceBindingSummaryRead | None = None
+    notes: list[str] = Field(default_factory=list)
 
 
 class SubscriptionSelfServiceDeliveryControlPreviewRead(BaseModel):

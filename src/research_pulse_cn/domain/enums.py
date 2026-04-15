@@ -286,12 +286,19 @@ class SubscriptionSelfServiceGrantStatus(StrEnum):
     EXPIRED = "expired"
 
 
+class OfficialAccountOAuthScope(StrEnum):
+    SNSAPI_BASE = "snsapi_base"
+    SNSAPI_USERINFO = "snsapi_userinfo"
+
+
 class OfficialAccountBindingHandshakeSessionStatus(StrEnum):
     PENDING = "pending"
     MATCHED = "matched"
     CLAIMED = "claimed"
     EXPIRED = "expired"
     CANCELLED = "cancelled"
+    FAILED = "failed"
+    CONFLICTED = "conflicted"
 
 
 ACTIVE_DELIVERY_CHANNELS = frozenset(

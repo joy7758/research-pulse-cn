@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Request
 from research_pulse_cn.api.dependencies import (
     get_audit_service,
     get_official_account_binding_handshake_service,
+    get_official_account_oauth_service,
     get_subscription_self_service_service,
 )
 from research_pulse_cn.api.subscription_self_service_security import (
@@ -26,6 +27,9 @@ from research_pulse_cn.schemas.subscription_self_service import (
     SubscriptionSelfServiceHandshakeSessionCreateRequest,
     SubscriptionSelfServiceHandshakeSessionIssueResponse,
     SubscriptionSelfServiceHandshakeSessionResponse,
+    SubscriptionSelfServiceOAuthStartRequest,
+    SubscriptionSelfServiceOAuthStartResponse,
+    SubscriptionSelfServiceOAuthStatusResponse,
     SubscriptionSelfServiceSettingsPatchRequest,
     SubscriptionSelfServiceSettingsRead,
 )
@@ -33,6 +37,7 @@ from research_pulse_cn.services.audit import AuditService
 from research_pulse_cn.services.official_account_binding_handshake import (
     OfficialAccountBindingHandshakeService,
 )
+from research_pulse_cn.services.official_account_oauth import OfficialAccountOAuthService
 from research_pulse_cn.services.subscription_self_service import (
     SubscriptionSelfServiceService,
 )
@@ -51,6 +56,10 @@ GrantDep = Annotated[
     Depends(get_current_subscription_self_service_grant),
 ]
 AuditServiceDep = Annotated[AuditService, Depends(get_audit_service)]
+OAuthDep = Annotated[
+    OfficialAccountOAuthService,
+    Depends(get_official_account_oauth_service),
+]
 
 
 def _self_service_actor(grant: SubscriptionSelfServiceGrantContext) -> ActorContext:
@@ -237,3 +246,56 @@ def cancel_subscription_self_service_wechat_binding_session(
             },
         )
     return SubscriptionSelfServiceHandshakeSessionResponse(session=session)
+
+
+@router.post(
+    "/wechat-binding-reserve/oauth-start",
+    response_model=SubscriptionSelfServiceOAuthStartResponse,
+)
+def start_subscription_self_service_wechat_binding_oauth(
+    payload: SubscriptionSelfServiceOAuthStartRequest,
+    request: Request,
+    grant: GrantDep,
+    service: OAuthDep,
+    audit_service: AuditServiceDep,
+) -> SubscriptionSelfServiceOAuthStartResponse:
+    result = service.start_self_service_oauth(
+        grant_id=grant.grant_id,
+        user_id=grant.user_id,
+        app_id=payload.app_id,
+        display_label=payload.display_label,
+        requested_scope=payload.requested_scope,
+    )
+    audit_service.safe_record(
+        actor=_self_service_actor(grant),
+        action="subscription_self_service.binding_handshake_oauth_start",
+        resource_type="official_account_binding_handshake_session",
+        resource_id=str(result["session"]["id"]),
+        request_id=getattr(request.state, "request_id", None),
+        route=request.url.path,
+        method=request.method,
+        status_code=200,
+        metadata={
+            "grant_id": str(grant.grant_id),
+            "user_id": str(grant.user_id),
+            "channel": grant.channel.value,
+            "requested_scope": result["requested_scope"].value,
+        },
+    )
+    return SubscriptionSelfServiceOAuthStartResponse(**result)
+
+
+@router.get(
+    "/wechat-binding-reserve/oauth-status",
+    response_model=SubscriptionSelfServiceOAuthStatusResponse,
+)
+def get_subscription_self_service_wechat_binding_oauth_status(
+    grant: GrantDep,
+    service: OAuthDep,
+) -> SubscriptionSelfServiceOAuthStatusResponse:
+    return SubscriptionSelfServiceOAuthStatusResponse(
+        **service.self_service_oauth_status(
+            grant_id=grant.grant_id,
+            user_id=grant.user_id,
+        )
+    )

@@ -17,6 +17,7 @@ from research_pulse_cn.services.mini import MiniService
 from research_pulse_cn.services.official_account_binding_handshake import (
     OfficialAccountBindingHandshakeService,
 )
+from research_pulse_cn.services.official_account_oauth import OfficialAccountOAuthService
 from research_pulse_cn.services.ops import OpsService
 from research_pulse_cn.services.paper import PaperService
 from research_pulse_cn.services.pulse import PulseService
@@ -78,6 +79,10 @@ def get_official_account_binding_handshake_service(
     session: SessionDep,
 ) -> OfficialAccountBindingHandshakeService:
     return OfficialAccountBindingHandshakeService(session)
+
+
+def get_official_account_oauth_service(session: SessionDep) -> OfficialAccountOAuthService:
+    return OfficialAccountOAuthService(session)
 
 
 def get_mini_service(session: SessionDep) -> MiniService:

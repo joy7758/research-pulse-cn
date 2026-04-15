@@ -808,14 +808,19 @@ class MiniService:
             ),
             "self_service_reserve": {
                 "supported": True,
-                "oauth_enabled": False,
+                "oauth_enabled": self.settings.official_account_oauth_enabled,
                 "editable_via_current_mini_grant": False,
                 "separate_self_service_grant_required": True,
                 "supported_editable_fields": list(MINI_SELF_SERVICE_EDITABLE_FIELDS),
                 "notes": [
                     "Mini remains read-only in this phase.",
                     "A separate self-service grant is required for subscription edits.",
-                    "Real WeChat OAuth handoff is not enabled yet.",
+                    (
+                        "Official-account OAuth completion is available "
+                        "through self-service reserve."
+                        if self.settings.official_account_oauth_enabled
+                        else "Real WeChat OAuth handoff is not enabled yet."
+                    ),
                 ],
             },
             "binding_handoff_reserve": self.binding_handshake_service.mini_binding_handoff_reserve(

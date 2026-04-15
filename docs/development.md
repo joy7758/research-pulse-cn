@@ -210,8 +210,8 @@ Mini routes stay read-only and require mini-read grant auth only.
 - `clearLocalCache` and `disconnectDevice` do not delete managed workspace files, local note files, or generated review notes.
 
 ## Official-account digest reserve
-- WeChat identity binding is admin-managed only in v1.
-- There is no real OAuth, official-account API call, or mini-program frontend in this phase.
+- WeChat identity binding can now be created or reused through explicit admin paths or through official-account OAuth completion tied to a valid handshake session.
+- Mini still stays read-only and does not implement its own OAuth/login flow.
 - New admin endpoints:
   - `GET /admin/wechat-bindings`
   - `POST /admin/wechat-bindings`
@@ -417,7 +417,15 @@ Mini routes stay read-only and require mini-read grant auth only.
   - `APP_OFFICIAL_ACCOUNT_BINDING_HANDSHAKE_TTL_MINUTES`
   - `APP_OFFICIAL_ACCOUNT_BINDING_RECONCILIATION_LOOKBACK_HOURS`
   - `APP_OFFICIAL_ACCOUNT_BINDING_REQUIRE_SIGNATURE_VALID`
-  - `APP_OFFICIAL_ACCOUNT_BINDING_DEFAULT_DIGEST_ENABLED`
+- `APP_OFFICIAL_ACCOUNT_BINDING_DEFAULT_DIGEST_ENABLED`
+- `APP_OFFICIAL_ACCOUNT_OAUTH_ENABLED`
+- `APP_OFFICIAL_ACCOUNT_OAUTH_DEFAULT_SCOPE`
+- `APP_OFFICIAL_ACCOUNT_OAUTH_CALLBACK_PUBLIC_BASE_URL`
+- `APP_OFFICIAL_ACCOUNT_OAUTH_CALLBACK_PATH`
+- `APP_OFFICIAL_ACCOUNT_OAUTH_FETCH_USERINFO_WHEN_SCOPE_USERINFO`
+- `APP_OFFICIAL_ACCOUNT_OAUTH_LANG`
+- `APP_OFFICIAL_ACCOUNT_OAUTH_SUCCESS_REDIRECT_URL`
+- `APP_OFFICIAL_ACCOUNT_OAUTH_FAILURE_REDIRECT_URL`
 
 ### Official-account binding handshake reserve endpoints
 - Admin:
@@ -432,7 +440,13 @@ Mini routes stay read-only and require mini-read grant auth only.
   - `POST /subscription-self-service/wechat-binding-reserve/session`
   - `GET /subscription-self-service/wechat-binding-reserve/session`
   - `POST /subscription-self-service/wechat-binding-reserve/session/cancel`
-- This reserve layer still does not implement real OAuth redirect/code exchange or mini-side completion.
+  - `POST /subscription-self-service/wechat-binding-reserve/oauth-start`
+  - `GET /subscription-self-service/wechat-binding-reserve/oauth-status`
+- OAuth completion is now added on top of the reserve:
+  - `POST /admin/official-account-binding-handshake-sessions/{session_id}/oauth-authorize-url`
+  - `GET /admin/official-account/oauth-status`
+  - `GET /integrations/wechat/official-account/oauth/callback`
+- This still does not create a generic app login/session system or mini-side write path.
 
 ### External retrieval endpoints
 - `GET /external-retrieval/input-preview/{user_id}`

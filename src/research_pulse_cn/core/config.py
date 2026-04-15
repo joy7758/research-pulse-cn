@@ -8,6 +8,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from research_pulse_cn.domain.enums import (
     ExternalRetrievalMode,
     ExternalRetrievalSourceKind,
+    OfficialAccountOAuthScope,
     OfficialAccountProviderMode,
     OfficialAccountTransportKind,
 )
@@ -366,6 +367,38 @@ class Settings(BaseSettings):
     official_account_binding_default_digest_enabled: bool = Field(
         default=True,
         validation_alias="APP_OFFICIAL_ACCOUNT_BINDING_DEFAULT_DIGEST_ENABLED",
+    )
+    official_account_oauth_enabled: bool = Field(
+        default=False,
+        validation_alias="APP_OFFICIAL_ACCOUNT_OAUTH_ENABLED",
+    )
+    official_account_oauth_default_scope: OfficialAccountOAuthScope = Field(
+        default=OfficialAccountOAuthScope.SNSAPI_BASE,
+        validation_alias="APP_OFFICIAL_ACCOUNT_OAUTH_DEFAULT_SCOPE",
+    )
+    official_account_oauth_callback_public_base_url: str | None = Field(
+        default=None,
+        validation_alias="APP_OFFICIAL_ACCOUNT_OAUTH_CALLBACK_PUBLIC_BASE_URL",
+    )
+    official_account_oauth_callback_path: str = Field(
+        default="/integrations/wechat/official-account/oauth/callback",
+        validation_alias="APP_OFFICIAL_ACCOUNT_OAUTH_CALLBACK_PATH",
+    )
+    official_account_oauth_fetch_userinfo_when_scope_userinfo: bool = Field(
+        default=True,
+        validation_alias="APP_OFFICIAL_ACCOUNT_OAUTH_FETCH_USERINFO_WHEN_SCOPE_USERINFO",
+    )
+    official_account_oauth_lang: str = Field(
+        default="zh_CN",
+        validation_alias="APP_OFFICIAL_ACCOUNT_OAUTH_LANG",
+    )
+    official_account_oauth_success_redirect_url: str | None = Field(
+        default=None,
+        validation_alias="APP_OFFICIAL_ACCOUNT_OAUTH_SUCCESS_REDIRECT_URL",
+    )
+    official_account_oauth_failure_redirect_url: str | None = Field(
+        default=None,
+        validation_alias="APP_OFFICIAL_ACCOUNT_OAUTH_FAILURE_REDIRECT_URL",
     )
 
     postgres_host: str = Field(default="localhost", validation_alias="POSTGRES_HOST")

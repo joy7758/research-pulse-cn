@@ -55,7 +55,7 @@
 - `binding_handoff_reserve` now makes the next-step boundary explicit:
   - mini grant cannot initiate or complete binding handoff
   - a separate self-service grant is still required
-  - real OAuth completion is still disabled
+  - `oauth_enabled` may now reflect real backend OAuth capability, but mini still stays read-only
 
 ## Current Non-Goals
 - real WeChat OAuth or mini session exchange

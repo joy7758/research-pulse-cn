@@ -62,19 +62,24 @@ Current behavior:
 ## Binding Handshake Reserve
 - `OfficialAccountBindingHandshakeSession` now adds a reserve handoff object between callback evidence and `WeChatIdentityBinding`.
 - This reserve layer is still not real OAuth:
-  - no redirect/code exchange
-  - no public login session creation
-  - no automatic callback-to-user binding
+  - no generic app-login session creation
+  - no automatic callback-to-user binding outside a valid handshake state
 - New reserve settings:
   - `APP_OFFICIAL_ACCOUNT_BINDING_HANDSHAKE_TTL_MINUTES`
   - `APP_OFFICIAL_ACCOUNT_BINDING_RECONCILIATION_LOOKBACK_HOURS`
   - `APP_OFFICIAL_ACCOUNT_BINDING_REQUIRE_SIGNATURE_VALID`
   - `APP_OFFICIAL_ACCOUNT_BINDING_DEFAULT_DIGEST_ENABLED`
+  - `APP_OFFICIAL_ACCOUNT_OAUTH_ENABLED`
+  - `APP_OFFICIAL_ACCOUNT_OAUTH_DEFAULT_SCOPE`
+  - `APP_OFFICIAL_ACCOUNT_OAUTH_CALLBACK_PUBLIC_BASE_URL`
+  - `APP_OFFICIAL_ACCOUNT_OAUTH_CALLBACK_PATH`
 - New reserve surfaces:
   - admin handshake session create/list/detail/cancel
   - admin reconciliation candidate listing
   - admin explicit claim
+  - admin authorize-url issuance and OAuth status
   - self-service reserve bootstrap/create/read/cancel
+  - self-service OAuth start/status
   - mini read-only handoff summary
 
 ## DigestPublicationAttempt Model
@@ -153,12 +158,23 @@ Current behavior:
   - subscribe events can remain as explicit reconciliation candidates
   - no new user binding is auto-created in v1
 
+### GET OAuth callback
+- `GET /integrations/wechat/official-account/oauth/callback`
+- Validates:
+  - OAuth enabled
+  - `code`
+  - `state`
+  - active handshake session by hashed state token
+- Exchanges `code` server-side and may optionally fetch userinfo.
+- Reuses or creates `WeChatIdentityBinding` safely.
+- Links existing subscribe callback evidence when the same `app_id + openid` already exists in callback reserve data.
+
 ## Current Limitations
 - This document now stops at the provider boundary and callback layer.
 - Real-send activation details live in `docs/official_account_real_send_v1.md`.
 - AES decryption and richer provider callback handling are deferred.
-- No OAuth or end-user reconciliation flow exists for missing bindings.
-- A reserve handshake/reconciliation layer now exists, but it still stops short of real OAuth completion.
+- Real official-account OAuth completion now exists for explicit handshake sessions.
+- The system still does not provide a generic user login/session model.
 - Callback processing only supports a narrow event subset in v1.
 - Publication attempts are admin-visible only and are not synced to clients.
 

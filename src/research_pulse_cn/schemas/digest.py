@@ -20,6 +20,7 @@ from research_pulse_cn.domain.enums import (
     OfficialAccountBindingHandshakeSessionStatus,
     OfficialAccountCallbackPayloadFormat,
     OfficialAccountCallbackProcessingStatus,
+    OfficialAccountOAuthScope,
     OfficialAccountProviderMode,
     OfficialAccountTransportKind,
     PulseCardType,
@@ -224,13 +225,20 @@ class OfficialAccountBindingHandshakeSessionRead(ORMModel):
     display_label: str | None
     self_service_grant_id: UUID | None
     issued_by_admin_id: UUID | None
+    requested_scope: OfficialAccountOAuthScope
+    authorized_scope: OfficialAccountOAuthScope | None
     status: OfficialAccountBindingHandshakeSessionStatus
+    oauth_openid_hash: str | None
     matched_callback_event_id: UUID | None
     claimed_binding_id: UUID | None
     expires_at: datetime | None
     last_viewed_at: datetime | None
+    authorization_started_at: datetime | None
     matched_at: datetime | None
     claimed_at: datetime | None
+    oauth_completed_at: datetime | None
+    userinfo_fetched: bool
+    last_error: str | None
     created_at: datetime
     updated_at: datetime
 
@@ -261,6 +269,31 @@ class OfficialAccountBindingReconciliationCandidateRead(BaseModel):
 
 class OfficialAccountBindingHandshakeClaimRequest(BaseModel):
     callback_event_id: UUID | None = None
+
+
+class OfficialAccountOAuthAuthorizeUrlRequest(BaseModel):
+    requested_scope: OfficialAccountOAuthScope | None = None
+
+
+class OfficialAccountOAuthAuthorizeUrlResponse(BaseModel):
+    session: OfficialAccountBindingHandshakeSessionRead
+    authorize_url: str
+    requested_scope: OfficialAccountOAuthScope
+    expires_at: datetime | None
+    notes: list[str] = Field(default_factory=list)
+
+
+class OfficialAccountOAuthStatusRead(BaseModel):
+    oauth_enabled: bool
+    default_scope: OfficialAccountOAuthScope
+    callback_public_base_url_configured: bool
+    callback_path: str
+    fetch_userinfo_when_scope_userinfo: bool
+    success_redirect_configured: bool
+    failure_redirect_configured: bool
+    readiness_checks: dict[str, bool]
+    readiness_failures: list[str] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
 
 
 class OfficialAccountBindingHandshakeClaimResponse(BaseModel):
