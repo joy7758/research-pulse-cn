@@ -3,8 +3,8 @@
 from collections.abc import Mapping
 
 from research_pulse_cn.adapters.channels.console import ConsoleChannelAdapter
-from research_pulse_cn.adapters.channels.dingtalk import DingTalkWebhookAdapter
-from research_pulse_cn.adapters.channels.wechat import WeChatTemplateAdapter
+from research_pulse_cn.adapters.channels.webhook import WebhookChannelAdapter
+from research_pulse_cn.core.errors import DeliveryDispatchError
 from research_pulse_cn.domain.contracts import ChannelAdapter
 from research_pulse_cn.domain.enums import ChannelType
 
@@ -16,7 +16,19 @@ class ChannelAdapterRegistry:
         self.adapters = dict(adapters)
 
     def for_channel(self, channel: ChannelType) -> ChannelAdapter:
-        return self.adapters[channel]
+        adapter = self.adapters.get(channel)
+        if adapter is None:
+            raise DeliveryDispatchError(
+                f"delivery channel {channel.value} is deprecated or unsupported",
+                retryable=False,
+            )
+        return adapter
+
+    def adapter_name(self, channel: ChannelType) -> str:
+        adapter = self.adapters.get(channel)
+        if adapter is None:
+            return "UnsupportedChannelAdapter"
+        return type(adapter).__name__
 
 
 def build_channel_registry() -> ChannelAdapterRegistry:
@@ -25,8 +37,6 @@ def build_channel_registry() -> ChannelAdapterRegistry:
         {
             ChannelType.IN_APP: console,
             ChannelType.EMAIL: console,
-            ChannelType.WEBHOOK: console,
-            ChannelType.DINGTALK: DingTalkWebhookAdapter(),
-            ChannelType.WECHAT: WeChatTemplateAdapter(),
+            ChannelType.WEBHOOK: WebhookChannelAdapter(),
         }
     )

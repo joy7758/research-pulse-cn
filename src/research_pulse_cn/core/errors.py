@@ -23,3 +23,11 @@ class DeliveryDispatchError(ResearchPulseError):
     def __init__(self, message: str, *, retryable: bool = True) -> None:
         super().__init__(message)
         self.retryable = retryable
+
+
+class AuthenticationError(ResearchPulseError):
+    """Raised when a caller cannot be authenticated."""
+
+
+class AuthorizationError(ResearchPulseError):
+    """Raised when a caller is authenticated but not allowed to perform an action."""

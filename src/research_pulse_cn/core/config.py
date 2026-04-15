@@ -5,6 +5,11 @@ from functools import lru_cache
 from pydantic import Field, computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from research_pulse_cn.domain.enums import (
+    OfficialAccountProviderMode,
+    OfficialAccountTransportKind,
+)
+
 
 class Settings(BaseSettings):
     """Environment-driven runtime settings."""
@@ -19,6 +24,189 @@ class Settings(BaseSettings):
     max_delivery_retries: int = Field(default=3, validation_alias="APP_MAX_DELIVERY_RETRIES")
     delivery_retry_delay_seconds: int = Field(
         default=300, validation_alias="APP_DELIVERY_RETRY_DELAY_SECONDS"
+    )
+    pulse_stale_days: int = Field(default=10, validation_alias="APP_PULSE_STALE_DAYS")
+    pulse_deadline_horizon_days: int = Field(
+        default=7, validation_alias="APP_PULSE_DEADLINE_HORIZON_DAYS"
+    )
+    pulse_dedupe_window_hours: int = Field(
+        default=24, validation_alias="APP_PULSE_DEDUPE_WINDOW_HOURS"
+    )
+    pulse_min_score: int = Field(default=10, validation_alias="APP_PULSE_MIN_SCORE")
+    pulse_default_max_cards_per_run: int = Field(
+        default=3, validation_alias="APP_PULSE_DEFAULT_MAX_CARDS_PER_RUN"
+    )
+    pulse_weight_signal_change: int = Field(
+        default=18, validation_alias="APP_PULSE_WEIGHT_SIGNAL_CHANGE"
+    )
+    pulse_weight_stalled_progress: int = Field(
+        default=12, validation_alias="APP_PULSE_WEIGHT_STALLED_PROGRESS"
+    )
+    pulse_weight_deadline_risk: int = Field(
+        default=5, validation_alias="APP_PULSE_WEIGHT_DEADLINE_RISK"
+    )
+    pulse_weight_next_action: int = Field(
+        default=8, validation_alias="APP_PULSE_WEIGHT_NEXT_ACTION"
+    )
+    pulse_weight_yesterday_summary: int = Field(
+        default=10, validation_alias="APP_PULSE_WEIGHT_YESTERDAY_SUMMARY"
+    )
+    pulse_weight_related_paper: int = Field(
+        default=4, validation_alias="APP_PULSE_WEIGHT_RELATED_PAPER"
+    )
+    pulse_yesterday_summary_min_events: int = Field(
+        default=1, validation_alias="APP_PULSE_YESTERDAY_SUMMARY_MIN_EVENTS"
+    )
+    pulse_modifier_recent_signal_delta: int = Field(
+        default=8, validation_alias="APP_PULSE_MODIFIER_RECENT_SIGNAL_DELTA"
+    )
+    pulse_modifier_approaching_deadline: int = Field(
+        default=10, validation_alias="APP_PULSE_MODIFIER_APPROACHING_DEADLINE"
+    )
+    pulse_modifier_long_stagnation: int = Field(
+        default=6, validation_alias="APP_PULSE_MODIFIER_LONG_STAGNATION"
+    )
+    pulse_modifier_explicit_next_action: int = Field(
+        default=4, validation_alias="APP_PULSE_MODIFIER_EXPLICIT_NEXT_ACTION"
+    )
+    pulse_modifier_yesterday_summary_activity_diversity: int = Field(
+        default=3,
+        validation_alias="APP_PULSE_MODIFIER_YESTERDAY_SUMMARY_ACTIVITY_DIVERSITY",
+    )
+    pulse_modifier_yesterday_summary_multi_paper: int = Field(
+        default=4,
+        validation_alias="APP_PULSE_MODIFIER_YESTERDAY_SUMMARY_MULTI_PAPER",
+    )
+    default_timezone: str = Field(default="UTC", validation_alias="APP_DEFAULT_TIMEZONE")
+    pulse_default_send_hour_local: int = Field(
+        default=9, validation_alias="APP_PULSE_DEFAULT_SEND_HOUR_LOCAL"
+    )
+    pulse_default_send_minute_local: int = Field(
+        default=0, validation_alias="APP_PULSE_DEFAULT_SEND_MINUTE_LOCAL"
+    )
+    worker_heartbeat_interval_seconds: int = Field(
+        default=15, validation_alias="APP_WORKER_HEARTBEAT_INTERVAL_SECONDS"
+    )
+    worker_lease_seconds: int = Field(default=120, validation_alias="APP_WORKER_LEASE_SECONDS")
+    auth_access_token_ttl_minutes: int = Field(
+        default=30,
+        validation_alias="APP_AUTH_ACCESS_TOKEN_TTL_MINUTES",
+    )
+    auth_refresh_token_ttl_days: int = Field(
+        default=14,
+        validation_alias="APP_AUTH_REFRESH_TOKEN_TTL_DAYS",
+    )
+    auth_jwt_secret: str = Field(
+        default="change-me-for-production",
+        validation_alias="APP_AUTH_JWT_SECRET",
+    )
+    auth_jwt_issuer: str = Field(
+        default="research-pulse-cn",
+        validation_alias="APP_AUTH_JWT_ISSUER",
+    )
+    auth_jwt_audience: str = Field(
+        default="research-pulse-cn-admin",
+        validation_alias="APP_AUTH_JWT_AUDIENCE",
+    )
+    internal_service_token: str = Field(
+        default="change-me-internal-service-token",
+        validation_alias="APP_INTERNAL_SERVICE_TOKEN",
+    )
+    sync_device_token_ttl_days: int = Field(
+        default=90,
+        validation_alias="APP_SYNC_DEVICE_TOKEN_TTL_DAYS",
+    )
+    sync_feed_default_limit: int = Field(
+        default=100,
+        validation_alias="APP_SYNC_FEED_DEFAULT_LIMIT",
+    )
+    sync_feed_max_limit: int = Field(
+        default=500,
+        validation_alias="APP_SYNC_FEED_MAX_LIMIT",
+    )
+    sync_push_max_batch_size: int = Field(
+        default=50,
+        validation_alias="APP_SYNC_PUSH_MAX_BATCH_SIZE",
+    )
+    mini_read_grant_default_ttl_hours: int = Field(
+        default=72,
+        validation_alias="APP_MINI_READ_GRANT_DEFAULT_TTL_HOURS",
+    )
+    mini_papers_default_limit: int = Field(
+        default=20,
+        validation_alias="APP_MINI_PAPERS_DEFAULT_LIMIT",
+    )
+    mini_papers_max_limit: int = Field(
+        default=100,
+        validation_alias="APP_MINI_PAPERS_MAX_LIMIT",
+    )
+    official_account_provider_mode: OfficialAccountProviderMode = Field(
+        default=OfficialAccountProviderMode.DISABLED,
+        validation_alias="APP_OFFICIAL_ACCOUNT_PROVIDER_MODE",
+    )
+    official_account_transport_kind: OfficialAccountTransportKind = Field(
+        default=OfficialAccountTransportKind.TEMPLATE_NOTICE,
+        validation_alias="APP_OFFICIAL_ACCOUNT_TRANSPORT_KIND",
+    )
+    wechat_official_app_id: str | None = Field(
+        default=None,
+        validation_alias="APP_WECHAT_OFFICIAL_APP_ID",
+    )
+    wechat_official_app_secret: str | None = Field(
+        default=None,
+        validation_alias="APP_WECHAT_OFFICIAL_APP_SECRET",
+    )
+    wechat_official_callback_token: str | None = Field(
+        default=None,
+        validation_alias="APP_WECHAT_OFFICIAL_CALLBACK_TOKEN",
+    )
+    wechat_official_callback_aes_key: str | None = Field(
+        default=None,
+        validation_alias="APP_WECHAT_OFFICIAL_CALLBACK_AES_KEY",
+    )
+    wechat_official_digest_template_id: str | None = Field(
+        default=None,
+        validation_alias="APP_WECHAT_OFFICIAL_DIGEST_TEMPLATE_ID",
+    )
+    official_account_callback_enabled: bool = Field(
+        default=False,
+        validation_alias="APP_OFFICIAL_ACCOUNT_CALLBACK_ENABLED",
+    )
+    official_account_real_send_enabled: bool = Field(
+        default=False,
+        validation_alias="APP_OFFICIAL_ACCOUNT_REAL_SEND_ENABLED",
+    )
+    official_account_access_token_refresh_skew_seconds: int = Field(
+        default=120,
+        validation_alias="APP_OFFICIAL_ACCOUNT_ACCESS_TOKEN_REFRESH_SKEW_SECONDS",
+    )
+    official_account_http_connect_timeout_seconds: int = Field(
+        default=5,
+        validation_alias="APP_OFFICIAL_ACCOUNT_HTTP_CONNECT_TIMEOUT_SECONDS",
+    )
+    official_account_http_read_timeout_seconds: int = Field(
+        default=10,
+        validation_alias="APP_OFFICIAL_ACCOUNT_HTTP_READ_TIMEOUT_SECONDS",
+    )
+    official_account_max_retries: int = Field(
+        default=2,
+        validation_alias="APP_OFFICIAL_ACCOUNT_MAX_RETRIES",
+    )
+    official_account_template_field_mapping_json: dict[str, str] | None = Field(
+        default=None,
+        validation_alias="APP_OFFICIAL_ACCOUNT_TEMPLATE_FIELD_MAPPING_JSON",
+    )
+    official_account_default_mini_program_app_id: str | None = Field(
+        default=None,
+        validation_alias="APP_OFFICIAL_ACCOUNT_DEFAULT_MINI_PROGRAM_APP_ID",
+    )
+    official_account_default_article_base_url: str | None = Field(
+        default=None,
+        validation_alias="APP_OFFICIAL_ACCOUNT_DEFAULT_ARTICLE_BASE_URL",
+    )
+    official_account_dispatch_timeout_seconds: int = Field(
+        default=5,
+        validation_alias="APP_OFFICIAL_ACCOUNT_DISPATCH_TIMEOUT_SECONDS",
     )
 
     postgres_host: str = Field(default="localhost", validation_alias="POSTGRES_HOST")

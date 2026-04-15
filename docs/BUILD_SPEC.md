@@ -15,6 +15,18 @@ Backend only. Build a production-friendly modular monolith with:
 - Makefile
 - OpenAPI docs
 
+## Communication note
+Current supported outbound delivery paths are:
+- in_app
+- email
+- webhook
+
+Legacy enum values `dingtalk` and `wechat` may remain in older rows for compatibility, but they are deprecated and unreachable in current runtime flows.
+
+Future communication surfaces should be treated as:
+- official-account digest publishing
+- mini-program lightweight client access
+
 ## Core entities
 
 ### UserProfile
@@ -70,7 +82,7 @@ Backend only. Build a production-friendly modular monolith with:
 ### SubscriptionPolicy
 - id: UUID pk
 - user_id: UUID fk
-- channel: enum [in_app, dingtalk, wechat, email, webhook]
+- channel: enum [in_app, email, webhook]
 - enabled: bool
 - frequency: enum [daily, event]
 - quiet_hours: jsonb object nullable
@@ -107,7 +119,7 @@ Backend only. Build a production-friendly modular monolith with:
 - pulse_card_id: UUID fk nullable
 - pulse_job_id: UUID fk nullable
 - user_id: UUID fk
-- channel: enum [in_app, dingtalk, wechat, email, webhook]
+- channel: enum [in_app, email, webhook]
 - endpoint: string
 - idem_key: string unique
 - payload: jsonb object
@@ -133,8 +145,7 @@ Implementations for v0.1:
 - DummyModelProvider
 - SimpleCardValidator
 - ConsoleChannelAdapter
-- DingTalkWebhookAdapter
-- WeChatTemplateAdapter interface stub
+- WebhookChannelAdapter
 
 ## API endpoints
 - GET /health

@@ -1,0 +1,407 @@
+:root {
+  font-family: "IBM Plex Sans", "SF Pro Display", "Segoe UI", sans-serif;
+  color: #12202f;
+  background:
+    radial-gradient(circle at top left, rgba(201, 225, 255, 0.5), transparent 32%),
+    linear-gradient(180deg, #f3f6fb 0%, #edf1f6 100%);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button {
+  border: none;
+  border-radius: 999px;
+  background: #102f57;
+  color: #ffffff;
+  cursor: pointer;
+  padding: 0.85rem 1.2rem;
+  transition: transform 140ms ease, opacity 140ms ease;
+}
+
+button:hover:enabled {
+  transform: translateY(-1px);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.button-secondary {
+  background: #d9e4f2;
+  color: #102f57;
+}
+
+input,
+textarea,
+select {
+  width: 100%;
+  margin-top: 0.45rem;
+  border: 1px solid #c4cfdb;
+  border-radius: 18px;
+  padding: 0.9rem 1rem;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+textarea {
+  resize: vertical;
+}
+
+.desktop-root {
+  min-height: 100vh;
+  padding: 1rem;
+}
+
+.shell {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 1rem;
+  min-height: calc(100vh - 2rem);
+}
+
+.sidebar,
+.panel,
+.connection-card {
+  border: 1px solid rgba(24, 58, 99, 0.08);
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 28px 80px rgba(21, 40, 74, 0.08);
+  backdrop-filter: blur(14px);
+}
+
+.sidebar {
+  padding: 1.35rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.content {
+  min-width: 0;
+}
+
+.panel {
+  padding: 1.35rem;
+}
+
+.page-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+}
+
+.brand-mark {
+  width: 54px;
+  height: 54px;
+  border-radius: 18px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, #0f3f6a, #1c7a76);
+  color: white;
+  font-weight: 700;
+}
+
+.brand-title,
+h1,
+h3 {
+  margin: 0;
+  font-family: "IBM Plex Sans", "Avenir Next", sans-serif;
+}
+
+.brand-title {
+  font-weight: 700;
+}
+
+.brand-subtitle,
+.sidebar-meta,
+.panel-message,
+.meta-note {
+  color: #55677d;
+}
+
+.sidebar-card {
+  padding: 1rem;
+  border-radius: 22px;
+  background: #f4f8fc;
+}
+
+.sidebar-label,
+.eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.72rem;
+  color: #6c7f95;
+}
+
+.eyebrow {
+  margin-bottom: 0.5rem;
+}
+
+.sidebar-user {
+  margin-top: 0.3rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.sidebar-nav {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.sidebar-nav a,
+.list-card-link {
+  text-decoration: none;
+  color: inherit;
+}
+
+.sidebar-nav a {
+  border-radius: 18px;
+  padding: 0.8rem 0.95rem;
+  background: #edf3f9;
+}
+
+.sidebar-nav a.active {
+  background: linear-gradient(135deg, #102f57, #1c7a76);
+  color: white;
+}
+
+.sidebar-actions,
+.form-actions,
+.pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+}
+
+.banner {
+  display: flex;
+  gap: 0.8rem;
+  padding: 0.9rem 1rem;
+  border-radius: 22px;
+  margin-bottom: 1rem;
+}
+
+.banner-error {
+  background: #fdeaea;
+  color: #8f2727;
+}
+
+.banner-warning {
+  background: #fff2db;
+  color: #8f5a0c;
+}
+
+.connection-screen {
+  min-height: calc(100vh - 2rem);
+  display: grid;
+  place-items: center;
+}
+
+.connection-card {
+  width: min(720px, 100%);
+  padding: 2rem;
+}
+
+.lede {
+  font-size: 1rem;
+  line-height: 1.6;
+  color: #425569;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: end;
+  margin-bottom: 1rem;
+}
+
+.inline-filter {
+  min-width: 210px;
+}
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.9rem;
+  margin-top: 1rem;
+}
+
+.stat-card {
+  padding: 1rem;
+  border-radius: 22px;
+  background: #f3f7fb;
+}
+
+.stat-value {
+  margin-top: 0.4rem;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.list-stack {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.list-card {
+  padding: 1rem;
+  border-radius: 22px;
+  background: #f7f9fc;
+  border: 1px solid rgba(14, 44, 76, 0.06);
+}
+
+.list-card-link:hover {
+  border-color: rgba(16, 47, 87, 0.18);
+}
+
+.list-card-selected {
+  border-color: rgba(16, 47, 87, 0.24);
+  box-shadow: inset 0 0 0 1px rgba(16, 47, 87, 0.08);
+}
+
+.list-card-topline {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  color: #5d6f84;
+  font-size: 0.84rem;
+  margin-bottom: 0.5rem;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.32rem 0.75rem;
+  background: #e1ebf6;
+  color: #315679;
+  font-size: 0.84rem;
+}
+
+.pill-accent {
+  background: #d7f2ea;
+  color: #136355;
+}
+
+.pill-success {
+  background: #e5f3df;
+  color: #2d6a1f;
+}
+
+.pill-danger {
+  background: #fdeaea;
+  color: #8f2727;
+}
+
+.detail-grid {
+  display: grid;
+  gap: 0.8rem;
+  margin-top: 1rem;
+}
+
+.notes-layout {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(280px, 360px) 1fr;
+  margin-top: 1rem;
+}
+
+.note-editor-panel {
+  display: grid;
+  gap: 1rem;
+  align-content: start;
+}
+
+.note-editor {
+  min-height: 420px;
+  font-family: "IBM Plex Mono", "SFMono-Regular", monospace;
+}
+
+.form-grid {
+  display: grid;
+  gap: 0.9rem;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.form-full {
+  grid-column: 1 / -1;
+}
+
+.checkbox-field {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.checkbox-field input {
+  width: auto;
+  margin-top: 0;
+}
+
+.meta-list {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.detail-row {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.loading-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.8rem;
+  color: #40566d;
+}
+
+.loading-dot {
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 999px;
+  background: #1c7a76;
+  animation: pulse 1s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    transform: scale(0.85);
+    opacity: 0.55;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 1;
+  }
+}
+
+@media (max-width: 1100px) {
+  .shell {
+    grid-template-columns: 1fr;
+  }
+
+  .notes-layout {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,0 +1,136 @@
+Read AGENTS.md, docs/BUILD_SPEC.md, docs/architecture.md, and docs/development.md before editing.
+
+Implement Phase 5 only: pulse rules enhancement and scoring system.
+
+Hard boundaries for this phase:
+- Do not add authentication.
+- Do not add multi-tenant support.
+- Do not integrate real model providers.
+- Do not integrate future official-account publishing or mini-program client APIs.
+- Do not add frontend work beyond API/OpenAPI responses and docs.
+
+Primary goal:
+Refactor the current pulse flow into an explainable deterministic ranking pipeline:
+
+facts -> candidates -> scoring -> suppression -> selected cards -> delivery jobs
+
+Required changes:
+
+1. Introduce explicit pulse candidate and scoring layer
+Create clear typed domain/service objects for:
+- PulseFact
+- PulseCandidate
+- ScoreBreakdown
+- SuppressionReason
+
+The rule engine should emit candidates first, not directly final cards.
+
+2. Deterministic candidate generation
+Support candidate generation for these card types:
+- signal_change
+- stalled_progress
+- deadline_risk
+- next_action
+- related_paper
+
+Notes:
+- related_paper can remain a placeholder candidate source if the current dataset is insufficient; document it clearly.
+- paused papers must never generate candidates.
+
+3. Deterministic scoring model
+Add a scoring service with explainable weighted scoring.
+Use configurable thresholds and weights from:
+- application settings defaults
+- per-user SubscriptionPolicy.policy overrides
+
+Support these knobs at minimum:
+- stale_days default 10
+- deadline_horizon_days default 7
+- dedupe_window_hours default 24
+- min_score default 10
+- max_cards_per_run default derived from frequency_cap
+- score weights by card_type
+- urgency modifiers for recent signal delta, approaching deadline, long stagnation, explicit next_action present
+
+Scoring output must be machine-readable and explainable.
+
+4. Suppression and selection pipeline
+Implement suppression after scoring and before final selection.
+Support at minimum:
+- quiet hours suppression
+- frequency cap
+- dedupe suppression against recent pulse cards / delivery history for the same user + same card_type + same source paper within dedupe window
+- low-score suppression below min_score
+- paused paper suppression
+
+Use deterministic ordering when scores tie.
+Tie-break order should be stable and documented in code/tests.
+
+5. Persist explanation fields needed for future ops/debugging
+Add database fields and migrations as needed so selected PulseCard rows can store:
+- source_paper_id nullable FK to PaperProfile
+- score_total
+- score_breakdown as JSON
+- candidate_metadata as JSON nullable
+
+Keep schema changes minimal and production-friendly.
+Use Alembic migration(s).
+
+6. Improve preview and run endpoints
+Keep existing endpoints where practical, but enhance behavior.
+
+POST /pulse/preview/{user_id}
+Should return:
+- collected facts summary
+- generated candidates
+- selected cards
+- suppressed candidates with suppression reasons
+- score breakdowns for each candidate
+- final ordering explanation
+
+POST /pulse/run/{user_id}
+Should:
+- use the new ranking pipeline
+- persist only selected cards
+- enqueue delivery jobs only for selected cards
+
+Do not break current clients unless necessary; if response shapes must evolve, document the change clearly.
+
+7. Keep current delivery architecture intact
+Preserve the current outbox-style delivery flow.
+Adapt it minimally so it works with the new PulseCard fields.
+
+8. Testing
+Add or update tests to cover:
+- signal change outranks stalled progress when configured with higher weight
+- quiet hours suppress candidates
+- frequency cap selects top N candidates
+- dedupe blocks repeated card selection for the same paper/card_type within window
+- paused papers produce no candidates
+- deterministic tie-break ordering
+- preview endpoint exposes suppressed reasons and score breakdowns
+- run endpoint persists selected cards with score fields
+
+Keep all tests passing.
+
+9. Documentation
+Add docs/pulse_scoring.md explaining:
+- pipeline stages
+- scoring knobs
+- suppression rules
+- tie-break behavior
+- where future real model providers plug in
+- known limitations of v1
+
+10. Quality bar
+- Keep modular monolith structure
+- Prefer readable and typed code
+- Add comments only where they clarify business rules
+- Run available checks
+- Fix obvious lint/type/test issues
+
+At the end:
+- print a concise summary of files changed
+- list migration files created
+- list new config knobs
+- list follow-up work for the next phase only
