@@ -43,6 +43,7 @@ from research_pulse_cn.domain.enums import (
     ExternalRetrievalSourceKind,
     MiniReadGrantStatus,
     MiniReadGrantType,
+    OfficialAccountBindingHandshakeSessionStatus,
     OfficialAccountCallbackPayloadFormat,
     OfficialAccountCallbackProcessingStatus,
     OfficialAccountProviderMode,
@@ -108,6 +109,11 @@ class AdminAccount(TimestampMixin, Base):
             back_populates="issued_by_admin",
         )
     )
+    issued_official_account_binding_handshake_sessions: Mapped[
+        list[OfficialAccountBindingHandshakeSession]
+    ] = relationship(
+        back_populates="issued_by_admin",
+    )
 
 
 class UserProfile(TimestampMixin, Base):
@@ -154,6 +160,13 @@ class UserProfile(TimestampMixin, Base):
     subscription_self_service_grants: Mapped[list[SubscriptionSelfServiceGrant]] = relationship(
         back_populates="user",
         cascade="all, delete-orphan",
+    )
+    official_account_binding_handshake_sessions: Mapped[
+        list[OfficialAccountBindingHandshakeSession]
+    ] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+        order_by="OfficialAccountBindingHandshakeSession.created_at.desc()",
     )
     work_activity_events: Mapped[list[WorkActivityEvent]] = relationship(
         back_populates="user",
@@ -430,6 +443,11 @@ class WeChatIdentityBinding(TimestampMixin, Base):
     subscription_self_service_grants: Mapped[list[SubscriptionSelfServiceGrant]] = relationship(
         back_populates="binding",
     )
+    claimed_official_account_binding_handshake_sessions: Mapped[
+        list[OfficialAccountBindingHandshakeSession]
+    ] = relationship(
+        back_populates="claimed_binding",
+    )
 
 
 class PulseDigestIssue(TimestampMixin, Base):
@@ -568,6 +586,74 @@ class SubscriptionSelfServiceGrant(TimestampMixin, Base):
     )
     issued_by_admin: Mapped[AdminAccount | None] = relationship(
         back_populates="issued_subscription_self_service_grants"
+    )
+    official_account_binding_handshake_sessions: Mapped[
+        list[OfficialAccountBindingHandshakeSession]
+    ] = relationship(back_populates="self_service_grant")
+
+
+class OfficialAccountBindingHandshakeSession(TimestampMixin, Base):
+    __tablename__ = "official_account_binding_handshake_sessions"
+    __table_args__ = (
+        Index(
+            "ix_oa_binding_handshake_sessions_user_channel_created_at",
+            "user_id",
+            "channel",
+            "created_at",
+        ),
+        Index(
+            "ix_oa_binding_handshake_sessions_status_expires_at",
+            "status",
+            "expires_at",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("user_profiles.id", ondelete="CASCADE"))
+    channel: Mapped[ChannelType] = mapped_column(
+        Enum(ChannelType, native_enum=False),
+        nullable=False,
+    )
+    app_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    display_label: Mapped[str | None] = mapped_column(String(255))
+    self_service_grant_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("subscription_self_service_grants.id", ondelete="SET NULL")
+    )
+    issued_by_admin_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("admin_accounts.id", ondelete="SET NULL")
+    )
+    state_token_hash: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    status: Mapped[OfficialAccountBindingHandshakeSessionStatus] = mapped_column(
+        Enum(OfficialAccountBindingHandshakeSessionStatus, native_enum=False),
+        nullable=False,
+        default=OfficialAccountBindingHandshakeSessionStatus.PENDING,
+    )
+    matched_callback_event_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("official_account_callback_events.id", ondelete="SET NULL")
+    )
+    claimed_binding_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("wechat_identity_bindings.id", ondelete="SET NULL")
+    )
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_viewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    matched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    user: Mapped[UserProfile] = relationship(
+        back_populates="official_account_binding_handshake_sessions"
+    )
+    self_service_grant: Mapped[SubscriptionSelfServiceGrant | None] = relationship(
+        back_populates="official_account_binding_handshake_sessions"
+    )
+    issued_by_admin: Mapped[AdminAccount | None] = relationship(
+        back_populates="issued_official_account_binding_handshake_sessions"
+    )
+    matched_callback_event: Mapped[OfficialAccountCallbackEvent | None] = relationship(
+        back_populates="matched_handshake_sessions",
+        foreign_keys=[matched_callback_event_id],
+    )
+    claimed_binding: Mapped[WeChatIdentityBinding | None] = relationship(
+        back_populates="claimed_official_account_binding_handshake_sessions"
     )
 
 
@@ -840,6 +926,10 @@ class OfficialAccountCallbackEvent(Base):
 
     linked_binding: Mapped[WeChatIdentityBinding | None] = relationship(
         back_populates="callback_events"
+    )
+    matched_handshake_sessions: Mapped[list[OfficialAccountBindingHandshakeSession]] = relationship(
+        back_populates="matched_callback_event",
+        foreign_keys="OfficialAccountBindingHandshakeSession.matched_callback_event_id",
     )
 
 

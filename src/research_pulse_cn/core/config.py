@@ -351,6 +351,22 @@ class Settings(BaseSettings):
         default=5,
         validation_alias="APP_OFFICIAL_ACCOUNT_DISPATCH_TIMEOUT_SECONDS",
     )
+    official_account_binding_handshake_ttl_minutes: int = Field(
+        default=30,
+        validation_alias="APP_OFFICIAL_ACCOUNT_BINDING_HANDSHAKE_TTL_MINUTES",
+    )
+    official_account_binding_reconciliation_lookback_hours: int = Field(
+        default=72,
+        validation_alias="APP_OFFICIAL_ACCOUNT_BINDING_RECONCILIATION_LOOKBACK_HOURS",
+    )
+    official_account_binding_require_signature_valid: bool = Field(
+        default=True,
+        validation_alias="APP_OFFICIAL_ACCOUNT_BINDING_REQUIRE_SIGNATURE_VALID",
+    )
+    official_account_binding_default_digest_enabled: bool = Field(
+        default=True,
+        validation_alias="APP_OFFICIAL_ACCOUNT_BINDING_DEFAULT_DIGEST_ENABLED",
+    )
 
     postgres_host: str = Field(default="localhost", validation_alias="POSTGRES_HOST")
     postgres_port: int = Field(default=5432, validation_alias="POSTGRES_PORT")

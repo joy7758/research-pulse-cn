@@ -59,6 +59,24 @@ Current behavior:
   - timestamps
 - Raw payload is retained even when parsing or signature validation fails.
 
+## Binding Handshake Reserve
+- `OfficialAccountBindingHandshakeSession` now adds a reserve handoff object between callback evidence and `WeChatIdentityBinding`.
+- This reserve layer is still not real OAuth:
+  - no redirect/code exchange
+  - no public login session creation
+  - no automatic callback-to-user binding
+- New reserve settings:
+  - `APP_OFFICIAL_ACCOUNT_BINDING_HANDSHAKE_TTL_MINUTES`
+  - `APP_OFFICIAL_ACCOUNT_BINDING_RECONCILIATION_LOOKBACK_HOURS`
+  - `APP_OFFICIAL_ACCOUNT_BINDING_REQUIRE_SIGNATURE_VALID`
+  - `APP_OFFICIAL_ACCOUNT_BINDING_DEFAULT_DIGEST_ENABLED`
+- New reserve surfaces:
+  - admin handshake session create/list/detail/cancel
+  - admin reconciliation candidate listing
+  - admin explicit claim
+  - self-service reserve bootstrap/create/read/cancel
+  - mini read-only handoff summary
+
 ## DigestPublicationAttempt Model
 - `DigestPublicationAttempt` records one dispatch attempt for one publication job.
 - Key fields:
@@ -132,6 +150,7 @@ Current behavior:
   can be updated.
 - If unmatched:
   - the callback event is stored
+  - subscribe events can remain as explicit reconciliation candidates
   - no new user binding is auto-created in v1
 
 ## Current Limitations
@@ -139,6 +158,7 @@ Current behavior:
 - Real-send activation details live in `docs/official_account_real_send_v1.md`.
 - AES decryption and richer provider callback handling are deferred.
 - No OAuth or end-user reconciliation flow exists for missing bindings.
+- A reserve handshake/reconciliation layer now exists, but it still stops short of real OAuth completion.
 - Callback processing only supports a narrow event subset in v1.
 - Publication attempts are admin-visible only and are not synced to clients.
 

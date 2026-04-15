@@ -13,6 +13,9 @@ from research_pulse_cn.api.routes.external_retrieval import (
 from research_pulse_cn.api.routes.health import router as health_router
 from research_pulse_cn.api.routes.mini import router as mini_router
 from research_pulse_cn.api.routes.mini_admin import router as mini_admin_router
+from research_pulse_cn.api.routes.official_account_binding_handshake_admin import (
+    router as official_account_binding_handshake_admin_router,
+)
 from research_pulse_cn.api.routes.official_account_integration import (
     router as official_account_integration_router,
 )
@@ -43,6 +46,7 @@ api_router.include_router(client_devices_router)
 api_router.include_router(digest_admin_router)
 api_router.include_router(mini_admin_router)
 api_router.include_router(subscription_self_service_admin_router)
+api_router.include_router(official_account_binding_handshake_admin_router)
 api_router.include_router(mini_router)
 api_router.include_router(subscription_self_service_router)
 api_router.include_router(official_account_integration_router)

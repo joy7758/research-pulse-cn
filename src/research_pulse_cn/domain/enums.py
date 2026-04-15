@@ -286,6 +286,14 @@ class SubscriptionSelfServiceGrantStatus(StrEnum):
     EXPIRED = "expired"
 
 
+class OfficialAccountBindingHandshakeSessionStatus(StrEnum):
+    PENDING = "pending"
+    MATCHED = "matched"
+    CLAIMED = "claimed"
+    EXPIRED = "expired"
+    CANCELLED = "cancelled"
+
+
 ACTIVE_DELIVERY_CHANNELS = frozenset(
     {
         ChannelType.IN_APP,

@@ -33,6 +33,9 @@ from research_pulse_cn.repositories.subscription_policy import SubscriptionPolic
 from research_pulse_cn.repositories.user import UserRepository
 from research_pulse_cn.services.common import commit_session
 from research_pulse_cn.services.digest import DigestService
+from research_pulse_cn.services.official_account_binding_handshake import (
+    OfficialAccountBindingHandshakeService,
+)
 from research_pulse_cn.services.subscription_policy import (
     find_matching_delivery_policy,
     normalize_delivery_control_policy,
@@ -88,6 +91,10 @@ class MiniService:
         self.digest_repository = DigestRepository(session)
         self.subscription_policy_repository = SubscriptionPolicyRepository(session)
         self.digest_service = DigestService(session, now_provider=self.now_provider)
+        self.binding_handshake_service = OfficialAccountBindingHandshakeService(
+            session,
+            now_provider=self.now_provider,
+        )
         self.metrics = get_metrics()
 
     def list_grants(
@@ -811,6 +818,9 @@ class MiniService:
                     "Real WeChat OAuth handoff is not enabled yet.",
                 ],
             },
+            "binding_handoff_reserve": self.binding_handshake_service.mini_binding_handoff_reserve(
+                user_id=grant.user_id
+            ),
         }
 
     def _official_account_binding(self, user_id: UUID):

@@ -28,6 +28,7 @@ def test_alembic_upgrade_creates_core_tables(tmp_path) -> None:
         "digest_dispatch_runs",
         "mini_read_grants",
         "subscription_self_service_grants",
+        "official_account_binding_handshake_sessions",
         "official_account_callback_events",
         "sync_events",
         "sync_cursors",
@@ -350,6 +351,28 @@ def test_alembic_upgrade_creates_core_tables(tmp_path) -> None:
         "created_at",
         "updated_at",
     }.issubset(self_service_grant_columns)
+    handshake_session_columns = {
+        column["name"]
+        for column in inspector.get_columns("official_account_binding_handshake_sessions")
+    }
+    assert {
+        "user_id",
+        "channel",
+        "app_id",
+        "display_label",
+        "self_service_grant_id",
+        "issued_by_admin_id",
+        "state_token_hash",
+        "status",
+        "matched_callback_event_id",
+        "claimed_binding_id",
+        "expires_at",
+        "last_viewed_at",
+        "matched_at",
+        "claimed_at",
+        "created_at",
+        "updated_at",
+    }.issubset(handshake_session_columns)
     callback_event_columns = {
         column["name"] for column in inspector.get_columns("official_account_callback_events")
     }

@@ -2127,11 +2127,11 @@ class DigestService:
         binding: WeChatIdentityBinding | None,
     ) -> tuple[str, bool]:
         if binding is None:
-            event.processing_status = OfficialAccountCallbackProcessingStatus.IGNORED
+            event.processing_status = OfficialAccountCallbackProcessingStatus.ACCEPTED
             event.processing_note = (
-                "no matching official-account binding exists for this subscribe event"
+                "no matching official-account binding exists yet; "
+                "callback reserved for explicit claim"
             )
-            event.processed_at = self.now_provider()
             return "binding_not_found", False
 
         callback_time = event.event_time or self.now_provider()

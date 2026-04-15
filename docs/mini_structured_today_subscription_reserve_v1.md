@@ -40,6 +40,7 @@
   - authoritative delivery-control preview summary
   - latest digest issue summary when available
   - `self_service_reserve` informational block
+  - `binding_handoff_reserve` informational block
 - Safe binding summary excludes:
   - `openid`
   - `unionid`
@@ -51,6 +52,10 @@
 - Desktop Settings still shows a local-only hint derived from cached policy data.
 - Self-service grant endpoints remain the only future-safe place for user-side edits.
 - Mini grant auth does not become valid on `/subscription-self-service/*`, and self-service grant auth does not become valid on `/mini/*`.
+- `binding_handoff_reserve` now makes the next-step boundary explicit:
+  - mini grant cannot initiate or complete binding handoff
+  - a separate self-service grant is still required
+  - real OAuth completion is still disabled
 
 ## Current Non-Goals
 - real WeChat OAuth or mini session exchange

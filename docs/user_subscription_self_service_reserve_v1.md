@@ -39,6 +39,10 @@
   - `GET /subscription-self-service/settings`
   - `PATCH /subscription-self-service/settings`
   - `GET /subscription-self-service/delivery-control-preview`
+  - `GET /subscription-self-service/wechat-binding-reserve/bootstrap`
+  - `POST /subscription-self-service/wechat-binding-reserve/session`
+  - `GET /subscription-self-service/wechat-binding-reserve/session`
+  - `POST /subscription-self-service/wechat-binding-reserve/session/cancel`
 - Tokens are rejected on:
   - `/admin/*`
   - `/ops/*`
@@ -74,17 +78,29 @@
   - `GET /subscription-self-service/settings`
   - `PATCH /subscription-self-service/settings`
   - `GET /subscription-self-service/delivery-control-preview`
+  - `GET /subscription-self-service/wechat-binding-reserve/bootstrap`
+  - `POST /subscription-self-service/wechat-binding-reserve/session`
+  - `GET /subscription-self-service/wechat-binding-reserve/session`
+  - `POST /subscription-self-service/wechat-binding-reserve/session/cancel`
 - `bootstrap` returns:
   - safe grant summary
   - safe user summary
   - safe binding summary when linked
   - current official-account subscription settings
   - latest digest issue summary when available
+- The handshake-reserve sub-boundary is still read-limited for self-service:
+  - self-service can create/read/cancel its own reserve session
+  - self-service cannot claim a callback event into a binding
+  - admin claim remains explicit in v1
 
 ## Authoritative Preview Vs Desktop Local Hint Distinction
 - `/subscription-self-service/delivery-control-preview` uses the backend delivery-control evaluator and is authoritative for current backend state.
 - Desktop Settings local hints remain best-effort and cache-based only.
 - Mini read-only subscription reserve may now also expose an authoritative preview, but mini grant auth still cannot patch settings.
+- Future binding handoff also stays separate:
+  - self-service handshake reserve can show active reserve state
+  - mini only gets an informational handoff summary
+  - neither boundary implements real OAuth completion yet
 - The authoritative preview does not create `DigestDeliveryDecision` rows in this phase.
 
 ## Current Non-Goals

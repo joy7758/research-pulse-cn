@@ -61,6 +61,7 @@ Mini read-only routes now also expose:
 - `GET /mini/subscription-reserve`
 
 Mini routes stay read-only and require mini-read grant auth only.
+`/mini/subscription-reserve` now also includes a read-only `binding_handoff_reserve` summary and still exposes no write/update affordance.
 
 ## Pulse scoring knobs
 - Defaults live in application settings and `.env.example`
@@ -412,6 +413,26 @@ Mini routes stay read-only and require mini-read grant auth only.
 - `plan_only` keeps execution blocked while preserving plan preview/build.
 - `execute` enables official-source fetches for persisted plans.
 - Unknown callback identities are stored for review and do not auto-create bindings.
+- Official-account binding handshake reserve settings:
+  - `APP_OFFICIAL_ACCOUNT_BINDING_HANDSHAKE_TTL_MINUTES`
+  - `APP_OFFICIAL_ACCOUNT_BINDING_RECONCILIATION_LOOKBACK_HOURS`
+  - `APP_OFFICIAL_ACCOUNT_BINDING_REQUIRE_SIGNATURE_VALID`
+  - `APP_OFFICIAL_ACCOUNT_BINDING_DEFAULT_DIGEST_ENABLED`
+
+### Official-account binding handshake reserve endpoints
+- Admin:
+  - `GET /admin/official-account-binding-handshake-sessions`
+  - `POST /admin/official-account-binding-handshake-sessions`
+  - `GET /admin/official-account-binding-handshake-sessions/{session_id}`
+  - `POST /admin/official-account-binding-handshake-sessions/{session_id}/cancel`
+  - `GET /admin/official-account-binding-reconciliation/candidates`
+  - `POST /admin/official-account-binding-handshake-sessions/{session_id}/claim`
+- Self-service:
+  - `GET /subscription-self-service/wechat-binding-reserve/bootstrap`
+  - `POST /subscription-self-service/wechat-binding-reserve/session`
+  - `GET /subscription-self-service/wechat-binding-reserve/session`
+  - `POST /subscription-self-service/wechat-binding-reserve/session/cancel`
+- This reserve layer still does not implement real OAuth redirect/code exchange or mini-side completion.
 
 ### External retrieval endpoints
 - `GET /external-retrieval/input-preview/{user_id}`

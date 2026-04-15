@@ -14,6 +14,9 @@ from research_pulse_cn.services.delivery import DeliveryService
 from research_pulse_cn.services.digest import DigestService
 from research_pulse_cn.services.external_retrieval import ExternalRetrievalService
 from research_pulse_cn.services.mini import MiniService
+from research_pulse_cn.services.official_account_binding_handshake import (
+    OfficialAccountBindingHandshakeService,
+)
 from research_pulse_cn.services.ops import OpsService
 from research_pulse_cn.services.paper import PaperService
 from research_pulse_cn.services.pulse import PulseService
@@ -69,6 +72,12 @@ def get_delivery_service(session: SessionDep) -> DeliveryService:
 
 def get_digest_service(session: SessionDep) -> DigestService:
     return DigestService(session)
+
+
+def get_official_account_binding_handshake_service(
+    session: SessionDep,
+) -> OfficialAccountBindingHandshakeService:
+    return OfficialAccountBindingHandshakeService(session)
 
 
 def get_mini_service(session: SessionDep) -> MiniService:

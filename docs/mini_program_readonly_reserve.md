@@ -51,6 +51,7 @@
   - returns a safe official-account subscription summary
   - returns an authoritative delivery-control preview summary when digest context exists
   - returns a read-only `self_service_reserve` handoff block instead of any write affordance
+  - now also returns a read-only `binding_handoff_reserve` block for future official-account binding handoff
 - `GET /mini/papers`
   - returns compact paper summaries with stable ordering
 - `GET /mini/papers/{paper_id}`

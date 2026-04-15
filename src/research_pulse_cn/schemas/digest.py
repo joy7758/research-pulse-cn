@@ -17,6 +17,7 @@ from research_pulse_cn.domain.enums import (
     DigestPublicationMode,
     DigestPublicationStatus,
     DigestPublicationTarget,
+    OfficialAccountBindingHandshakeSessionStatus,
     OfficialAccountCallbackPayloadFormat,
     OfficialAccountCallbackProcessingStatus,
     OfficialAccountProviderMode,
@@ -192,6 +193,80 @@ class OfficialAccountCallbackEventRead(ORMModel):
     linked_binding_id: UUID | None
     created_at: datetime
     processed_at: datetime | None
+
+
+class OfficialAccountBindingSafeRead(BaseModel):
+    id: UUID
+    channel_type: WeChatBindingChannelType
+    app_id: str
+    display_label: str | None
+    bind_state: WeChatBindingState
+    subscribed: bool
+    digest_enabled: bool
+    subscribed_at: datetime | None
+    unsubscribed_at: datetime | None
+    last_seen_at: datetime | None
+
+
+class OfficialAccountBindingHandshakeSessionCreateRequest(BaseModel):
+    user_id: UUID
+    app_id: str | None = Field(default=None, min_length=1, max_length=255)
+    display_label: str | None = Field(default=None, max_length=255)
+    self_service_grant_id: UUID | None = None
+    expires_at: datetime | None = None
+
+
+class OfficialAccountBindingHandshakeSessionRead(ORMModel):
+    id: UUID
+    user_id: UUID
+    channel: ChannelType
+    app_id: str
+    display_label: str | None
+    self_service_grant_id: UUID | None
+    issued_by_admin_id: UUID | None
+    status: OfficialAccountBindingHandshakeSessionStatus
+    matched_callback_event_id: UUID | None
+    claimed_binding_id: UUID | None
+    expires_at: datetime | None
+    last_viewed_at: datetime | None
+    matched_at: datetime | None
+    claimed_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class OfficialAccountBindingHandshakeSessionIssueResponse(BaseModel):
+    session: OfficialAccountBindingHandshakeSessionRead
+    plain_text_state_token: str
+    expires_at: datetime | None
+
+
+class OfficialAccountBindingHandshakeSessionCancelResponse(BaseModel):
+    session: OfficialAccountBindingHandshakeSessionRead
+    cancelled_at: datetime
+
+
+class OfficialAccountBindingReconciliationCandidateRead(BaseModel):
+    callback_event_id: UUID
+    app_id: str | None
+    event_type: str | None
+    event_time: datetime | None
+    processing_status: OfficialAccountCallbackProcessingStatus
+    signature_valid: bool
+    masked_openid: str | None
+    created_at: datetime
+    linked_binding_id: UUID | None
+    notes: list[str] = Field(default_factory=list)
+
+
+class OfficialAccountBindingHandshakeClaimRequest(BaseModel):
+    callback_event_id: UUID | None = None
+
+
+class OfficialAccountBindingHandshakeClaimResponse(BaseModel):
+    session: OfficialAccountBindingHandshakeSessionRead
+    claimed_binding: OfficialAccountBindingSafeRead
+    callback_event: OfficialAccountBindingReconciliationCandidateRead
 
 
 class PulseDigestIssueRead(ORMModel):

@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from research_pulse_cn.domain.enums import (
     ChannelType,
     DigestDeliveryDecisionStatus,
+    OfficialAccountBindingHandshakeSessionStatus,
     PulseDigestIssueStatus,
     SubscriptionSelfServiceGrantStatus,
     WeChatBindingChannelType,
@@ -134,6 +135,49 @@ class SubscriptionSelfServiceBootstrapResponse(BaseModel):
     binding: SubscriptionSelfServiceBindingSummaryRead | None = None
     subscription_settings: SubscriptionSelfServiceSettingsRead
     latest_digest_issue: SubscriptionSelfServiceDigestIssueSummaryRead | None = None
+
+
+class SubscriptionSelfServiceHandshakeSessionRead(BaseModel):
+    id: UUID
+    user_id: UUID
+    channel: ChannelType
+    app_id: str
+    display_label: str | None
+    self_service_grant_id: UUID | None
+    status: OfficialAccountBindingHandshakeSessionStatus
+    matched_callback_event_id: UUID | None
+    claimed_binding_id: UUID | None
+    expires_at: datetime | None
+    last_viewed_at: datetime | None
+    matched_at: datetime | None
+    claimed_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class SubscriptionSelfServiceHandshakeBootstrapResponse(BaseModel):
+    user: SubscriptionSelfServiceUserSummaryRead
+    binding: SubscriptionSelfServiceBindingSummaryRead | None = None
+    active_session: SubscriptionSelfServiceHandshakeSessionRead | None = None
+    candidate_count_hint: int | None = None
+    notes: list[str] = Field(default_factory=list)
+
+
+class SubscriptionSelfServiceHandshakeSessionCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    app_id: str | None = Field(default=None, min_length=1, max_length=255)
+    display_label: str | None = Field(default=None, max_length=255)
+
+
+class SubscriptionSelfServiceHandshakeSessionIssueResponse(BaseModel):
+    session: SubscriptionSelfServiceHandshakeSessionRead
+    plain_text_state_token: str
+    expires_at: datetime | None
+
+
+class SubscriptionSelfServiceHandshakeSessionResponse(BaseModel):
+    session: SubscriptionSelfServiceHandshakeSessionRead | None = None
 
 
 class SubscriptionSelfServiceDeliveryControlPreviewRead(BaseModel):

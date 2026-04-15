@@ -19,6 +19,7 @@ Private repository. Proprietary and confidential.
 - Official-account provider boundary with `disabled` / `dry_run` / explicit `real` mode, callback ingress, and token-backed real-send activation
 - Deterministic user-side delivery control on top of official-account digest dispatch, including quiet hours, mute-until, weekday allow-lists, minimum digest thresholds, and persisted delivery decisions
 - Admin-issued subscription self-service reserve grants that expose safe official-account settings reads, safe settings patching, and authoritative delivery-control preview without real WeChat OAuth
+- Official-account binding handshake reserve sessions that connect callback evidence, existing bindings, and self-service grants without implementing real OAuth completion yet
 - Mini read-only reserve endpoints that now consume structured digests, expose a safe subscription reserve summary, and keep mini grant auth separate from self-service grant auth
 - Tauri 2 desktop shell with Rust-side pull sync, local SQLite cache, mutation outbox, minimal writeback for paper/progress/subscription policy edits, a local paper workspace layer, local markdown notes/templates, and a local review-matrix workflow that generates reviewer-matrix / response-letter drafts
 - Pulse input-layer foundation with lightweight `WorkActivityEvent` capture, `ResearchWatchProfile` management, deterministic external-retrieval planning plus official-source execution/normalization boundaries, desktop-emitted work activity mutations, deterministic pulse-input preview APIs, a deterministic `yesterday_summary` pulse card, a deterministic `today_suggestion` pulse card generated from internal paper/progress/signal state only, and a deterministic `related_paper` pulse card generated only from persisted normalized external scholarly results
@@ -137,6 +138,13 @@ Desktop Today now also prefers the orchestrated sectioned digest payload when av
 Older cached digests that only have `highlights` / `items` still render through a deterministic desktop fallback path.
 
 Mini read-only routes now also prefer the same orchestrated sectioned digest payload when available and fall back to legacy `highlights` / `items` when older digest content is all that exists.
+
+Official-account binding reserve now also adds:
+- admin-created handshake sessions with one-time state tokens
+- admin reconciliation candidate listing over unmatched subscribe callback events
+- explicit callback-event claim into `WeChatIdentityBinding`
+- self-service handshake reserve bootstrap/create/read/cancel endpoints
+- mini read-only `binding_handoff_reserve` summary
 
 ## Pulse input layer
 The backend now includes a pulse input layer for future retrieval and recap work:

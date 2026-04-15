@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from uuid import UUID
 
 from sqlalchemy import select
@@ -13,6 +13,7 @@ from research_pulse_cn.db.models import (
     DigestDispatchRun,
     DigestPublicationAttempt,
     DigestPublicationJob,
+    OfficialAccountBindingHandshakeSession,
     OfficialAccountCallbackEvent,
     PulseDigestIssue,
     PulseDigestItem,
@@ -26,6 +27,7 @@ from research_pulse_cn.domain.enums import (
     DigestPublicationAttemptStatus,
     DigestPublicationStatus,
     DigestPublicationTarget,
+    OfficialAccountBindingHandshakeSessionStatus,
     OfficialAccountCallbackProcessingStatus,
     OfficialAccountProviderMode,
     PulseDigestIssueStatus,
@@ -445,6 +447,15 @@ class DigestRepository:
         self.session.refresh(event)
         return event
 
+    def get_callback_event(self, callback_event_id: UUID) -> OfficialAccountCallbackEvent | None:
+        statement = (
+            select(OfficialAccountCallbackEvent)
+            .options(selectinload(OfficialAccountCallbackEvent.linked_binding))
+            .where(OfficialAccountCallbackEvent.id == callback_event_id)
+            .limit(1)
+        )
+        return self.session.scalar(statement)
+
     def get_callback_event_by_dedupe_key(
         self,
         dedupe_key: str,
@@ -461,9 +472,13 @@ class DigestRepository:
         self,
         *,
         user_id: UUID | None = None,
+        app_id: str | None = None,
         linked_binding_id: UUID | None = None,
         processing_status: OfficialAccountCallbackProcessingStatus | None = None,
+        event_type: str | None = None,
         signature_valid: bool | None = None,
+        unmatched_only: bool = False,
+        created_after: datetime | None = None,
     ) -> list[OfficialAccountCallbackEvent]:
         statement = (
             select(OfficialAccountCallbackEvent)
@@ -478,16 +493,89 @@ class DigestRepository:
                 WeChatIdentityBinding,
                 OfficialAccountCallbackEvent.linked_binding_id == WeChatIdentityBinding.id,
             ).where(WeChatIdentityBinding.user_id == user_id)
+        if app_id is not None:
+            statement = statement.where(OfficialAccountCallbackEvent.app_id == app_id)
         if linked_binding_id is not None:
             statement = statement.where(
                 OfficialAccountCallbackEvent.linked_binding_id == linked_binding_id
             )
+        if unmatched_only:
+            statement = statement.where(OfficialAccountCallbackEvent.linked_binding_id.is_(None))
         if processing_status is not None:
             statement = statement.where(
                 OfficialAccountCallbackEvent.processing_status == processing_status
             )
+        if event_type is not None:
+            statement = statement.where(OfficialAccountCallbackEvent.event_type == event_type)
         if signature_valid is not None:
             statement = statement.where(
                 OfficialAccountCallbackEvent.signature_valid.is_(signature_valid)
             )
+        if created_after is not None:
+            statement = statement.where(OfficialAccountCallbackEvent.created_at >= created_after)
+        return list(self.session.scalars(statement))
+
+    def add_handshake_session(
+        self,
+        handshake_session: OfficialAccountBindingHandshakeSession,
+    ) -> OfficialAccountBindingHandshakeSession:
+        self.session.add(handshake_session)
+        self.session.flush()
+        self.session.refresh(handshake_session)
+        return handshake_session
+
+    def get_handshake_session(
+        self,
+        session_id: UUID,
+    ) -> OfficialAccountBindingHandshakeSession | None:
+        statement = (
+            select(OfficialAccountBindingHandshakeSession)
+            .options(
+                selectinload(OfficialAccountBindingHandshakeSession.user),
+                selectinload(OfficialAccountBindingHandshakeSession.self_service_grant),
+                selectinload(OfficialAccountBindingHandshakeSession.issued_by_admin),
+                selectinload(OfficialAccountBindingHandshakeSession.matched_callback_event),
+                selectinload(OfficialAccountBindingHandshakeSession.claimed_binding),
+            )
+            .where(OfficialAccountBindingHandshakeSession.id == session_id)
+            .limit(1)
+        )
+        return self.session.scalar(statement)
+
+    def list_handshake_sessions(
+        self,
+        *,
+        user_id: UUID | None = None,
+        channel: ChannelType | None = None,
+        status: OfficialAccountBindingHandshakeSessionStatus | None = None,
+        self_service_grant_id: UUID | None = None,
+        app_id: str | None = None,
+    ) -> list[OfficialAccountBindingHandshakeSession]:
+        statement = (
+            select(OfficialAccountBindingHandshakeSession)
+            .options(
+                selectinload(OfficialAccountBindingHandshakeSession.user),
+                selectinload(OfficialAccountBindingHandshakeSession.self_service_grant),
+                selectinload(OfficialAccountBindingHandshakeSession.issued_by_admin),
+                selectinload(OfficialAccountBindingHandshakeSession.matched_callback_event),
+                selectinload(OfficialAccountBindingHandshakeSession.claimed_binding),
+            )
+            .order_by(
+                OfficialAccountBindingHandshakeSession.created_at.desc(),
+                OfficialAccountBindingHandshakeSession.id.desc(),
+            )
+        )
+        if user_id is not None:
+            statement = statement.where(OfficialAccountBindingHandshakeSession.user_id == user_id)
+        if channel is not None:
+            statement = statement.where(OfficialAccountBindingHandshakeSession.channel == channel)
+        if status is not None:
+            statement = statement.where(OfficialAccountBindingHandshakeSession.status == status)
+        if self_service_grant_id is not None:
+            statement = statement.where(
+                OfficialAccountBindingHandshakeSession.self_service_grant_id
+                == self_service_grant_id
+            )
+        if app_id is not None:
+            statement = statement.where(OfficialAccountBindingHandshakeSession.app_id == app_id)
         return list(self.session.scalars(statement))

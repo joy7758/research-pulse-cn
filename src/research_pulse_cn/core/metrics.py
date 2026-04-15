@@ -64,6 +64,10 @@ COUNTER_NAMES = (
     "subscription_self_service_bootstrap_requests_total",
     "subscription_self_service_settings_updated_total",
     "subscription_self_service_delivery_previews_total",
+    "official_account_binding_handshake_sessions_created_total",
+    "official_account_binding_handshake_sessions_claimed_total",
+    "official_account_binding_claim_conflicts_total",
+    "official_account_binding_candidates_listed_total",
 )
 
 

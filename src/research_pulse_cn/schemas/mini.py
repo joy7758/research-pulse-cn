@@ -248,6 +248,14 @@ class MiniSelfServiceReserveRead(BaseModel):
     notes: list[str] = Field(default_factory=list)
 
 
+class MiniBindingHandoffReserveRead(BaseModel):
+    supported: bool
+    oauth_enabled: bool
+    active_session_status: str | None = None
+    separate_self_service_grant_required: bool
+    notes: list[str] = Field(default_factory=list)
+
+
 class MiniSubscriptionReserveSummaryRead(BaseModel):
     has_official_account_binding: bool
     has_official_account_subscription_settings: bool
@@ -264,6 +272,7 @@ class MiniSubscriptionReserveRead(BaseModel):
     delivery_control_preview: MiniDeliveryControlPreviewRead
     latest_digest_issue: MiniDigestIssueSummaryRead | None = None
     self_service_reserve: MiniSelfServiceReserveRead
+    binding_handoff_reserve: MiniBindingHandoffReserveRead
 
 
 class MiniBootstrapResponse(BaseModel):
