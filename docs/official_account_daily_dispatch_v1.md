@@ -35,6 +35,7 @@
 - `GET /admin/digest-issues/{digest_issue_id}/dispatch-preview` returns:
   - digest issue summary
   - provider status summary
+  - delivery-control preview
   - `eligible_jobs`
   - `already_sent_jobs`
   - `failed_jobs`
@@ -49,6 +50,11 @@
     - `partial_failed`
     - `failed`
     - `skipped`
+- If user-side delivery policy blocks dispatch:
+  - no fake send occurs
+  - no fake success occurs
+  - a `DigestDeliveryDecision` is written
+  - no `DigestDispatchRun` is created in this policy-blocked path in v1
 
 ## Eligible Job Rules
 - Eligible jobs must satisfy:
@@ -68,6 +74,12 @@
   - dry-run orchestration still prepares jobs
   - auto-dispatch is skipped unless provider mode is `real` and real send is enabled
 - Repeated orchestration does not resend already-sent jobs.
+- Auto-dispatch now also respects user-side delivery control:
+  - quiet hours
+  - muted windows
+  - weekday allow-lists
+  - digest-content thresholds
+  - missing-today-focus policy
 
 ## Dry-Run Vs Real Behavior At Issue Level
 - `dry_run`

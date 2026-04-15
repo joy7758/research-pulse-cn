@@ -17,6 +17,7 @@ Private repository. Proprietary and confidential.
 - Device-token sync backbone for desktop and future lightweight clients
 - WeChat identity bindings plus digest issue/publication reserve objects for future official-account and mini-program flows, including deterministic daily-digest orchestration and issue-level official-account dispatch orchestration
 - Official-account provider boundary with `disabled` / `dry_run` / explicit `real` mode, callback ingress, and token-backed real-send activation
+- Deterministic user-side delivery control on top of official-account digest dispatch, including quiet hours, mute-until, weekday allow-lists, minimum digest thresholds, and persisted delivery decisions
 - Tauri 2 desktop shell with Rust-side pull sync, local SQLite cache, mutation outbox, minimal writeback for paper/progress/subscription policy edits, a local paper workspace layer, local markdown notes/templates, and a local review-matrix workflow that generates reviewer-matrix / response-letter drafts
 - Pulse input-layer foundation with lightweight `WorkActivityEvent` capture, `ResearchWatchProfile` management, deterministic external-retrieval planning plus official-source execution/normalization boundaries, desktop-emitted work activity mutations, deterministic pulse-input preview APIs, a deterministic `yesterday_summary` pulse card, a deterministic `today_suggestion` pulse card generated from internal paper/progress/signal state only, and a deterministic `related_paper` pulse card generated only from persisted normalized external scholarly results
 - Seed data, Docker Compose, pytest, Ruff, and CI
@@ -206,6 +207,13 @@ Important values:
 - `APP_DIGEST_DISPATCH_RETRY_FAILED_JOBS`: allow failed official-account jobs to re-enter issue-level dispatch eligibility by default
 - `APP_DIGEST_DISPATCH_PREPARE_IF_MISSING`: allow issue-level dispatch to prepare official-account jobs first when none exist yet
 - `APP_DIGEST_AUTO_DISPATCH_REQUIRE_REAL_MODE`: when true, auto-dispatch only runs in `real` mode with real send enabled
+- Official-account delivery control policy keys now live in `SubscriptionPolicy.policy`:
+  - `timezone`
+  - `allowed_weekdays`
+  - `muted_until`
+  - `minimum_selected_cards`
+  - `skip_if_no_today_focus`
+- `SubscriptionPolicy.quiet_hours` remains the separate quiet-window field for user-side delivery gating
 - `APP_OFFICIAL_ACCOUNT_PROVIDER_MODE`: official-account provider mode: `disabled`, `dry_run`, or `real`
 - `APP_OFFICIAL_ACCOUNT_TRANSPORT_KIND`: outbound transport strategy, currently `template_notice`
 - `APP_WECHAT_OFFICIAL_APP_ID`: official-account app id for provider readiness and callback matching

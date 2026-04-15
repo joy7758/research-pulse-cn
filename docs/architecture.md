@@ -10,7 +10,7 @@ Core flow:
 4. Selected pulse cards enqueue outbox delivery jobs.
 5. The worker dispatches delivery jobs through current supported channel adapters and manages retry and dead-letter transitions.
 6. Digest issues are upserted from selected pulse cards, orchestrated into sectioned daily packets, and can be prepared for official-account publication.
-7. Official-account publication jobs can be dispatched through the provider boundary either per job or through issue-level dispatch runs, while callback events update existing bindings.
+7. Official-account publication jobs can be dispatched through the provider boundary either per job or through issue-level dispatch runs, while a separate delivery-control layer decides whether user policy allows sending now.
 8. Mini read grants expose compact mobile-friendly read models for future mini-program landing without opening write access.
 9. Sync devices consume incremental `SyncEvent` feeds and push idempotent mutations back through the same service layer.
 10. A Tauri desktop shell consumes the same sync feed, keeps a local SQLite outbox, performs limited writeback through `/sync/push`, manages a local-only paper workspace, stores local markdown notes/templates, and keeps local review-matrix / response-letter workflows without bundling the backend.
@@ -148,10 +148,12 @@ Tie-break order is deterministic:
 - `DigestPublicationJob` is a provider-neutral preparation record.
 - `DigestPublicationAttempt` records dispatch visibility for each provider-boundary invocation.
 - `DigestDispatchRun` aggregates one issue-level official-account dispatch over multiple prepared jobs.
+- `DigestDeliveryDecision` records user-side eligibility or skip decisions before official-account issue dispatch.
 - `OfficialAccountCallbackEvent` records inbound callback payloads and deduped handling state.
 - The publication layer now separates:
   - reserve objects and payload preparation
   - issue-level dispatch orchestration
+  - user-side delivery control evaluation
   - provider status/readiness inspection
   - callback ingestion
   - dry-run preview dispatch
@@ -161,6 +163,8 @@ Tie-break order is deterministic:
   - `real_send_enabled=true`
   - configured credentials and template id
 - Access tokens are cached outside the database and never written to publication-attempt rows.
+- Provider readiness remains distinct from policy eligibility:
+  - provider can be ready while delivery policy still blocks sends because of quiet hours, mute windows, weekday limits, or digest-content thresholds.
 
 ## Mini read-only reserve
 

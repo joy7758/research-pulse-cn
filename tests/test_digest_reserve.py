@@ -5,8 +5,16 @@ from uuid import UUID
 import httpx
 
 from research_pulse_cn.core.config import get_settings
-from research_pulse_cn.db.models import DigestDispatchRun, PaperProfile, PulseCard, PulseJob, utcnow
+from research_pulse_cn.db.models import (
+    DigestDispatchRun,
+    PaperProfile,
+    PulseCard,
+    PulseDigestIssue,
+    PulseJob,
+    utcnow,
+)
 from research_pulse_cn.domain.enums import (
+    ChannelType,
     DigestDispatchMode,
     DigestDispatchRunStatus,
     DigestPublicationTarget,
@@ -84,13 +92,18 @@ def add_signal_pair(client, headers, *, paper_id: str, latest_delta: int = 4) ->
         assert response.status_code == 201
 
 
-def create_policy(client, headers, *, user_id: str) -> None:
+def create_policy(
+    client,
+    headers,
+    *,
+    user_id: str,
+) -> dict:
     response = client.post(
         "/subscription-policies",
         headers=headers,
         json={
             "user_id": user_id,
-            "channel": "webhook",
+            "channel": ChannelType.WEBHOOK.value,
             "enabled": True,
             "frequency": SubscriptionFrequency.EVENT.value,
             "frequency_cap": 3,
@@ -99,6 +112,74 @@ def create_policy(client, headers, *, user_id: str) -> None:
         },
     )
     assert response.status_code == 201
+    return response.json()
+
+
+def get_policy(client, headers, *, user_id: str, channel: str | None = None) -> dict:
+    response = client.get(
+        "/subscription-policies",
+        headers=headers,
+        params={"user_id": user_id},
+    )
+    assert response.status_code == 200
+    policies = response.json()
+    if channel is None:
+        return policies[0]
+    for policy in policies:
+        if policy["channel"] == channel:
+            return policy
+    raise AssertionError(f"subscription policy for channel {channel} was not found")
+
+
+def ensure_official_account_policy(
+    client,
+    headers,
+    *,
+    user_id: str,
+    enabled: bool = True,
+    quiet_hours: dict | None = None,
+    policy: dict | None = None,
+) -> dict:
+    response = client.get(
+        "/subscription-policies",
+        headers=headers,
+        params={"user_id": user_id},
+    )
+    assert response.status_code == 200
+    for existing in response.json():
+        if existing["channel"] != ChannelType.OFFICIAL_ACCOUNT.value:
+            continue
+        if enabled != existing["enabled"] or quiet_hours is not None or policy is not None:
+            updated = client.put(
+                f"/subscription-policies/{existing['id']}",
+                headers=headers,
+                json={
+                    "enabled": enabled,
+                    "quiet_hours": quiet_hours
+                    if quiet_hours is not None
+                    else existing["quiet_hours"],
+                    "policy": policy if policy is not None else existing["policy"],
+                },
+            )
+            assert updated.status_code == 200
+            return updated.json()
+        return existing
+    created = client.post(
+        "/subscription-policies",
+        headers=headers,
+        json={
+            "user_id": user_id,
+            "channel": ChannelType.OFFICIAL_ACCOUNT.value,
+            "enabled": enabled,
+            "frequency": SubscriptionFrequency.DAILY.value,
+            "frequency_cap": 3,
+            "endpoint": None,
+            "quiet_hours": quiet_hours,
+            "policy": policy or {"timezone": "UTC"},
+        },
+    )
+    assert created.status_code == 201
+    return created.json()
 
 
 def create_device(client, headers, *, user_id: str) -> dict:
@@ -116,6 +197,7 @@ def create_device(client, headers, *, user_id: str) -> dict:
 
 
 def create_official_account_binding(client, headers, *, user_id: str, openid: str) -> dict:
+    ensure_official_account_policy(client, headers, user_id=user_id)
     response = client.post(
         "/admin/wechat-bindings",
         headers=headers,
@@ -1769,6 +1851,7 @@ def test_auto_dispatch_runs_after_orchestration_when_enabled_and_ready(
     get_settings.cache_clear()
     calls = install_mock_official_account_http(monkeypatch)
     user = create_user(client, operator_headers, email="digest-auto-dispatch-real@example.com")
+    create_policy(client, operator_headers, user_id=user["id"])
     create_official_account_binding(
         client,
         operator_headers,
@@ -1817,6 +1900,7 @@ def test_auto_dispatch_skips_dry_run_when_real_mode_is_required(
     monkeypatch.setenv("APP_DIGEST_AUTO_DISPATCH_REQUIRE_REAL_MODE", "true")
     get_settings.cache_clear()
     user = create_user(client, operator_headers, email="digest-auto-dispatch-dry@example.com")
+    create_policy(client, operator_headers, user_id=user["id"])
     create_official_account_binding(
         client,
         operator_headers,
@@ -1849,6 +1933,427 @@ def test_auto_dispatch_skips_dry_run_when_real_mode_is_required(
             ]
         )
     )
+    dispatch_runs = client.get(
+        "/admin/digest-dispatch-runs",
+        headers=operator_headers,
+        params={"digest_issue_id": orchestrated.json()["issue"]["id"]},
+    )
+    assert dispatch_runs.status_code == 200
+    assert dispatch_runs.json() == []
+    delivery_decisions = client.get(
+        "/admin/digest-delivery-decisions",
+        headers=operator_headers,
+        params={"digest_issue_id": orchestrated.json()["issue"]["id"]},
+    )
+    assert delivery_decisions.status_code == 200
+    assert len(delivery_decisions.json()) == 1
+    assert delivery_decisions.json()[0]["decision"] == "eligible"
+
+
+def test_delivery_control_preview_exposes_normalized_policy_and_reason_codes(
+    client,
+    operator_headers,
+) -> None:
+    user, _run_payload = create_digest_ready_user(
+        client,
+        operator_headers,
+        email="digest-delivery-control-preview@example.com",
+    )
+    policy = ensure_official_account_policy(client, operator_headers, user_id=user["id"])
+    now = utcnow()
+    start = (now - timedelta(hours=1)).strftime("%H:%M")
+    end = (now + timedelta(hours=1)).strftime("%H:%M")
+    updated = client.put(
+        f"/subscription-policies/{policy['id']}",
+        headers=operator_headers,
+        json={
+            "quiet_hours": {"start": start, "end": end, "timezone": "UTC"},
+            "policy": {
+                "timezone": "UTC",
+                "allowed_weekdays": [now.weekday()],
+                "minimum_selected_cards": 1,
+                "skip_if_no_today_focus": False,
+            },
+        },
+    )
+    assert updated.status_code == 200
+    digest_issue = client.get(
+        "/admin/digest-issues",
+        headers=operator_headers,
+        params={"user_id": user["id"]},
+    ).json()[0]
+
+    preview = client.get(
+        f"/admin/digest-issues/{digest_issue['id']}/delivery-control-preview",
+        headers=operator_headers,
+    )
+
+    assert preview.status_code == 200
+    assert preview.json()["decision"] == "skipped"
+    assert "quiet_hours_active" in preview.json()["reason_codes"]
+    assert preview.json()["normalized_control_policy"]["allowed_weekdays"] == [now.weekday()]
+    assert preview.json()["normalized_control_policy"]["effective_timezone"] == "UTC"
+    assert preview.json()["next_allowed_at"] is not None
+
+
+def test_dispatch_preview_embeds_delivery_control_preview(
+    client,
+    operator_headers,
+    monkeypatch,
+) -> None:
+    configure_official_account_settings(
+        monkeypatch,
+        provider_mode=OfficialAccountProviderMode.DRY_RUN.value,
+    )
+    user, _run_payload = create_digest_ready_user(
+        client,
+        operator_headers,
+        email="digest-dispatch-preview-delivery-control@example.com",
+    )
+    digest_issue = client.get(
+        "/admin/digest-issues",
+        headers=operator_headers,
+        params={"user_id": user["id"]},
+    ).json()[0]
+    create_official_account_binding(
+        client,
+        operator_headers,
+        user_id=user["id"],
+        openid="dispatch-preview-delivery-control-openid",
+    )
+    client.post(
+        f"/admin/digest-issues/{digest_issue['id']}/prepare-publication",
+        headers=operator_headers,
+    )
+
+    preview = client.get(
+        f"/admin/digest-issues/{digest_issue['id']}/dispatch-preview",
+        headers=operator_headers,
+    )
+
+    assert preview.status_code == 200
+    assert preview.json()["delivery_control_preview"]["decision"] == "eligible"
+    assert preview.json()["delivery_control_preview"]["reason_codes"] == []
+
+
+def test_policy_blocked_dispatch_returns_controlled_skip_and_records_decision(
+    client,
+    operator_headers,
+    monkeypatch,
+) -> None:
+    configure_official_account_settings(
+        monkeypatch,
+        provider_mode=OfficialAccountProviderMode.REAL.value,
+        real_send_enabled=True,
+    )
+    user, _run_payload = create_digest_ready_user(
+        client,
+        operator_headers,
+        email="digest-policy-blocked-dispatch@example.com",
+    )
+    policy = ensure_official_account_policy(client, operator_headers, user_id=user["id"])
+    create_official_account_binding(
+        client,
+        operator_headers,
+        user_id=user["id"],
+        openid="policy-blocked-dispatch-openid",
+    )
+    disabled = client.put(
+        f"/subscription-policies/{policy['id']}",
+        headers=operator_headers,
+        json={"enabled": False},
+    )
+    assert disabled.status_code == 200
+    digest_issue = client.get(
+        "/admin/digest-issues",
+        headers=operator_headers,
+        params={"user_id": user["id"]},
+    ).json()[0]
+    client.post(
+        f"/admin/digest-issues/{digest_issue['id']}/prepare-publication",
+        headers=operator_headers,
+    )
+
+    dispatched = client.post(
+        f"/admin/digest-issues/{digest_issue['id']}/dispatch",
+        headers=operator_headers,
+        json={},
+    )
+
+    assert dispatched.status_code == 200
+    assert dispatched.json()["action"] == "skipped"
+    assert dispatched.json()["dispatch_run"] is None
+    assert dispatched.json()["delivery_decision"]["decision"] == "skipped"
+    assert dispatched.json()["delivery_decision"]["reason_codes"] == ["policy_disabled"]
+    decisions = client.get(
+        "/admin/digest-delivery-decisions",
+        headers=operator_headers,
+        params={"digest_issue_id": digest_issue["id"]},
+    )
+    assert decisions.status_code == 200
+    assert decisions.json()[0]["decision"] == "skipped"
+
+
+def test_dispatch_skips_when_weekday_is_blocked(
+    client,
+    operator_headers,
+    monkeypatch,
+) -> None:
+    configure_official_account_settings(
+        monkeypatch,
+        provider_mode=OfficialAccountProviderMode.DRY_RUN.value,
+    )
+    user, _run_payload = create_digest_ready_user(
+        client,
+        operator_headers,
+        email="digest-weekday-blocked@example.com",
+    )
+    policy = ensure_official_account_policy(client, operator_headers, user_id=user["id"])
+    blocked_weekdays = [((utcnow().weekday() + 1) % 7)]
+    updated = client.put(
+        f"/subscription-policies/{policy['id']}",
+        headers=operator_headers,
+        json={"policy": {"timezone": "UTC", "allowed_weekdays": blocked_weekdays}},
+    )
+    assert updated.status_code == 200
+    digest_issue = client.get(
+        "/admin/digest-issues",
+        headers=operator_headers,
+        params={"user_id": user["id"]},
+    ).json()[0]
+    create_official_account_binding(
+        client,
+        operator_headers,
+        user_id=user["id"],
+        openid="weekday-blocked-openid",
+    )
+    client.post(
+        f"/admin/digest-issues/{digest_issue['id']}/prepare-publication",
+        headers=operator_headers,
+    )
+
+    dispatched = client.post(
+        f"/admin/digest-issues/{digest_issue['id']}/dispatch",
+        headers=operator_headers,
+        json={},
+    )
+
+    assert dispatched.status_code == 200
+    assert dispatched.json()["action"] == "skipped"
+    assert "weekday_blocked" in dispatched.json()["delivery_decision"]["reason_codes"]
+    assert dispatched.json()["delivery_decision"]["next_allowed_at"] is not None
+
+
+def test_dispatch_skips_when_muted_until_is_active(
+    client,
+    operator_headers,
+    monkeypatch,
+) -> None:
+    configure_official_account_settings(
+        monkeypatch,
+        provider_mode=OfficialAccountProviderMode.DRY_RUN.value,
+    )
+    user, _run_payload = create_digest_ready_user(
+        client,
+        operator_headers,
+        email="digest-muted-until-active@example.com",
+    )
+    policy = ensure_official_account_policy(client, operator_headers, user_id=user["id"])
+    muted_until = (utcnow() + timedelta(hours=2)).isoformat()
+    updated = client.put(
+        f"/subscription-policies/{policy['id']}",
+        headers=operator_headers,
+        json={"policy": {"timezone": "UTC", "muted_until": muted_until}},
+    )
+    assert updated.status_code == 200
+    digest_issue = client.get(
+        "/admin/digest-issues",
+        headers=operator_headers,
+        params={"user_id": user["id"]},
+    ).json()[0]
+    create_official_account_binding(
+        client,
+        operator_headers,
+        user_id=user["id"],
+        openid="muted-until-openid",
+    )
+    client.post(
+        f"/admin/digest-issues/{digest_issue['id']}/prepare-publication",
+        headers=operator_headers,
+    )
+
+    dispatched = client.post(
+        f"/admin/digest-issues/{digest_issue['id']}/dispatch",
+        headers=operator_headers,
+        json={},
+    )
+
+    assert dispatched.status_code == 200
+    assert dispatched.json()["action"] == "skipped"
+    assert "muted_until_active" in dispatched.json()["delivery_decision"]["reason_codes"]
+
+
+def test_dispatch_skips_when_selected_card_count_is_below_threshold(
+    client,
+    operator_headers,
+    monkeypatch,
+) -> None:
+    configure_official_account_settings(
+        monkeypatch,
+        provider_mode=OfficialAccountProviderMode.DRY_RUN.value,
+    )
+    user, _run_payload = create_digest_ready_user(
+        client,
+        operator_headers,
+        email="digest-minimum-selected-cards@example.com",
+    )
+    policy = ensure_official_account_policy(client, operator_headers, user_id=user["id"])
+    digest_issue = client.get(
+        "/admin/digest-issues",
+        headers=operator_headers,
+        params={"user_id": user["id"]},
+    ).json()[0]
+    updated = client.put(
+        f"/subscription-policies/{policy['id']}",
+        headers=operator_headers,
+        json={
+            "policy": {
+                "timezone": "UTC",
+                "minimum_selected_cards": digest_issue["selected_card_count"] + 1,
+            }
+        },
+    )
+    assert updated.status_code == 200
+    create_official_account_binding(
+        client,
+        operator_headers,
+        user_id=user["id"],
+        openid="minimum-selected-cards-openid",
+    )
+    client.post(
+        f"/admin/digest-issues/{digest_issue['id']}/prepare-publication",
+        headers=operator_headers,
+    )
+
+    dispatched = client.post(
+        f"/admin/digest-issues/{digest_issue['id']}/dispatch",
+        headers=operator_headers,
+        json={},
+    )
+
+    assert dispatched.status_code == 200
+    assert "insufficient_selected_cards" in dispatched.json()["delivery_decision"]["reason_codes"]
+
+
+def test_dispatch_skips_when_today_focus_is_missing_and_policy_requires_it(
+    client,
+    operator_headers,
+    session,
+    monkeypatch,
+) -> None:
+    configure_official_account_settings(
+        monkeypatch,
+        provider_mode=OfficialAccountProviderMode.DRY_RUN.value,
+    )
+    user, _run_payload = create_digest_ready_user(
+        client,
+        operator_headers,
+        email="digest-missing-today-focus@example.com",
+    )
+    policy = ensure_official_account_policy(client, operator_headers, user_id=user["id"])
+    updated = client.put(
+        f"/subscription-policies/{policy['id']}",
+        headers=operator_headers,
+        json={"policy": {"timezone": "UTC", "skip_if_no_today_focus": True}},
+    )
+    assert updated.status_code == 200
+    digest_issue = client.get(
+        "/admin/digest-issues",
+        headers=operator_headers,
+        params={"user_id": user["id"]},
+    ).json()[0]
+    issue = session.get(PulseDigestIssue, UUID(digest_issue["id"]))
+    content_payload = dict(issue.content_payload or {})
+    content_payload["focus_card"] = None
+    sections = []
+    for section in list(content_payload.get("sections") or []):
+        section_copy = dict(section)
+        if section_copy.get("kind") == "today_focus":
+            section_copy["items"] = []
+            section_copy["item_count"] = 0
+        sections.append(section_copy)
+    content_payload["sections"] = sections
+    issue.content_payload = content_payload
+    session.commit()
+    create_official_account_binding(
+        client,
+        operator_headers,
+        user_id=user["id"],
+        openid="missing-today-focus-openid",
+    )
+    client.post(
+        f"/admin/digest-issues/{digest_issue['id']}/prepare-publication",
+        headers=operator_headers,
+    )
+
+    dispatched = client.post(
+        f"/admin/digest-issues/{digest_issue['id']}/dispatch",
+        headers=operator_headers,
+        json={},
+    )
+
+    assert dispatched.status_code == 200
+    assert "missing_today_focus" in dispatched.json()["delivery_decision"]["reason_codes"]
+
+
+def test_auto_dispatch_respects_delivery_control_skip(
+    client,
+    operator_headers,
+    session,
+    monkeypatch,
+) -> None:
+    configure_official_account_settings(
+        monkeypatch,
+        provider_mode=OfficialAccountProviderMode.REAL.value,
+        real_send_enabled=True,
+    )
+    monkeypatch.setenv("APP_DIGEST_AUTO_PREPARE_OFFICIAL_ACCOUNT", "true")
+    monkeypatch.setenv("APP_DIGEST_AUTO_DISPATCH_OFFICIAL_ACCOUNT", "true")
+    get_settings.cache_clear()
+    user = create_user(
+        client,
+        operator_headers,
+        email="digest-auto-dispatch-policy-skip@example.com",
+    )
+    ensure_official_account_policy(
+        client,
+        operator_headers,
+        user_id=user["id"],
+        policy={"timezone": "UTC", "muted_until": (utcnow() + timedelta(hours=2)).isoformat()},
+    )
+    create_official_account_binding(
+        client,
+        operator_headers,
+        user_id=user["id"],
+        openid="auto-dispatch-policy-skip-openid",
+    )
+    seeded = seed_sectioned_digest_cards(session, user_id=user["id"])
+
+    orchestrated = client.post(
+        f"/admin/digest-issues/orchestrate/{user['id']}",
+        headers=operator_headers,
+        json={
+            "issue_date": seeded["issue_date"],
+            "source_pulse_job_id": seeded["pulse_job_id"],
+        },
+    )
+
+    assert orchestrated.status_code == 200
+    assert orchestrated.json()["publication_jobs"][0]["status"] == "prepared"
+    auto_dispatch = orchestrated.json()["issue"]["build_metadata"]["orchestration"]["auto_dispatch"]
+    assert auto_dispatch["result"] == "skipped"
+    assert auto_dispatch["delivery_decision"] == "skipped"
+    assert "muted_until_active" in auto_dispatch["delivery_reason_codes"]
     dispatch_runs = client.get(
         "/admin/digest-dispatch-runs",
         headers=operator_headers,

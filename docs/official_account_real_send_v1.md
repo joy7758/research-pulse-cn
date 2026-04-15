@@ -64,6 +64,9 @@
   - `dry_run -> previewed`
   - `real -> sent` or `failed`
 - `DigestPublicationAttempt.dispatch_run_id` links each per-job attempt back to the issue-level run when dispatch happens through the batch path.
+- User-side delivery policy is a separate boundary on top of this:
+  - issue-level dispatch may still be skipped before provider invocation because of quiet hours, mute windows, weekday rules, or digest-content thresholds
+  - those policy decisions are recorded through `DigestDeliveryDecision`
 
 ## Readiness Model
 - Provider readiness is true only when:

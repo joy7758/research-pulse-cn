@@ -216,6 +216,18 @@ Desktop can now also emit lightweight `work_activity.record` mutations for local
 - `APP_DIGEST_AUTO_DISPATCH_OFFICIAL_ACCOUNT=true` adds one issue-level dispatch step after orchestration only when the provider boundary allows it.
 - `APP_DIGEST_AUTO_DISPATCH_REQUIRE_REAL_MODE=true` keeps auto-dispatch off in `dry_run`.
 - `APP_DIGEST_DISPATCH_PREPARE_IF_MISSING=true` allows issue-level dispatch to prepare missing official-account jobs first.
+- Official-account user-side delivery control now also reuses `SubscriptionPolicy`:
+  - `quiet_hours` stays in `SubscriptionPolicy.quiet_hours`
+  - supported `policy` keys are:
+    - `timezone`
+    - `allowed_weekdays`
+    - `muted_until`
+    - `minimum_selected_cards`
+    - `skip_if_no_today_focus`
+  - weekday numbering is `0 = Monday` through `6 = Sunday`
+  - delivery control is evaluated before issue-level dispatch and is exposed separately from provider readiness through:
+    - `GET /admin/digest-issues/{digest_issue_id}/delivery-control-preview`
+    - `GET /admin/digest-delivery-decisions`
 - Publication preparation is stub-only:
   - jobs move to `prepared`
   - no real external send occurs

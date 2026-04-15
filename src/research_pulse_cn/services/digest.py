@@ -7,7 +7,7 @@ import json
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 from uuid import UUID
 from xml.etree import ElementTree
@@ -20,6 +20,7 @@ from research_pulse_cn.core.errors import ConflictError, NotFoundError
 from research_pulse_cn.core.metrics import get_metrics
 from research_pulse_cn.core.request_context import bind_log_context
 from research_pulse_cn.db.models import (
+    DigestDeliveryDecision,
     DigestDispatchRun,
     DigestPublicationAttempt,
     DigestPublicationJob,
@@ -28,11 +29,14 @@ from research_pulse_cn.db.models import (
     PulseDigestIssue,
     PulseDigestItem,
     PulseJob,
+    SubscriptionPolicy,
     UserProfile,
     WeChatIdentityBinding,
     utcnow,
 )
 from research_pulse_cn.domain.enums import (
+    ChannelType,
+    DigestDeliveryDecisionStatus,
     DigestDispatchMode,
     DigestDispatchRunStatus,
     DigestPublicationAttemptStatus,
@@ -52,6 +56,7 @@ from research_pulse_cn.domain.enums import (
 )
 from research_pulse_cn.repositories.digest import DigestRepository
 from research_pulse_cn.repositories.pulse import PulseRepository
+from research_pulse_cn.repositories.subscription_policy import SubscriptionPolicyRepository
 from research_pulse_cn.repositories.user import UserRepository
 from research_pulse_cn.services.common import commit_session
 from research_pulse_cn.services.official_account import (
@@ -61,6 +66,10 @@ from research_pulse_cn.services.official_account import (
     build_official_account_payload,
     build_provider_status,
     get_official_account_publisher,
+)
+from research_pulse_cn.services.subscription_policy import (
+    find_matching_delivery_policy,
+    normalize_delivery_control_policy,
 )
 from research_pulse_cn.services.sync_events import SyncEventService
 
@@ -99,6 +108,7 @@ class DispatchPublicationResult:
 class DigestIssueDispatchPreview:
     issue: PulseDigestIssue
     provider_status: dict[str, Any]
+    delivery_control_preview: DigestDeliveryControlPreview
     total_publication_jobs: int
     eligible_jobs: list[DigestPublicationJob]
     already_sent_jobs: list[DigestPublicationJob]
@@ -113,7 +123,8 @@ class DigestIssueDispatchPreview:
 class DigestDispatchRunResult:
     action: str
     issue: PulseDigestIssue
-    dispatch_run: DigestDispatchRun
+    dispatch_run: DigestDispatchRun | None
+    delivery_decision: DigestDeliveryDecision | None
     publication_jobs: list[DigestPublicationJob]
 
 
@@ -123,6 +134,21 @@ class CallbackIngestResult:
     action: str
     binding_updated: bool
     linked_binding: WeChatIdentityBinding | None
+
+
+@dataclass(slots=True)
+class DigestDeliveryControlPreview:
+    issue: PulseDigestIssue
+    matched_subscription_policy: SubscriptionPolicy | None
+    normalized_control_policy: dict[str, Any]
+    current_local_time: datetime
+    local_weekday: int
+    decision: DigestDeliveryDecisionStatus
+    reason_codes: list[str]
+    next_allowed_at: datetime | None
+    quiet_hours: dict[str, Any] | None
+    muted_until: datetime | None
+    focus_card_type: str | None
 
 
 class DigestService:
@@ -141,6 +167,7 @@ class DigestService:
         self.repository = DigestRepository(session)
         self.user_repository = UserRepository(session)
         self.pulse_repository = PulseRepository(session)
+        self.subscription_policy_repository = SubscriptionPolicyRepository(session)
         self.sync_events = SyncEventService(session)
         self.metrics = get_metrics()
         self.official_account_access_token_service = OfficialAccountAccessTokenService(
@@ -406,6 +433,7 @@ class DigestService:
     ) -> DigestIssueDispatchPreview:
         issue = self.get_digest_issue(digest_issue_id)
         provider_status = self.provider_status()
+        delivery_control_preview = self.get_delivery_control_preview(digest_issue_id)
         publication_jobs = [
             job
             for job in issue.publication_jobs
@@ -458,6 +486,7 @@ class DigestService:
         return DigestIssueDispatchPreview(
             issue=issue,
             provider_status=provider_status,
+            delivery_control_preview=delivery_control_preview,
             total_publication_jobs=len(publication_jobs),
             eligible_jobs=eligible_jobs[
                 : self.settings.digest_dispatch_max_publication_jobs_per_run
@@ -468,6 +497,43 @@ class DigestService:
             would_prepare=would_prepare,
             retry_failed=effective_retry_failed,
             force_prepare=force_prepare,
+        )
+
+    def get_delivery_control_preview(
+        self,
+        digest_issue_id: UUID,
+        *,
+        channel: ChannelType = ChannelType.OFFICIAL_ACCOUNT,
+        now: datetime | None = None,
+    ) -> DigestDeliveryControlPreview:
+        issue = self.get_digest_issue(digest_issue_id)
+        current_time = self.now_provider() if now is None else now
+        if current_time.tzinfo is None:
+            current_time = current_time.replace(tzinfo=UTC)
+        policy = self._matching_subscription_policy(
+            user_id=issue.user_id,
+            channel=channel,
+        )
+        return self._evaluate_delivery_control(
+            issue=issue,
+            channel=channel,
+            policy=policy,
+            current_time=current_time,
+        )
+
+    def list_delivery_decisions(
+        self,
+        *,
+        user_id: UUID | None = None,
+        digest_issue_id: UUID | None = None,
+        channel: ChannelType | None = None,
+        decision: DigestDeliveryDecisionStatus | None = None,
+    ) -> list[DigestDeliveryDecision]:
+        return self.repository.list_delivery_decisions(
+            user_id=user_id,
+            digest_issue_id=digest_issue_id,
+            channel=channel,
+            decision=decision,
         )
 
     def list_dispatch_runs(
@@ -515,7 +581,129 @@ class DigestService:
             "updated_at": dispatch_run.updated_at,
         }
 
+    def serialize_delivery_decision(
+        self,
+        delivery_decision: DigestDeliveryDecision,
+    ) -> dict[str, Any]:
+        return {
+            "id": delivery_decision.id,
+            "digest_issue_id": delivery_decision.digest_issue_id,
+            "user_id": delivery_decision.user_id,
+            "channel": delivery_decision.channel,
+            "subscription_policy_id": delivery_decision.subscription_policy_id,
+            "dispatch_run_id": delivery_decision.dispatch_run_id,
+            "decision": delivery_decision.decision,
+            "reason_codes": list(delivery_decision.reason_codes or []),
+            "effective_timezone": delivery_decision.effective_timezone,
+            "local_issue_weekday": delivery_decision.local_issue_weekday,
+            "selected_card_count": delivery_decision.selected_card_count,
+            "focus_card_type": delivery_decision.focus_card_type,
+            "quiet_hours": delivery_decision.quiet_hours,
+            "muted_until": delivery_decision.muted_until,
+            "next_allowed_at": delivery_decision.next_allowed_at,
+            "created_at": delivery_decision.created_at,
+        }
+
+    def serialize_delivery_control_preview(
+        self,
+        preview: DigestDeliveryControlPreview,
+    ) -> dict[str, Any]:
+        return {
+            "issue": {
+                "id": preview.issue.id,
+                "user_id": preview.issue.user_id,
+                "issue_date": preview.issue.issue_date,
+                "source_pulse_job_id": preview.issue.source_pulse_job_id,
+                "status": preview.issue.status,
+                "title": preview.issue.title,
+                "summary": preview.issue.summary,
+                "highlight_count": preview.issue.highlight_count,
+                "selected_card_count": preview.issue.selected_card_count,
+                "deep_link_path": preview.issue.deep_link_path,
+                "content_payload": preview.issue.content_payload,
+                "build_metadata": preview.issue.build_metadata,
+                "published_at": preview.issue.published_at,
+                "created_at": preview.issue.created_at,
+                "updated_at": preview.issue.updated_at,
+            },
+            "matched_subscription_policy": self._serialize_matched_subscription_policy(
+                preview.matched_subscription_policy
+            ),
+            "normalized_control_policy": dict(preview.normalized_control_policy),
+            "current_local_time": preview.current_local_time,
+            "local_weekday": preview.local_weekday,
+            "decision": preview.decision,
+            "reason_codes": list(preview.reason_codes),
+            "next_allowed_at": preview.next_allowed_at,
+        }
+
     def dispatch_digest_issue(
+        self,
+        digest_issue_id: UUID,
+        *,
+        dispatch_mode: DigestDispatchMode = DigestDispatchMode.MANUAL,
+        retry_failed: bool = False,
+        force_prepare: bool = False,
+        auto_commit: bool = True,
+        create_skipped_run_if_no_eligible: bool = True,
+    ) -> DigestDispatchRunResult | None:
+        issue = self.get_digest_issue(digest_issue_id)
+        delivery_preview = self.get_delivery_control_preview(
+            digest_issue_id,
+            channel=ChannelType.OFFICIAL_ACCOUNT,
+        )
+        delivery_decision = self._persist_delivery_decision(
+            preview=delivery_preview,
+            dispatch_run_id=None,
+        )
+        if delivery_preview.decision == DigestDeliveryDecisionStatus.SKIPPED:
+            self.metrics.increment("digest_dispatch_policy_skips_total")
+            if auto_commit:
+                commit_session(self.session)
+                issue = self.get_digest_issue(issue.id)
+                delivery_decision = self.repository.list_delivery_decisions(
+                    digest_issue_id=issue.id,
+                    channel=ChannelType.OFFICIAL_ACCOUNT,
+                )[0]
+            return DigestDispatchRunResult(
+                action="skipped",
+                issue=issue,
+                dispatch_run=None,
+                delivery_decision=delivery_decision,
+                publication_jobs=self.list_publication_jobs(digest_issue_id=issue.id),
+            )
+        result = self._dispatch_digest_issue_allowed(
+            digest_issue_id,
+            dispatch_mode=dispatch_mode,
+            retry_failed=retry_failed,
+            force_prepare=force_prepare,
+            auto_commit=False,
+            create_skipped_run_if_no_eligible=create_skipped_run_if_no_eligible,
+        )
+        if result is not None and result.dispatch_run is not None:
+            delivery_decision.dispatch_run_id = result.dispatch_run.id
+        if auto_commit:
+            commit_session(self.session)
+            issue = self.get_digest_issue(issue.id)
+            delivery_decision = self.repository.list_delivery_decisions(
+                digest_issue_id=issue.id,
+                channel=ChannelType.OFFICIAL_ACCOUNT,
+            )[0]
+            dispatch_run = None
+            if result is not None and result.dispatch_run is not None:
+                dispatch_run = self.get_dispatch_run(result.dispatch_run.id)
+            return DigestDispatchRunResult(
+                action="skipped" if result is None else result.action,
+                issue=issue,
+                dispatch_run=dispatch_run,
+                delivery_decision=delivery_decision,
+                publication_jobs=self.list_publication_jobs(digest_issue_id=issue.id),
+            )
+        if result is not None:
+            result.delivery_decision = delivery_decision
+        return result
+
+    def _dispatch_digest_issue_allowed(
         self,
         digest_issue_id: UUID,
         *,
@@ -601,6 +789,7 @@ class DigestService:
                 action="skipped",
                 issue=issue,
                 dispatch_run=dispatch_run,
+                delivery_decision=None,
                 publication_jobs=publication_jobs,
             )
 
@@ -684,6 +873,7 @@ class DigestService:
             action=dispatch_run.status.value,
             issue=issue,
             dispatch_run=dispatch_run,
+            delivery_decision=None,
             publication_jobs=self.list_publication_jobs(digest_issue_id=issue.id),
         )
 
@@ -1154,12 +1344,24 @@ class DigestService:
                             )
                         else:
                             auto_dispatch_note["result"] = auto_dispatch_result.action
-                            auto_dispatch_note["dispatch_run_id"] = str(
-                                auto_dispatch_result.dispatch_run.id
-                            )
-                            auto_dispatch_note["dispatch_status"] = (
-                                auto_dispatch_result.dispatch_run.status.value
-                            )
+                            if auto_dispatch_result.delivery_decision is not None:
+                                auto_dispatch_note["delivery_decision"] = (
+                                    auto_dispatch_result.delivery_decision.decision.value
+                                )
+                                auto_dispatch_note["delivery_reason_codes"] = list(
+                                    auto_dispatch_result.delivery_decision.reason_codes or []
+                                )
+                            if auto_dispatch_result.dispatch_run is not None:
+                                auto_dispatch_note["dispatch_run_id"] = str(
+                                    auto_dispatch_result.dispatch_run.id
+                                )
+                                auto_dispatch_note["dispatch_status"] = (
+                                    auto_dispatch_result.dispatch_run.status.value
+                                )
+                            elif auto_dispatch_result.action == "skipped":
+                                auto_dispatch_note["reason"] = (
+                                    "official-account delivery policy blocked auto dispatch"
+                                )
                     orchestration_metadata["auto_dispatch"] = auto_dispatch_note
 
             issue.build_metadata = {
@@ -1219,6 +1421,266 @@ class DigestService:
             )
         )
         return eligible
+
+    def _matching_subscription_policy(
+        self,
+        *,
+        user_id: UUID,
+        channel: ChannelType,
+    ) -> SubscriptionPolicy | None:
+        policies = self.subscription_policy_repository.list(user_id=user_id)
+        return find_matching_delivery_policy(policies, channel=channel)
+
+    def _evaluate_delivery_control(
+        self,
+        *,
+        issue: PulseDigestIssue,
+        channel: ChannelType,
+        policy: SubscriptionPolicy | None,
+        current_time: datetime,
+    ) -> DigestDeliveryControlPreview:
+        self.metrics.increment("digest_delivery_decisions_evaluated_total")
+        normalized_policy = normalize_delivery_control_policy(
+            policy,
+            default_timezone=self.settings.default_timezone,
+        )
+        zone = self._safe_zone(normalized_policy.effective_timezone)
+        local_now = current_time.astimezone(zone)
+        local_weekday = local_now.weekday()
+        focus_card_type = self._resolve_focus_card_type(issue)
+        selected_card_count = int(issue.selected_card_count or 0)
+        reason_codes: list[str] = []
+        next_allowed_at: datetime | None = None
+
+        if policy is None:
+            reason_codes.append("no_subscription_policy")
+        elif not policy.enabled:
+            reason_codes.append("policy_disabled")
+        else:
+            if selected_card_count <= 0:
+                reason_codes.append("no_digest_content")
+            if (
+                normalized_policy.minimum_selected_cards is not None
+                and selected_card_count < normalized_policy.minimum_selected_cards
+            ):
+                reason_codes.append("insufficient_selected_cards")
+            if normalized_policy.skip_if_no_today_focus and focus_card_type is None:
+                reason_codes.append("missing_today_focus")
+            if (
+                normalized_policy.allowed_weekdays
+                and local_weekday not in normalized_policy.allowed_weekdays
+            ):
+                reason_codes.append("weekday_blocked")
+                next_allowed_at = self._max_allowed_at(
+                    next_allowed_at,
+                    self._next_allowed_weekday(
+                        local_now=local_now,
+                        allowed_weekdays=normalized_policy.allowed_weekdays,
+                    ),
+                )
+            active_quiet_window = self._active_quiet_window(
+                quiet_hours=normalized_policy.quiet_hours,
+                current_time=current_time,
+            )
+            if active_quiet_window is not None:
+                reason_codes.append("quiet_hours_active")
+                next_allowed_at = self._max_allowed_at(
+                    next_allowed_at,
+                    self._next_allowed_after_quiet_window(
+                        window=active_quiet_window,
+                        current_time=current_time,
+                    ),
+                )
+            if (
+                normalized_policy.muted_until is not None
+                and current_time < normalized_policy.muted_until
+            ):
+                reason_codes.append("muted_until_active")
+                next_allowed_at = self._max_allowed_at(
+                    next_allowed_at,
+                    normalized_policy.muted_until,
+                )
+
+        decision = (
+            DigestDeliveryDecisionStatus.ELIGIBLE
+            if not reason_codes
+            else DigestDeliveryDecisionStatus.SKIPPED
+        )
+        return DigestDeliveryControlPreview(
+            issue=issue,
+            matched_subscription_policy=policy,
+            normalized_control_policy=normalized_policy.as_dict(),
+            current_local_time=local_now,
+            local_weekday=local_weekday,
+            decision=decision,
+            reason_codes=reason_codes,
+            next_allowed_at=next_allowed_at,
+            quiet_hours=normalized_policy.quiet_hours,
+            muted_until=normalized_policy.muted_until,
+            focus_card_type=focus_card_type,
+        )
+
+    def _persist_delivery_decision(
+        self,
+        *,
+        preview: DigestDeliveryControlPreview,
+        dispatch_run_id: UUID | None,
+    ) -> DigestDeliveryDecision:
+        decision = DigestDeliveryDecision(
+            digest_issue_id=preview.issue.id,
+            user_id=preview.issue.user_id,
+            channel=ChannelType.OFFICIAL_ACCOUNT,
+            subscription_policy_id=(
+                None
+                if preview.matched_subscription_policy is None
+                else preview.matched_subscription_policy.id
+            ),
+            dispatch_run_id=dispatch_run_id,
+            decision=preview.decision,
+            reason_codes=list(preview.reason_codes),
+            effective_timezone=str(preview.normalized_control_policy["effective_timezone"]),
+            local_issue_weekday=preview.local_weekday,
+            selected_card_count=int(preview.issue.selected_card_count or 0),
+            focus_card_type=preview.focus_card_type,
+            quiet_hours=preview.quiet_hours,
+            muted_until=preview.muted_until,
+            next_allowed_at=preview.next_allowed_at,
+            created_at=self.now_provider(),
+        )
+        self.repository.add_delivery_decision(decision)
+        if decision.decision == DigestDeliveryDecisionStatus.SKIPPED:
+            self.metrics.increment("digest_delivery_decisions_skipped_total")
+        return decision
+
+    def _serialize_matched_subscription_policy(
+        self,
+        policy: SubscriptionPolicy | None,
+    ) -> dict[str, Any] | None:
+        if policy is None:
+            return None
+        return {
+            "id": str(policy.id),
+            "user_id": str(policy.user_id),
+            "channel": policy.channel.value,
+            "enabled": policy.enabled,
+            "frequency": policy.frequency.value,
+            "quiet_hours": policy.quiet_hours,
+            "frequency_cap": policy.frequency_cap,
+            "endpoint": policy.endpoint,
+            "policy": dict(policy.policy or {}),
+            "created_at": policy.created_at,
+            "updated_at": policy.updated_at,
+        }
+
+    def _resolve_focus_card_type(self, issue: PulseDigestIssue) -> str | None:
+        content_payload = issue.content_payload or {}
+        focus_card = content_payload.get("focus_card")
+        if isinstance(focus_card, dict):
+            card_type = focus_card.get("card_type")
+            if isinstance(card_type, str):
+                return card_type
+        sections = content_payload.get("sections")
+        if isinstance(sections, list):
+            for section in sections:
+                if not isinstance(section, dict) or section.get("kind") != "today_focus":
+                    continue
+                items = section.get("items")
+                if isinstance(items, list) and items:
+                    first = items[0]
+                    if isinstance(first, dict) and isinstance(first.get("card_type"), str):
+                        return str(first["card_type"])
+        return None
+
+    def _active_quiet_window(
+        self,
+        *,
+        quiet_hours: dict[str, Any] | None,
+        current_time: datetime,
+    ) -> dict[str, Any] | None:
+        windows = []
+        if isinstance(quiet_hours, dict):
+            candidate_windows = quiet_hours.get("windows")
+            if isinstance(candidate_windows, list):
+                windows = [window for window in candidate_windows if isinstance(window, dict)]
+        for window in windows:
+            if self._quiet_window_active(window=window, current_time=current_time):
+                return window
+        return None
+
+    def _quiet_window_active(
+        self,
+        *,
+        window: dict[str, Any],
+        current_time: datetime,
+    ) -> bool:
+        start = window.get("start")
+        end = window.get("end")
+        if not isinstance(start, str) or not isinstance(end, str):
+            return False
+        zone = self._safe_zone(str(window.get("timezone") or self.settings.default_timezone))
+        localized = current_time.astimezone(zone)
+        start_time = time.fromisoformat(start)
+        end_time = time.fromisoformat(end)
+        current_local_time = localized.time().replace(tzinfo=None)
+        if start_time <= end_time:
+            return start_time <= current_local_time < end_time
+        return current_local_time >= start_time or current_local_time < end_time
+
+    def _next_allowed_after_quiet_window(
+        self,
+        *,
+        window: dict[str, Any],
+        current_time: datetime,
+    ) -> datetime | None:
+        end = window.get("end")
+        if not isinstance(end, str):
+            return None
+        zone = self._safe_zone(str(window.get("timezone") or self.settings.default_timezone))
+        localized = current_time.astimezone(zone)
+        end_time = time.fromisoformat(end)
+        candidate_date = localized.date()
+        current_local_time = localized.time().replace(tzinfo=None)
+        if current_local_time >= end_time:
+            candidate_date = candidate_date + timedelta(days=1)
+        next_local = datetime.combine(candidate_date, end_time, tzinfo=zone)
+        if next_local <= localized:
+            next_local = next_local + timedelta(days=1)
+        return next_local.astimezone(UTC)
+
+    def _next_allowed_weekday(
+        self,
+        *,
+        local_now: datetime,
+        allowed_weekdays: Sequence[int],
+    ) -> datetime | None:
+        if not allowed_weekdays:
+            return None
+        zone = local_now.tzinfo
+        assert zone is not None
+        for offset in range(0, 8):
+            candidate = local_now + timedelta(days=offset)
+            if candidate.weekday() in allowed_weekdays:
+                candidate_local = datetime.combine(candidate.date(), time.min, tzinfo=zone)
+                if candidate_local > local_now:
+                    return candidate_local.astimezone(UTC)
+        return None
+
+    def _max_allowed_at(
+        self,
+        current: datetime | None,
+        candidate: datetime | None,
+    ) -> datetime | None:
+        if candidate is None:
+            return current
+        if current is None:
+            return candidate
+        return max(current, candidate)
+
+    def _safe_zone(self, timezone_name: str) -> ZoneInfo:
+        try:
+            return ZoneInfo(timezone_name)
+        except ZoneInfoNotFoundError:
+            return ZoneInfo("UTC")
 
     def _validate_dispatch_provider_mode(
         self,

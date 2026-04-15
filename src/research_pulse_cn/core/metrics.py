@@ -57,6 +57,9 @@ COUNTER_NAMES = (
     "digest_dispatch_runs_completed_total",
     "digest_dispatch_runs_failed_total",
     "digest_dispatch_jobs_sent_total",
+    "digest_delivery_decisions_evaluated_total",
+    "digest_delivery_decisions_skipped_total",
+    "digest_dispatch_policy_skips_total",
 )
 
 

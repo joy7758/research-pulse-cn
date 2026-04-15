@@ -9,6 +9,8 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from research_pulse_cn.domain.enums import (
+    ChannelType,
+    DigestDeliveryDecisionStatus,
     DigestDispatchMode,
     DigestDispatchRunStatus,
     DigestPublicationAttemptStatus,
@@ -240,6 +242,36 @@ class DigestDispatchRunDetailRead(DigestDispatchRunRead):
     attempts: list[DigestPublicationAttemptRead] = Field(default_factory=list)
 
 
+class DigestDeliveryDecisionRead(ORMModel):
+    id: UUID
+    digest_issue_id: UUID
+    user_id: UUID
+    channel: ChannelType
+    subscription_policy_id: UUID | None
+    dispatch_run_id: UUID | None
+    decision: DigestDeliveryDecisionStatus
+    reason_codes: list[str] = Field(default_factory=list)
+    effective_timezone: str
+    local_issue_weekday: int | None
+    selected_card_count: int
+    focus_card_type: str | None
+    quiet_hours: dict[str, Any] | None
+    muted_until: datetime | None
+    next_allowed_at: datetime | None
+    created_at: datetime
+
+
+class DigestDeliveryControlPreviewRead(BaseModel):
+    issue: PulseDigestIssueRead
+    matched_subscription_policy: dict[str, Any] | None = None
+    normalized_control_policy: dict[str, Any]
+    current_local_time: datetime
+    local_weekday: int
+    decision: DigestDeliveryDecisionStatus
+    reason_codes: list[str] = Field(default_factory=list)
+    next_allowed_at: datetime | None = None
+
+
 class DigestIssueBuildRequest(BaseModel):
     issue_date: date | None = None
     source_pulse_job_id: UUID | None = None
@@ -281,6 +313,7 @@ class DigestIssueDispatchRequest(BaseModel):
 class DigestIssueDispatchPreviewResponse(BaseModel):
     issue: PulseDigestIssueDetailRead
     provider_status: OfficialAccountProviderStatusRead
+    delivery_control_preview: DigestDeliveryControlPreviewRead
     total_publication_jobs: int
     eligible_jobs: int
     already_sent_jobs: int
@@ -294,5 +327,6 @@ class DigestIssueDispatchPreviewResponse(BaseModel):
 class DigestIssueDispatchResponse(BaseModel):
     action: str
     issue: PulseDigestIssueDetailRead
-    dispatch_run: DigestDispatchRunRead
+    dispatch_run: DigestDispatchRunRead | None = None
+    delivery_decision: DigestDeliveryDecisionRead | None = None
     publication_jobs: list[DigestPublicationJobRead] = Field(default_factory=list)

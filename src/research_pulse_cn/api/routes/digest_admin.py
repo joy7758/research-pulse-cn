@@ -15,6 +15,8 @@ from research_pulse_cn.core.errors import ConflictError
 from research_pulse_cn.domain.auth import ActorContext
 from research_pulse_cn.domain.enums import (
     AdminRole,
+    ChannelType,
+    DigestDeliveryDecisionStatus,
     DigestDispatchMode,
     DigestDispatchRunStatus,
     DigestPublicationAttemptStatus,
@@ -28,6 +30,8 @@ from research_pulse_cn.domain.enums import (
     WeChatBindingChannelType,
 )
 from research_pulse_cn.schemas.digest import (
+    DigestDeliveryControlPreviewRead,
+    DigestDeliveryDecisionRead,
     DigestDispatchRunDetailRead,
     DigestDispatchRunRead,
     DigestIssueBuildRequest,
@@ -348,6 +352,36 @@ def prepare_digest_publication(
 
 
 @router.get(
+    "/digest-issues/{digest_issue_id}/delivery-control-preview",
+    response_model=DigestDeliveryControlPreviewRead,
+)
+def preview_digest_issue_delivery_control(
+    digest_issue_id: UUID,
+    request: Request,
+    actor: OperatorDep,
+    service: DigestServiceDep,
+    audit_service: AuditServiceDep,
+) -> DigestDeliveryControlPreviewRead:
+    preview = service.get_delivery_control_preview(digest_issue_id)
+    audit_request_action(
+        audit_service=audit_service,
+        request=request,
+        actor=actor,
+        action="digest_issue.delivery_control_preview",
+        resource_type="pulse_digest_issue",
+        resource_id=str(preview.issue.id),
+        status_code=200,
+        metadata={
+            "user_id": str(preview.issue.user_id),
+            "issue_date": preview.issue.issue_date.isoformat(),
+            "decision": preview.decision.value,
+            "reason_codes": list(preview.reason_codes),
+        },
+    )
+    return DigestDeliveryControlPreviewRead(**service.serialize_delivery_control_preview(preview))
+
+
+@router.get(
     "/digest-issues/{digest_issue_id}/dispatch-preview",
     response_model=DigestIssueDispatchPreviewResponse,
 )
@@ -386,6 +420,9 @@ def preview_digest_issue_dispatch(
     return DigestIssueDispatchPreviewResponse(
         issue=PulseDigestIssueDetailRead.model_validate(preview.issue),
         provider_status=OfficialAccountProviderStatusRead(**preview.provider_status),
+        delivery_control_preview=DigestDeliveryControlPreviewRead(
+            **service.serialize_delivery_control_preview(preview.delivery_control_preview)
+        ),
         total_publication_jobs=preview.total_publication_jobs,
         eligible_jobs=len(preview.eligible_jobs),
         already_sent_jobs=len(preview.already_sent_jobs),
@@ -448,8 +485,17 @@ def dispatch_digest_issue(
         metadata={
             "user_id": str(result.issue.user_id),
             "issue_date": result.issue.issue_date.isoformat(),
-            "dispatch_run_id": str(result.dispatch_run.id),
-            "dispatch_status": result.dispatch_run.status.value,
+            "dispatch_run_id": (
+                None if result.dispatch_run is None else str(result.dispatch_run.id)
+            ),
+            "dispatch_status": (
+                None if result.dispatch_run is None else result.dispatch_run.status.value
+            ),
+            "delivery_decision": (
+                None
+                if result.delivery_decision is None
+                else result.delivery_decision.decision.value
+            ),
             "retry_failed": payload.retry_failed,
             "force_prepare": payload.force_prepare,
         },
@@ -457,7 +503,18 @@ def dispatch_digest_issue(
     return DigestIssueDispatchResponse(
         action=result.action,
         issue=PulseDigestIssueDetailRead.model_validate(result.issue),
-        dispatch_run=DigestDispatchRunRead(**service.serialize_dispatch_run(result.dispatch_run)),
+        dispatch_run=(
+            None
+            if result.dispatch_run is None
+            else DigestDispatchRunRead(**service.serialize_dispatch_run(result.dispatch_run))
+        ),
+        delivery_decision=(
+            None
+            if result.delivery_decision is None
+            else DigestDeliveryDecisionRead(
+                **service.serialize_delivery_decision(result.delivery_decision)
+            )
+        ),
         publication_jobs=[
             DigestPublicationJobRead.model_validate(job) for job in result.publication_jobs
         ],
@@ -599,6 +656,26 @@ def get_digest_dispatch_run(
             for attempt in dispatch_run.attempts
         ],
     )
+
+
+@router.get("/digest-delivery-decisions", response_model=list[DigestDeliveryDecisionRead])
+def list_digest_delivery_decisions(
+    _actor: OperatorDep,
+    service: DigestServiceDep,
+    user_id: UserIdQuery = None,
+    digest_issue_id: Annotated[UUID | None, Query()] = None,
+    channel: Annotated[ChannelType | None, Query()] = None,
+    decision: Annotated[DigestDeliveryDecisionStatus | None, Query()] = None,
+) -> list[DigestDeliveryDecisionRead]:
+    return [
+        DigestDeliveryDecisionRead(**service.serialize_delivery_decision(delivery_decision))
+        for delivery_decision in service.list_delivery_decisions(
+            user_id=user_id,
+            digest_issue_id=digest_issue_id,
+            channel=channel,
+            decision=decision,
+        )
+    ]
 
 
 @router.get(

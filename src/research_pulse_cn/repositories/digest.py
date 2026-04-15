@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from research_pulse_cn.db.models import (
+    DigestDeliveryDecision,
     DigestDispatchRun,
     DigestPublicationAttempt,
     DigestPublicationJob,
@@ -18,6 +19,8 @@ from research_pulse_cn.db.models import (
     WeChatIdentityBinding,
 )
 from research_pulse_cn.domain.enums import (
+    ChannelType,
+    DigestDeliveryDecisionStatus,
     DigestDispatchMode,
     DigestDispatchRunStatus,
     DigestPublicationAttemptStatus,
@@ -259,6 +262,15 @@ class DigestRepository:
         self.session.refresh(attempt)
         return attempt
 
+    def add_delivery_decision(
+        self,
+        decision: DigestDeliveryDecision,
+    ) -> DigestDeliveryDecision:
+        self.session.add(decision)
+        self.session.flush()
+        self.session.refresh(decision)
+        return decision
+
     def list_publication_attempts(
         self,
         *,
@@ -327,6 +339,37 @@ class DigestRepository:
         self.session.flush()
         self.session.refresh(dispatch_run)
         return dispatch_run
+
+    def list_delivery_decisions(
+        self,
+        *,
+        user_id: UUID | None = None,
+        digest_issue_id: UUID | None = None,
+        channel: ChannelType | None = None,
+        decision: DigestDeliveryDecisionStatus | None = None,
+    ) -> list[DigestDeliveryDecision]:
+        statement = (
+            select(DigestDeliveryDecision)
+            .options(
+                selectinload(DigestDeliveryDecision.digest_issue),
+                selectinload(DigestDeliveryDecision.subscription_policy),
+                selectinload(DigestDeliveryDecision.dispatch_run),
+                selectinload(DigestDeliveryDecision.user),
+            )
+            .order_by(
+                DigestDeliveryDecision.created_at.desc(),
+                DigestDeliveryDecision.id.desc(),
+            )
+        )
+        if user_id is not None:
+            statement = statement.where(DigestDeliveryDecision.user_id == user_id)
+        if digest_issue_id is not None:
+            statement = statement.where(DigestDeliveryDecision.digest_issue_id == digest_issue_id)
+        if channel is not None:
+            statement = statement.where(DigestDeliveryDecision.channel == channel)
+        if decision is not None:
+            statement = statement.where(DigestDeliveryDecision.decision == decision)
+        return list(self.session.scalars(statement))
 
     def list_dispatch_runs(
         self,

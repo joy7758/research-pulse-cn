@@ -24,6 +24,7 @@ class ChannelType(StrEnum):
     IN_APP = "in_app"
     DINGTALK = "dingtalk"
     WECHAT = "wechat"
+    OFFICIAL_ACCOUNT = "official_account"
     EMAIL = "email"
     WEBHOOK = "webhook"
 
@@ -237,6 +238,11 @@ class DigestDispatchRunStatus(StrEnum):
     SKIPPED = "skipped"
 
 
+class DigestDeliveryDecisionStatus(StrEnum):
+    ELIGIBLE = "eligible"
+    SKIPPED = "skipped"
+
+
 class OfficialAccountProviderMode(StrEnum):
     DISABLED = "disabled"
     DRY_RUN = "dry_run"
@@ -279,6 +285,7 @@ ACTIVE_DELIVERY_CHANNELS = frozenset(
         ChannelType.IN_APP,
         ChannelType.EMAIL,
         ChannelType.WEBHOOK,
+        ChannelType.OFFICIAL_ACCOUNT,
     }
 )
 

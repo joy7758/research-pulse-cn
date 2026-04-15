@@ -78,6 +78,7 @@
   - orchestration still owns section building
   - dispatch remains a separate issue-level step on top of prepared jobs
   - repeated orchestration should not resend already-sent jobs
+  - user-side delivery control remains a later gating layer and does not change section building
 
 ## Compatibility Notes For Desktop And Mini Read Models
 - Mini digest detail payloads now expose the sectioned digest structure when present:

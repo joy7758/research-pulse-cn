@@ -30,6 +30,7 @@ from research_pulse_cn.domain.enums import (
     ClientType,
     DeliveryAttemptStatus,
     DeliveryJobStatus,
+    DigestDeliveryDecisionStatus,
     DigestDispatchMode,
     DigestDispatchRunStatus,
     DigestPublicationAttemptStatus,
@@ -168,6 +169,11 @@ class UserProfile(TimestampMixin, Base):
         back_populates="user",
         cascade="all, delete-orphan",
         order_by="DigestDispatchRun.created_at.desc()",
+    )
+    digest_delivery_decisions: Mapped[list[DigestDeliveryDecision]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+        order_by="DigestDeliveryDecision.created_at.desc()",
     )
     external_retrieval_results: Mapped[list[ExternalRetrievedRecord]] = relationship(
         back_populates="user",
@@ -458,6 +464,11 @@ class PulseDigestIssue(TimestampMixin, Base):
         cascade="all, delete-orphan",
         order_by="DigestDispatchRun.created_at.desc()",
     )
+    delivery_decisions: Mapped[list[DigestDeliveryDecision]] = relationship(
+        back_populates="digest_issue",
+        cascade="all, delete-orphan",
+        order_by="DigestDeliveryDecision.created_at.desc()",
+    )
     mini_read_grants: Mapped[list[MiniReadGrant]] = relationship(
         back_populates="digest_issue",
     )
@@ -630,6 +641,64 @@ class DigestDispatchRun(TimestampMixin, Base):
     attempts: Mapped[list[DigestPublicationAttempt]] = relationship(
         back_populates="dispatch_run",
         order_by="DigestPublicationAttempt.started_at",
+    )
+    delivery_decisions: Mapped[list[DigestDeliveryDecision]] = relationship(
+        back_populates="dispatch_run",
+        order_by="DigestDeliveryDecision.created_at",
+    )
+
+
+class DigestDeliveryDecision(Base):
+    __tablename__ = "digest_delivery_decisions"
+    __table_args__ = (
+        Index(
+            "ix_digest_delivery_decisions_issue_channel_created_at",
+            "digest_issue_id",
+            "channel",
+            "created_at",
+        ),
+        Index(
+            "ix_digest_delivery_decisions_user_channel_created_at",
+            "user_id",
+            "channel",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    digest_issue_id: Mapped[UUID] = mapped_column(
+        ForeignKey("pulse_digest_issues.id", ondelete="CASCADE")
+    )
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("user_profiles.id", ondelete="CASCADE"))
+    channel: Mapped[ChannelType] = mapped_column(
+        Enum(ChannelType, native_enum=False),
+        nullable=False,
+    )
+    subscription_policy_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("subscription_policies.id", ondelete="SET NULL")
+    )
+    dispatch_run_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("digest_dispatch_runs.id", ondelete="SET NULL")
+    )
+    decision: Mapped[DigestDeliveryDecisionStatus] = mapped_column(
+        Enum(DigestDeliveryDecisionStatus, native_enum=False),
+        nullable=False,
+    )
+    reason_codes: Mapped[list[str]] = mapped_column(JSON_VARIANT, default=list, nullable=False)
+    effective_timezone: Mapped[str] = mapped_column(String(100), nullable=False)
+    local_issue_weekday: Mapped[int | None] = mapped_column(Integer)
+    selected_card_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    focus_card_type: Mapped[str | None] = mapped_column(String(100))
+    quiet_hours: Mapped[dict[str, Any] | None] = mapped_column(JSON_VARIANT)
+    muted_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    next_allowed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    digest_issue: Mapped[PulseDigestIssue] = relationship(back_populates="delivery_decisions")
+    user: Mapped[UserProfile] = relationship(back_populates="digest_delivery_decisions")
+    subscription_policy: Mapped[SubscriptionPolicy | None] = relationship()
+    dispatch_run: Mapped[DigestDispatchRun | None] = relationship(
+        back_populates="delivery_decisions"
     )
 
 
