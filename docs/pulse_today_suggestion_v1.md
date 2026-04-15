@@ -83,6 +83,7 @@
 
 ## Digest Compatibility Notes
 - Digest building tolerates selected `today_suggestion` cards without special branching.
+- Official-account daily digest orchestration now prefers `today_suggestion` as the `today_focus` section head when one is selected.
 - In this phase, `today_suggestion` is usually paper-centric:
   - `source_paper_id` is normally set
 - Compact digest and mini/desktop read payloads still should not assume every card shares the same metadata shape.

@@ -222,6 +222,12 @@ class DigestIssueBuildResponse(BaseModel):
     issue: PulseDigestIssueDetailRead
 
 
+class DigestIssueOrchestrateResponse(BaseModel):
+    action: str
+    issue: PulseDigestIssueDetailRead
+    publication_jobs: list[DigestPublicationJobRead] = Field(default_factory=list)
+
+
 class DigestPublicationPrepareResponse(BaseModel):
     issue: PulseDigestIssueDetailRead
     publication_jobs: list[DigestPublicationJobRead] = Field(default_factory=list)
@@ -231,3 +237,9 @@ class DigestPublicationDispatchResponse(BaseModel):
     action: str
     publication_job: DigestPublicationJobRead
     attempt: DigestPublicationAttemptRead | None = None
+
+
+class DigestIssueDailyPreviewResponse(BaseModel):
+    issue: PulseDigestIssueDetailRead
+    content_payload: dict[str, Any]
+    publication_preview: dict[str, Any] | None = None

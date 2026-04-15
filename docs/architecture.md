@@ -135,6 +135,13 @@ Tie-break order is deterministic:
 - `PulseCard` remains the ranked atomic unit for delivery and sync.
 - `PulseDigestIssue` becomes the daily user-facing digest artifact for future official-account and mini-program surfaces.
 - `PulseDigestItem` snapshots ordered card content into a digest-specific shape without re-running ranking.
+- `PulseDigestIssue.content_payload` now also stores a deterministic sectioned daily-digest structure for publication preparation:
+  - `today_focus`
+  - `yesterday_recap`
+  - `signal_updates`
+  - `related_papers`
+  - `other_updates`
+- This keeps digest orchestration separate from both pulse ranking and official-account dispatch.
 
 ### Publication reserve boundary
 - `WeChatIdentityBinding` stores admin-managed official-account or mini-program identity bindings without real OAuth flows.

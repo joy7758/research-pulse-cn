@@ -50,6 +50,9 @@ COUNTER_NAMES = (
     "external_retrieval_runs_completed_total",
     "external_retrieval_runs_failed_total",
     "external_retrieval_results_normalized_total",
+    "daily_digest_issues_orchestrated_total",
+    "daily_digest_publication_prepared_total",
+    "daily_digest_preview_requests_total",
 )
 
 

@@ -247,6 +247,22 @@ class Settings(BaseSettings):
         default=100,
         validation_alias="APP_MINI_PAPERS_MAX_LIMIT",
     )
+    digest_signal_updates_max_items: int = Field(
+        default=2,
+        validation_alias="APP_DIGEST_SIGNAL_UPDATES_MAX_ITEMS",
+    )
+    digest_related_papers_max_items: int = Field(
+        default=2,
+        validation_alias="APP_DIGEST_RELATED_PAPERS_MAX_ITEMS",
+    )
+    digest_other_updates_max_items: int = Field(
+        default=3,
+        validation_alias="APP_DIGEST_OTHER_UPDATES_MAX_ITEMS",
+    )
+    digest_auto_prepare_official_account: bool = Field(
+        default=False,
+        validation_alias="APP_DIGEST_AUTO_PREPARE_OFFICIAL_ACCOUNT",
+    )
     official_account_provider_mode: OfficialAccountProviderMode = Field(
         default=OfficialAccountProviderMode.DISABLED,
         validation_alias="APP_OFFICIAL_ACCOUNT_PROVIDER_MODE",

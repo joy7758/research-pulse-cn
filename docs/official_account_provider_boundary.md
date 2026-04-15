@@ -79,13 +79,14 @@ Current behavior:
 
 ## Dispatch Flow
 1. `POST /admin/digest-issues/{digest_issue_id}/prepare-publication`
-2. Eligible official-account bindings get `DigestPublicationJob` rows in `prepared` state.
-3. `POST /admin/digest-publication-jobs/{publication_job_id}/dispatch`
-4. The service creates a `DigestPublicationAttempt`.
-5. The `OfficialAccountPublisher` boundary runs.
-6. In `dry_run` mode the attempt becomes `previewed` and the job becomes `previewed`.
-7. In `real` mode a provider-backed attempt can become `sent` or `failed`.
-8. In `disabled` mode the attempt is recorded as failed and the request returns a controlled conflict.
+2. When available, preparation prefers `PulseDigestIssue.content_payload.publication_preview` over legacy loose highlight fields.
+3. Eligible official-account bindings get `DigestPublicationJob` rows in `prepared` state.
+4. `POST /admin/digest-publication-jobs/{publication_job_id}/dispatch`
+5. The service creates a `DigestPublicationAttempt`.
+6. The `OfficialAccountPublisher` boundary runs.
+7. In `dry_run` mode the attempt becomes `previewed` and the job becomes `previewed`.
+8. In `real` mode a provider-backed attempt can become `sent` or `failed`.
+9. In `disabled` mode the attempt is recorded as failed and the request returns a controlled conflict.
 
 ## Inbound Callback Flow
 ### GET handshake
