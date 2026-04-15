@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 from research_pulse_cn.domain.enums import (
     ExternalRetrievalMode,
     ExternalRetrievalPlanStatus,
+    ExternalRetrievalRunStatus,
     ExternalRetrievalScope,
     ExternalRetrievalSourceKind,
     ResearchWatchProfileSourceMode,
@@ -165,6 +166,100 @@ class ExternalRetrievalPlanBuildResponse(BaseModel):
     notes: list[str] = Field(default_factory=list)
 
 
+class ExternalRetrievalProviderSourceStatusRead(BaseModel):
+    source_kind: ExternalRetrievalSourceKind
+    enabled: bool
+    ready: bool
+    notes: list[str] = Field(default_factory=list)
+
+
+class ExternalRetrievalProviderStatusRead(BaseModel):
+    mode: ExternalRetrievalMode
+    enabled_sources: list[ExternalRetrievalSourceKind] = Field(default_factory=list)
+    readiness: bool
+    readiness_checks: dict[str, bool] = Field(default_factory=dict)
+    readiness_failures: list[str] = Field(default_factory=list)
+    safe_config_presence: dict[str, bool] = Field(default_factory=dict)
+    http_connect_timeout_seconds: int
+    http_read_timeout_seconds: int
+    max_results_per_plan: int
+    execution_dedupe_minutes: int
+    source_statuses: list[ExternalRetrievalProviderSourceStatusRead] = Field(default_factory=list)
+
+
+class ExternalRetrievalRunRead(ORMModel):
+    id: UUID
+    plan_id: UUID
+    user_id: UUID
+    source_kind: ExternalRetrievalSourceKind
+    retrieval_scope: ExternalRetrievalScope
+    status: ExternalRetrievalRunStatus
+    request_url: str | None = None
+    request_payload: dict[str, Any] | None = None
+    response_summary: dict[str, Any] | None = None
+    raw_result_count: int
+    normalized_result_count: int
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    last_error: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ExternalRetrievedRecordRead(ORMModel):
+    id: UUID
+    run_id: UUID
+    plan_id: UUID
+    user_id: UUID
+    source_kind: ExternalRetrievalSourceKind
+    retrieval_scope: ExternalRetrievalScope
+    external_id: str
+    external_url: str | None = None
+    doi: str | None = None
+    title: str
+    abstract_snippet: str | None = None
+    publication_year: int | None = None
+    publication_date: str | None = None
+    source_title: str | None = None
+    authors: list[dict[str, Any]] | None = None
+    matched_reason_codes: list[str] | None = None
+    raw_payload: dict[str, Any] = Field(default_factory=dict)
+    sort_order: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class ExternalRetrievalRunDetailRead(BaseModel):
+    run: ExternalRetrievalRunRead
+    results: list[ExternalRetrievedRecordRead] = Field(default_factory=list)
+
+
+class ExternalRetrievalExecuteResponse(BaseModel):
+    mode: ExternalRetrievalMode
+    deduped: bool = False
+    run: ExternalRetrievalRunRead
+    results: list[ExternalRetrievedRecordRead] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
+
+
+class ExternalRetrievalRunCompactRead(BaseModel):
+    id: UUID
+    plan_id: UUID
+    source_kind: ExternalRetrievalSourceKind
+    retrieval_scope: ExternalRetrievalScope
+    status: ExternalRetrievalRunStatus
+    normalized_result_count: int
+    finished_at: datetime | None = None
+
+
+class ExternalRetrievalExecutionSummaryRead(BaseModel):
+    latest_runs: list[ExternalRetrievalRunCompactRead] = Field(default_factory=list)
+    completed_run_count: int = 0
+    failed_run_count: int = 0
+    latest_completed_at: datetime | None = None
+    notes: list[str] = Field(default_factory=list)
+
+
 class PulseInputPreviewResponse(BaseModel):
     user_id: UUID
     preview_date: date
@@ -175,4 +270,5 @@ class PulseInputPreviewResponse(BaseModel):
     enabled_watch_profiles: list[ResearchWatchProfileRead] = Field(default_factory=list)
     effective_watch_seeds: EffectiveWatchSeedsRead
     retrieval_input_preview: ExternalRetrievalPlanningCompactRead | None = None
+    latest_retrieval_runs_summary: ExternalRetrievalExecutionSummaryRead | None = None
     notes: list[str] = Field(default_factory=list)

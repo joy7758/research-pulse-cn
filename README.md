@@ -18,7 +18,7 @@ Private repository. Proprietary and confidential.
 - WeChat identity bindings plus digest issue/publication reserve objects for future official-account and mini-program flows
 - Official-account provider boundary with `disabled` / `dry_run` / explicit `real` mode, callback ingress, and token-backed real-send activation
 - Tauri 2 desktop shell with Rust-side pull sync, local SQLite cache, mutation outbox, minimal writeback for paper/progress/subscription policy edits, a local paper workspace layer, local markdown notes/templates, and a local review-matrix workflow that generates reviewer-matrix / response-letter drafts
-- Pulse input-layer foundation with lightweight `WorkActivityEvent` capture, `ResearchWatchProfile` management, deterministic external-retrieval input planning, desktop-emitted work activity mutations, deterministic pulse-input preview APIs, a deterministic `yesterday_summary` pulse card, and a deterministic `today_suggestion` pulse card generated from internal paper/progress/signal state only
+- Pulse input-layer foundation with lightweight `WorkActivityEvent` capture, `ResearchWatchProfile` management, deterministic external-retrieval planning plus official-source execution/normalization boundaries, desktop-emitted work activity mutations, deterministic pulse-input preview APIs, a deterministic `yesterday_summary` pulse card, and a deterministic `today_suggestion` pulse card generated from internal paper/progress/signal state only
 - Seed data, Docker Compose, pytest, Ruff, and CI
 
 ## Architecture
@@ -118,16 +118,21 @@ The backend now includes a pulse input layer for future retrieval and recap work
 - `WorkActivityEvent` for structured "what the user did" signals
 - `ResearchWatchProfile` for structured "what the user should watch" interests
 - deterministic external retrieval planning through `ExternalRetrievalPlan`
+- official-source retrieval execution through `ExternalRetrievalRun`
+- normalized scholarly result storage through `ExternalRetrievedRecord`
 - `GET /pulse/input-preview/{user_id}` for a deterministic preview of the current input window, activity summary, effective watch seeds, and compact retrieval planning
 - `GET /external-retrieval/input-preview/{user_id}` for full retrieval-input preview
 - `POST /external-retrieval/plans/build/{user_id}` for plan-hash-upserted plan persistence
+- `GET /external-retrieval/provider-status` for safe execution readiness
+- `POST /external-retrieval/plans/execute/{plan_id}` for official-source fetch + normalize
+- `GET /external-retrieval/runs` and `GET /external-retrieval/results` for inspecting persisted runs and normalized records
 - `yesterday_summary` pulse cards built only from previous-local-day `WorkActivityEvent` rows
 - `today_suggestion` pulse cards built only from internal paper, progress, signal, and policy-timezone context
 
-This phase still avoids external retrieval:
-- no external retrieval execution
+This phase still avoids external pulse-card consumption:
+- no final related-paper or related-news cards
 - no AI summarization
-- no related-paper/news fetching from outside the portfolio
+- no AI ranking of fetched scholarly records
 
 Yesterday-summary behavior in this phase:
 - uses previous-local-day activity only
@@ -218,6 +223,19 @@ Important values:
 - `APP_PULSE_WEIGHT_YESTERDAY_SUMMARY`: base score weight for `yesterday_summary`
 - `APP_PULSE_YESTERDAY_SUMMARY_MIN_EVENTS`: minimum qualifying previous-day activity events before candidate generation
 - `APP_PULSE_MODIFIER_YESTERDAY_SUMMARY_ACTIVITY_DIVERSITY`: bonus when multiple activity types were recorded
+- `APP_EXTERNAL_RETRIEVAL_MODE`: `disabled`, `plan_only`, or `execute`
+- `APP_EXTERNAL_RETRIEVAL_ENABLED_SOURCES`: enabled official sources for planning and execution
+- `APP_EXTERNAL_RETRIEVAL_MAX_PLANS_PER_USER`: cap for persisted planning rows built per user
+- `APP_EXTERNAL_RETRIEVAL_MAX_KEYWORDS_PER_PLAN`: keyword cap per deterministic plan
+- `APP_EXTERNAL_RETRIEVAL_MAX_TOPICS_PER_PLAN`: topic cap per deterministic plan
+- `APP_EXTERNAL_RETRIEVAL_LOOKBACK_DAYS_FOR_ACTIVITY_CONTEXT`: activity lookback window used for retrieval seeds
+- `APP_EXTERNAL_RETRIEVAL_HTTP_CONNECT_TIMEOUT_SECONDS`: connect timeout for external source calls
+- `APP_EXTERNAL_RETRIEVAL_HTTP_READ_TIMEOUT_SECONDS`: read timeout for external source calls
+- `APP_EXTERNAL_RETRIEVAL_MAX_RESULTS_PER_PLAN`: per-plan result cap during execution
+- `APP_EXTERNAL_RETRIEVAL_EXECUTION_DEDUPE_MINUTES`: reuse window for recent successful plan runs
+- `APP_EXTERNAL_RETRIEVAL_OPENALEX_API_KEY`: optional OpenAlex API key
+- `APP_EXTERNAL_RETRIEVAL_CROSSREF_MAILTO`: optional Crossref polite-access email
+- `APP_EXTERNAL_RETRIEVAL_CROSSREF_USER_AGENT_APP_NAME`: optional Crossref user-agent app label
 - `APP_PULSE_MODIFIER_YESTERDAY_SUMMARY_MULTI_PAPER`: bonus when previous-day work touched multiple papers
 - `APP_EXTERNAL_RETRIEVAL_MODE`: `disabled` or `plan_only`
 - `APP_EXTERNAL_RETRIEVAL_ENABLED_SOURCES`: comma-separated enabled planning sources for this phase

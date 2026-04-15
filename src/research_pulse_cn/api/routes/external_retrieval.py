@@ -1,4 +1,4 @@
-"""External retrieval input planning routes."""
+"""External retrieval planning and execution routes."""
 
 from __future__ import annotations
 
@@ -17,13 +17,19 @@ from research_pulse_cn.domain.auth import ActorContext
 from research_pulse_cn.domain.enums import (
     AdminRole,
     ExternalRetrievalPlanStatus,
+    ExternalRetrievalRunStatus,
     ExternalRetrievalScope,
     ExternalRetrievalSourceKind,
 )
 from research_pulse_cn.schemas.pulse_input import (
+    ExternalRetrievalExecuteResponse,
     ExternalRetrievalInputPreviewResponse,
     ExternalRetrievalPlanBuildResponse,
     ExternalRetrievalPlanRead,
+    ExternalRetrievalProviderStatusRead,
+    ExternalRetrievalRunDetailRead,
+    ExternalRetrievalRunRead,
+    ExternalRetrievedRecordRead,
 )
 from research_pulse_cn.services.audit import AuditService
 from research_pulse_cn.services.external_retrieval import ExternalRetrievalService
@@ -40,7 +46,18 @@ UserIdQuery = Annotated[UUID | None, Query()]
 SourceKindQuery = Annotated[ExternalRetrievalSourceKind | None, Query()]
 RetrievalScopeQuery = Annotated[ExternalRetrievalScope | None, Query()]
 StatusQuery = Annotated[ExternalRetrievalPlanStatus | None, Query()]
+RunStatusQuery = Annotated[ExternalRetrievalRunStatus | None, Query()]
 PaperIdQuery = Annotated[UUID | None, Query()]
+PlanIdQuery = Annotated[UUID | None, Query()]
+RunIdQuery = Annotated[UUID | None, Query()]
+
+
+@router.get("/provider-status", response_model=ExternalRetrievalProviderStatusRead)
+def get_external_retrieval_provider_status(
+    _actor: ViewerDep,
+    service: ExternalRetrievalServiceDep,
+) -> ExternalRetrievalProviderStatusRead:
+    return service.provider_status()
 
 
 @router.get("/input-preview/{user_id}", response_model=ExternalRetrievalInputPreviewResponse)
@@ -96,6 +113,84 @@ def build_external_retrieval_plans(
         built_plans=plans,
         notes=[
             "Plans were persisted with deterministic plan_hash upsert semantics.",
-            "No external execution occurred in this phase.",
+            "Plan build does not perform any external execution by itself.",
         ],
+    )
+
+
+@router.post("/plans/execute/{plan_id}", response_model=ExternalRetrievalExecuteResponse)
+def execute_external_retrieval_plan(
+    plan_id: UUID,
+    request: Request,
+    actor: OperatorDep,
+    service: ExternalRetrievalServiceDep,
+    audit_service: AuditServiceDep,
+    force: Annotated[bool, Query()] = False,
+) -> ExternalRetrievalExecuteResponse:
+    outcome = service.execute_plan(plan_id=plan_id, force=force)
+    audit_request_action(
+        audit_service=audit_service,
+        request=request,
+        actor=actor,
+        action="external_retrieval_plan.execute",
+        resource_type="external_retrieval_plan",
+        resource_id=str(plan_id),
+        status_code=200,
+        metadata={
+            "plan_id": str(plan_id),
+            "run_id": str(outcome.run.id),
+            "source_kind": outcome.run.source_kind.value,
+            "retrieval_scope": outcome.run.retrieval_scope.value,
+            "deduped": outcome.deduped,
+            "force": force,
+            "normalized_result_count": outcome.run.normalized_result_count,
+        },
+    )
+    return outcome.to_response(mode=service.settings.external_retrieval_mode)
+
+
+@router.get("/runs", response_model=list[ExternalRetrievalRunRead])
+def list_external_retrieval_runs(
+    _actor: ViewerDep,
+    service: ExternalRetrievalServiceDep,
+    user_id: UserIdQuery = None,
+    source_kind: SourceKindQuery = None,
+    retrieval_scope: RetrievalScopeQuery = None,
+    status: RunStatusQuery = None,
+    plan_id: PlanIdQuery = None,
+) -> list[ExternalRetrievalRunRead]:
+    return service.list_runs(
+        user_id=user_id,
+        source_kind=source_kind,
+        retrieval_scope=retrieval_scope,
+        status=status,
+        plan_id=plan_id,
+    )
+
+
+@router.get("/runs/{run_id}", response_model=ExternalRetrievalRunDetailRead)
+def get_external_retrieval_run_detail(
+    run_id: UUID,
+    _actor: ViewerDep,
+    service: ExternalRetrievalServiceDep,
+) -> ExternalRetrievalRunDetailRead:
+    return service.get_run_detail(run_id)
+
+
+@router.get("/results", response_model=list[ExternalRetrievedRecordRead])
+def list_external_retrieval_results(
+    _actor: ViewerDep,
+    service: ExternalRetrievalServiceDep,
+    user_id: UserIdQuery = None,
+    run_id: RunIdQuery = None,
+    plan_id: PlanIdQuery = None,
+    source_kind: SourceKindQuery = None,
+    retrieval_scope: RetrievalScopeQuery = None,
+) -> list[ExternalRetrievedRecordRead]:
+    return service.list_results(
+        user_id=user_id,
+        run_id=run_id,
+        plan_id=plan_id,
+        source_kind=source_kind,
+        retrieval_scope=retrieval_scope,
     )

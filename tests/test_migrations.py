@@ -41,6 +41,8 @@ def test_alembic_upgrade_creates_core_tables(tmp_path) -> None:
         "pulse_digest_items",
         "delivery_jobs",
         "external_retrieval_plans",
+        "external_retrieval_runs",
+        "external_retrieved_records",
         "wechat_identity_bindings",
         "worker_heartbeats",
         "delivery_attempts",
@@ -179,6 +181,50 @@ def test_alembic_upgrade_creates_core_tables(tmp_path) -> None:
         "created_at",
         "updated_at",
     }.issubset(external_retrieval_columns)
+    external_retrieval_run_columns = {
+        column["name"] for column in inspector.get_columns("external_retrieval_runs")
+    }
+    assert {
+        "plan_id",
+        "user_id",
+        "source_kind",
+        "retrieval_scope",
+        "status",
+        "request_url",
+        "request_payload",
+        "response_summary",
+        "raw_result_count",
+        "normalized_result_count",
+        "started_at",
+        "finished_at",
+        "last_error",
+        "created_at",
+        "updated_at",
+    }.issubset(external_retrieval_run_columns)
+    external_retrieved_record_columns = {
+        column["name"] for column in inspector.get_columns("external_retrieved_records")
+    }
+    assert {
+        "run_id",
+        "plan_id",
+        "user_id",
+        "source_kind",
+        "retrieval_scope",
+        "external_id",
+        "external_url",
+        "doi",
+        "title",
+        "abstract_snippet",
+        "publication_year",
+        "publication_date",
+        "source_title",
+        "authors",
+        "matched_reason_codes",
+        "raw_payload",
+        "sort_order",
+        "created_at",
+        "updated_at",
+    }.issubset(external_retrieved_record_columns)
     digest_issue_columns = {
         column["name"] for column in inspector.get_columns("pulse_digest_issues")
     }

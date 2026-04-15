@@ -129,7 +129,7 @@
   - local file or note content sync
 
 ## Relationship To Retrieval Planning Boundary
-- The input layer now also feeds a planning-only external retrieval boundary.
+- The input layer now also feeds a deterministic external retrieval planning boundary.
 - `ExternalRetrievalPlan` does not fetch anything yet. It only persists deterministic source-specific plans built from:
   - enabled `ResearchWatchProfile` rows
   - recent non-system `WorkActivityEvent` context
@@ -139,3 +139,18 @@
   - recent activity context summary
   - source plan previews for `openalex`, `crossref`, and `arxiv`
 - No external execution, AI rewriting, or result ranking is introduced in this step.
+
+## Relationship To Retrieval Execution Boundary
+- The retrieval boundary now also supports official-source execution while keeping pulse-card generation separate.
+- `ExternalRetrievalRun` stores one fetch attempt for one plan.
+- `ExternalRetrievedRecord` stores normalized scholarly records returned by:
+  - `openalex`
+  - `crossref`
+  - `arxiv`
+- `GET /external-retrieval/provider-status` exposes safe execution readiness.
+- `POST /external-retrieval/plans/execute/{plan_id}` executes a persisted plan only when `APP_EXTERNAL_RETRIEVAL_MODE=execute`.
+- `GET /external-retrieval/results` exposes normalized records for later pulse consumption.
+- This still does not add:
+  - final related-paper/news pulse cards
+  - AI rewriting or ranking
+  - generic crawler behavior

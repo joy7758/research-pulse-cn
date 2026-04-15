@@ -128,6 +128,34 @@ class Settings(BaseSettings):
         default=7,
         validation_alias="APP_EXTERNAL_RETRIEVAL_LOOKBACK_DAYS_FOR_ACTIVITY_CONTEXT",
     )
+    external_retrieval_http_connect_timeout_seconds: int = Field(
+        default=5,
+        validation_alias="APP_EXTERNAL_RETRIEVAL_HTTP_CONNECT_TIMEOUT_SECONDS",
+    )
+    external_retrieval_http_read_timeout_seconds: int = Field(
+        default=10,
+        validation_alias="APP_EXTERNAL_RETRIEVAL_HTTP_READ_TIMEOUT_SECONDS",
+    )
+    external_retrieval_max_results_per_plan: int = Field(
+        default=5,
+        validation_alias="APP_EXTERNAL_RETRIEVAL_MAX_RESULTS_PER_PLAN",
+    )
+    external_retrieval_execution_dedupe_minutes: int = Field(
+        default=60,
+        validation_alias="APP_EXTERNAL_RETRIEVAL_EXECUTION_DEDUPE_MINUTES",
+    )
+    external_retrieval_openalex_api_key: str | None = Field(
+        default=None,
+        validation_alias="APP_EXTERNAL_RETRIEVAL_OPENALEX_API_KEY",
+    )
+    external_retrieval_crossref_mailto: str | None = Field(
+        default=None,
+        validation_alias="APP_EXTERNAL_RETRIEVAL_CROSSREF_MAILTO",
+    )
+    external_retrieval_crossref_user_agent_app_name: str | None = Field(
+        default=None,
+        validation_alias="APP_EXTERNAL_RETRIEVAL_CROSSREF_USER_AGENT_APP_NAME",
+    )
     default_timezone: str = Field(default="UTC", validation_alias="APP_DEFAULT_TIMEZONE")
     pulse_default_send_hour_local: int = Field(
         default=9, validation_alias="APP_PULSE_DEFAULT_SEND_HOUR_LOCAL"

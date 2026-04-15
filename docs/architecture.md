@@ -15,7 +15,7 @@ Core flow:
 9. Sync devices consume incremental `SyncEvent` feeds and push idempotent mutations back through the same service layer.
 10. A Tauri desktop shell consumes the same sync feed, keeps a local SQLite outbox, performs limited writeback through `/sync/push`, manages a local-only paper workspace, stores local markdown notes/templates, and keeps local review-matrix / response-letter workflows without bundling the backend.
 11. A pulse input layer now records lightweight work activity and research watch profiles so future retrieval can start from explicit inputs instead of implicit guesses.
-12. A planning-only external retrieval boundary now converts those inputs into persisted source-specific plans without executing any external fetches yet.
+12. An external retrieval boundary now converts those inputs into persisted source-specific plans, executes official-source fetches behind provider adapters, and stores normalized scholarly results without generating pulse cards yet.
 
 ## Module boundaries
 
@@ -65,6 +65,8 @@ Future communication surfaces are intentionally outside the active delivery laye
   - desktop attachment/note/review actions emitted through sync
 - `ResearchWatchProfile` stores compact user watch interests that can later drive retrieval.
 - `ExternalRetrievalPlan` stores deterministic source-specific planning records for later retrieval execution.
+- `ExternalRetrievalRun` stores one execution attempt per persisted plan.
+- `ExternalRetrievedRecord` stores normalized scholarly records fetched from official source APIs.
 - `GET /pulse/input-preview/{user_id}` exposes:
   - previous-day work activity summary
   - raw ordered activity events
@@ -76,8 +78,10 @@ Future communication surfaces are intentionally outside the active delivery laye
   - recent activity context summary
   - source-specific plan previews
 - `POST /external-retrieval/plans/build/{user_id}` persists deterministic plans using plan-hash upsert semantics.
+- `GET /external-retrieval/provider-status` exposes safe execution readiness and source status.
+- `POST /external-retrieval/plans/execute/{plan_id}` executes one persisted plan through an official-source adapter.
+- `GET /external-retrieval/runs` and `GET /external-retrieval/results` expose run history and normalized records.
 - This layer is intentionally upstream of retrieval and card generation:
-  - no external execution
   - no AI expansion
   - no final related-paper/news pulse cards yet
 
@@ -225,8 +229,8 @@ Tie-break order is deterministic:
   - `define_next_action`
 - Selected cards persist as normal `PulseCard` rows and usually keep a non-null `source_paper_id`.
 
-## External retrieval planning boundary
-- The external retrieval layer is planning-only in this phase.
+## External retrieval planning and execution boundary
+- The external retrieval layer now covers deterministic planning plus official-source execution.
 - It is driven by:
   - enabled `ResearchWatchProfile` rows
   - recent non-system `WorkActivityEvent` context
@@ -234,6 +238,10 @@ Tie-break order is deterministic:
   - `openalex`
   - `crossref`
   - `arxiv`
+- Matching executors now exist for:
+  - `OpenAlexExecutor`
+  - `CrossrefExecutor`
+  - `ArxivExecutor`
 - Supported retrieval scopes are:
   - `related_paper`
   - `venue_update`
@@ -246,7 +254,13 @@ Tie-break order is deterministic:
   - effective inputs
   - reason codes
   - deterministic `plan_hash`
-- No external fetch execution, normalized external-result storage, or final pulse-card generation exists in this phase.
+- Execution persists:
+  - `ExternalRetrievalRun`
+  - `ExternalRetrievedRecord`
+- The boundary still stops before:
+  - final related-paper/news pulse cards
+  - AI rewriting, ranking, or summarization
+  - generic web/news crawling
 
 ### Desktop shell
 - `apps/desktop` is isolated from the Python backend.

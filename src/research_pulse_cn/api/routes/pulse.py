@@ -91,6 +91,9 @@ def preview_pulse_inputs(
         enabled_profiles
     )
     retrieval_input_preview = external_retrieval_service.compact_preview(user_id=user_id)
+    latest_retrieval_runs_summary = external_retrieval_service.compact_execution_summary(
+        user_id=user_id
+    )
     get_metrics().increment("pulse_input_previews_total")
     with bind_log_context(user_id=user_id):
         return PulseInputPreviewResponse(
@@ -103,13 +106,17 @@ def preview_pulse_inputs(
             enabled_watch_profiles=enabled_profiles,
             effective_watch_seeds=effective_watch_seeds,
             retrieval_input_preview=retrieval_input_preview,
+            latest_retrieval_runs_summary=latest_retrieval_runs_summary,
             notes=[
                 "This preview shows only current pulse inputs.",
                 (
                     "External retrieval will later use effective watch seeds plus "
                     "recent work activity."
                 ),
-                "Retrieval planning below is still plan-only and does not execute external calls.",
+                (
+                    "Retrieval planning and execution remain separate from final "
+                    "pulse card generation."
+                ),
             ],
         )
 

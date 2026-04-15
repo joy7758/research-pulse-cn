@@ -293,10 +293,12 @@ Desktop can now also emit lightweight `work_activity.record` mutations for local
 - `POST /pulse/preview/{user_id}` and `POST /pulse/run/{user_id}` now also accept an optional `timezone` query parameter for deterministic yesterday-summary inspection.
 - `today_suggestion` is now a first-party pulse card type generated only from internal paper/progress/signal state.
 - `yesterday_summary` is now a first-party pulse card type generated only from the previous local day of `WorkActivityEvent`.
-- External retrieval is now planning-only in this phase:
-  - `ExternalRetrievalPlan` persists source-specific plan inputs only
-  - `GET /pulse/input-preview/{user_id}` includes a compact retrieval-planning section
-  - no external execution or fetched results exist yet
+- External retrieval now has a separate planning and execution boundary:
+  - `ExternalRetrievalPlan` persists source-specific plan inputs
+  - `ExternalRetrievalRun` persists one fetch attempt per plan
+  - `ExternalRetrievedRecord` stores normalized official-source records
+  - `GET /pulse/input-preview/{user_id}` includes compact planning and latest-run summaries
+  - no final related-paper/news pulse cards exist yet
 - No AI summarization is enabled in this phase.
 - Summary timezone resolution order is:
   - explicit request timezone
@@ -325,7 +327,30 @@ Desktop can now also emit lightweight `work_activity.record` mutations for local
 - `APP_EXTERNAL_RETRIEVAL_MAX_KEYWORDS_PER_PLAN`
 - `APP_EXTERNAL_RETRIEVAL_MAX_TOPICS_PER_PLAN`
 - `APP_EXTERNAL_RETRIEVAL_LOOKBACK_DAYS_FOR_ACTIVITY_CONTEXT`
+- `APP_EXTERNAL_RETRIEVAL_HTTP_CONNECT_TIMEOUT_SECONDS`
+- `APP_EXTERNAL_RETRIEVAL_HTTP_READ_TIMEOUT_SECONDS`
+- `APP_EXTERNAL_RETRIEVAL_MAX_RESULTS_PER_PLAN`
+- `APP_EXTERNAL_RETRIEVAL_EXECUTION_DEDUPE_MINUTES`
+- `APP_EXTERNAL_RETRIEVAL_OPENALEX_API_KEY`
+- `APP_EXTERNAL_RETRIEVAL_CROSSREF_MAILTO`
+- `APP_EXTERNAL_RETRIEVAL_CROSSREF_USER_AGENT_APP_NAME`
+- `plan_only` keeps execution blocked while preserving plan preview/build.
+- `execute` enables official-source fetches for persisted plans.
 - Unknown callback identities are stored for review and do not auto-create bindings.
+
+### External retrieval endpoints
+- `GET /external-retrieval/input-preview/{user_id}`
+- `GET /external-retrieval/provider-status`
+- `GET /external-retrieval/plans`
+- `POST /external-retrieval/plans/build/{user_id}`
+- `POST /external-retrieval/plans/execute/{plan_id}`
+- `GET /external-retrieval/runs`
+- `GET /external-retrieval/runs/{run_id}`
+- `GET /external-retrieval/results`
+- Execution remains separate from pulse-card generation in this phase:
+  - no related-paper/news cards yet
+  - no AI ranking
+  - no scraping
 
 ## Ops endpoints
 - `GET /health/live`: lightweight process liveness
