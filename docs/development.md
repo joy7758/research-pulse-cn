@@ -197,9 +197,22 @@ Desktop can now also emit lightweight `work_activity.record` mutations for local
   - `GET /admin/digest-issues`
   - `GET /admin/digest-issues/{digest_issue_id}`
   - `POST /admin/digest-issues/build/{user_id}`
+  - `POST /admin/digest-issues/orchestrate/{user_id}`
+  - `GET /admin/digest-issues/{digest_issue_id}/daily-preview`
   - `POST /admin/digest-issues/{digest_issue_id}/prepare-publication`
   - `GET /admin/digest-publication-jobs`
 - `PulseDigestIssue` is built from already selected `PulseCard` rows only.
+- Daily digest orchestration now reshapes selected cards into a fixed section model:
+  - `today_focus`
+  - `yesterday_recap`
+  - `signal_updates`
+  - `related_papers`
+  - `other_updates`
+- Conservative orchestration caps come from:
+  - `APP_DIGEST_SIGNAL_UPDATES_MAX_ITEMS`
+  - `APP_DIGEST_RELATED_PAPERS_MAX_ITEMS`
+  - `APP_DIGEST_OTHER_UPDATES_MAX_ITEMS`
+- `APP_DIGEST_AUTO_PREPARE_OFFICIAL_ACCOUNT=true` only prepares publication jobs after orchestration; it does not dispatch sends.
 - Publication preparation is stub-only:
   - jobs move to `prepared`
   - no real external send occurs

@@ -151,6 +151,11 @@ class MiniDigestIssueSummaryRead(BaseModel):
     selected_card_count: int
     deep_link_path: str | None
     highlights: list[MiniDigestItemRead] = Field(default_factory=list)
+    section_order: list[str] = Field(default_factory=list)
+    sections: list[dict[str, Any]] = Field(default_factory=list)
+    quick_stats: dict[str, Any] = Field(default_factory=dict)
+    focus_card: dict[str, Any] | None = None
+    publication_preview: dict[str, Any] | None = None
 
 
 class MiniDigestIssueDetailRead(MiniDigestIssueSummaryRead):

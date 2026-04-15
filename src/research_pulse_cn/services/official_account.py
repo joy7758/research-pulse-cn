@@ -544,34 +544,50 @@ def build_official_account_payload(
     settings: Settings,
 ) -> dict[str, Any]:
     """Build a provider-ready, transport-neutral digest payload."""
-    deep_link_path = issue.deep_link_path
-    article_url = None
-    if deep_link_path and settings.official_account_default_article_base_url:
+    content_payload = dict(issue.content_payload or {})
+    publication_preview = content_payload.get("publication_preview")
+    if not isinstance(publication_preview, dict):
+        publication_preview = {}
+
+    deep_link_path = (
+        publication_preview.get("primary_cta_path")
+        if publication_preview.get("primary_cta_path")
+        else issue.deep_link_path
+    )
+    mini_program_path = publication_preview.get("mini_program_path")
+    if not mini_program_path and deep_link_path:
+        mini_program_path = deep_link_path.lstrip("/")
+    article_url = publication_preview.get("article_url")
+    if not article_url and deep_link_path and settings.official_account_default_article_base_url:
         article_url = (
             settings.official_account_default_article_base_url.rstrip("/") + deep_link_path
         )
 
-    highlights = []
-    for item in issue.items[:3]:
-        highlights.append(
-            {
-                "sort_order": item.sort_order,
-                "pulse_card_id": str(item.pulse_card_id),
-                "card_type": item.card_type.value,
-                "source_paper_id": (
-                    None if item.source_paper_id is None else str(item.source_paper_id)
-                ),
-                "title": item.title,
-                "summary": item.summary,
-                "why_now": item.why_now,
-            }
-        )
+    preview_highlights = publication_preview.get("digest_highlights")
+    if isinstance(preview_highlights, list) and preview_highlights:
+        highlights = [dict(item) for item in preview_highlights[:3]]
+    else:
+        highlights = []
+        for item in issue.items[:3]:
+            highlights.append(
+                {
+                    "sort_order": item.sort_order,
+                    "pulse_card_id": str(item.pulse_card_id),
+                    "card_type": item.card_type.value,
+                    "source_paper_id": (
+                        None if item.source_paper_id is None else str(item.source_paper_id)
+                    ),
+                    "title": item.title,
+                    "summary": item.summary,
+                    "why_now": item.why_now,
+                }
+            )
 
     return {
         "publication_job_id": str(publication_job.id),
         "digest_issue_id": str(issue.id),
-        "title": issue.title,
-        "summary": issue.summary,
+        "title": str(publication_preview.get("digest_title") or issue.title),
+        "summary": str(publication_preview.get("digest_subtitle") or issue.summary),
         "issue_date": issue.issue_date.isoformat(),
         "highlight_count": issue.highlight_count,
         "selected_card_count": issue.selected_card_count,
@@ -579,7 +595,7 @@ def build_official_account_payload(
         "landing": {
             "deep_link_path": deep_link_path,
             "mini_program_app_id": settings.official_account_default_mini_program_app_id,
-            "mini_program_path": None if deep_link_path is None else deep_link_path.lstrip("/"),
+            "mini_program_path": mini_program_path,
             "article_url": article_url,
         },
         "binding": {

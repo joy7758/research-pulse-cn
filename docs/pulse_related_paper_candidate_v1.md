@@ -78,6 +78,7 @@
 
 ## Digest And Desktop Compatibility Notes
 - Digest building now tolerates real `related_paper` cards backed by normalized external results.
+- Official-account daily digest orchestration now places capped `related_paper` cards into the `related_papers` section without triggering retrieval at digest-build time.
 - `source_paper_id` may be present when the originating retrieval plan was linked to a paper.
 - Desktop Today and digest-highlight read models already accept `related_paper`, so this phase only tightens type compatibility rather than adding new retrieval UI.
 

@@ -299,6 +299,39 @@ def test_mini_digest_issue_preserves_sort_order(client, operator_headers) -> Non
     assert sort_orders == sorted(sort_orders)
 
 
+def test_mini_digest_issue_exposes_sectioned_digest_payload_compatibly(
+    client,
+    operator_headers,
+) -> None:
+    user, _paper, digest_issue = create_digest_ready_user(
+        client,
+        operator_headers,
+        email="mini-digest-sections@example.com",
+    )
+    created = create_mini_grant(
+        client,
+        operator_headers,
+        user_id=user["id"],
+        grant_type=MiniReadGrantType.DIGEST_LANDING.value,
+        digest_issue_id=digest_issue["id"],
+    )
+
+    response = client.get(
+        f"/mini/digest-issues/{digest_issue['id']}",
+        headers={"Authorization": f"Bearer {created['plain_text_token']}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["section_order"] == [
+        "today_focus",
+        "yesterday_recap",
+        "signal_updates",
+        "related_papers",
+        "other_updates",
+    ]
+    assert "publication_preview" in response.json()
+
+
 def test_mini_paper_detail_exposes_derived_progress_percentage_mapping(
     client,
     operator_headers,

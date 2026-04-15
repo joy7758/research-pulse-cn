@@ -1,13 +1,17 @@
 import hashlib
 from datetime import timedelta
+from uuid import UUID
 
 import httpx
 
 from research_pulse_cn.core.config import get_settings
-from research_pulse_cn.db.models import utcnow
+from research_pulse_cn.db.models import PaperProfile, PulseCard, PulseJob, utcnow
 from research_pulse_cn.domain.enums import (
     OfficialAccountProviderMode,
     PaperType,
+    PulseCardType,
+    PulseJobScheduledReason,
+    PulseJobStatus,
     SignalSource,
     SubscriptionFrequency,
     WeChatBindingChannelType,
@@ -106,6 +110,135 @@ def create_device(client, headers, *, user_id: str) -> dict:
     )
     assert response.status_code == 201
     return response.json()
+
+
+def seed_sectioned_digest_cards(session, *, user_id: str) -> dict[str, str]:
+    user_uuid = UUID(user_id)
+    scheduled_for = utcnow()
+    linked_paper = PaperProfile(
+        user_id=user_uuid,
+        title="Digest Focus Paper",
+        type=PaperType.REVISION,
+        stage="revision",
+        venue="JOM",
+        identifiers={},
+        source_links=["https://example.local/digest-focus-paper"],
+        last_touch_at=scheduled_for - timedelta(days=2),
+        next_action="Finish the response appendix",
+        blocker=None,
+        priority=5,
+    )
+    session.add(linked_paper)
+    session.flush()
+
+    pulse_job = PulseJob(
+        user_id=user_uuid,
+        scheduled_for=scheduled_for,
+        scheduled_reason=PulseJobScheduledReason.MANUAL_RUN,
+        status=PulseJobStatus.COMPLETED,
+        started_at=scheduled_for,
+        completed_at=scheduled_for,
+    )
+    session.add(pulse_job)
+    session.flush()
+
+    cards = [
+        PulseCard(
+            pulse_job_id=pulse_job.id,
+            user_id=user_uuid,
+            source_paper_id=linked_paper.id,
+            card_type=PulseCardType.TODAY_SUGGESTION,
+            priority=1,
+            score_total=20,
+            score_breakdown={"base_weight": 6, "total": 20},
+            title="Execute next action for Digest Focus Paper",
+            summary="Finish the response appendix.",
+            why_now="This paper already has the clearest next step for today.",
+            action_text="Finish the response appendix",
+            deep_link=f"/papers/{linked_paper.id}",
+            candidate_metadata={"suggestion_kind": "execute_next_action"},
+            generated_by={"provider": "dummy-model-provider", "mode": "deterministic"},
+            generated_at=scheduled_for,
+        ),
+        PulseCard(
+            pulse_job_id=pulse_job.id,
+            user_id=user_uuid,
+            source_paper_id=None,
+            card_type=PulseCardType.YESTERDAY_SUMMARY,
+            priority=2,
+            score_total=12,
+            score_breakdown={"base_weight": 10, "total": 12},
+            title="Yesterday summary for 2026-04-14",
+            summary="Yesterday recorded 2 work activities.",
+            why_now="A concise recap keeps the current work context visible.",
+            action_text=None,
+            deep_link="/pulse/input-preview/example-user",
+            candidate_metadata={"summary_date": "2026-04-14"},
+            generated_by={"provider": "dummy-model-provider", "mode": "deterministic"},
+            generated_at=scheduled_for + timedelta(minutes=1),
+        ),
+        PulseCard(
+            pulse_job_id=pulse_job.id,
+            user_id=user_uuid,
+            source_paper_id=linked_paper.id,
+            card_type=PulseCardType.SIGNAL_CHANGE,
+            priority=3,
+            score_total=11,
+            score_breakdown={"base_weight": 8, "total": 11},
+            title="Signal update for Digest Focus Paper",
+            summary="Citation and read counts moved this week.",
+            why_now="The latest signal snapshot changed enough to deserve a check.",
+            action_text="Review signal update",
+            deep_link=f"/papers/{linked_paper.id}",
+            candidate_metadata={"signal_source": "google_scholar"},
+            generated_by={"provider": "dummy-model-provider", "mode": "deterministic"},
+            generated_at=scheduled_for + timedelta(minutes=2),
+        ),
+        PulseCard(
+            pulse_job_id=pulse_job.id,
+            user_id=user_uuid,
+            source_paper_id=linked_paper.id,
+            card_type=PulseCardType.RELATED_PAPER,
+            priority=4,
+            score_total=13,
+            score_breakdown={"base_weight": 4, "total": 13},
+            title="Related paper: Diffusion Response Paper",
+            summary="Diffusion Response Paper appeared in Acta Materialia (2024).",
+            why_now=(
+                "A recent normalized related-paper result matches the current revision context."
+            ),
+            action_text="Review related paper",
+            deep_link="https://example.org/related-paper",
+            external_reference_key="doi:10.1234/diffusion-response-paper",
+            candidate_metadata={"external_reference_key": "doi:10.1234/diffusion-response-paper"},
+            generated_by={"provider": "dummy-model-provider", "mode": "deterministic"},
+            generated_at=scheduled_for + timedelta(minutes=3),
+        ),
+        PulseCard(
+            pulse_job_id=pulse_job.id,
+            user_id=user_uuid,
+            source_paper_id=linked_paper.id,
+            card_type=PulseCardType.NEXT_ACTION,
+            priority=5,
+            score_total=9,
+            score_breakdown={"base_weight": 8, "total": 9},
+            title="Next action for Digest Focus Paper",
+            summary="Review the remaining figure notes.",
+            why_now="This paper still has another actionable follow-up.",
+            action_text="Review figure notes",
+            deep_link=f"/papers/{linked_paper.id}",
+            candidate_metadata={"next_action": "Review the remaining figure notes."},
+            generated_by={"provider": "dummy-model-provider", "mode": "deterministic"},
+            generated_at=scheduled_for + timedelta(minutes=4),
+        ),
+    ]
+    session.add_all(cards)
+    session.commit()
+    return {
+        "pulse_job_id": str(pulse_job.id),
+        "issue_date": scheduled_for.date().isoformat(),
+        "paper_id": str(linked_paper.id),
+    }
 
 
 def create_digest_ready_user(client, headers, *, email: str) -> tuple[dict, dict]:
@@ -388,6 +521,126 @@ def test_digest_items_preserve_stable_order_from_selected_cards(client, operator
     ]
 
 
+def test_digest_orchestration_builds_stable_sections_from_selected_cards(
+    client,
+    operator_headers,
+    session,
+) -> None:
+    user = create_user(client, operator_headers, email="digest-orchestrate@example.com")
+    seeded = seed_sectioned_digest_cards(session, user_id=user["id"])
+
+    orchestrated = client.post(
+        f"/admin/digest-issues/orchestrate/{user['id']}",
+        headers=operator_headers,
+        json={
+            "issue_date": seeded["issue_date"],
+            "source_pulse_job_id": seeded["pulse_job_id"],
+        },
+    )
+
+    assert orchestrated.status_code == 200
+    payload = orchestrated.json()["issue"]["content_payload"]
+    assert payload["section_order"] == [
+        "today_focus",
+        "yesterday_recap",
+        "signal_updates",
+        "related_papers",
+        "other_updates",
+    ]
+    sections = {section["kind"]: section for section in payload["sections"]}
+    assert sections["today_focus"]["items"][0]["card_type"] == "today_suggestion"
+    assert sections["yesterday_recap"]["items"][0]["card_type"] == "yesterday_summary"
+    assert sections["related_papers"]["items"][0]["card_type"] == "related_paper"
+    all_ids = [
+        item["pulse_card_id"] for section in payload["sections"] for item in section["items"]
+    ]
+    assert len(all_ids) == len(set(all_ids))
+    assert payload["focus_card"]["card_type"] == "today_suggestion"
+
+
+def test_daily_preview_returns_publication_preview_and_handles_null_source_paper(
+    client,
+    operator_headers,
+    session,
+) -> None:
+    user = create_user(client, operator_headers, email="digest-preview@example.com")
+    seeded = seed_sectioned_digest_cards(session, user_id=user["id"])
+    issue = client.post(
+        f"/admin/digest-issues/orchestrate/{user['id']}",
+        headers=operator_headers,
+        json={
+            "issue_date": seeded["issue_date"],
+            "source_pulse_job_id": seeded["pulse_job_id"],
+        },
+    ).json()["issue"]
+
+    preview = client.get(
+        f"/admin/digest-issues/{issue['id']}/daily-preview",
+        headers=operator_headers,
+    )
+
+    assert preview.status_code == 200
+    payload = preview.json()["content_payload"]
+    assert payload["publication_preview"]["digest_title"] == issue["title"]
+    assert payload["publication_preview"]["primary_cta_path"] == issue["deep_link_path"]
+    recap_item = next(
+        item for item in payload["sections"][1]["items"] if item["card_type"] == "yesterday_summary"
+    )
+    assert recap_item["source_paper_id"] is None
+
+
+def test_auto_prepare_flag_prepares_publication_without_dispatching_real_send(
+    client,
+    operator_headers,
+    session,
+    monkeypatch,
+) -> None:
+    configure_official_account_settings(
+        monkeypatch,
+        provider_mode=OfficialAccountProviderMode.DRY_RUN.value,
+    )
+    monkeypatch.setenv("APP_DIGEST_AUTO_PREPARE_OFFICIAL_ACCOUNT", "true")
+    get_settings.cache_clear()
+
+    user = create_user(client, operator_headers, email="digest-auto-prepare@example.com")
+    seeded = seed_sectioned_digest_cards(session, user_id=user["id"])
+    binding = client.post(
+        "/admin/wechat-bindings",
+        headers=operator_headers,
+        json={
+            "user_id": user["id"],
+            "channel_type": WeChatBindingChannelType.OFFICIAL_ACCOUNT.value,
+            "app_id": "wx-official-app",
+            "openid": "auto-prepare-openid",
+            "bind_state": WeChatBindingState.ACTIVE.value,
+            "subscribed": True,
+            "digest_enabled": True,
+        },
+    )
+    assert binding.status_code == 201
+
+    orchestrated = client.post(
+        f"/admin/digest-issues/orchestrate/{user['id']}",
+        headers=operator_headers,
+        json={
+            "issue_date": seeded["issue_date"],
+            "source_pulse_job_id": seeded["pulse_job_id"],
+        },
+    )
+
+    assert orchestrated.status_code == 200
+    jobs = orchestrated.json()["publication_jobs"]
+    assert len(jobs) == 1
+    assert jobs[0]["status"] == "prepared"
+    attempts = client.get(
+        "/admin/digest-publication-attempts",
+        headers=operator_headers,
+        params={"issue_date": seeded["issue_date"]},
+    )
+    assert attempts.status_code == 200
+    assert attempts.json() == []
+
+
 def test_prepare_publication_only_uses_eligible_official_account_bindings(
     client,
     operator_headers,
@@ -458,6 +711,61 @@ def test_prepare_publication_only_uses_eligible_official_account_bindings(
     assert job["provider_name"] == "official_account_boundary"
     assert job["external_message_id"] is None
     assert job["payload"]["binding"]["openid"] == "eligible-openid"
+
+
+def test_prepare_publication_prefers_publication_preview_when_present(
+    client,
+    operator_headers,
+    session,
+    monkeypatch,
+) -> None:
+    configure_official_account_settings(
+        monkeypatch,
+        provider_mode=OfficialAccountProviderMode.DRY_RUN.value,
+    )
+    user = create_user(client, operator_headers, email="digest-publication-preview@example.com")
+    seeded = seed_sectioned_digest_cards(session, user_id=user["id"])
+    client.post(
+        "/admin/wechat-bindings",
+        headers=operator_headers,
+        json={
+            "user_id": user["id"],
+            "channel_type": WeChatBindingChannelType.OFFICIAL_ACCOUNT.value,
+            "app_id": "wx-official-app",
+            "openid": "preview-openid",
+            "bind_state": WeChatBindingState.ACTIVE.value,
+            "subscribed": True,
+            "digest_enabled": True,
+        },
+    )
+    issue = client.post(
+        f"/admin/digest-issues/orchestrate/{user['id']}",
+        headers=operator_headers,
+        json={
+            "issue_date": seeded["issue_date"],
+            "source_pulse_job_id": seeded["pulse_job_id"],
+        },
+    ).json()["issue"]
+
+    prepared = client.post(
+        f"/admin/digest-issues/{issue['id']}/prepare-publication",
+        headers=operator_headers,
+    )
+
+    assert prepared.status_code == 200
+    publication_job = prepared.json()["publication_jobs"][0]
+    assert (
+        publication_job["payload"]["title"]
+        == issue["content_payload"]["publication_preview"]["digest_title"]
+    )
+    assert (
+        publication_job["payload"]["summary"]
+        == issue["content_payload"]["publication_preview"]["digest_subtitle"]
+    )
+    assert (
+        publication_job["payload"]["landing"]["deep_link_path"]
+        == issue["content_payload"]["publication_preview"]["primary_cta_path"]
+    )
 
 
 def test_digest_metrics_appear_on_ops_metrics(client, operator_headers) -> None:

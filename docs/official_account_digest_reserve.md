@@ -60,12 +60,19 @@
 ## Build Vs Prepare-Publication Flow
 1. Pulse run selects `PulseCard` rows.
 2. Pulse completion auto-upserts one `PulseDigestIssue` for the user-local date.
-3. Admins can rebuild the same issue idempotently for the same `user_id + issue_date`.
-4. Mini read-only grants can use the digest issue as a default landing target.
-5. Admins can prepare publication.
-6. The reserve layer finds eligible official-account bindings and writes `DigestPublicationJob` rows in `prepared` state.
-7. Later dispatch steps can preview or real-send those jobs through the official-account provider boundary.
-8. Real sends remain opt-in and do not change the reserve-object model.
+3. Daily digest orchestration reshapes the selected cards into a stable section model:
+   - `today_focus`
+   - `yesterday_recap`
+   - `signal_updates`
+   - `related_papers`
+   - `other_updates`
+4. Admins can rebuild or orchestrate the same issue idempotently for the same `user_id + issue_date`.
+5. `content_payload.publication_preview` becomes the preferred publication-preparation input when present.
+6. Mini read-only grants can use the digest issue as a default landing target.
+7. Admins can prepare publication.
+8. The reserve layer finds eligible official-account bindings and writes `DigestPublicationJob` rows in `prepared` state.
+9. Later dispatch steps can preview or real-send those jobs through the official-account provider boundary.
+10. Real sends remain opt-in and do not change the reserve-object model.
 
 ## Current Non-Goals
 - Real WeChat Official Account API integration

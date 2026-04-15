@@ -68,6 +68,7 @@
 - Digest building now tolerates selected cards that are not tied to one paper.
 - `PulseDigestItem.source_paper_id` may remain `null` for `yesterday_summary`.
 - Compact digest and mini/desktop read payloads must not assume every card has a paper summary attached.
+- Official-account daily digest orchestration now places `yesterday_summary` deterministically into `yesterday_recap`.
 - Desktop Today compatibility in this phase is intentionally minimal:
   - accept `card_type = yesterday_summary`
   - allow highlight items with no linked paper summary

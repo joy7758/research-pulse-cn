@@ -27,6 +27,8 @@ from research_pulse_cn.domain.enums import (
 from research_pulse_cn.schemas.digest import (
     DigestIssueBuildRequest,
     DigestIssueBuildResponse,
+    DigestIssueDailyPreviewResponse,
+    DigestIssueOrchestrateResponse,
     DigestPublicationAttemptRead,
     DigestPublicationDispatchResponse,
     DigestPublicationJobRead,
@@ -222,6 +224,83 @@ def build_digest_issue(
     return DigestIssueBuildResponse(
         action=result.action,
         issue=PulseDigestIssueDetailRead.model_validate(result.issue),
+    )
+
+
+@router.post("/digest-issues/orchestrate/{user_id}", response_model=DigestIssueOrchestrateResponse)
+def orchestrate_digest_issue(
+    user_id: UUID,
+    payload: DigestIssueBuildRequest,
+    request: Request,
+    actor: OperatorDep,
+    service: DigestServiceDep,
+    audit_service: AuditServiceDep,
+) -> DigestIssueOrchestrateResponse:
+    result = service.build_issue(
+        user_id=user_id,
+        issue_date=payload.issue_date,
+        source_pulse_job_id=payload.source_pulse_job_id,
+        event_source=SyncEventSource.API,
+    )
+    issue = service.get_digest_issue(result.issue.id)
+    publication_jobs = service.list_publication_jobs(digest_issue_id=issue.id)
+    audit_request_action(
+        audit_service=audit_service,
+        request=request,
+        actor=actor,
+        action="digest_issue.orchestrate",
+        resource_type="pulse_digest_issue",
+        resource_id=str(issue.id),
+        status_code=200,
+        metadata={
+            "user_id": str(user_id),
+            "issue_date": issue.issue_date.isoformat(),
+            "action_result": result.action,
+            "status": issue.status.value,
+            "publication_jobs": len(publication_jobs),
+            "source_pulse_job_id": (
+                None if issue.source_pulse_job_id is None else str(issue.source_pulse_job_id)
+            ),
+        },
+    )
+    return DigestIssueOrchestrateResponse(
+        action=result.action,
+        issue=PulseDigestIssueDetailRead.model_validate(issue),
+        publication_jobs=[DigestPublicationJobRead.model_validate(job) for job in publication_jobs],
+    )
+
+
+@router.get(
+    "/digest-issues/{digest_issue_id}/daily-preview",
+    response_model=DigestIssueDailyPreviewResponse,
+)
+def get_digest_issue_daily_preview(
+    digest_issue_id: UUID,
+    request: Request,
+    actor: OperatorDep,
+    service: DigestServiceDep,
+    audit_service: AuditServiceDep,
+) -> DigestIssueDailyPreviewResponse:
+    preview = service.get_daily_preview(digest_issue_id)
+    issue = preview["issue"]
+    service.metrics.increment("daily_digest_preview_requests_total")
+    audit_request_action(
+        audit_service=audit_service,
+        request=request,
+        actor=actor,
+        action="digest_issue.daily_preview",
+        resource_type="pulse_digest_issue",
+        resource_id=str(issue.id),
+        status_code=200,
+        metadata={
+            "user_id": str(issue.user_id),
+            "issue_date": issue.issue_date.isoformat(),
+        },
+    )
+    return DigestIssueDailyPreviewResponse(
+        issue=PulseDigestIssueDetailRead.model_validate(issue),
+        content_payload=dict(preview["content_payload"]),
+        publication_preview=preview["publication_preview"],
     )
 
 

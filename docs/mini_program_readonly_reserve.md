@@ -44,6 +44,7 @@
 - `GET /mini/digest-issues/{digest_issue_id}`
   - returns digest detail in stable `sort_order`
   - digest items may include internal cards such as `yesterday_summary` or `today_suggestion`
+  - digest payloads now also tolerate sectioned daily-digest fields such as `section_order`, `sections`, `focus_card`, and `publication_preview`
 - `GET /mini/papers`
   - returns compact paper summaries with stable ordering
 - `GET /mini/papers/{paper_id}`

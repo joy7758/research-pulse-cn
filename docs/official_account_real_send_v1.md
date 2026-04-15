@@ -30,6 +30,7 @@
 
 ## Template Payload Builder And Field Mapping
 - The real transport uses `template_notice`.
+- When digest orchestration has populated `content_payload.publication_preview`, the provider-neutral payload prefers that sectioned daily-digest preview over older loose highlight text.
 - Default logical digest fields:
   - `issue_title`
   - `issue_date`

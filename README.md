@@ -15,7 +15,7 @@ Private repository. Proprietary and confidential.
 - Worker heartbeats, delivery-attempt tracking, readiness checks, and Prometheus-style metrics
 - Current delivery paths for `in_app`, `email`, and `webhook`, with console/webhook adapters for local development
 - Device-token sync backbone for desktop and future lightweight clients
-- WeChat identity bindings plus digest issue/publication reserve objects for future official-account and mini-program flows
+- WeChat identity bindings plus digest issue/publication reserve objects for future official-account and mini-program flows, including deterministic daily-digest orchestration for official-account publication preparation
 - Official-account provider boundary with `disabled` / `dry_run` / explicit `real` mode, callback ingress, and token-backed real-send activation
 - Tauri 2 desktop shell with Rust-side pull sync, local SQLite cache, mutation outbox, minimal writeback for paper/progress/subscription policy edits, a local paper workspace layer, local markdown notes/templates, and a local review-matrix workflow that generates reviewer-matrix / response-letter drafts
 - Pulse input-layer foundation with lightweight `WorkActivityEvent` capture, `ResearchWatchProfile` management, deterministic external-retrieval planning plus official-source execution/normalization boundaries, desktop-emitted work activity mutations, deterministic pulse-input preview APIs, a deterministic `yesterday_summary` pulse card, a deterministic `today_suggestion` pulse card generated from internal paper/progress/signal state only, and a deterministic `related_paper` pulse card generated only from persisted normalized external scholarly results
@@ -197,6 +197,10 @@ Important values:
 - `APP_MINI_READ_GRANT_DEFAULT_TTL_HOURS`: default preview-grant lifetime for `/mini/*`
 - `APP_MINI_PAPERS_DEFAULT_LIMIT`: default compact paper page size for mini reads
 - `APP_MINI_PAPERS_MAX_LIMIT`: max compact paper page size for mini reads
+- `APP_DIGEST_SIGNAL_UPDATES_MAX_ITEMS`: max `signal_change` cards kept in the `signal_updates` digest section
+- `APP_DIGEST_RELATED_PAPERS_MAX_ITEMS`: max `related_paper` cards kept in the `related_papers` digest section
+- `APP_DIGEST_OTHER_UPDATES_MAX_ITEMS`: max overflow cards kept in the `other_updates` digest section
+- `APP_DIGEST_AUTO_PREPARE_OFFICIAL_ACCOUNT`: when true, digest orchestration also upserts prepared official-account publication jobs without dispatching sends
 - `APP_OFFICIAL_ACCOUNT_PROVIDER_MODE`: official-account provider mode: `disabled`, `dry_run`, or `real`
 - `APP_OFFICIAL_ACCOUNT_TRANSPORT_KIND`: outbound transport strategy, currently `template_notice`
 - `APP_WECHAT_OFFICIAL_APP_ID`: official-account app id for provider readiness and callback matching
@@ -293,6 +297,8 @@ With Docker Compose, the codebase now exposes separate `api`, `worker`, and `sch
   - `GET /admin/digest-issues`
   - `GET /admin/digest-issues/{digest_issue_id}`
   - `POST /admin/digest-issues/build/{user_id}`
+  - `POST /admin/digest-issues/orchestrate/{user_id}`
+  - `GET /admin/digest-issues/{digest_issue_id}/daily-preview`
   - `POST /admin/digest-issues/{digest_issue_id}/prepare-publication`
   - `GET /admin/digest-publication-jobs`
   - `POST /admin/digest-publication-jobs/{publication_job_id}/dispatch`
@@ -377,6 +383,8 @@ Desktop shell layout, local cache, pull-sync flow, and developer workflow are do
 
 ## Official-account digest reserve
 Digest issues, WeChat identity binding, and publication preparation without real external sends are documented in [docs/official_account_digest_reserve.md](docs/official_account_digest_reserve.md).
+
+Deterministic sectioned daily-digest orchestration for official-account publication preparation is documented in [docs/official_account_daily_digest_orchestration_v1.md](docs/official_account_daily_digest_orchestration_v1.md).
 
 ## Mini-program read-only reserve
 Mini preview grants, compact mobile read models, and derived paper progress percentages are documented in [docs/mini_program_readonly_reserve.md](docs/mini_program_readonly_reserve.md).

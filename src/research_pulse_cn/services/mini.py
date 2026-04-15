@@ -365,6 +365,7 @@ class MiniService:
         }
 
     def _digest_issue_payload(self, issue: PulseDigestIssue) -> dict:
+        content_payload = dict(issue.content_payload or {})
         items = []
         for item in issue.items:
             items.append(
@@ -392,8 +393,15 @@ class MiniService:
             "highlight_count": issue.highlight_count,
             "selected_card_count": issue.selected_card_count,
             "deep_link_path": issue.deep_link_path,
-            "highlights": items[: min(issue.highlight_count, len(items))],
+            "highlights": list(
+                content_payload.get("highlights") or items[: min(issue.highlight_count, len(items))]
+            ),
             "items": items,
+            "section_order": list(content_payload.get("section_order") or []),
+            "sections": list(content_payload.get("sections") or []),
+            "quick_stats": dict(content_payload.get("quick_stats") or {}),
+            "focus_card": content_payload.get("focus_card"),
+            "publication_preview": content_payload.get("publication_preview"),
         }
 
     def _today_paper_refs(self, issue: PulseDigestIssue) -> list[dict]:

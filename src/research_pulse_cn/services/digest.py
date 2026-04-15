@@ -39,6 +39,7 @@ from research_pulse_cn.domain.enums import (
     OfficialAccountCallbackPayloadFormat,
     OfficialAccountCallbackProcessingStatus,
     OfficialAccountProviderMode,
+    PulseCardType,
     PulseDigestIssueStatus,
     PulseJobStatus,
     SyncEventSource,
@@ -61,6 +62,21 @@ from research_pulse_cn.services.official_account import (
 from research_pulse_cn.services.sync_events import SyncEventService
 
 logger = logging.getLogger(__name__)
+
+DAILY_DIGEST_SECTION_ORDER = (
+    "today_focus",
+    "yesterday_recap",
+    "signal_updates",
+    "related_papers",
+    "other_updates",
+)
+DAILY_DIGEST_SECTION_TITLES = {
+    "today_focus": "Today Focus",
+    "yesterday_recap": "Yesterday Recap",
+    "signal_updates": "Signal Updates",
+    "related_papers": "Related Papers",
+    "other_updates": "Other Updates",
+}
 
 
 @dataclass(slots=True)
@@ -333,6 +349,9 @@ class DigestService:
                 prepared_jobs.append(job)
                 self.metrics.increment("digest_publication_jobs_prepared_total")
 
+            if prepared_jobs:
+                self.metrics.increment("daily_digest_publication_prepared_total")
+
             if auto_commit:
                 commit_session(self.session)
             logger.info(
@@ -340,6 +359,18 @@ class DigestService:
                 extra={"prepared_jobs": len(prepared_jobs)},
             )
         return self.repository.list_publication_jobs(digest_issue_id=issue.id)
+
+    def get_daily_preview(self, digest_issue_id: UUID) -> dict[str, Any]:
+        issue = self.get_digest_issue(digest_issue_id)
+        content_payload = dict(issue.content_payload or {})
+        publication_preview = content_payload.get("publication_preview")
+        return {
+            "issue": issue,
+            "content_payload": content_payload,
+            "publication_preview": (
+                None if not isinstance(publication_preview, dict) else publication_preview
+            ),
+        }
 
     def list_publication_jobs(
         self,
@@ -733,14 +764,11 @@ class DigestService:
             issue.source_pulse_job_id = None if source_job is None else source_job.id
             issue.deep_link_path = self._build_deep_link_path(user.id, issue_date)
             issue.selected_card_count = len(ordered_cards)
-            issue.highlight_count = min(3, len(ordered_cards))
             issue.items.clear()
             self.session.flush()
 
             if ordered_cards:
                 issue.status = PulseDigestIssueStatus.READY
-                issue.title = self._build_title(issue_date, len(ordered_cards))
-                issue.summary = self._build_summary(ordered_cards)
                 for index, card in enumerate(ordered_cards, start=1):
                     issue.items.append(
                         PulseDigestItem(
@@ -755,8 +783,10 @@ class DigestService:
                     )
             else:
                 issue.status = PulseDigestIssueStatus.SKIPPED
-                issue.title = self._build_empty_title(issue_date)
-                issue.summary = "No selected pulse cards were available for this digest issue."
+            content_payload = self._build_content_payload(issue, ordered_cards)
+            issue.title = str(content_payload["title"])
+            issue.summary = str(content_payload["summary"])
+            issue.highlight_count = int(content_payload["highlight_count"])
 
             issue.build_metadata = {
                 "selection_source": "selected_pulse_cards_only",
@@ -764,8 +794,24 @@ class DigestService:
                 "selected_card_ids": [str(card.id) for card in ordered_cards],
                 "selection_order": "existing_issue_sort_order_or_generated_at_asc",
                 "result": issue.status.value,
+                "orchestration": {
+                    "section_order": list(content_payload.get("section_order") or []),
+                    "section_item_counts": {
+                        str(section.get("kind")): int(section.get("item_count") or 0)
+                        for section in list(content_payload.get("sections") or [])
+                    },
+                    "auto_prepare_official_account": (
+                        self.settings.digest_auto_prepare_official_account
+                    ),
+                },
             }
-            issue.content_payload = self._build_content_payload(issue, ordered_cards)
+            issue.content_payload = content_payload
+            if ordered_cards and self.settings.digest_auto_prepare_official_account:
+                self.prepare_publication(
+                    issue.id,
+                    publish_mode=DigestPublicationMode.MANUAL_PREVIEW,
+                    auto_commit=False,
+                )
             sync_event_type = (
                 SyncEventType.UPDATED if action == "updated" else SyncEventType.CREATED
             )
@@ -775,6 +821,7 @@ class DigestService:
                 event_source=event_source,
             )
             self.metrics.increment("digest_issues_built_total")
+            self.metrics.increment("daily_digest_issues_orchestrated_total")
             logger.info(
                 "digest issue upserted",
                 extra={
@@ -863,60 +910,243 @@ class DigestService:
             raise NotFoundError(f"user {user_id} was not found")
         return user
 
-    def _build_title(self, issue_date: date, selected_card_count: int) -> str:
-        return f"Pulse digest for {issue_date.isoformat()} ({selected_card_count} highlights)"
-
-    def _build_empty_title(self, issue_date: date) -> str:
-        return f"Pulse digest for {issue_date.isoformat()} (no highlights)"
-
-    def _build_summary(self, cards: Sequence[PulseCard]) -> str:
-        card_types = [card.card_type.value for card in cards[:3]]
-        return (
-            f"{len(cards)} selected pulse cards ready for digest publication. "
-            f"Top highlights: {', '.join(card_types)}."
-        )
-
     def _build_content_payload(
         self,
         issue: PulseDigestIssue,
         ordered_cards: Sequence[PulseCard],
     ) -> dict:
+        serialized_items = [
+            self._serialize_digest_card(card, sort_order=index)
+            for index, card in enumerate(ordered_cards, start=1)
+        ]
+        card_order = {card.id: index for index, card in enumerate(ordered_cards, start=1)}
+        consumed_ids: set[UUID] = set()
+
+        today_focus_cards = self._take_first_matching_cards(
+            ordered_cards,
+            consumed_ids=consumed_ids,
+            preferred_types=(
+                PulseCardType.TODAY_SUGGESTION,
+                PulseCardType.NEXT_ACTION,
+                PulseCardType.STALLED_PROGRESS,
+                PulseCardType.DEADLINE_RISK,
+            ),
+        )
+        yesterday_recap_cards = self._take_first_matching_cards(
+            ordered_cards,
+            consumed_ids=consumed_ids,
+            preferred_types=(PulseCardType.YESTERDAY_SUMMARY,),
+        )
+        signal_update_cards = self._take_matching_cards(
+            ordered_cards,
+            consumed_ids=consumed_ids,
+            predicate=lambda card: card.card_type == PulseCardType.SIGNAL_CHANGE,
+            limit=self.settings.digest_signal_updates_max_items,
+        )
+        related_paper_cards = self._take_matching_cards(
+            ordered_cards,
+            consumed_ids=consumed_ids,
+            predicate=lambda card: card.card_type == PulseCardType.RELATED_PAPER,
+            limit=self.settings.digest_related_papers_max_items,
+        )
+        other_update_cards = self._take_matching_cards(
+            ordered_cards,
+            consumed_ids=consumed_ids,
+            predicate=lambda _card: True,
+            limit=self.settings.digest_other_updates_max_items,
+        )
+
+        section_cards = {
+            "today_focus": today_focus_cards,
+            "yesterday_recap": yesterday_recap_cards,
+            "signal_updates": signal_update_cards,
+            "related_papers": related_paper_cards,
+            "other_updates": other_update_cards,
+        }
+        sections = [
+            {
+                "kind": section_kind,
+                "title": DAILY_DIGEST_SECTION_TITLES[section_kind],
+                "item_count": len(section_cards[section_kind]),
+                "items": [
+                    self._serialize_digest_card(card, sort_order=card_order[card.id])
+                    for card in section_cards[section_kind]
+                ],
+            }
+            for section_kind in DAILY_DIGEST_SECTION_ORDER
+        ]
+        highlights = self._build_digest_highlights(sections)
+        quick_stats = self._build_quick_stats(ordered_cards)
+        title = self._build_daily_digest_title(issue.issue_date, ordered_cards)
+        summary = self._build_daily_digest_summary(sections, len(ordered_cards))
+        focus_card = (
+            None
+            if not today_focus_cards
+            else self._serialize_digest_card(
+                today_focus_cards[0],
+                sort_order=card_order[today_focus_cards[0].id],
+            )
+        )
+        publication_preview = self._build_publication_preview(
+            issue=issue,
+            title=title,
+            summary=summary,
+            highlights=highlights,
+            focus_card=focus_card,
+        )
         return {
             "issue_date": issue.issue_date.isoformat(),
             "status": issue.status.value,
-            "title": issue.title,
-            "summary": issue.summary,
-            "highlight_count": issue.highlight_count,
-            "selected_card_count": issue.selected_card_count,
+            "title": title,
+            "summary": summary,
+            "highlight_count": len(highlights),
+            "selected_card_count": len(serialized_items),
             "deep_link_path": issue.deep_link_path,
-            "highlights": [
-                {
-                    "sort_order": index,
-                    "pulse_card_id": str(card.id),
-                    "card_type": card.card_type.value,
-                    "source_paper_id": (
-                        None if card.source_paper_id is None else str(card.source_paper_id)
-                    ),
-                    "title": card.title,
-                    "summary": card.summary,
-                    "why_now": card.why_now,
-                }
-                for index, card in enumerate(ordered_cards[:3], start=1)
-            ],
-            "items": [
-                {
-                    "sort_order": index,
-                    "pulse_card_id": str(card.id),
-                    "card_type": card.card_type.value,
-                    "source_paper_id": (
-                        None if card.source_paper_id is None else str(card.source_paper_id)
-                    ),
-                    "title": card.title,
-                    "summary": card.summary,
-                    "why_now": card.why_now,
-                }
-                for index, card in enumerate(ordered_cards, start=1)
-            ],
+            "section_order": list(DAILY_DIGEST_SECTION_ORDER),
+            "sections": sections,
+            "quick_stats": quick_stats,
+            "highlights": highlights,
+            "focus_card": focus_card,
+            "publication_preview": publication_preview,
+            "items": serialized_items,
+            "mini_program_path": publication_preview.get("mini_program_path"),
+        }
+
+    def _serialize_digest_card(self, card: PulseCard, *, sort_order: int) -> dict[str, Any]:
+        return {
+            "sort_order": sort_order,
+            "pulse_card_id": str(card.id),
+            "card_type": card.card_type.value,
+            "source_paper_id": None if card.source_paper_id is None else str(card.source_paper_id),
+            "title": card.title,
+            "summary": card.summary,
+            "why_now": card.why_now,
+            "action_text": card.action_text,
+            "deep_link": card.deep_link,
+        }
+
+    def _take_first_matching_cards(
+        self,
+        ordered_cards: Sequence[PulseCard],
+        *,
+        consumed_ids: set[UUID],
+        preferred_types: Sequence[PulseCardType],
+    ) -> list[PulseCard]:
+        for preferred_type in preferred_types:
+            for card in ordered_cards:
+                if card.id in consumed_ids or card.card_type != preferred_type:
+                    continue
+                consumed_ids.add(card.id)
+                return [card]
+        return []
+
+    def _take_matching_cards(
+        self,
+        ordered_cards: Sequence[PulseCard],
+        *,
+        consumed_ids: set[UUID],
+        predicate,
+        limit: int,
+    ) -> list[PulseCard]:
+        selected: list[PulseCard] = []
+        effective_limit = max(0, limit)
+        if effective_limit == 0:
+            return selected
+        for card in ordered_cards:
+            if card.id in consumed_ids or not predicate(card):
+                continue
+            selected.append(card)
+            consumed_ids.add(card.id)
+            if len(selected) >= effective_limit:
+                break
+        return selected
+
+    def _build_digest_highlights(self, sections: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
+        highlights: list[dict[str, Any]] = []
+        for section in sections:
+            items = list(section.get("items") or [])
+            if not items:
+                continue
+            highlights.append(items[0])
+            if len(highlights) >= 3:
+                break
+        return highlights
+
+    def _build_quick_stats(self, ordered_cards: Sequence[PulseCard]) -> dict[str, int]:
+        touched_paper_ids = {card.source_paper_id for card in ordered_cards if card.source_paper_id}
+        return {
+            "selected_card_count": len(ordered_cards),
+            "related_paper_count": sum(
+                1 for card in ordered_cards if card.card_type == PulseCardType.RELATED_PAPER
+            ),
+            "signal_update_count": sum(
+                1 for card in ordered_cards if card.card_type == PulseCardType.SIGNAL_CHANGE
+            ),
+            "touched_paper_count": len(touched_paper_ids),
+        }
+
+    def _build_daily_digest_title(
+        self,
+        issue_date: date,
+        ordered_cards: Sequence[PulseCard],
+    ) -> str:
+        if not ordered_cards:
+            return f"Daily digest for {issue_date.isoformat()} (no selected cards)"
+        return f"Daily digest for {issue_date.isoformat()}"
+
+    def _build_daily_digest_summary(
+        self,
+        sections: Sequence[dict[str, Any]],
+        total_cards: int,
+    ) -> str:
+        if total_cards == 0:
+            return "No selected pulse cards were available for this digest issue."
+
+        counts = {str(section["kind"]): int(section["item_count"]) for section in sections}
+        parts: list[str] = []
+        if counts.get("today_focus"):
+            parts.append("1 today focus")
+        if counts.get("yesterday_recap"):
+            parts.append("1 yesterday recap")
+        if counts.get("signal_updates"):
+            count = counts["signal_updates"]
+            parts.append(f"{count} signal update" if count == 1 else f"{count} signal updates")
+        if counts.get("related_papers"):
+            count = counts["related_papers"]
+            parts.append(f"{count} related paper" if count == 1 else f"{count} related papers")
+        if counts.get("other_updates"):
+            count = counts["other_updates"]
+            parts.append(f"{count} other update" if count == 1 else f"{count} other updates")
+        return f"{', '.join(parts)} from {total_cards} selected pulse cards."
+
+    def _build_publication_preview(
+        self,
+        *,
+        issue: PulseDigestIssue,
+        title: str,
+        summary: str,
+        highlights: Sequence[dict[str, Any]],
+        focus_card: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        deep_link_path = issue.deep_link_path
+        mini_program_path = None if deep_link_path is None else deep_link_path.lstrip("/")
+        article_url = None
+        if deep_link_path and self.settings.official_account_default_article_base_url:
+            article_url = (
+                self.settings.official_account_default_article_base_url.rstrip("/") + deep_link_path
+            )
+        return {
+            "digest_title": title,
+            "digest_subtitle": summary,
+            "digest_highlights": list(highlights),
+            "primary_cta_text": (
+                "查看今日重点"
+                if focus_card is None or not focus_card.get("action_text")
+                else str(focus_card["action_text"])
+            ),
+            "primary_cta_path": deep_link_path,
+            "mini_program_path": mini_program_path,
+            "article_url": article_url,
         }
 
     def _build_deep_link_path(self, user_id: UUID, issue_date: date) -> str:
