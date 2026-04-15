@@ -542,6 +542,24 @@ class DigestRepository:
         )
         return self.session.scalar(statement)
 
+    def get_handshake_session_by_state_token_hash(
+        self,
+        state_token_hash: str,
+    ) -> OfficialAccountBindingHandshakeSession | None:
+        statement = (
+            select(OfficialAccountBindingHandshakeSession)
+            .options(
+                selectinload(OfficialAccountBindingHandshakeSession.user),
+                selectinload(OfficialAccountBindingHandshakeSession.self_service_grant),
+                selectinload(OfficialAccountBindingHandshakeSession.issued_by_admin),
+                selectinload(OfficialAccountBindingHandshakeSession.matched_callback_event),
+                selectinload(OfficialAccountBindingHandshakeSession.claimed_binding),
+            )
+            .where(OfficialAccountBindingHandshakeSession.state_token_hash == state_token_hash)
+            .limit(1)
+        )
+        return self.session.scalar(statement)
+
     def list_handshake_sessions(
         self,
         *,

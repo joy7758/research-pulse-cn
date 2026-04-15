@@ -68,6 +68,11 @@ COUNTER_NAMES = (
     "official_account_binding_handshake_sessions_claimed_total",
     "official_account_binding_claim_conflicts_total",
     "official_account_binding_candidates_listed_total",
+    "official_account_oauth_authorize_urls_issued_total",
+    "official_account_oauth_callbacks_received_total",
+    "official_account_oauth_exchange_success_total",
+    "official_account_oauth_exchange_failed_total",
+    "official_account_oauth_bindings_completed_total",
 )
 
 

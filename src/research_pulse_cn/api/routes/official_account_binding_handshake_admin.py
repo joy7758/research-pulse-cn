@@ -11,6 +11,7 @@ from research_pulse_cn.api.audit import audit_request_action
 from research_pulse_cn.api.dependencies import (
     get_audit_service,
     get_official_account_binding_handshake_service,
+    get_official_account_oauth_service,
 )
 from research_pulse_cn.api.security import require_admin_role
 from research_pulse_cn.domain.auth import ActorContext
@@ -27,11 +28,15 @@ from research_pulse_cn.schemas.digest import (
     OfficialAccountBindingHandshakeSessionIssueResponse,
     OfficialAccountBindingHandshakeSessionRead,
     OfficialAccountBindingReconciliationCandidateRead,
+    OfficialAccountOAuthAuthorizeUrlRequest,
+    OfficialAccountOAuthAuthorizeUrlResponse,
+    OfficialAccountOAuthStatusRead,
 )
 from research_pulse_cn.services.audit import AuditService
 from research_pulse_cn.services.official_account_binding_handshake import (
     OfficialAccountBindingHandshakeService,
 )
+from research_pulse_cn.services.official_account_oauth import OfficialAccountOAuthService
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 HandshakeDep = Annotated[
@@ -40,6 +45,10 @@ HandshakeDep = Annotated[
 ]
 AuditServiceDep = Annotated[AuditService, Depends(get_audit_service)]
 OperatorDep = Annotated[ActorContext, Depends(require_admin_role(AdminRole.OPERATOR))]
+OAuthDep = Annotated[
+    OfficialAccountOAuthService,
+    Depends(get_official_account_oauth_service),
+]
 UserIdQuery = Annotated[UUID | None, Query()]
 
 
@@ -218,3 +227,46 @@ def claim_official_account_binding_handshake_session(
             **result["callback_event"]
         ),
     )
+
+
+@router.post(
+    "/official-account-binding-handshake-sessions/{session_id}/oauth-authorize-url",
+    response_model=OfficialAccountOAuthAuthorizeUrlResponse,
+)
+def issue_official_account_oauth_authorize_url(
+    session_id: UUID,
+    payload: OfficialAccountOAuthAuthorizeUrlRequest,
+    request: Request,
+    actor: OperatorDep,
+    service: OAuthDep,
+    audit_service: AuditServiceDep,
+) -> OfficialAccountOAuthAuthorizeUrlResponse:
+    result = service.issue_authorize_url_for_session(
+        session_id,
+        requested_scope=payload.requested_scope,
+    )
+    audit_request_action(
+        audit_service=audit_service,
+        request=request,
+        actor=actor,
+        action="official_account_binding_handshake_session.oauth_authorize_url",
+        resource_type="official_account_binding_handshake_session",
+        resource_id=str(session_id),
+        status_code=200,
+        metadata={
+            "user_id": str(result["session"]["user_id"]),
+            "requested_scope": result["requested_scope"].value,
+        },
+    )
+    return OfficialAccountOAuthAuthorizeUrlResponse(**result)
+
+
+@router.get(
+    "/official-account/oauth-status",
+    response_model=OfficialAccountOAuthStatusRead,
+)
+def get_official_account_oauth_status(
+    _actor: OperatorDep,
+    service: OAuthDep,
+) -> OfficialAccountOAuthStatusRead:
+    return OfficialAccountOAuthStatusRead(**service.oauth_status())

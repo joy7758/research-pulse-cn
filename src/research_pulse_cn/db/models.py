@@ -46,6 +46,7 @@ from research_pulse_cn.domain.enums import (
     OfficialAccountBindingHandshakeSessionStatus,
     OfficialAccountCallbackPayloadFormat,
     OfficialAccountCallbackProcessingStatus,
+    OfficialAccountOAuthScope,
     OfficialAccountProviderMode,
     PaperType,
     PulseCardType,
@@ -623,6 +624,15 @@ class OfficialAccountBindingHandshakeSession(TimestampMixin, Base):
         ForeignKey("admin_accounts.id", ondelete="SET NULL")
     )
     state_token_hash: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    requested_scope: Mapped[OfficialAccountOAuthScope] = mapped_column(
+        Enum(OfficialAccountOAuthScope, native_enum=False),
+        nullable=False,
+        default=OfficialAccountOAuthScope.SNSAPI_BASE,
+    )
+    authorized_scope: Mapped[OfficialAccountOAuthScope | None] = mapped_column(
+        Enum(OfficialAccountOAuthScope, native_enum=False)
+    )
+    oauth_openid_hash: Mapped[str | None] = mapped_column(String(255))
     status: Mapped[OfficialAccountBindingHandshakeSessionStatus] = mapped_column(
         Enum(OfficialAccountBindingHandshakeSessionStatus, native_enum=False),
         nullable=False,
@@ -636,8 +646,12 @@ class OfficialAccountBindingHandshakeSession(TimestampMixin, Base):
     )
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_viewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    authorization_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     matched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    oauth_completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    userinfo_fetched: Mapped[bool] = mapped_column(default=False, nullable=False)
+    last_error: Mapped[str | None] = mapped_column(Text)
 
     user: Mapped[UserProfile] = relationship(
         back_populates="official_account_binding_handshake_sessions"

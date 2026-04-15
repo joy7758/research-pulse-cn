@@ -10,7 +10,8 @@
   - reconcile unmatched callback evidence safely
   - claim a callback into a binding explicitly
   - expose future-facing handoff summaries without creating login state
-- Real OAuth redirect, code exchange, and session completion remain out of scope.
+- Real OAuth completion is now layered on top of this reserve in `docs/official_account_oauth_completion_v1.md`.
+- This document still focuses on the reserve/session/reconciliation boundary itself.
 
 ## OfficialAccountBindingHandshakeSession Model
 - `OfficialAccountBindingHandshakeSession` is the reserve object for future user-side official-account binding handoff.
@@ -38,6 +39,8 @@
   - `claimed`
   - `expired`
   - `cancelled`
+  - `failed`
+  - `conflicted`
 
 ## Reconciliation Candidate Rules
 - Reconciliation candidates come only from persisted `OfficialAccountCallbackEvent` rows.
@@ -80,6 +83,7 @@
   - create a handshake session
   - read its own current session
   - cancel its own current session
+  - start OAuth and inspect safe OAuth status through dedicated self-service endpoints
 - Self-service cannot claim a binding in this phase.
 
 ## Mini Handoff Reserve Summary

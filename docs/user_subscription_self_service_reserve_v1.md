@@ -43,6 +43,8 @@
   - `POST /subscription-self-service/wechat-binding-reserve/session`
   - `GET /subscription-self-service/wechat-binding-reserve/session`
   - `POST /subscription-self-service/wechat-binding-reserve/session/cancel`
+  - `POST /subscription-self-service/wechat-binding-reserve/oauth-start`
+  - `GET /subscription-self-service/wechat-binding-reserve/oauth-status`
 - Tokens are rejected on:
   - `/admin/*`
   - `/ops/*`
@@ -82,6 +84,8 @@
   - `POST /subscription-self-service/wechat-binding-reserve/session`
   - `GET /subscription-self-service/wechat-binding-reserve/session`
   - `POST /subscription-self-service/wechat-binding-reserve/session/cancel`
+  - `POST /subscription-self-service/wechat-binding-reserve/oauth-start`
+  - `GET /subscription-self-service/wechat-binding-reserve/oauth-status`
 - `bootstrap` returns:
   - safe grant summary
   - safe user summary
@@ -90,6 +94,7 @@
   - latest digest issue summary when available
 - The handshake-reserve sub-boundary is still read-limited for self-service:
   - self-service can create/read/cancel its own reserve session
+  - self-service can issue an official-account authorize URL and inspect safe OAuth progress
   - self-service cannot claim a callback event into a binding
   - admin claim remains explicit in v1
 
@@ -99,8 +104,9 @@
 - Mini read-only subscription reserve may now also expose an authoritative preview, but mini grant auth still cannot patch settings.
 - Future binding handoff also stays separate:
   - self-service handshake reserve can show active reserve state
+  - self-service OAuth start/status can drive real webpage authorization completion
   - mini only gets an informational handoff summary
-  - neither boundary implements real OAuth completion yet
+  - mini still does not implement real OAuth completion itself
 - The authoritative preview does not create `DigestDeliveryDecision` rows in this phase.
 
 ## Current Non-Goals

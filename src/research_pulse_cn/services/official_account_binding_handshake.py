@@ -24,6 +24,7 @@ from research_pulse_cn.domain.enums import (
     ChannelType,
     OfficialAccountBindingHandshakeSessionStatus,
     OfficialAccountCallbackProcessingStatus,
+    OfficialAccountOAuthScope,
     WeChatBindingChannelType,
     WeChatBindingState,
 )
@@ -45,6 +46,12 @@ SAFE_CALLBACK_PROCESSING_STATUSES = frozenset(
     }
 )
 ACTIVE_HANDSHAKE_SESSION_STATUSES = frozenset(
+    {
+        OfficialAccountBindingHandshakeSessionStatus.PENDING,
+        OfficialAccountBindingHandshakeSessionStatus.MATCHED,
+    }
+)
+CLAIMABLE_HANDSHAKE_SESSION_STATUSES = frozenset(
     {
         OfficialAccountBindingHandshakeSessionStatus.PENDING,
         OfficialAccountBindingHandshakeSessionStatus.MATCHED,
@@ -92,6 +99,18 @@ class OfficialAccountBindingHandshakeService:
         self._mark_expired_if_needed(session)
         return self._auto_match_session(session)
 
+    def get_session_by_state_token(
+        self,
+        state_token: str,
+    ) -> OfficialAccountBindingHandshakeSession:
+        session = self.digest_repository.get_handshake_session_by_state_token_hash(
+            hash_token(state_token)
+        )
+        if session is None:
+            raise NotFoundError("official-account handshake session was not found for state")
+        self._mark_expired_if_needed(session)
+        return self._auto_match_session(session)
+
     def serialize_session(self, session: OfficialAccountBindingHandshakeSession) -> dict[str, Any]:
         return {
             "id": session.id,
@@ -101,13 +120,20 @@ class OfficialAccountBindingHandshakeService:
             "display_label": session.display_label,
             "self_service_grant_id": session.self_service_grant_id,
             "issued_by_admin_id": session.issued_by_admin_id,
+            "requested_scope": session.requested_scope,
+            "authorized_scope": session.authorized_scope,
             "status": session.status,
+            "oauth_openid_hash": session.oauth_openid_hash,
             "matched_callback_event_id": session.matched_callback_event_id,
             "claimed_binding_id": session.claimed_binding_id,
             "expires_at": session.expires_at,
             "last_viewed_at": session.last_viewed_at,
+            "authorization_started_at": session.authorization_started_at,
             "matched_at": session.matched_at,
             "claimed_at": session.claimed_at,
+            "oauth_completed_at": session.oauth_completed_at,
+            "userinfo_fetched": session.userinfo_fetched,
+            "last_error": session.last_error,
             "created_at": session.created_at,
             "updated_at": session.updated_at,
         }
@@ -141,8 +167,10 @@ class OfficialAccountBindingHandshakeService:
             self_service_grant_id=None if grant is None else grant.id,
             issued_by_admin_id=issued_by_admin_id,
             state_token_hash=hash_token(raw_state_token),
+            requested_scope=self.settings.official_account_oauth_default_scope,
             status=OfficialAccountBindingHandshakeSessionStatus.PENDING,
             expires_at=effective_expires_at,
+            userinfo_fetched=False,
         )
         self.digest_repository.add_handshake_session(handshake_session)
         commit_session(self.session)
@@ -347,10 +375,16 @@ class OfficialAccountBindingHandshakeService:
                 None if session is None else self._touch_and_serialize_session_summary(session)
             ),
             "candidate_count_hint": candidate_count_hint,
+            "oauth_start_supported": True,
+            "oauth_enabled": self.settings.official_account_oauth_enabled,
             "notes": [
-                "Real WeChat OAuth completion is not enabled in this phase.",
-                "An admin claim step may still be required after "
-                "a matching subscribe callback arrives.",
+                (
+                    "Official-account OAuth completion can be initiated from self-service."
+                    if self.settings.official_account_oauth_enabled
+                    else "Official-account OAuth completion is configured off right now."
+                ),
+                "An admin claim step may still be required when callback evidence "
+                "needs explicit reconciliation.",
             ],
         }
 
@@ -411,6 +445,184 @@ class OfficialAccountBindingHandshakeService:
         )
         return self.serialize_session(cancelled)
 
+    def supersede_active_sessions(
+        self,
+        *,
+        user_id: UUID,
+        app_id: str,
+        self_service_grant_id: UUID | None = None,
+    ) -> None:
+        sessions = self.list_sessions(
+            user_id=user_id,
+            channel=ChannelType.OFFICIAL_ACCOUNT,
+            self_service_grant_id=self_service_grant_id,
+            app_id=app_id,
+        )
+        changed = False
+        for session in sessions:
+            if session.status not in ACTIVE_HANDSHAKE_SESSION_STATUSES:
+                continue
+            session.status = OfficialAccountBindingHandshakeSessionStatus.CANCELLED
+            session.last_error = "superseded by a newer official-account OAuth start"
+            changed = True
+        if changed:
+            commit_session(self.session)
+
+    def issue_authorize_state(
+        self,
+        session_id: UUID,
+        *,
+        requested_scope: OfficialAccountOAuthScope | None = None,
+    ) -> tuple[OfficialAccountBindingHandshakeSession, str]:
+        session = self.get_session(session_id)
+        self._validate_session_for_authorization(session)
+        raw_state_token = generate_refresh_token()
+        current_time = self._coerce_utc(self.now_provider())
+        session.state_token_hash = hash_token(raw_state_token)
+        session.requested_scope = requested_scope or session.requested_scope
+        session.authorization_started_at = current_time
+        session.last_error = None
+        commit_session(self.session)
+        return self.get_session(session.id), raw_state_token
+
+    def mark_session_failed(
+        self,
+        session_id: UUID,
+        *,
+        error_message: str,
+        conflicted: bool = False,
+        openid: str | None = None,
+        authorized_scope: OfficialAccountOAuthScope | None = None,
+    ) -> OfficialAccountBindingHandshakeSession:
+        session = self.get_session(session_id)
+        current_time = self._coerce_utc(self.now_provider())
+        session.status = (
+            OfficialAccountBindingHandshakeSessionStatus.CONFLICTED
+            if conflicted
+            else OfficialAccountBindingHandshakeSessionStatus.FAILED
+        )
+        session.last_error = error_message
+        if openid not in (None, ""):
+            session.oauth_openid_hash = hash_token(str(openid))
+        if authorized_scope is not None:
+            session.authorized_scope = authorized_scope
+        session.oauth_completed_at = current_time
+        commit_session(self.session)
+        return self.get_session(session.id)
+
+    def complete_session_from_oauth(
+        self,
+        session_id: UUID,
+        *,
+        authorized_scope: OfficialAccountOAuthScope,
+        openid: str,
+        unionid: str | None = None,
+        userinfo: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        session = self.get_session(session_id)
+        self._validate_session_for_oauth_completion(session)
+        current_time = self._coerce_utc(self.now_provider())
+
+        existing_binding = self.digest_repository.get_binding_by_channel_app_openid(
+            channel_type=WeChatBindingChannelType.OFFICIAL_ACCOUNT,
+            app_id=session.app_id,
+            openid=openid,
+        )
+        if existing_binding is not None and existing_binding.user_id != session.user_id:
+            self.metrics.increment("official_account_binding_claim_conflicts_total")
+            conflicted = self.mark_session_failed(
+                session.id,
+                error_message=(
+                    "official-account OAuth identity is already bound to a different user"
+                ),
+                conflicted=True,
+                openid=openid,
+                authorized_scope=authorized_scope,
+            )
+            raise ConflictError(conflicted.last_error or "official-account OAuth conflict")
+
+        callback_event = self._matching_callback_evidence(app_id=session.app_id, openid=openid)
+        callback_linked = callback_event is not None
+
+        if existing_binding is None:
+            binding = WeChatIdentityBinding(
+                user_id=session.user_id,
+                channel_type=WeChatBindingChannelType.OFFICIAL_ACCOUNT,
+                app_id=session.app_id,
+                openid=openid,
+                unionid=unionid,
+                bind_state=WeChatBindingState.ACTIVE,
+                subscribed=callback_linked,
+                digest_enabled=self.settings.official_account_binding_default_digest_enabled,
+                display_label=session.display_label or "Official Account Binding",
+                subscribed_at=(
+                    None if callback_event is None else (callback_event.event_time or current_time)
+                ),
+                last_seen_at=(
+                    None if callback_event is None else (callback_event.event_time or current_time)
+                ),
+            )
+            binding = self.digest_repository.add_binding(binding)
+        else:
+            binding = existing_binding
+            binding.bind_state = WeChatBindingState.ACTIVE
+            if unionid and not binding.unionid:
+                binding.unionid = unionid
+            if session.display_label and not binding.display_label:
+                binding.display_label = session.display_label
+
+        if callback_event is not None:
+            binding.subscribed = True
+            binding.last_seen_at = callback_event.event_time or current_time
+            if binding.subscribed_at is None:
+                binding.subscribed_at = callback_event.event_time or current_time
+            callback_event.linked_binding_id = binding.id
+            callback_event.processing_status = OfficialAccountCallbackProcessingStatus.PROCESSED
+            callback_event.processing_note = "linked by official-account OAuth handshake completion"
+            callback_event.processed_at = current_time
+            session.matched_callback_event_id = callback_event.id
+            session.matched_at = session.matched_at or current_time
+
+        session.authorized_scope = authorized_scope
+        session.oauth_openid_hash = hash_token(openid)
+        session.oauth_completed_at = current_time
+        session.claimed_binding_id = binding.id
+        session.status = OfficialAccountBindingHandshakeSessionStatus.CLAIMED
+        session.claimed_at = current_time
+        session.last_error = None
+        session.userinfo_fetched = userinfo is not None
+        if unionid and not binding.unionid:
+            binding.unionid = unionid
+        commit_session(self.session)
+
+        self.metrics.increment("official_account_oauth_bindings_completed_total")
+        return {
+            "session": self.serialize_session(self.get_session(session.id)),
+            "claimed_binding": self._safe_binding_summary(binding),
+            "callback_event": (
+                None
+                if callback_event is None
+                else self.serialize_candidate(
+                    self.digest_repository.get_callback_event(callback_event.id) or callback_event
+                )
+            ),
+            "callback_evidence_linked": callback_linked,
+        }
+
+    def get_latest_session_for_oauth_status(
+        self,
+        *,
+        user_id: UUID,
+        self_service_grant_id: UUID | None = None,
+        app_id: str | None = None,
+    ) -> OfficialAccountBindingHandshakeSession | None:
+        return self.get_latest_session_for_user(
+            user_id=user_id,
+            self_service_grant_id=self_service_grant_id,
+            app_id=app_id,
+            active_only=False,
+        )
+
     def mini_binding_handoff_reserve(
         self,
         *,
@@ -419,7 +631,7 @@ class OfficialAccountBindingHandshakeService:
         session = self.get_latest_session_for_user(user_id=user_id, active_only=True)
         return {
             "supported": True,
-            "oauth_enabled": False,
+            "oauth_enabled": self.settings.official_account_oauth_enabled,
             "active_session_status": (
                 None
                 if session is None or session.status not in ACTIVE_HANDSHAKE_SESSION_STATUSES
@@ -430,7 +642,11 @@ class OfficialAccountBindingHandshakeService:
                 "Mini remains read-only in this phase.",
                 "A separate self-service grant is required to initiate "
                 "or inspect handshake reserve state.",
-                "Real WeChat OAuth completion is not enabled yet.",
+                (
+                    "Official-account OAuth completion is available through self-service reserve."
+                    if self.settings.official_account_oauth_enabled
+                    else "Official-account OAuth completion is not enabled yet."
+                ),
             ],
         }
 
@@ -455,6 +671,33 @@ class OfficialAccountBindingHandshakeService:
             raise ConflictError("handshake session has expired")
         if session.status not in ACTIVE_HANDSHAKE_SESSION_STATUSES:
             raise ConflictError("handshake session is not claimable")
+
+    def _validate_session_for_authorization(
+        self,
+        session: OfficialAccountBindingHandshakeSession,
+    ) -> None:
+        self._mark_expired_if_needed(session)
+        if session.status == OfficialAccountBindingHandshakeSessionStatus.CLAIMED:
+            raise ConflictError("handshake session has already been claimed")
+        if session.status == OfficialAccountBindingHandshakeSessionStatus.CANCELLED:
+            raise ConflictError("handshake session has been cancelled")
+        if session.status == OfficialAccountBindingHandshakeSessionStatus.EXPIRED:
+            raise ConflictError("handshake session has expired")
+        if session.status in {
+            OfficialAccountBindingHandshakeSessionStatus.FAILED,
+            OfficialAccountBindingHandshakeSessionStatus.CONFLICTED,
+        }:
+            raise ConflictError("handshake session is not active for OAuth authorization")
+        if session.status not in ACTIVE_HANDSHAKE_SESSION_STATUSES:
+            raise ConflictError("handshake session is not active for OAuth authorization")
+
+    def _validate_session_for_oauth_completion(
+        self,
+        session: OfficialAccountBindingHandshakeSession,
+    ) -> None:
+        self._validate_session_for_authorization(session)
+        if session.authorization_started_at is None:
+            raise ConflictError("handshake session has not started OAuth authorization")
 
     def _resolve_event_for_claim(
         self,
@@ -538,6 +781,21 @@ class OfficialAccountBindingHandshakeService:
                 continue
             candidates.append(event)
         return candidates
+
+    def _matching_callback_evidence(
+        self,
+        *,
+        app_id: str,
+        openid: str,
+    ) -> OfficialAccountCallbackEvent | None:
+        candidates = self._eligible_callback_candidates(
+            app_id=app_id,
+            unmatched_only=True,
+        )
+        for event in candidates:
+            if event.from_openid == openid:
+                return event
+        return None
 
     def _auto_match_session(
         self,
