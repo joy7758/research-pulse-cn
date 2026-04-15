@@ -176,6 +176,30 @@ pub fn prepare_blank_note(
     })
 }
 
+pub fn prepare_generated_note(
+    layout: &WorkspaceLayoutPaths,
+    template_kind: &str,
+    title: &str,
+    content: &str,
+    note_id: &str,
+    created_at: &str,
+) -> Result<PreparedNoteFile> {
+    let file_name = build_note_file_name(title, created_at, note_id);
+    let relative_path = build_note_relative_path(layout, &file_name);
+    let absolute_path = layout.notes_abs_path.join(&file_name);
+    Ok(PreparedNoteFile {
+        note_id: note_id.to_string(),
+        title: title.trim().to_string(),
+        file_name,
+        relative_path,
+        absolute_path: path_to_string(&absolute_path),
+        content: content.to_string(),
+        template_kind: template_kind.trim().to_string(),
+        source_mode: "generated".to_string(),
+        created_at: created_at.to_string(),
+    })
+}
+
 pub fn write_note_file(path: &str, content: &str) -> Result<NoteFileStats> {
     let target = PathBuf::from(path);
     if let Some(parent) = target.parent() {
@@ -328,8 +352,9 @@ mod tests {
     use uuid::Uuid;
 
     use super::{
-        list_note_templates, note_status_for_path, prepare_blank_note, prepare_template_note,
-        read_note_file, render_note_template, validate_template_kind, NoteTemplateContext,
+        list_note_templates, note_status_for_path, prepare_blank_note, prepare_generated_note,
+        prepare_template_note, read_note_file, render_note_template, validate_template_kind,
+        NoteTemplateContext,
     };
     use crate::workspace::build_workspace_layout;
 
@@ -406,5 +431,25 @@ mod tests {
         let note_path = dir.path().join("note.md");
         std::fs::write(&note_path, b"# Note\n").unwrap();
         assert_eq!(read_note_file(note_path.to_string_lossy().as_ref()).unwrap(), "# Note\n");
+    }
+
+    #[test]
+    fn prepare_generated_note_marks_note_as_generated() {
+        let dir = tempdir().unwrap();
+        let layout = build_workspace_layout(dir.path(), "paper-1");
+        std::fs::create_dir_all(&layout.notes_abs_path).unwrap();
+        let prepared = prepare_generated_note(
+            &layout,
+            "reviewer_matrix",
+            "Reviewer Matrix - Round 1",
+            "# Reviewer Matrix",
+            &Uuid::new_v4().to_string(),
+            "2026-04-15T00:00:00Z",
+        )
+        .unwrap();
+
+        assert_eq!(prepared.source_mode, "generated");
+        assert!(prepared.relative_path.contains("/notes/"));
+        assert!(prepared.file_name.ends_with(".md"));
     }
 }

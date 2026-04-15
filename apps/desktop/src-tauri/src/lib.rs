@@ -3,6 +3,7 @@ mod error;
 mod models;
 mod notes;
 mod progress;
+mod review;
 mod secret_store;
 mod service;
 mod sync_client;
@@ -13,13 +14,16 @@ use models::{
     AppBootstrapRead, ChooseWorkspaceRootInput, ConnectDeviceInput, ConnectDeviceResponse,
     CreateBlankPaperNoteInput, CreatePaperNoteFromTemplateInput, EnsurePaperWorkspaceInput,
     ImportPaperAttachmentsInput, ImportPaperAttachmentsResponse, ListPaperNotesInput,
-    ListPapersInput, NoteActionResultRead, NoteTemplateRead, PaperAttachmentRead,
-    PaperDetailRead, PaperListItemRead, PaperNoteDetailRead, PaperNoteSummaryRead,
-    PaperWorkspaceRead, PendingMutationRead, QueuePaperPatchInput,
-    QueueProgressEventCreateInput, QueueSubscriptionPolicyPatchInput,
-    RefreshPaperNotesInput, RefreshPaperWorkspaceInput, SavePaperNoteInput,
-    SubscriptionPolicyRead, SyncNowResponse, SyncStatusRead, TodayOverviewRead,
-    WorkspaceStatusRead, WriteActionResultRead,
+    ListPapersInput, ListReviewCommentsInput, ListReviewRoundsInput, NoteActionResultRead,
+    NoteTemplateRead, PaperAttachmentRead, PaperDetailRead, PaperListItemRead,
+    PaperNoteDetailRead, PaperNoteSummaryRead, PaperWorkspaceRead, PendingMutationRead,
+    QueuePaperPatchInput, QueueProgressEventCreateInput, QueueSubscriptionPolicyPatchInput,
+    RefreshPaperNotesInput, RefreshPaperWorkspaceInput, ReviewActionResultRead,
+    ReviewCommentItemRead, ReviewRoundDetailRead, ReviewRoundLookupInput,
+    ReviewRoundSummaryRead, SavePaperNoteInput, SubscriptionPolicyRead, SyncNowResponse,
+    SyncStatusRead, TodayOverviewRead, WorkspaceStatusRead, WriteActionResultRead,
+    AddReviewCommentInput, CreateReviewRoundInput, DeleteReviewCommentInput,
+    UpdateReviewRoundInput, UpdateReviewCommentInput,
 };
 use service::{DesktopPaths, DesktopService};
 use tauri::{Manager, State};
@@ -312,6 +316,126 @@ fn refreshPaperNotes(
 
 #[allow(non_snake_case)]
 #[tauri::command]
+fn listReviewRounds(
+    state: State<AppState>,
+    input: ListReviewRoundsInput,
+) -> Result<Vec<ReviewRoundSummaryRead>, String> {
+    state
+        .desktop_service()
+        .and_then(|service| service.list_review_rounds(input))
+        .map_err(command_error)
+}
+
+#[allow(non_snake_case)]
+#[tauri::command]
+fn createReviewRound(
+    state: State<AppState>,
+    input: CreateReviewRoundInput,
+) -> Result<ReviewActionResultRead, String> {
+    state
+        .desktop_service()
+        .and_then(|service| service.create_review_round(input))
+        .map_err(command_error)
+}
+
+#[allow(non_snake_case)]
+#[tauri::command]
+fn updateReviewRound(
+    state: State<AppState>,
+    input: UpdateReviewRoundInput,
+) -> Result<ReviewActionResultRead, String> {
+    state
+        .desktop_service()
+        .and_then(|service| service.update_review_round(input))
+        .map_err(command_error)
+}
+
+#[allow(non_snake_case)]
+#[tauri::command]
+fn listReviewComments(
+    state: State<AppState>,
+    input: ListReviewCommentsInput,
+) -> Result<Vec<ReviewCommentItemRead>, String> {
+    state
+        .desktop_service()
+        .and_then(|service| service.list_review_comments(input))
+        .map_err(command_error)
+}
+
+#[allow(non_snake_case)]
+#[tauri::command]
+fn addReviewComment(
+    state: State<AppState>,
+    input: AddReviewCommentInput,
+) -> Result<ReviewActionResultRead, String> {
+    state
+        .desktop_service()
+        .and_then(|service| service.add_review_comment(input))
+        .map_err(command_error)
+}
+
+#[allow(non_snake_case)]
+#[tauri::command]
+fn updateReviewComment(
+    state: State<AppState>,
+    input: UpdateReviewCommentInput,
+) -> Result<ReviewActionResultRead, String> {
+    state
+        .desktop_service()
+        .and_then(|service| service.update_review_comment(input))
+        .map_err(command_error)
+}
+
+#[allow(non_snake_case)]
+#[tauri::command]
+fn deleteReviewComment(
+    state: State<AppState>,
+    input: DeleteReviewCommentInput,
+) -> Result<ReviewActionResultRead, String> {
+    state
+        .desktop_service()
+        .and_then(|service| service.delete_review_comment(input))
+        .map_err(command_error)
+}
+
+#[allow(non_snake_case)]
+#[tauri::command]
+fn generateReviewerMatrixNote(
+    state: State<AppState>,
+    input: ReviewRoundLookupInput,
+) -> Result<ReviewActionResultRead, String> {
+    state
+        .desktop_service()
+        .and_then(|service| service.generate_reviewer_matrix_note(input))
+        .map_err(command_error)
+}
+
+#[allow(non_snake_case)]
+#[tauri::command]
+fn generateResponseLetterNote(
+    state: State<AppState>,
+    input: ReviewRoundLookupInput,
+) -> Result<ReviewActionResultRead, String> {
+    state
+        .desktop_service()
+        .and_then(|service| service.generate_response_letter_note(input))
+        .map_err(command_error)
+}
+
+#[allow(non_snake_case)]
+#[tauri::command]
+fn getReviewRoundDetail(
+    state: State<AppState>,
+    input: ReviewRoundLookupInput,
+) -> Result<ReviewRoundDetailRead, String> {
+    state
+        .desktop_service()
+        .and_then(|service| service.get_review_round_detail(input))
+        .map_err(command_error)
+}
+
+#[allow(non_snake_case)]
+#[tauri::command]
 fn importPaperAttachments(
     state: State<AppState>,
     input: ImportPaperAttachmentsInput,
@@ -406,6 +530,16 @@ pub fn run() {
             getPaperNote,
             savePaperNote,
             refreshPaperNotes,
+            listReviewRounds,
+            createReviewRound,
+            updateReviewRound,
+            listReviewComments,
+            addReviewComment,
+            updateReviewComment,
+            deleteReviewComment,
+            generateReviewerMatrixNote,
+            generateResponseLetterNote,
+            getReviewRoundDetail,
             importPaperAttachments,
             refreshPaperWorkspace,
             queuePaperPatch,

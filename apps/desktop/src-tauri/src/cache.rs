@@ -8,7 +8,8 @@ use crate::error::{ensure_parent_dir, invalid_state};
 use crate::models::{
     DigestHighlightRead, PaperAttachmentRead, PaperDetailRead, PaperListItemRead,
     PaperNoteSummaryRead, PaperWorkspaceRead, PendingMutationRead, ProgressEventRead,
-    RemoteSyncEvent, RemoteSyncMutationResult, SignalSnapshotRead, SubscriptionPolicyRead,
+    GeneratedReviewNoteRead, RemoteSyncEvent, RemoteSyncMutationResult, ReviewCommentItemRead,
+    ReviewRoundDetailRead, ReviewRoundSummaryRead, SignalSnapshotRead, SubscriptionPolicyRead,
     SyncStatusRead, TodayOverviewRead, UserConnectionRead, WorkspaceStatusRead,
 };
 use crate::notes::{note_status_for_path, read_note_file_stats};
@@ -286,7 +287,44 @@ impl LocalCache {
                 CREATE INDEX IF NOT EXISTS idx_paper_note_cache_paper
                     ON paper_note_cache (paper_id, COALESCE(updated_at, '') DESC, id ASC);
 
-                PRAGMA user_version = 4;
+                CREATE TABLE IF NOT EXISTS paper_review_round_cache (
+                    id TEXT PRIMARY KEY,
+                    paper_id TEXT NOT NULL,
+                    round_label TEXT NOT NULL,
+                    venue TEXT,
+                    decision_label TEXT,
+                    status TEXT NOT NULL,
+                    source_mode TEXT NOT NULL,
+                    reviewer_count INTEGER NOT NULL DEFAULT 0,
+                    generated_response_note_id TEXT,
+                    generated_matrix_note_id TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_paper_review_round_cache_paper
+                    ON paper_review_round_cache (paper_id, COALESCE(updated_at, '') DESC, id ASC);
+
+                CREATE TABLE IF NOT EXISTS review_comment_item_cache (
+                    id TEXT PRIMARY KEY,
+                    review_round_id TEXT NOT NULL,
+                    paper_id TEXT NOT NULL,
+                    reviewer_label TEXT NOT NULL,
+                    comment_code TEXT,
+                    sort_order INTEGER NOT NULL,
+                    comment_text TEXT NOT NULL,
+                    category TEXT,
+                    disposition TEXT NOT NULL,
+                    response_summary TEXT,
+                    action_note TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_review_comment_item_cache_round
+                    ON review_comment_item_cache (review_round_id, reviewer_label, sort_order, created_at, id);
+                CREATE INDEX IF NOT EXISTS idx_review_comment_item_cache_paper
+                    ON review_comment_item_cache (paper_id, review_round_id, reviewer_label, sort_order, created_at, id);
+
+                PRAGMA user_version = 5;
                 "#,
             )
             .context("failed to initialize desktop cache schema")?;
@@ -1279,6 +1317,335 @@ impl LocalCache {
         collect_rows(rows)
     }
 
+    pub fn upsert_review_round(
+        &self,
+        id: &str,
+        paper_id: &str,
+        round_label: &str,
+        venue: Option<&str>,
+        decision_label: Option<&str>,
+        status: &str,
+        source_mode: &str,
+        reviewer_count: i64,
+        generated_response_note_id: Option<&str>,
+        generated_matrix_note_id: Option<&str>,
+        created_at: &str,
+        updated_at: &str,
+    ) -> Result<ReviewRoundSummaryRead> {
+        let connection = self.open()?;
+        connection.execute(
+            r#"
+            INSERT INTO paper_review_round_cache (
+                id,
+                paper_id,
+                round_label,
+                venue,
+                decision_label,
+                status,
+                source_mode,
+                reviewer_count,
+                generated_response_note_id,
+                generated_matrix_note_id,
+                created_at,
+                updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+            ON CONFLICT(id) DO UPDATE SET
+                paper_id = excluded.paper_id,
+                round_label = excluded.round_label,
+                venue = excluded.venue,
+                decision_label = excluded.decision_label,
+                status = excluded.status,
+                source_mode = excluded.source_mode,
+                reviewer_count = excluded.reviewer_count,
+                generated_response_note_id = excluded.generated_response_note_id,
+                generated_matrix_note_id = excluded.generated_matrix_note_id,
+                updated_at = excluded.updated_at
+            "#,
+            params![
+                id,
+                paper_id,
+                round_label,
+                venue,
+                decision_label,
+                status,
+                source_mode,
+                reviewer_count,
+                generated_response_note_id,
+                generated_matrix_note_id,
+                created_at,
+                updated_at
+            ],
+        )?;
+        self.get_review_round_summary(id)
+    }
+
+    pub fn get_review_round_summary(&self, review_round_id: &str) -> Result<ReviewRoundSummaryRead> {
+        let connection = self.open()?;
+        connection
+            .query_row(
+                r#"
+                SELECT
+                    id,
+                    paper_id,
+                    round_label,
+                    venue,
+                    decision_label,
+                    status,
+                    source_mode,
+                    reviewer_count,
+                    generated_response_note_id,
+                    generated_matrix_note_id,
+                    created_at,
+                    updated_at
+                FROM paper_review_round_cache
+                WHERE id = ?1
+                "#,
+                params![review_round_id],
+                map_review_round_row,
+            )
+            .optional()?
+            .ok_or_else(|| invalid_state(format!("review round {review_round_id} is not indexed")))
+    }
+
+    pub fn list_review_rounds(&self, paper_id: &str) -> Result<Vec<ReviewRoundSummaryRead>> {
+        let connection = self.open()?;
+        let mut statement = connection.prepare(
+            r#"
+            SELECT
+                id,
+                paper_id,
+                round_label,
+                venue,
+                decision_label,
+                status,
+                source_mode,
+                reviewer_count,
+                generated_response_note_id,
+                generated_matrix_note_id,
+                created_at,
+                updated_at
+            FROM paper_review_round_cache
+            WHERE paper_id = ?1
+            ORDER BY
+                CASE status WHEN 'open' THEN 0 ELSE 1 END,
+                COALESCE(updated_at, '') DESC,
+                COALESCE(created_at, '') DESC,
+                id ASC
+            "#,
+        )?;
+        let rows = statement.query_map(params![paper_id], map_review_round_row)?;
+        collect_rows(rows)
+    }
+
+    pub fn next_review_comment_sort_order(&self, review_round_id: &str) -> Result<i64> {
+        let connection = self.open()?;
+        let max_sort_order: Option<i64> = connection.query_row(
+            r#"
+            SELECT MAX(sort_order)
+            FROM review_comment_item_cache
+            WHERE review_round_id = ?1
+            "#,
+            params![review_round_id],
+            |row| row.get(0),
+        )?;
+        Ok(max_sort_order.unwrap_or(0) + 1)
+    }
+
+    pub fn upsert_review_comment(
+        &self,
+        id: &str,
+        review_round_id: &str,
+        paper_id: &str,
+        reviewer_label: &str,
+        comment_code: Option<&str>,
+        sort_order: i64,
+        comment_text: &str,
+        category: Option<&str>,
+        disposition: &str,
+        response_summary: Option<&str>,
+        action_note: Option<&str>,
+        created_at: &str,
+        updated_at: &str,
+    ) -> Result<ReviewCommentItemRead> {
+        let connection = self.open()?;
+        connection.execute(
+            r#"
+            INSERT INTO review_comment_item_cache (
+                id,
+                review_round_id,
+                paper_id,
+                reviewer_label,
+                comment_code,
+                sort_order,
+                comment_text,
+                category,
+                disposition,
+                response_summary,
+                action_note,
+                created_at,
+                updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+            ON CONFLICT(id) DO UPDATE SET
+                review_round_id = excluded.review_round_id,
+                paper_id = excluded.paper_id,
+                reviewer_label = excluded.reviewer_label,
+                comment_code = excluded.comment_code,
+                sort_order = excluded.sort_order,
+                comment_text = excluded.comment_text,
+                category = excluded.category,
+                disposition = excluded.disposition,
+                response_summary = excluded.response_summary,
+                action_note = excluded.action_note,
+                updated_at = excluded.updated_at
+            "#,
+            params![
+                id,
+                review_round_id,
+                paper_id,
+                reviewer_label,
+                comment_code,
+                sort_order,
+                comment_text,
+                category,
+                disposition,
+                response_summary,
+                action_note,
+                created_at,
+                updated_at
+            ],
+        )?;
+        self.refresh_review_round_reviewer_count(review_round_id)?;
+        self.get_review_comment(id)
+    }
+
+    pub fn get_review_comment(&self, comment_id: &str) -> Result<ReviewCommentItemRead> {
+        let connection = self.open()?;
+        connection
+            .query_row(
+                r#"
+                SELECT
+                    id,
+                    review_round_id,
+                    paper_id,
+                    reviewer_label,
+                    comment_code,
+                    sort_order,
+                    comment_text,
+                    category,
+                    disposition,
+                    response_summary,
+                    action_note,
+                    created_at,
+                    updated_at
+                FROM review_comment_item_cache
+                WHERE id = ?1
+                "#,
+                params![comment_id],
+                map_review_comment_row,
+            )
+            .optional()?
+            .ok_or_else(|| invalid_state(format!("review comment {comment_id} is not indexed")))
+    }
+
+    pub fn list_review_comments(&self, review_round_id: &str) -> Result<Vec<ReviewCommentItemRead>> {
+        let connection = self.open()?;
+        let mut statement = connection.prepare(
+            r#"
+            SELECT
+                id,
+                review_round_id,
+                paper_id,
+                reviewer_label,
+                comment_code,
+                sort_order,
+                comment_text,
+                category,
+                disposition,
+                response_summary,
+                action_note,
+                created_at,
+                updated_at
+            FROM review_comment_item_cache
+            WHERE review_round_id = ?1
+            ORDER BY reviewer_label COLLATE NOCASE ASC, sort_order ASC, created_at ASC, id ASC
+            "#,
+        )?;
+        let rows = statement.query_map(params![review_round_id], map_review_comment_row)?;
+        collect_rows(rows)
+    }
+
+    pub fn delete_review_comment(&self, comment_id: &str) -> Result<()> {
+        let existing = self.get_review_comment(comment_id)?;
+        let connection = self.open()?;
+        connection.execute(
+            "DELETE FROM review_comment_item_cache WHERE id = ?1",
+            params![comment_id],
+        )?;
+        self.refresh_review_round_reviewer_count(&existing.review_round_id)
+    }
+
+    pub fn get_review_round_detail(&self, review_round_id: &str) -> Result<ReviewRoundDetailRead> {
+        let round = self.get_review_round_summary(review_round_id)?;
+        let comments = self.list_review_comments(review_round_id)?;
+        let generated_response_note = self.generated_review_note(
+            round.generated_response_note_id.as_deref(),
+            "response_letter",
+        )?;
+        let generated_matrix_note = self.generated_review_note(
+            round.generated_matrix_note_id.as_deref(),
+            "reviewer_matrix",
+        )?;
+        Ok(ReviewRoundDetailRead {
+            round,
+            comments,
+            generated_response_note,
+            generated_matrix_note,
+        })
+    }
+
+    pub fn generated_review_note(
+        &self,
+        note_id: Option<&str>,
+        kind: &str,
+    ) -> Result<Option<GeneratedReviewNoteRead>> {
+        let Some(note_id) = note_id else {
+            return Ok(None);
+        };
+        let note = self.get_paper_note_summary(note_id)?;
+        Ok(Some(GeneratedReviewNoteRead {
+            kind: kind.to_string(),
+            note_id: note.id,
+            title: note.title,
+            relative_path: note.relative_path,
+            status: note.status,
+            updated_at: note.updated_at,
+        }))
+    }
+
+    pub fn refresh_review_round_reviewer_count(&self, review_round_id: &str) -> Result<()> {
+        let connection = self.open()?;
+        let reviewer_count: i64 = connection.query_row(
+            r#"
+            SELECT COUNT(DISTINCT reviewer_label)
+            FROM review_comment_item_cache
+            WHERE review_round_id = ?1
+            "#,
+            params![review_round_id],
+            |row| row.get(0),
+        )?;
+        connection.execute(
+            r#"
+            UPDATE paper_review_round_cache
+            SET
+                reviewer_count = ?1,
+                updated_at = ?2
+            WHERE id = ?3
+            "#,
+            params![reviewer_count, timestamp_now(), review_round_id],
+        )?;
+        Ok(())
+    }
+
     pub fn touch_paper_note_opened_at(
         &self,
         note_id: &str,
@@ -1788,6 +2155,7 @@ impl LocalCache {
         let workspace = self.get_paper_workspace(paper_id)?;
         let attachments = self.list_paper_attachments(paper_id)?;
         let notes = self.list_paper_notes(paper_id)?;
+        let review_rounds = self.list_review_rounds(paper_id)?;
         Ok(PaperDetailRead {
             id: paper.0,
             user_id: paper.1,
@@ -1812,6 +2180,8 @@ impl LocalCache {
             attachments,
             note_count: notes.len() as i64,
             notes,
+            review_round_count: review_rounds.len() as i64,
+            review_rounds,
         })
     }
 
@@ -2431,6 +2801,41 @@ fn map_note_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<PaperNoteSummaryRea
         created_at: row.get(12)?,
         updated_at: row.get(13)?,
         last_opened_at: row.get(14)?,
+    })
+}
+
+fn map_review_round_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ReviewRoundSummaryRead> {
+    Ok(ReviewRoundSummaryRead {
+        id: row.get(0)?,
+        paper_id: row.get(1)?,
+        round_label: row.get(2)?,
+        venue: row.get(3)?,
+        decision_label: row.get(4)?,
+        status: row.get(5)?,
+        source_mode: row.get(6)?,
+        reviewer_count: row.get(7)?,
+        generated_response_note_id: row.get(8)?,
+        generated_matrix_note_id: row.get(9)?,
+        created_at: row.get(10)?,
+        updated_at: row.get(11)?,
+    })
+}
+
+fn map_review_comment_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ReviewCommentItemRead> {
+    Ok(ReviewCommentItemRead {
+        id: row.get(0)?,
+        review_round_id: row.get(1)?,
+        paper_id: row.get(2)?,
+        reviewer_label: row.get(3)?,
+        comment_code: row.get(4)?,
+        sort_order: row.get(5)?,
+        comment_text: row.get(6)?,
+        category: row.get(7)?,
+        disposition: row.get(8)?,
+        response_summary: row.get(9)?,
+        action_note: row.get(10)?,
+        created_at: row.get(11)?,
+        updated_at: row.get(12)?,
     })
 }
 

@@ -59,7 +59,13 @@
 - `PaperWorkspaceRead`
 - `PaperAttachmentRead`
 
-The notes directory created under each paper workspace is now also used by the separate local notes/template layer, but note content and note metadata remain local-only and are documented in `docs/desktop_local_notes_templates_v1.md`.
+The notes directory created under each paper workspace is now also used by:
+- the separate local notes/template layer
+- generated `reviewer_matrix` and `response_letter` markdown files from the local review-matrix workflow
+
+Both note metadata and review-matrix metadata remain local-only and are documented in:
+- `docs/desktop_local_notes_templates_v1.md`
+- `docs/desktop_review_matrix_response_v1.md`
 
 Existing paper read models are extended with local-only workspace state:
 - `PaperListItemRead`

@@ -153,6 +153,71 @@ pub struct NoteActionResultRead {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ReviewRoundSummaryRead {
+    pub id: String,
+    pub paper_id: String,
+    pub round_label: String,
+    pub venue: Option<String>,
+    pub decision_label: Option<String>,
+    pub status: String,
+    pub source_mode: String,
+    pub reviewer_count: i64,
+    pub generated_response_note_id: Option<String>,
+    pub generated_matrix_note_id: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReviewCommentItemRead {
+    pub id: String,
+    pub review_round_id: String,
+    pub paper_id: String,
+    pub reviewer_label: String,
+    pub comment_code: Option<String>,
+    pub sort_order: i64,
+    pub comment_text: String,
+    pub category: Option<String>,
+    pub disposition: String,
+    pub response_summary: Option<String>,
+    pub action_note: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GeneratedReviewNoteRead {
+    pub kind: String,
+    pub note_id: String,
+    pub title: String,
+    pub relative_path: String,
+    pub status: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReviewRoundDetailRead {
+    pub round: ReviewRoundSummaryRead,
+    pub comments: Vec<ReviewCommentItemRead>,
+    pub generated_response_note: Option<GeneratedReviewNoteRead>,
+    pub generated_matrix_note: Option<GeneratedReviewNoteRead>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReviewActionResultRead {
+    pub message: String,
+    pub round: Option<ReviewRoundSummaryRead>,
+    pub comment: Option<ReviewCommentItemRead>,
+    pub detail: Option<ReviewRoundDetailRead>,
+    pub generated_note: Option<GeneratedReviewNoteRead>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DigestHighlightRead {
     pub sort_order: i64,
     pub pulse_card_id: String,
@@ -270,6 +335,8 @@ pub struct PaperDetailRead {
     pub attachments: Vec<PaperAttachmentRead>,
     pub notes: Vec<PaperNoteSummaryRead>,
     pub note_count: i64,
+    pub review_rounds: Vec<ReviewRoundSummaryRead>,
+    pub review_round_count: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -376,6 +443,75 @@ pub struct SavePaperNoteInput {
 #[serde(rename_all = "camelCase")]
 pub struct RefreshPaperNotesInput {
     pub paper_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListReviewRoundsInput {
+    pub paper_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateReviewRoundInput {
+    pub paper_id: String,
+    pub round_label: String,
+    pub venue: Option<String>,
+    pub decision_label: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateReviewRoundInput {
+    pub review_round_id: String,
+    pub round_label: Option<String>,
+    pub venue: Option<String>,
+    pub decision_label: Option<String>,
+    pub status: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListReviewCommentsInput {
+    pub review_round_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AddReviewCommentInput {
+    pub review_round_id: String,
+    pub reviewer_label: String,
+    pub comment_code: Option<String>,
+    pub comment_text: String,
+    pub category: Option<String>,
+    pub disposition: Option<String>,
+    pub response_summary: Option<String>,
+    pub action_note: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateReviewCommentInput {
+    pub comment_id: String,
+    pub reviewer_label: Option<String>,
+    pub comment_code: Option<String>,
+    pub comment_text: Option<String>,
+    pub category: Option<String>,
+    pub disposition: Option<String>,
+    pub response_summary: Option<String>,
+    pub action_note: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteReviewCommentInput {
+    pub comment_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReviewRoundLookupInput {
+    pub review_round_id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
