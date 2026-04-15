@@ -44,6 +44,7 @@ from research_pulse_cn.domain.enums import (
     PulseDigestIssueStatus,
     PulseJobScheduledReason,
     PulseJobStatus,
+    ResearchWatchProfileSourceMode,
     SignalSource,
     SubscriptionFrequency,
     SyncEventSource,
@@ -51,6 +52,8 @@ from research_pulse_cn.domain.enums import (
     SyncMutationStatus,
     WeChatBindingChannelType,
     WeChatBindingState,
+    WorkActivitySource,
+    WorkActivityType,
     WorkerRole,
     WorkerStatus,
 )
@@ -135,6 +138,16 @@ class UserProfile(TimestampMixin, Base):
         back_populates="user",
         cascade="all, delete-orphan",
     )
+    work_activity_events: Mapped[list[WorkActivityEvent]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+        order_by="WorkActivityEvent.happened_at.desc()",
+    )
+    research_watch_profiles: Mapped[list[ResearchWatchProfile]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+        order_by="ResearchWatchProfile.updated_at.desc()",
+    )
     sync_events: Mapped[list[SyncEvent]] = relationship(
         back_populates="user",
         cascade="all, delete-orphan",
@@ -170,6 +183,12 @@ class PaperProfile(TimestampMixin, Base):
     sourced_pulse_cards: Mapped[list[PulseCard]] = relationship(
         back_populates="source_paper",
         foreign_keys="PulseCard.source_paper_id",
+    )
+    work_activity_events: Mapped[list[WorkActivityEvent]] = relationship(
+        back_populates="paper",
+    )
+    research_watch_profiles: Mapped[list[ResearchWatchProfile]] = relationship(
+        back_populates="paper",
     )
 
 
@@ -831,3 +850,61 @@ class SyncMutation(Base):
     applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     client_device: Mapped[ClientDevice] = relationship(back_populates="mutations")
+
+
+class WorkActivityEvent(Base):
+    __tablename__ = "work_activity_events"
+    __table_args__ = (
+        Index("ix_work_activity_events_user_happened_at", "user_id", "happened_at"),
+        Index("ix_work_activity_events_paper_happened_at", "paper_id", "happened_at"),
+        Index("ix_work_activity_events_activity_type", "activity_type"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("user_profiles.id", ondelete="CASCADE"))
+    paper_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("paper_profiles.id", ondelete="SET NULL")
+    )
+    activity_type: Mapped[WorkActivityType] = mapped_column(
+        Enum(WorkActivityType, native_enum=False),
+        nullable=False,
+    )
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    metadata_json: Mapped[dict[str, Any] | None] = mapped_column("metadata", JSON_VARIANT)
+    happened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    source: Mapped[WorkActivitySource] = mapped_column(
+        Enum(WorkActivitySource, native_enum=False),
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    user: Mapped[UserProfile] = relationship(back_populates="work_activity_events")
+    paper: Mapped[PaperProfile | None] = relationship(back_populates="work_activity_events")
+
+
+class ResearchWatchProfile(TimestampMixin, Base):
+    __tablename__ = "research_watch_profiles"
+    __table_args__ = (
+        Index("ix_research_watch_profiles_user_enabled", "user_id", "enabled"),
+        Index("ix_research_watch_profiles_paper", "paper_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("user_profiles.id", ondelete="CASCADE"))
+    paper_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("paper_profiles.id", ondelete="SET NULL")
+    )
+    label: Mapped[str] = mapped_column(String(255), nullable=False)
+    enabled: Mapped[bool] = mapped_column(default=True, nullable=False)
+    source_mode: Mapped[ResearchWatchProfileSourceMode] = mapped_column(
+        Enum(ResearchWatchProfileSourceMode, native_enum=False),
+        nullable=False,
+        default=ResearchWatchProfileSourceMode.MANUAL,
+    )
+    topics: Mapped[list[str]] = mapped_column(JSON_VARIANT, default=list)
+    keywords: Mapped[list[str]] = mapped_column(JSON_VARIANT, default=list)
+    venues: Mapped[list[str]] = mapped_column(JSON_VARIANT, default=list)
+    authors_of_interest: Mapped[list[str] | None] = mapped_column(JSON_VARIANT)
+
+    user: Mapped[UserProfile] = relationship(back_populates="research_watch_profiles")
+    paper: Mapped[PaperProfile | None] = relationship(back_populates="research_watch_profiles")

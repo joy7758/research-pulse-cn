@@ -1,5 +1,14 @@
 # Pulse Scoring v1
 
+## Input-layer boundary
+- Pulse scoring now has an explicit upstream input layer documented in `docs/pulse_input_layer_v1.md`.
+- That layer provides:
+  - `WorkActivityEvent` for recent user-work signals
+  - `ResearchWatchProfile` for compact watch interests
+  - `GET /pulse/input-preview/{user_id}` for deterministic input inspection
+- This scoring document still covers candidate generation, ranking, suppression, and selection only.
+- External retrieval and yesterday-summary cards are intentionally deferred until the input layer is stable.
+
 ## Pipeline stages
 Pulse generation now follows an explainable deterministic pipeline:
 
@@ -93,6 +102,7 @@ That keeps:
 
 ## Known limitations in v1
 - `related_paper` uses simple heuristics and does not use external research graphs
+- upstream watch seeds are available, but external retrieval is not implemented yet
 - quiet hours use policy-local window definitions and assume valid timezones
 - dedupe is signature-based and does not yet use richer semantic similarity
 - scoring is weighted and explainable, but not yet calibrated from operational feedback

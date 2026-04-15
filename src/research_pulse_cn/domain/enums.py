@@ -119,6 +119,30 @@ class SyncMutationStatus(StrEnum):
     FAILED = "failed"
 
 
+class WorkActivityType(StrEnum):
+    PAPER_UPDATED = "paper_updated"
+    PROGRESS_EVENT_CREATED = "progress_event_created"
+    SUBSCRIPTION_POLICY_UPDATED = "subscription_policy_updated"
+    ATTACHMENT_IMPORTED = "attachment_imported"
+    NOTE_CREATED = "note_created"
+    NOTE_SAVED = "note_saved"
+    REVIEW_ROUND_CREATED = "review_round_created"
+    REVIEWER_MATRIX_GENERATED = "reviewer_matrix_generated"
+    RESPONSE_LETTER_GENERATED = "response_letter_generated"
+
+
+class WorkActivitySource(StrEnum):
+    API = "api"
+    SYNC_MUTATION = "sync_mutation"
+    DESKTOP_LOCAL = "desktop_local"
+    SYSTEM = "system"
+
+
+class ResearchWatchProfileSourceMode(StrEnum):
+    MANUAL = "manual"
+    PAPER_BOOTSTRAP = "paper_bootstrap"
+
+
 class WeChatBindingChannelType(StrEnum):
     OFFICIAL_ACCOUNT = "official_account"
     MINI_PROGRAM = "mini_program"

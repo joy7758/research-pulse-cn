@@ -46,6 +46,12 @@ Each template is rendered on the Rust side from deterministic markdown generator
 - `clearLocalCache` and `disconnectDevice` do not delete note files under the workspace root.
 - If the workspace root is missing or invalid, note creation and save commands fail clearly rather than faking success.
 
+Desktop note actions now also emit lightweight `work_activity.record` mutations for:
+- `note_created`
+- `note_saved`
+
+These mutations carry only summary metadata for future pulse inputs. Markdown content stays local on disk.
+
 ## Current Non-Goals
 - no note sync to the backend
 - no AI note generation

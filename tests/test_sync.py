@@ -279,6 +279,39 @@ def test_paper_patch_mutation_is_applied_and_emits_sync_event(client, operator_h
     )
 
 
+def test_paper_patch_auto_records_work_activity_event(client, operator_headers) -> None:
+    user = create_user(client, operator_headers, email="paper-work-activity@example.com")
+    created = create_device(client, operator_headers, user_id=user["id"])
+    device_headers = {"Authorization": f"Bearer {created['plain_text_token']}"}
+    paper = create_paper(client, operator_headers, user_id=user["id"], title="Work Activity Paper")
+
+    push = client.post(
+        "/sync/push",
+        headers=device_headers,
+        json={
+            "mutations": [
+                {
+                    "client_mutation_id": "paper-patch-activity-1",
+                    "mutation_type": "paper.patch",
+                    "resource_type": "paper_profile",
+                    "resource_id": paper["id"],
+                    "payload": {"stage": "revision", "priority": 5},
+                }
+            ]
+        },
+    )
+    events = client.get(
+        f"/work-activity-events?user_id={user['id']}&activity_type=paper_updated",
+        headers=operator_headers,
+    )
+
+    assert push.status_code == 200
+    assert events.status_code == 200
+    assert len(events.json()) == 1
+    assert events.json()[0]["source"] == "sync_mutation"
+    assert events.json()[0]["metadata"]["changed_fields"] == ["priority", "stage"]
+
+
 def test_progress_event_create_mutation_is_applied_and_emits_sync_event(
     client,
     operator_headers,
@@ -321,6 +354,53 @@ def test_progress_event_create_mutation_is_applied_and_emits_sync_event(
     assert any(event["entity_type"] == "progress_event" for event in feed.json()["events"])
 
 
+def test_progress_event_create_auto_records_work_activity_event(
+    client,
+    operator_headers,
+) -> None:
+    user = create_user(client, operator_headers, email="progress-work-activity@example.com")
+    created = create_device(client, operator_headers, user_id=user["id"])
+    device_headers = {"Authorization": f"Bearer {created['plain_text_token']}"}
+    paper = create_paper(
+        client,
+        operator_headers,
+        user_id=user["id"],
+        title="Progress Work Activity",
+    )
+
+    push = client.post(
+        "/sync/push",
+        headers=device_headers,
+        json={
+            "mutations": [
+                {
+                    "client_mutation_id": "progress-work-activity-1",
+                    "mutation_type": "progress_event.create",
+                    "resource_type": "paper_profile",
+                    "resource_id": paper["id"],
+                    "payload": {
+                        "stage": "revision",
+                        "happened_at": utcnow().isoformat(),
+                        "summary": "Added from desktop client.",
+                        "evidence_links": [],
+                        "owner": "desktop",
+                    },
+                }
+            ]
+        },
+    )
+    events = client.get(
+        f"/work-activity-events?user_id={user['id']}&activity_type=progress_event_created",
+        headers=operator_headers,
+    )
+
+    assert push.status_code == 200
+    assert events.status_code == 200
+    assert len(events.json()) == 1
+    assert events.json()[0]["source"] == "sync_mutation"
+    assert events.json()[0]["metadata"]["stage"] == "revision"
+
+
 def test_subscription_policy_patch_mutation_is_applied_and_emits_sync_event(
     client,
     operator_headers,
@@ -358,6 +438,80 @@ def test_subscription_policy_patch_mutation_is_applied_and_emits_sync_event(
         event["entity_type"] == "subscription_policy" and event["entity_id"] == policy["id"]
         for event in feed.json()["events"]
     )
+
+
+def test_subscription_policy_patch_auto_records_work_activity_event(
+    client,
+    operator_headers,
+) -> None:
+    user = create_user(client, operator_headers, email="policy-work-activity@example.com")
+    created = create_device(client, operator_headers, user_id=user["id"])
+    device_headers = {"Authorization": f"Bearer {created['plain_text_token']}"}
+    policy = create_policy(client, operator_headers, user_id=user["id"])
+
+    push = client.post(
+        "/sync/push",
+        headers=device_headers,
+        json={
+            "mutations": [
+                {
+                    "client_mutation_id": "policy-work-activity-1",
+                    "mutation_type": "subscription_policy.patch",
+                    "resource_type": "subscription_policy",
+                    "resource_id": policy["id"],
+                    "payload": {"enabled": False, "frequency_cap": 1},
+                }
+            ]
+        },
+    )
+    events = client.get(
+        f"/work-activity-events?user_id={user['id']}&activity_type=subscription_policy_updated",
+        headers=operator_headers,
+    )
+
+    assert push.status_code == 200
+    assert events.status_code == 200
+    assert len(events.json()) >= 1
+    assert any(event["source"] == "sync_mutation" for event in events.json())
+
+
+def test_work_activity_record_mutation_creates_event_and_is_idempotent(
+    client,
+    operator_headers,
+) -> None:
+    user = create_user(client, operator_headers, email="desktop-activity@example.com")
+    created = create_device(client, operator_headers, user_id=user["id"])
+    device_headers = {"Authorization": f"Bearer {created['plain_text_token']}"}
+    paper = create_paper(client, operator_headers, user_id=user["id"], title="Desktop Note Paper")
+
+    mutation = {
+        "client_mutation_id": "desktop-activity-1",
+        "mutation_type": "work_activity.record",
+        "resource_type": "work_activity_event",
+        "resource_id": paper["id"],
+        "payload": {
+            "paper_id": paper["id"],
+            "activity_type": "note_saved",
+            "summary": "Saved a local note.",
+            "metadata": {"note_id": "note-1", "template_kind": "research_note"},
+            "happened_at": utcnow().isoformat(),
+        },
+    }
+
+    first = client.post("/sync/push", headers=device_headers, json={"mutations": [mutation]})
+    second = client.post("/sync/push", headers=device_headers, json={"mutations": [mutation]})
+    events = client.get(
+        f"/work-activity-events?user_id={user['id']}&activity_type=note_saved",
+        headers=operator_headers,
+    )
+
+    assert first.status_code == 200
+    assert first.json()["results"][0]["status"] == "applied"
+    assert first.json()["results"][0]["resulting_event_sequence"] is None
+    assert second.status_code == 200
+    assert second.json()["results"][0]["status"] == "duplicate"
+    assert len(events.json()) == 1
+    assert events.json()[0]["source"] == "desktop_local"
 
 
 def test_server_side_crud_and_pulse_actions_emit_sync_events(client, operator_headers) -> None:

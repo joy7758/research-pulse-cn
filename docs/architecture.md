@@ -14,6 +14,7 @@ Core flow:
 8. Mini read grants expose compact mobile-friendly read models for future mini-program landing without opening write access.
 9. Sync devices consume incremental `SyncEvent` feeds and push idempotent mutations back through the same service layer.
 10. A Tauri desktop shell consumes the same sync feed, keeps a local SQLite outbox, performs limited writeback through `/sync/push`, manages a local-only paper workspace, stores local markdown notes/templates, and keeps local review-matrix / response-letter workflows without bundling the backend.
+11. A pulse input layer now records lightweight work activity and research watch profiles so future retrieval can start from explicit inputs instead of implicit guesses.
 
 ## Module boundaries
 
@@ -54,6 +55,23 @@ Future communication surfaces are intentionally outside the active delivery laye
 - Routes, dependency wiring, and exception translation only.
 
 ## Pulse chain
+
+### Input layer
+- `WorkActivityEvent` captures lightweight structured activity for recap-style inputs such as:
+  - paper updates
+  - progress events
+  - subscription-policy changes
+  - desktop attachment/note/review actions emitted through sync
+- `ResearchWatchProfile` stores compact user watch interests that can later drive retrieval.
+- `GET /pulse/input-preview/{user_id}` exposes:
+  - previous-day work activity summary
+  - raw ordered activity events
+  - enabled watch profiles
+  - effective deduped watch seeds
+- This layer is intentionally upstream of retrieval and card generation:
+  - no external sources
+  - no AI expansion
+  - no final pulse cards yet
 
 ### Fact collection
 - `DeterministicFactCollector` inspects current paper state.
@@ -171,6 +189,7 @@ Tie-break order is deterministic:
 - `PulseDigestIssue` create/update now also emits compact sync events so future read-only clients can consume digest state.
 - `SyncCursor` tracks the latest acknowledged sequence per device.
 - `SyncMutation` records idempotent client-originated writes keyed by `(client_device_id, client_mutation_id)`.
+- `work_activity.record` is now also accepted as a sync mutation type for lightweight desktop-local activity metadata, but it intentionally does not sync local file or note contents.
 
 ### Desktop shell
 - `apps/desktop` is isolated from the Python backend.
@@ -195,6 +214,7 @@ Tie-break order is deterministic:
   - `paper.patch`
   - `progress_event.create`
   - `subscription_policy.patch`
+  - `work_activity.record`
 - Desktop local workspace is intentionally local-only in v1:
   - workspace root selection
   - deterministic `papers/<paper_id>/...` folders
@@ -204,6 +224,7 @@ Tie-break order is deterministic:
   - no backend attachment sync
   - no backend note sync
   - no OCR or AI file understanding
+- Desktop local actions can still contribute to the cloud-side pulse input layer through concise `work_activity.record` mutations that carry summary metadata only.
 - The desktop shell applies a push-before-pull cycle, but local paper and policy caches remain authoritative only after server `SyncEvent` replay.
 
 ### Consistency model

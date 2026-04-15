@@ -16,10 +16,12 @@ from research_pulse_cn.services.mini import MiniService
 from research_pulse_cn.services.ops import OpsService
 from research_pulse_cn.services.paper import PaperService
 from research_pulse_cn.services.pulse import PulseService
+from research_pulse_cn.services.research_watch import ResearchWatchProfileService
 from research_pulse_cn.services.scheduler import SchedulerService
 from research_pulse_cn.services.subscription_policy import SubscriptionPolicyService
 from research_pulse_cn.services.sync import SyncService
 from research_pulse_cn.services.user import UserService
+from research_pulse_cn.services.work_activity import WorkActivityService
 
 
 def get_session() -> Iterator[Session]:
@@ -43,6 +45,14 @@ def get_subscription_policy_service(session: SessionDep) -> SubscriptionPolicySe
 
 def get_pulse_service(session: SessionDep) -> PulseService:
     return PulseService(session)
+
+
+def get_work_activity_service(session: SessionDep) -> WorkActivityService:
+    return WorkActivityService(session)
+
+
+def get_research_watch_profile_service(session: SessionDep) -> ResearchWatchProfileService:
+    return ResearchWatchProfileService(session)
 
 
 def get_delivery_service(session: SessionDep) -> DeliveryService:

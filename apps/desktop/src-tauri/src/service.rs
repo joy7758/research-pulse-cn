@@ -247,6 +247,17 @@ impl DesktopService {
             None,
         )?;
         let note = self.get_paper_note(&prepared.note_id)?;
+        self.record_local_work_activity(
+            Some(&paper.id),
+            "note_created",
+            format!("Created note \"{}\".", prepared.title),
+            json!({
+                "note_id": prepared.note_id,
+                "template_kind": prepared.template_kind,
+                "source_mode": prepared.source_mode,
+            }),
+            &prepared.created_at,
+        )?;
         Ok(NoteActionResultRead {
             note,
             message: format!("Created {} from template.", prepared.title),
@@ -303,6 +314,17 @@ impl DesktopService {
             None,
         )?;
         let note = self.get_paper_note(&prepared.note_id)?;
+        self.record_local_work_activity(
+            Some(&paper.id),
+            "note_created",
+            format!("Created note \"{}\".", prepared.title),
+            json!({
+                "note_id": prepared.note_id,
+                "template_kind": prepared.template_kind,
+                "source_mode": prepared.source_mode,
+            }),
+            &prepared.created_at,
+        )?;
         Ok(NoteActionResultRead {
             note,
             message: format!("Created {}.", prepared.title),
@@ -359,6 +381,16 @@ impl DesktopService {
             Some(&updated_at),
         )?;
         let note = self.get_paper_note(&existing.id)?;
+        self.record_local_work_activity(
+            Some(&existing.paper_id),
+            "note_saved",
+            format!("Saved note \"{}\".", existing.title),
+            json!({
+                "note_id": existing.id,
+                "template_kind": existing.template_kind,
+            }),
+            &updated_at,
+        )?;
         Ok(NoteActionResultRead {
             note,
             message: format!("Saved {}.", existing.title),
@@ -416,6 +448,16 @@ impl DesktopService {
             &created_at,
         )?;
         let detail = cache.get_review_round_detail(&round.id)?;
+        self.record_local_work_activity(
+            Some(&paper.id),
+            "review_round_created",
+            format!("Created review round \"{}\".", round.round_label),
+            json!({
+                "review_round_id": round.id,
+                "round_label": round.round_label,
+            }),
+            &created_at,
+        )?;
         Ok(ReviewActionResultRead {
             message: format!("Created review round {}.", round.round_label),
             round: Some(round),
@@ -683,6 +725,26 @@ impl DesktopService {
 
         if imported_any {
             cache.touch_paper_workspace_imported_at(&paper.id, &imported_at)?;
+            let imported_count = results
+                .iter()
+                .filter(|result| result.status == "imported")
+                .count();
+            self.record_local_work_activity(
+                Some(&paper.id),
+                "attachment_imported",
+                format!(
+                    "Imported {} {} attachment{} for \"{}\".",
+                    imported_count,
+                    attachment_kind,
+                    if imported_count == 1 { "" } else { "s" },
+                    paper.title,
+                ),
+                json!({
+                    "attachment_kind": attachment_kind,
+                    "imported_count": imported_count,
+                }),
+                &imported_at,
+            )?;
         }
         let workspace = self.refresh_paper_workspace(&paper.id)?;
         if results.iter().all(|result| result.status == "failed") {
@@ -1055,6 +1117,37 @@ impl DesktopService {
         })
     }
 
+    fn record_local_work_activity(
+        &self,
+        paper_id: Option<&str>,
+        activity_type: &str,
+        summary: String,
+        metadata: Value,
+        happened_at: &str,
+    ) -> Result<()> {
+        if self.get_sync_status()?.current_user_summary.is_none() {
+            return Ok(());
+        }
+        let mutation_id = Uuid::new_v4().to_string();
+        let client_mutation_id = format!("desktop-{mutation_id}");
+        let payload = json!({
+            "paper_id": paper_id,
+            "activity_type": activity_type,
+            "summary": summary,
+            "metadata": metadata,
+            "happened_at": happened_at,
+        });
+        self.cache().enqueue_mutation(
+            &mutation_id,
+            &client_mutation_id,
+            "work_activity.record",
+            "work_activity_event",
+            paper_id,
+            &payload,
+        )?;
+        Ok(())
+    }
+
     fn try_sync_immediately(&self) -> Result<Option<SyncNowResponse>, String> {
         match self.load_connection() {
             Ok((base_url, token)) => {
@@ -1200,6 +1293,23 @@ impl DesktopService {
             &chrono::Utc::now().to_rfc3339(),
         )?;
         let updated_detail = cache.get_review_round_detail(review_round_id)?;
+        let activity_type = match template_kind {
+            "reviewer_matrix" => "reviewer_matrix_generated",
+            "response_letter" => "response_letter_generated",
+            _ => unreachable!("template kind already validated"),
+        };
+        let activity_happened_at = chrono::Utc::now().to_rfc3339();
+        self.record_local_work_activity(
+            Some(&paper.id),
+            activity_type,
+            format!("Generated {} for {}.", rendered.title, updated_round.round_label),
+            json!({
+                "review_round_id": updated_round.id,
+                "note_id": generated_note.note_id,
+                "template_kind": template_kind,
+            }),
+            &activity_happened_at,
+        )?;
         Ok(ReviewActionResultRead {
             message: format!("Generated {} note for {}.", rendered.title, updated_round.round_label),
             round: Some(updated_round),
@@ -1645,6 +1755,15 @@ mod tests {
                 "updated_at": "2026-04-15T00:00:00Z"
             }),
         }
+    }
+
+    fn work_activity_mutations(service: &DesktopService) -> Vec<crate::models::PendingMutationRead> {
+        service
+            .list_pending_mutations()
+            .unwrap()
+            .into_iter()
+            .filter(|mutation| mutation.mutation_type == "work_activity.record")
+            .collect()
     }
 
     #[test]
@@ -2271,6 +2390,12 @@ mod tests {
             .unwrap();
         assert_eq!(duplicate.results[0].status, "duplicate");
         assert_eq!(service.list_paper_attachments("paper-1").unwrap().len(), 1);
+        let work_mutations = work_activity_mutations(&service);
+        assert_eq!(work_mutations.len(), 1);
+        assert_eq!(
+            work_mutations[0].payload["activity_type"].as_str(),
+            Some("attachment_imported")
+        );
     }
 
     #[test]
@@ -2406,6 +2531,12 @@ mod tests {
         assert!(created.note.content.unwrap_or_default().contains("# Research Note"));
         assert!(PathBuf::from(created.note.note.absolute_path.unwrap()).exists());
         assert_eq!(service.list_paper_notes("paper-1").unwrap().len(), 1);
+        let work_mutations = work_activity_mutations(&service);
+        assert_eq!(work_mutations.len(), 1);
+        assert_eq!(
+            work_mutations[0].payload["activity_type"].as_str(),
+            Some("note_created")
+        );
     }
 
     #[test]
@@ -2481,6 +2612,12 @@ mod tests {
         assert_eq!(disk_content, "# Updated Note\n\nSaved locally.\n");
         assert_eq!(saved.note.content.unwrap_or_default(), "# Updated Note\n\nSaved locally.\n");
         assert!(saved.note.note.sha256.is_some());
+        let work_mutations = work_activity_mutations(&service);
+        assert_eq!(work_mutations.len(), 2);
+        assert_eq!(
+            work_mutations[1].payload["activity_type"].as_str(),
+            Some("note_saved")
+        );
     }
 
     #[test]
@@ -2578,6 +2715,12 @@ mod tests {
 
         assert_eq!(result.round.as_ref().map(|round| round.round_label.as_str()), Some("Round 1"));
         assert_eq!(service.get_paper_detail("paper-1").unwrap().review_round_count, 1);
+        let work_mutations = work_activity_mutations(&service);
+        assert_eq!(work_mutations.len(), 1);
+        assert_eq!(
+            work_mutations[0].payload["activity_type"].as_str(),
+            Some("review_round_created")
+        );
     }
 
     #[test]
@@ -2750,6 +2893,13 @@ mod tests {
             matrix.generated_note.as_ref().map(|note| note.kind.as_str()),
             Some("reviewer_matrix")
         );
+        let work_mutations = work_activity_mutations(&service);
+        assert!(work_mutations.iter().any(|mutation| {
+            mutation.payload["activity_type"].as_str() == Some("response_letter_generated")
+        }));
+        assert!(work_mutations.iter().any(|mutation| {
+            mutation.payload["activity_type"].as_str() == Some("reviewer_matrix_generated")
+        }));
     }
 
     #[test]
@@ -2814,5 +2964,53 @@ mod tests {
 
         service.disconnect_device().unwrap();
         assert!(note_path.exists());
+    }
+
+    #[test]
+    fn sync_now_handles_work_activity_record_mutations() {
+        let service = service();
+        let api = FakeApi {
+            push_results: Rc::new(RefCell::new(vec![Ok(RemoteSyncPushResponse {
+                results: vec![RemoteSyncMutationResult {
+                    client_mutation_id: "desktop-activity".to_string(),
+                    status: "applied".to_string(),
+                    error_message: None,
+                    resulting_event_sequence: None,
+                }],
+            })])),
+            ..FakeApi::default()
+        };
+        connect(
+            &service,
+            &api,
+            vec![Ok(RemoteSyncFeed {
+                events: vec![paper_event("revision", 1)],
+                next_after_sequence: 1,
+                has_more: false,
+            })],
+        );
+        service
+            .cache()
+            .enqueue_mutation(
+                "activity",
+                "desktop-activity",
+                "work_activity.record",
+                "work_activity_event",
+                Some("paper-1"),
+                &json!({
+                    "paper_id": "paper-1",
+                    "activity_type": "note_saved",
+                    "summary": "Saved a local note.",
+                    "metadata": {"note_id": "note-1"},
+                    "happened_at": "2026-04-15T00:00:00Z"
+                }),
+            )
+            .unwrap();
+
+        let response = service.sync_with(&api).unwrap();
+
+        assert_eq!(response.applied_count, 1);
+        assert_eq!(response.failed_count, 0);
+        assert_eq!(response.pending_mutation_count, 0);
     }
 }

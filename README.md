@@ -18,6 +18,7 @@ Private repository. Proprietary and confidential.
 - WeChat identity bindings plus digest issue/publication reserve objects for future official-account and mini-program flows
 - Official-account provider boundary with `disabled` / `dry_run` / explicit `real` mode, callback ingress, and token-backed real-send activation
 - Tauri 2 desktop shell with Rust-side pull sync, local SQLite cache, mutation outbox, minimal writeback for paper/progress/subscription policy edits, a local paper workspace layer, local markdown notes/templates, and a local review-matrix workflow that generates reviewer-matrix / response-letter drafts
+- Pulse input-layer foundation with lightweight `WorkActivityEvent` capture, `ResearchWatchProfile` management, desktop-emitted work activity mutations, and deterministic pulse-input preview APIs
 - Seed data, Docker Compose, pytest, Ruff, and CI
 
 ## Architecture
@@ -109,6 +110,19 @@ The desktop shell now also supports a local-only review matrix workflow:
 - generated local markdown drafts for `reviewer_matrix` and `response_letter`
 
 Review matrix data and generated drafts stay local in v1 and do not sync to the backend.
+
+Selected desktop-local actions now also emit lightweight `work_activity.record` mutations through the existing sync outbox so the cloud can build pulse inputs without receiving local file or note contents.
+
+## Pulse input layer
+The backend now includes a pulse input layer for future retrieval and recap work:
+- `WorkActivityEvent` for structured "what the user did" signals
+- `ResearchWatchProfile` for structured "what the user should watch" interests
+- `GET /pulse/input-preview/{user_id}` for a deterministic preview of the current input window, activity summary, and effective watch seeds
+
+This phase remains input-only:
+- no external retrieval
+- no AI summarization
+- no final yesterday-summary pulse cards yet
 
 ## Common commands
 - `make install`: install runtime and dev dependencies
@@ -234,6 +248,14 @@ With Docker Compose, the codebase now exposes separate `api`, `worker`, and `sch
 - Pulse:
   - `POST /pulse/preview/{user_id}`
   - `POST /pulse/run/{user_id}`
+  - `GET /pulse/input-preview/{user_id}`
+- Research inputs:
+  - `GET /work-activity-events`
+  - `GET /research-watch-profiles`
+  - `POST /research-watch-profiles`
+  - `PATCH /research-watch-profiles/{profile_id}`
+  - `DELETE /research-watch-profiles/{profile_id}`
+  - `POST /research-watch-profiles/bootstrap/{paper_id}`
 - Ops:
   - `GET /ops/metrics`
   - `GET /ops/heartbeats`
@@ -253,6 +275,7 @@ Desktop writeback in v1 is intentionally narrow:
 - `paper.patch`
 - `progress_event.create`
 - `subscription_policy.patch`
+- `work_activity.record`
 - Mini:
   - `GET /mini/bootstrap`
   - `GET /mini/today`
