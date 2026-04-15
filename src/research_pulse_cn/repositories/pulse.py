@@ -7,7 +7,7 @@ from sqlalchemy import or_, select, update
 from sqlalchemy.orm import Session, selectinload
 
 from research_pulse_cn.db.models import DeliveryJob, PulseCard, PulseJob
-from research_pulse_cn.domain.enums import PulseJobScheduledReason, PulseJobStatus
+from research_pulse_cn.domain.enums import PulseCardType, PulseJobScheduledReason, PulseJobStatus
 
 
 class PulseRepository:
@@ -152,3 +152,30 @@ class PulseRepository:
                 continue
             signatures.add((card.card_type.value, str(card.source_paper_id)))
         return signatures
+
+    def list_recent_yesterday_summary_dates(
+        self,
+        *,
+        user_id: UUID,
+        since: datetime,
+    ) -> set[str]:
+        statement = (
+            select(PulseCard)
+            .outerjoin(DeliveryJob, DeliveryJob.pulse_card_id == PulseCard.id)
+            .where(
+                PulseCard.user_id == user_id,
+                PulseCard.card_type == PulseCardType.YESTERDAY_SUMMARY,
+                or_(
+                    PulseCard.generated_at >= since,
+                    DeliveryJob.created_at >= since,
+                    DeliveryJob.sent_at >= since,
+                ),
+            )
+        )
+        summary_dates: set[str] = set()
+        for card in self.session.scalars(statement):
+            metadata = card.candidate_metadata if isinstance(card.candidate_metadata, dict) else {}
+            summary_date = metadata.get("summary_date")
+            if isinstance(summary_date, str) and summary_date:
+                summary_dates.add(summary_date)
+        return summary_dates

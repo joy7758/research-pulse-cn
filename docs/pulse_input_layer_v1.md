@@ -103,7 +103,15 @@
 
 ## Future Work
 - external academic retrieval driven by watch seeds
-- yesterday-summary pulse cards built from `WorkActivityEvent`
+- richer multi-day activity cards built from `WorkActivityEvent`
 - related paper and research-news retrieval
 - richer watch-profile derivation from user portfolios
 - stronger input weighting from operational feedback
+
+## Relationship To Yesterday Summary
+- The pulse pipeline now consumes this input layer to build one deterministic `yesterday_summary` pulse candidate per user when the previous local day has qualifying work activity.
+- The builder still uses only local backend state:
+  - `WorkActivityEvent`
+  - subscription-policy timezone hints
+  - application default timezone fallback
+- No external retrieval or AI recap text is involved.

@@ -43,6 +43,7 @@
   - otherwise returns a valid empty state payload
 - `GET /mini/digest-issues/{digest_issue_id}`
   - returns digest detail in stable `sort_order`
+  - digest items may include non-paper-centric cards such as `yesterday_summary`
 - `GET /mini/papers`
   - returns compact paper summaries with stable ordering
 - `GET /mini/papers/{paper_id}`

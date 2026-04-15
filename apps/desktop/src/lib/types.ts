@@ -200,10 +200,19 @@ export type PaperListItemRead = {
   workspaceReady: boolean;
 };
 
+export type PulseCardTypeRead =
+  | "signal_change"
+  | "stalled_progress"
+  | "deadline_risk"
+  | "next_action"
+  | "yesterday_summary"
+  | "related_paper"
+  | string;
+
 export type DigestHighlightRead = {
   sortOrder: number;
   pulseCardId: string;
-  cardType: string;
+  cardType: PulseCardTypeRead;
   sourcePaperId: string | null;
   title: string;
   summary: string;

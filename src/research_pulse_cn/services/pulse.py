@@ -53,6 +53,7 @@ from research_pulse_cn.services.common import commit_session
 from research_pulse_cn.services.delivery import DeliveryService
 from research_pulse_cn.services.digest import DigestService
 from research_pulse_cn.services.sync_events import SyncEventService
+from research_pulse_cn.services.yesterday_summary import YesterdaySummaryBuilder
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +62,8 @@ CARD_TYPE_TIE_BREAK_ORDER: dict[PulseCardType, int] = {
     PulseCardType.DEADLINE_RISK: 1,
     PulseCardType.STALLED_PROGRESS: 2,
     PulseCardType.NEXT_ACTION: 3,
-    PulseCardType.RELATED_PAPER: 4,
+    PulseCardType.YESTERDAY_SUMMARY: 4,
+    PulseCardType.RELATED_PAPER: 5,
 }
 
 TITLE_HINTS: dict[PulseCardType, str] = {
@@ -69,6 +71,7 @@ TITLE_HINTS: dict[PulseCardType, str] = {
     PulseCardType.DEADLINE_RISK: "Deadline risk identified",
     PulseCardType.STALLED_PROGRESS: "Progress appears stalled",
     PulseCardType.NEXT_ACTION: "Next action ready",
+    PulseCardType.YESTERDAY_SUMMARY: "Yesterday summary ready",
     PulseCardType.RELATED_PAPER: "Related paper worth reviewing",
 }
 
@@ -355,6 +358,9 @@ class DeterministicRuleEngine(RuleEngine):
         deduped: dict[tuple[UUID | None, PulseCardType], PulseCandidate] = {}
         for fact in facts:
             title_hint = TITLE_HINTS[fact.card_type]
+            title = f"{title_hint}: {fact.paper_title}"
+            if fact.card_type == PulseCardType.YESTERDAY_SUMMARY:
+                title = f"Yesterday summary for {fact.metadata['summary_date']}"
             candidate = PulseCandidate(
                 id=f"{fact.card_type.value}:{fact.source_paper_id or 'global'}:{fact.id}",
                 fact_id=fact.id,
@@ -364,7 +370,7 @@ class DeterministicRuleEngine(RuleEngine):
                 source_timestamp=fact.source_timestamp,
                 paper_title=fact.paper_title,
                 title_hint=title_hint,
-                title=f"{title_hint}: {fact.paper_title}",
+                title=title,
                 summary=fact.summary,
                 why_now=fact.why_now,
                 action_text=fact.action_text,
@@ -412,10 +418,20 @@ class PulseService:
         self.delivery_service = DeliveryService(session, adapter_registry=adapter_registry)
         self.digest_service = DigestService(session, now_provider=self.now_provider)
         self.sync_events = SyncEventService(session)
+        self.yesterday_summary_builder = YesterdaySummaryBuilder(
+            session,
+            settings=self.settings,
+            now_provider=self.now_provider,
+        )
         self.metrics = get_metrics()
 
-    def preview(self, user_id: UUID) -> PulsePipelineResult:
-        return self._build_pipeline(user_id)
+    def preview(
+        self,
+        user_id: UUID,
+        *,
+        timezone_name: str | None = None,
+    ) -> PulsePipelineResult:
+        return self._build_pipeline(user_id, timezone_name=timezone_name)
 
     def enqueue_run(
         self,
@@ -441,12 +457,17 @@ class PulseService:
         commit_session(self.session)
         return self.pulse_repository.get_job(job.id) or job
 
-    def run_with_pipeline(self, user_id: UUID) -> tuple[PulseJob, PulsePipelineResult]:
+    def run_with_pipeline(
+        self,
+        user_id: UUID,
+        *,
+        timezone_name: str | None = None,
+    ) -> tuple[PulseJob, PulsePipelineResult]:
         job = self.enqueue_run(user_id)
-        return self.process_job_with_pipeline(job.id)
+        return self.process_job_with_pipeline(job.id, timezone_name=timezone_name)
 
-    def run_now(self, user_id: UUID) -> PulseJob:
-        job, _pipeline = self.run_with_pipeline(user_id)
+    def run_now(self, user_id: UUID, *, timezone_name: str | None = None) -> PulseJob:
+        job, _pipeline = self.run_with_pipeline(user_id, timezone_name=timezone_name)
         return job
 
     def process_pending_jobs(
@@ -477,6 +498,7 @@ class PulseService:
         job_id: UUID,
         *,
         lease_owner: str | None = None,
+        timezone_name: str | None = None,
     ) -> tuple[PulseJob, PulsePipelineResult]:
         job = self.get_job(job_id)
         with bind_log_context(pulse_job_id=job.id, user_id=job.user_id):
@@ -496,6 +518,7 @@ class PulseService:
                 pipeline = self._build_pipeline(
                     job.user_id,
                     subscription_policy_id=job.subscription_policy_id,
+                    timezone_name=timezone_name,
                 )
                 cards = [
                     self._persist_card(job, candidate) for candidate in pipeline.selected_candidates
@@ -515,6 +538,14 @@ class PulseService:
                 commit_session(self.session)
                 self.metrics.increment("pulse_jobs_completed_total")
                 self.metrics.increment("pulse_cards_selected_total", len(cards))
+                yesterday_summary_count = sum(
+                    1 for card in cards if card.card_type == PulseCardType.YESTERDAY_SUMMARY
+                )
+                if yesterday_summary_count:
+                    self.metrics.increment(
+                        "pulse_yesterday_summary_cards_selected_total",
+                        yesterday_summary_count,
+                    )
                 logger.info("pulse job completed", extra={"selected_cards": len(cards)})
             except Exception as exc:
                 self.session.rollback()
@@ -550,6 +581,7 @@ class PulseService:
         user_id: UUID,
         *,
         subscription_policy_id: UUID | None = None,
+        timezone_name: str | None = None,
     ) -> PulsePipelineResult:
         self._ensure_user_exists(user_id)
         policies = self._policies_for_pipeline(
@@ -557,13 +589,33 @@ class PulseService:
             subscription_policy_id=subscription_policy_id,
         )
         resolved_policy = self._resolve_policy(policies)
+        facts = list(self.fact_collector.collect(str(user_id)))
+        yesterday_summary_fact = self._build_yesterday_summary_fact(
+            user_id=user_id,
+            config=resolved_policy.config,
+            timezone_name=timezone_name,
+        )
+        if yesterday_summary_fact is not None:
+            facts.append(yesterday_summary_fact)
+            self.metrics.increment("pulse_yesterday_summary_candidates_total")
         facts = self._filter_facts_for_config(
-            list(self.fact_collector.collect(str(user_id))),
+            sorted(
+                facts,
+                key=lambda fact: (
+                    CARD_TYPE_TIE_BREAK_ORDER[fact.card_type],
+                    fact.paper_title.lower(),
+                    fact.id,
+                ),
+            ),
             resolved_policy.config,
         )
         candidates = list(self.rule_engine.generate_candidates(facts))
 
         recent_signatures = self.pulse_repository.list_recent_card_signatures(
+            user_id=user_id,
+            since=self.now_provider() - timedelta(hours=resolved_policy.config.dedupe_window_hours),
+        )
+        recent_yesterday_summary_dates = self.pulse_repository.list_recent_yesterday_summary_dates(
             user_id=user_id,
             since=self.now_provider() - timedelta(hours=resolved_policy.config.dedupe_window_hours),
         )
@@ -578,6 +630,7 @@ class PulseService:
                 candidate,
                 resolved_policy.config,
                 recent_signatures,
+                recent_yesterday_summary_dates,
                 quiet_hour_window,
             )
 
@@ -618,6 +671,10 @@ class PulseService:
                 stagnation_days = int(fact.metadata.get("stagnation_days", 0))
                 if stagnation_days < config.stale_days:
                     continue
+            if fact.card_type == PulseCardType.YESTERDAY_SUMMARY:
+                total_events = int(fact.metadata.get("total_events", 0))
+                if total_events < config.yesterday_summary_min_events:
+                    continue
             filtered.append(fact)
         return filtered
 
@@ -631,8 +688,16 @@ class PulseService:
             PulseCardType.STALLED_PROGRESS: self.settings.pulse_weight_stalled_progress,
             PulseCardType.DEADLINE_RISK: self.settings.pulse_weight_deadline_risk,
             PulseCardType.NEXT_ACTION: self.settings.pulse_weight_next_action,
+            PulseCardType.YESTERDAY_SUMMARY: self.settings.pulse_weight_yesterday_summary,
             PulseCardType.RELATED_PAPER: self.settings.pulse_weight_related_paper,
         }
+        yesterday_summary_min_events = self.settings.pulse_yesterday_summary_min_events
+        yesterday_summary_activity_diversity_bonus = (
+            self.settings.pulse_modifier_yesterday_summary_activity_diversity
+        )
+        yesterday_summary_multi_paper_bonus = (
+            self.settings.pulse_modifier_yesterday_summary_multi_paper
+        )
         urgency_modifiers = {
             "recent_signal_delta": self.settings.pulse_modifier_recent_signal_delta,
             "approaching_deadline": self.settings.pulse_modifier_approaching_deadline,
@@ -665,6 +730,16 @@ class PulseService:
                 min_score = int(overrides["min_score"])
             if "max_cards_per_run" in overrides:
                 max_cards_per_run = int(overrides["max_cards_per_run"])
+            if "yesterday_summary_min_events" in overrides:
+                yesterday_summary_min_events = int(overrides["yesterday_summary_min_events"])
+            if "yesterday_summary_activity_diversity_bonus" in overrides:
+                yesterday_summary_activity_diversity_bonus = int(
+                    overrides["yesterday_summary_activity_diversity_bonus"]
+                )
+            if "yesterday_summary_multi_paper_bonus" in overrides:
+                yesterday_summary_multi_paper_bonus = int(
+                    overrides["yesterday_summary_multi_paper_bonus"]
+                )
             weight_overrides = overrides.get("score_weights")
             if isinstance(weight_overrides, dict):
                 for key, value in weight_overrides.items():
@@ -682,6 +757,9 @@ class PulseService:
             dedupe_window_hours=dedupe_window_hours,
             min_score=min_score,
             max_cards_per_run=max(1, max_cards_per_run),
+            yesterday_summary_min_events=max(1, yesterday_summary_min_events),
+            yesterday_summary_activity_diversity_bonus=yesterday_summary_activity_diversity_bonus,
+            yesterday_summary_multi_paper_bonus=yesterday_summary_multi_paper_bonus,
             score_weights=score_weights,
             urgency_modifiers=urgency_modifiers,
             quiet_hours=quiet_hours,
@@ -690,6 +768,27 @@ class PulseService:
 
     def _score_candidate(self, candidate: PulseCandidate, config: PulseScoringConfig) -> None:
         breakdown = ScoreBreakdown(base_weight=config.score_weights[candidate.card_type])
+
+        if candidate.card_type == PulseCardType.YESTERDAY_SUMMARY:
+            total_events = int(candidate.candidate_metadata.get("total_events", 0))
+            distinct_activity_types = int(
+                candidate.candidate_metadata.get("distinct_activity_type_count", 0)
+            )
+            touched_paper_count = int(candidate.candidate_metadata.get("touched_paper_count", 0))
+            event_volume_bonus = min(
+                6,
+                max(0, total_events - config.yesterday_summary_min_events),
+            )
+            if event_volume_bonus:
+                breakdown.modifiers["yesterday_summary_event_volume"] = event_volume_bonus
+            if distinct_activity_types > 1:
+                breakdown.modifiers["yesterday_summary_activity_diversity"] = (
+                    config.yesterday_summary_activity_diversity_bonus
+                )
+            if touched_paper_count > 1:
+                breakdown.modifiers["yesterday_summary_multi_paper"] = (
+                    config.yesterday_summary_multi_paper_bonus
+                )
 
         if candidate.card_type == PulseCardType.SIGNAL_CHANGE:
             signal_age_hours = int(candidate.candidate_metadata.get("hours_since_signal", 999999))
@@ -725,6 +824,7 @@ class PulseService:
         candidate: PulseCandidate,
         config: PulseScoringConfig,
         recent_signatures: set[tuple[str, str]],
+        recent_yesterday_summary_dates: set[str],
         quiet_hour_window: dict[str, Any] | None,
     ) -> None:
         if candidate.candidate_metadata.get("paper_type") == PaperType.PAUSED.value:
@@ -759,7 +859,24 @@ class PulseService:
                 )
             )
 
-        if candidate.source_paper_id is not None:
+        if candidate.card_type == PulseCardType.YESTERDAY_SUMMARY:
+            summary_date = str(candidate.candidate_metadata.get("summary_date", ""))
+            if summary_date and summary_date in recent_yesterday_summary_dates:
+                candidate.add_suppression(
+                    SuppressionReason(
+                        code=SuppressionCode.DEDUPE_WINDOW,
+                        message=(
+                            "A matching user/card_type/summary_date card already exists "
+                            "in the dedupe window."
+                        ),
+                        details={
+                            "card_type": candidate.card_type.value,
+                            "summary_date": summary_date,
+                            "dedupe_window_hours": config.dedupe_window_hours,
+                        },
+                    )
+                )
+        elif candidate.source_paper_id is not None:
             signature = (candidate.card_type.value, str(candidate.source_paper_id))
             if signature in recent_signatures:
                 candidate.add_suppression(
@@ -776,6 +893,50 @@ class PulseService:
                         },
                     )
                 )
+
+    def _build_yesterday_summary_fact(
+        self,
+        *,
+        user_id: UUID,
+        config: PulseScoringConfig,
+        timezone_name: str | None,
+    ) -> PulseFact | None:
+        snapshot = self.yesterday_summary_builder.build(
+            user_id=user_id,
+            timezone_name=timezone_name,
+            reference=self.now_provider(),
+        )
+        if snapshot.total_events < config.yesterday_summary_min_events:
+            return None
+        summary_date = snapshot.summary_date.isoformat()
+        touched_paper_ids = [str(item.paper_id) for item in snapshot.touched_papers]
+        touched_paper_titles = [item.title for item in snapshot.touched_papers]
+        return PulseFact(
+            id=f"yesterday_summary:{user_id}:{summary_date}",
+            user_id=user_id,
+            card_type=PulseCardType.YESTERDAY_SUMMARY,
+            source_paper_id=None,
+            source_timestamp=snapshot.window_ended_at,
+            paper_title="Yesterday summary",
+            summary=snapshot.text_summary,
+            why_now=f"{summary_date} provides a concise recap before today's work starts.",
+            action_text="Review yesterday's momentum before planning today.",
+            deep_link=f"/pulse/input-preview/{user_id}",
+            evidence_refs=[],
+            metadata={
+                "summary_date": summary_date,
+                "timezone": snapshot.timezone_name,
+                "window_started_at": snapshot.window_started_at.isoformat(),
+                "window_ended_at": snapshot.window_ended_at.isoformat(),
+                "total_events": snapshot.total_events,
+                "activity_type_counts": snapshot.activity_type_counts,
+                "distinct_activity_type_count": snapshot.distinct_activity_type_count,
+                "top_activity_types": snapshot.top_activity_types,
+                "touched_paper_ids": touched_paper_ids,
+                "touched_paper_titles": touched_paper_titles,
+                "touched_paper_count": len(touched_paper_ids),
+            },
+        )
 
     def _select_candidates(
         self,

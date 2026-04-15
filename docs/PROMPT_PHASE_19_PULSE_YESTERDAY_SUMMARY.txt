@@ -1,0 +1,214 @@
+Read AGENTS.md, docs/BUILD_SPEC.md, docs/architecture.md, docs/development.md, docs/pulse_scoring.md, docs/operations.md, docs/auth_admin_boundary.md, docs/sync_foundation.md, docs/official_account_digest_reserve.md, docs/mini_program_readonly_reserve.md, docs/official_account_provider_boundary.md, docs/official_account_real_send_v1.md, docs/desktop_tauri_skeleton_v1.md, docs/desktop_writeback_sync_v1.md, docs/desktop_local_workspace_v1.md, docs/desktop_local_notes_templates_v1.md, docs/desktop_review_matrix_response_v1.md, and docs/pulse_input_layer_v1.md before editing.
+
+Implement Phase 19 only: pulse yesterday-summary card v1.
+
+Hard boundaries for this phase:
+- Do not implement any external web/news/paper retrieval.
+- Do not implement related-paper or related-news recommendation fetching.
+- Do not add AI summarization, AI query generation, or LLM-based recap text.
+- Do not add new delivery channels.
+- Do not add customer-facing UI beyond minimal compatibility needed for existing desktop/digest views.
+- Do not sync local file contents, note contents, or review-note contents to the backend.
+- Do not add multi-tenant or institution features.
+- Do not weaken existing admin auth, internal service auth, device-token sync auth, mini-read auth, or official-account provider boundaries.
+- Do not replace the modular monolith backend architecture.
+
+Primary goal:
+Add a deterministic "yesterday summary" pulse card using only WorkActivityEvent data.
+
+This phase should make the repository suitable for:
+- generating one concise previous-day work summary card per user per pulse run
+- previewing yesterday-summary input and scoring inside the existing pulse pipeline
+- persisting yesterday-summary cards into PulseCard when selected
+- including yesterday-summary cards in digest/today views without external retrieval
+
+Architectural intent:
+- Yesterday summary is generated from WorkActivityEvent only.
+- No AI or external retrieval is involved.
+- It should fit the existing facts -> candidates -> scoring -> suppression -> selection pipeline.
+- It should remain explainable and deterministic.
+
+Required changes:
+
+1. Extend pulse card model
+Add support for a new card type:
+- yesterday_summary
+
+Requirements:
+- update enums / schemas / validators / API response models as needed
+- keep schema changes minimal
+- if a database migration is required for enum evolution, add the minimal Alembic migration
+- source_paper_id may remain null for this card type
+- candidate_metadata and score_breakdown should carry enough explanation for ops/debugging
+
+2. Yesterday summary builder service
+Add a deterministic service for building a previous-local-day work summary from WorkActivityEvent rows.
+
+Requirements:
+- input:
+  - user_id
+  - target local date or effective timezone context
+- default target should be the previous local date relative to the effective pulse timezone
+- effective timezone resolution order:
+  1. explicit request parameter if provided
+  2. first enabled daily SubscriptionPolicy policy.timezone if available
+  3. app default timezone
+- include only user-work-centric activity
+- exclude source=system events from the summary
+- output must be machine-readable and include at minimum:
+  - summary_date
+  - total_events
+  - activity_type_counts
+  - touched_papers with paper_id/title/activity_count
+  - distinct_activity_type_count
+  - top_activity_types
+- add a deterministic short text summary builder from this structure
+- no AI generation
+
+3. Pulse fact/candidate generation
+Integrate yesterday summary into the existing pulse pipeline.
+
+Requirements:
+- generate at most one yesterday_summary candidate per user per pulse run
+- do not generate a candidate when total_events = 0
+- candidate title/summary/why_now must be deterministic and concise
+- candidate_metadata should include:
+  - summary_date
+  - total_events
+  - activity_type_counts
+  - touched_paper_ids
+  - touched_paper_titles when practical
+- maintain compatibility with existing preview payloads
+
+4. Scoring and ordering
+Integrate yesterday_summary into scoring and tie-break logic.
+
+Requirements:
+- add configurable scoring knobs, at minimum:
+  - yesterday_summary_base_weight
+  - yesterday_summary_min_events default 1
+  - yesterday_summary_activity_diversity_bonus
+  - yesterday_summary_multi_paper_bonus
+- scoring should be deterministic and explainable
+- score modifiers may depend on:
+  - total_events
+  - distinct activity types
+  - number of touched papers
+- update card_type ordering to include yesterday_summary in a documented stable place
+- do not let this break existing tie-break determinism
+
+5. Suppression and dedupe
+Add safe suppression behavior for yesterday_summary.
+
+Requirements:
+- yesterday_summary should respect existing:
+  - quiet hours
+  - frequency cap
+  - low-score suppression
+- dedupe should prevent repeating the same yesterday summary for the same:
+  - user
+  - summary_date
+  - card_type = yesterday_summary
+within the existing dedupe logic/window or a minimal explicit extension if needed
+- no fake duplicate generation
+
+6. Pulse preview and run behavior
+Enhance existing endpoints:
+
+A. POST /pulse/preview/{user_id}
+Requirements:
+- include yesterday_summary candidate when applicable
+- include its score breakdown and suppression reasons if suppressed
+- include enough metadata to inspect the summary_date and event counts
+
+B. POST /pulse/run/{user_id}
+Requirements:
+- if yesterday_summary is selected, persist it as a PulseCard
+- ensure existing outbox/delivery flow remains intact
+- summary_date should remain inspectable from PulseCard candidate_metadata/build fields
+
+7. Digest and today-view compatibility
+Update downstream consumers minimally so they tolerate yesterday_summary cleanly.
+
+Requirements:
+- digest issue building must support selected cards with:
+  - card_type = yesterday_summary
+  - no source_paper_id
+- compact digest payloads should not assume every card is paper-centric
+- desktop read models / TS types should accept yesterday_summary card_type where needed
+- no major desktop feature work beyond compatibility
+
+8. Metrics and logging
+Add minimal observability.
+
+Required metrics:
+- pulse_yesterday_summary_candidates_total
+- pulse_yesterday_summary_cards_selected_total
+
+Logging requirements:
+- include user_id where practical
+- include summary_date where practical
+- include total_events where practical
+- include request_id where available
+- do not log local file contents or note contents
+
+9. Tests
+Add or update tests covering at minimum:
+
+Backend:
+- no yesterday_summary candidate when previous local day has zero qualifying events
+- yesterday_summary candidate appears when previous local day has qualifying events
+- source=system events are excluded from yesterday summary
+- yesterday_summary scoring is deterministic and explainable
+- dedupe prevents repeating the same summary_date card
+- /pulse/preview/{user_id} exposes yesterday_summary details
+- /pulse/run/{user_id} persists yesterday_summary when selected
+- digest builder tolerates yesterday_summary cards without source_paper_id
+- existing tests continue to pass
+
+Desktop / TS where practical:
+- card type unions or view helpers accept yesterday_summary without breaking today overview
+- no major desktop behavior change required beyond compatibility
+
+10. Documentation
+Add docs/pulse_yesterday_summary_v1.md
+
+It should explain:
+- why yesterday summary is being added before external retrieval
+- effective timezone resolution
+- yesterday summary builder logic
+- card generation/scoring/suppression behavior
+- pulse preview/run implications
+- digest compatibility notes
+- current non-goals
+- future work:
+  - today suggestion card
+  - external academic retrieval
+  - related-paper/news cards
+  - richer activity summarization
+
+Also update:
+- README.md
+- docs/development.md
+- docs/architecture.md
+- docs/pulse_scoring.md
+- docs/pulse_input_layer_v1.md
+- docs/official_account_digest_reserve.md
+- docs/mini_program_readonly_reserve.md
+- any docs that should mention yesterday_summary
+
+11. Quality bar
+- keep code typed and readable
+- keep backend schema additions minimal and justified
+- do not add unnecessary dependencies
+- do not require live backend credentials in tests
+- do not add external retrieval in this phase
+- run available checks
+- fix obvious lint/test issues
+- end with a concise summary:
+  - files changed
+  - migrations created if any
+  - new settings
+  - new/changed endpoints
+  - yesterday_summary scoring knobs
+  - next-phase recommendation only

@@ -48,8 +48,14 @@ class Settings(BaseSettings):
     pulse_weight_next_action: int = Field(
         default=8, validation_alias="APP_PULSE_WEIGHT_NEXT_ACTION"
     )
+    pulse_weight_yesterday_summary: int = Field(
+        default=10, validation_alias="APP_PULSE_WEIGHT_YESTERDAY_SUMMARY"
+    )
     pulse_weight_related_paper: int = Field(
         default=4, validation_alias="APP_PULSE_WEIGHT_RELATED_PAPER"
+    )
+    pulse_yesterday_summary_min_events: int = Field(
+        default=1, validation_alias="APP_PULSE_YESTERDAY_SUMMARY_MIN_EVENTS"
     )
     pulse_modifier_recent_signal_delta: int = Field(
         default=8, validation_alias="APP_PULSE_MODIFIER_RECENT_SIGNAL_DELTA"
@@ -62,6 +68,14 @@ class Settings(BaseSettings):
     )
     pulse_modifier_explicit_next_action: int = Field(
         default=4, validation_alias="APP_PULSE_MODIFIER_EXPLICIT_NEXT_ACTION"
+    )
+    pulse_modifier_yesterday_summary_activity_diversity: int = Field(
+        default=3,
+        validation_alias="APP_PULSE_MODIFIER_YESTERDAY_SUMMARY_ACTIVITY_DIVERSITY",
+    )
+    pulse_modifier_yesterday_summary_multi_paper: int = Field(
+        default=4,
+        validation_alias="APP_PULSE_MODIFIER_YESTERDAY_SUMMARY_MULTI_PAPER",
     )
     default_timezone: str = Field(default="UTC", validation_alias="APP_DEFAULT_TIMEZONE")
     pulse_default_send_hour_local: int = Field(

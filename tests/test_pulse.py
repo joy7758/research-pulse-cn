@@ -8,15 +8,19 @@ from research_pulse_cn.domain.enums import (
     PulseCardType,
     SignalSource,
     SubscriptionFrequency,
+    WorkActivitySource,
+    WorkActivityType,
 )
 from research_pulse_cn.schemas.paper import PaperProfileCreate, SignalSnapshotCreate
 from research_pulse_cn.schemas.subscription_policy import SubscriptionPolicyCreate
 from research_pulse_cn.schemas.user import UserProfileCreate
 from research_pulse_cn.services.delivery import DeliveryService
+from research_pulse_cn.services.digest import DigestService
 from research_pulse_cn.services.paper import PaperService
 from research_pulse_cn.services.pulse import PulseService
 from research_pulse_cn.services.subscription_policy import SubscriptionPolicyService
 from research_pulse_cn.services.user import UserService
+from research_pulse_cn.services.work_activity import WorkActivityService
 
 
 def create_user(session, *, email: str = "pulse@example.com"):
@@ -95,6 +99,7 @@ def create_policy(
     channel: ChannelType = ChannelType.IN_APP,
     endpoint: str = "console://local",
     frequency_cap: int = 3,
+    frequency: SubscriptionFrequency = SubscriptionFrequency.EVENT,
     quiet_hours: dict | None = None,
     policy: dict | None = None,
 ):
@@ -103,7 +108,7 @@ def create_policy(
             user_id=user_id,
             channel=channel,
             enabled=True,
-            frequency=SubscriptionFrequency.EVENT,
+            frequency=frequency,
             quiet_hours=quiet_hours,
             frequency_cap=frequency_cap,
             endpoint=endpoint,
@@ -114,6 +119,26 @@ def create_policy(
 
 def build_service(session, *, now: datetime) -> PulseService:
     return PulseService(session, now_provider=lambda: now)
+
+
+def record_work_activity(
+    session,
+    *,
+    user_id,
+    paper_id=None,
+    activity_type: WorkActivityType,
+    summary: str,
+    happened_at: datetime,
+    source: WorkActivitySource = WorkActivitySource.API,
+):
+    return WorkActivityService(session).record_event(
+        user_id=user_id,
+        paper_id=paper_id,
+        activity_type=activity_type,
+        summary=summary,
+        happened_at=happened_at,
+        source=source,
+    )
 
 
 def test_signal_change_outranks_stalled_progress_when_weight_is_higher(session) -> None:
@@ -353,3 +378,209 @@ def test_delivery_retry_then_dead_letter(session) -> None:
     assert any(
         delivery.status == DeliveryJobStatus.DEAD_LETTER for delivery in refreshed_job.delivery_jobs
     )
+
+
+def test_no_yesterday_summary_candidate_when_previous_local_day_has_zero_events(session) -> None:
+    now = datetime(2026, 4, 15, 12, 0, tzinfo=UTC)
+    user = create_user(session, email="no-yesterday-summary@example.com")
+
+    pipeline = build_service(session, now=now).preview(user.id)
+
+    assert all(fact.card_type != PulseCardType.YESTERDAY_SUMMARY for fact in pipeline.facts)
+    assert all(
+        candidate.card_type != PulseCardType.YESTERDAY_SUMMARY for candidate in pipeline.candidates
+    )
+
+
+def test_yesterday_summary_candidate_appears_for_previous_day_activity(session) -> None:
+    now = datetime(2026, 4, 15, 12, 0, tzinfo=UTC)
+    user = create_user(session, email="with-yesterday-summary@example.com")
+    paper = create_paper(
+        session,
+        user_id=user.id,
+        title="Yesterday Summary Paper",
+        last_touch_at=now,
+        next_action=None,
+        priority=3,
+    )
+    record_work_activity(
+        session,
+        user_id=user.id,
+        paper_id=paper.id,
+        activity_type=WorkActivityType.NOTE_SAVED,
+        summary="Saved a local revision note.",
+        happened_at=now - timedelta(days=1, hours=2),
+    )
+
+    pipeline = build_service(session, now=now).preview(user.id)
+    candidate = next(
+        candidate
+        for candidate in pipeline.candidates
+        if candidate.card_type == PulseCardType.YESTERDAY_SUMMARY
+    )
+
+    assert candidate.score_total >= 10
+    assert candidate.score_breakdown is not None
+    assert candidate.candidate_metadata["summary_date"] == "2026-04-14"
+    assert candidate.candidate_metadata["total_events"] == 1
+    assert candidate.candidate_metadata["touched_paper_titles"] == [paper.title]
+
+
+def test_system_work_activity_is_excluded_from_yesterday_summary(session) -> None:
+    now = datetime(2026, 4, 15, 12, 0, tzinfo=UTC)
+    user = create_user(session, email="system-excluded@example.com")
+    record_work_activity(
+        session,
+        user_id=user.id,
+        paper_id=None,
+        activity_type=WorkActivityType.NOTE_CREATED,
+        summary="System generated placeholder event.",
+        happened_at=now - timedelta(days=1, hours=3),
+        source=WorkActivitySource.SYSTEM,
+    )
+
+    pipeline = build_service(session, now=now).preview(user.id)
+
+    assert all(
+        candidate.card_type != PulseCardType.YESTERDAY_SUMMARY for candidate in pipeline.candidates
+    )
+
+
+def test_yesterday_summary_scoring_is_deterministic_and_explainable(session) -> None:
+    now = datetime(2026, 4, 15, 12, 0, tzinfo=UTC)
+    user = create_user(session, email="yesterday-score@example.com")
+    paper_a = create_paper(
+        session,
+        user_id=user.id,
+        title="Paper A",
+        last_touch_at=now,
+        next_action=None,
+    )
+    paper_b = create_paper(
+        session,
+        user_id=user.id,
+        title="Paper B",
+        last_touch_at=now,
+        next_action=None,
+    )
+    record_work_activity(
+        session,
+        user_id=user.id,
+        paper_id=paper_a.id,
+        activity_type=WorkActivityType.NOTE_SAVED,
+        summary="Saved a planning note.",
+        happened_at=now - timedelta(days=1, hours=4),
+    )
+    record_work_activity(
+        session,
+        user_id=user.id,
+        paper_id=paper_b.id,
+        activity_type=WorkActivityType.ATTACHMENT_IMPORTED,
+        summary="Imported revised figures.",
+        happened_at=now - timedelta(days=1, hours=3),
+    )
+    record_work_activity(
+        session,
+        user_id=user.id,
+        paper_id=paper_a.id,
+        activity_type=WorkActivityType.REVIEW_ROUND_CREATED,
+        summary="Created review round 1.",
+        happened_at=now - timedelta(days=1, hours=2),
+    )
+
+    first = build_service(session, now=now).preview(user.id)
+    second = build_service(session, now=now).preview(user.id)
+    first_candidate = next(
+        candidate
+        for candidate in first.candidates
+        if candidate.card_type == PulseCardType.YESTERDAY_SUMMARY
+    )
+    second_candidate = next(
+        candidate
+        for candidate in second.candidates
+        if candidate.card_type == PulseCardType.YESTERDAY_SUMMARY
+    )
+
+    assert first_candidate.score_total == second_candidate.score_total
+    assert first_candidate.score_breakdown is not None
+    assert first_candidate.score_breakdown.modifiers == {
+        "yesterday_summary_activity_diversity": 3,
+        "yesterday_summary_event_volume": 2,
+        "yesterday_summary_multi_paper": 4,
+    }
+
+
+def test_yesterday_summary_uses_daily_policy_timezone(session) -> None:
+    now = datetime(2026, 4, 15, 4, 0, tzinfo=UTC)
+    user = create_user(session, email="yesterday-timezone@example.com")
+    create_policy(
+        session,
+        user_id=user.id,
+        frequency=SubscriptionFrequency.DAILY,
+        policy={"schedule": {"timezone": "Asia/Shanghai"}},
+    )
+    record_work_activity(
+        session,
+        user_id=user.id,
+        paper_id=None,
+        activity_type=WorkActivityType.NOTE_CREATED,
+        summary="Created a note after local midnight.",
+        happened_at=datetime(2026, 4, 14, 18, 0, tzinfo=UTC),
+    )
+
+    pipeline = build_service(session, now=now).preview(user.id)
+
+    assert all(
+        candidate.card_type != PulseCardType.YESTERDAY_SUMMARY for candidate in pipeline.candidates
+    )
+
+
+def test_yesterday_summary_dedupe_blocks_same_summary_date(session) -> None:
+    now = datetime(2026, 4, 15, 12, 0, tzinfo=UTC)
+    user = create_user(session, email="yesterday-dedupe@example.com")
+    record_work_activity(
+        session,
+        user_id=user.id,
+        paper_id=None,
+        activity_type=WorkActivityType.NOTE_SAVED,
+        summary="Saved an outline note.",
+        happened_at=now - timedelta(days=1, hours=2),
+    )
+
+    first_service = build_service(session, now=now)
+    job = first_service.run_now(user.id)
+    assert any(card.card_type == PulseCardType.YESTERDAY_SUMMARY for card in job.cards)
+
+    pipeline = build_service(session, now=now + timedelta(hours=1)).preview(user.id)
+    suppressed = [
+        candidate
+        for candidate in pipeline.suppressed_candidates
+        if candidate.card_type == PulseCardType.YESTERDAY_SUMMARY
+    ]
+
+    assert suppressed
+    assert any(reason.code.value == "dedupe_window" for reason in suppressed[0].suppression_reasons)
+
+
+def test_run_persists_yesterday_summary_card_and_digest_item(session) -> None:
+    now = datetime(2026, 4, 15, 12, 0, tzinfo=UTC)
+    user = create_user(session, email="yesterday-run@example.com")
+    record_work_activity(
+        session,
+        user_id=user.id,
+        paper_id=None,
+        activity_type=WorkActivityType.NOTE_SAVED,
+        summary="Saved a revision note.",
+        happened_at=now - timedelta(days=1, hours=2),
+    )
+
+    job = build_service(session, now=now).run_now(user.id)
+    yesterday_card = next(
+        card for card in job.cards if card.card_type == PulseCardType.YESTERDAY_SUMMARY
+    )
+    digest_issue = DigestService(session).list_digest_issues(user_id=user.id)[0]
+
+    assert yesterday_card.source_paper_id is None
+    assert yesterday_card.candidate_metadata["summary_date"] == "2026-04-14"
+    assert digest_issue.items[0].card_type == PulseCardType.YESTERDAY_SUMMARY
+    assert digest_issue.items[0].source_paper_id is None

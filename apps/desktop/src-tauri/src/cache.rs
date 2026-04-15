@@ -3045,8 +3045,8 @@ mod tests {
                         "status": "ready",
                         "title": "Digest",
                         "summary": "Summary",
-                        "highlight_count": 1,
-                        "selected_card_count": 1,
+                        "highlight_count": 2,
+                        "selected_card_count": 2,
                         "deep_link_path": "/mini/pulse-digests/user-1/2026-04-15",
                         "highlights": [{
                             "sort_order": 1,
@@ -3056,6 +3056,14 @@ mod tests {
                             "title": "Signal update",
                             "summary": "Summary",
                             "why_now": "Why now"
+                        }, {
+                            "sort_order": 2,
+                            "pulse_card_id": "card-2",
+                            "card_type": "yesterday_summary",
+                            "source_paper_id": serde_json::Value::Null,
+                            "title": "Yesterday summary for 2026-04-14",
+                            "summary": "Yesterday recorded 2 activities.",
+                            "why_now": "2026-04-14 provides a concise recap before today's work starts."
                         }],
                         "items": [{
                             "sort_order": 1,
@@ -3065,6 +3073,14 @@ mod tests {
                             "title": "Signal update",
                             "summary": "Summary",
                             "why_now": "Why now"
+                        }, {
+                            "sort_order": 2,
+                            "pulse_card_id": "card-2",
+                            "card_type": "yesterday_summary",
+                            "source_paper_id": serde_json::Value::Null,
+                            "title": "Yesterday summary for 2026-04-14",
+                            "summary": "Yesterday recorded 2 activities.",
+                            "why_now": "2026-04-14 provides a concise recap before today's work starts."
                         }],
                         "updated_at": "2026-04-15T00:00:00Z"
                     }),
@@ -3082,8 +3098,10 @@ mod tests {
 
         let today = cache.read_today_overview().unwrap();
         assert_eq!(today.state, "ready");
-        assert_eq!(today.highlights.len(), 1);
+        assert_eq!(today.highlights.len(), 2);
         assert_eq!(today.highlights[0].paper.as_ref().unwrap().id, "paper-1");
+        assert_eq!(today.highlights[1].card_type, "yesterday_summary");
+        assert!(today.highlights[1].paper.is_none());
     }
 
     #[test]

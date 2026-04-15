@@ -191,6 +191,18 @@ Tie-break order is deterministic:
 - `SyncMutation` records idempotent client-originated writes keyed by `(client_device_id, client_mutation_id)`.
 - `work_activity.record` is now also accepted as a sync mutation type for lightweight desktop-local activity metadata, but it intentionally does not sync local file or note contents.
 
+## Pulse yesterday-summary card
+- The pulse pipeline now supports a global `yesterday_summary` card type in addition to paper-centric cards.
+- It is generated from `WorkActivityEvent` only:
+  - no external retrieval
+  - no AI summarization
+  - no source-paper requirement
+- The summary uses the effective pulse timezone in this order:
+  - explicit request parameter
+  - first enabled daily subscription-policy timezone
+  - app default timezone
+- Selected cards persist as normal `PulseCard` rows and may flow into digest items with `source_paper_id = null`.
+
 ### Desktop shell
 - `apps/desktop` is isolated from the Python backend.
 - Rust owns:

@@ -37,6 +37,8 @@ COUNTER_NAMES = (
     "work_activity_events_recorded_total",
     "research_watch_profiles_total",
     "pulse_input_previews_total",
+    "pulse_yesterday_summary_candidates_total",
+    "pulse_yesterday_summary_cards_selected_total",
 )
 
 

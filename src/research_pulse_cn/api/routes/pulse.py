@@ -3,7 +3,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 
 from research_pulse_cn.api.audit import audit_request_action
 from research_pulse_cn.api.dependencies import (
@@ -46,8 +46,9 @@ def preview_pulse(
     user_id: UUID,
     _actor: ViewerDep,
     service: PulseServiceDep,
+    timezone: Annotated[str | None, Query()] = None,
 ) -> PulsePreviewResponse:
-    pipeline = service.preview(user_id)
+    pipeline = service.preview(user_id, timezone_name=timezone)
     selected_cards = service.build_preview_cards(pipeline.selected_candidates)
     return PulsePreviewResponse(
         user_id=user_id,
@@ -110,8 +111,9 @@ def run_pulse(
     actor: OperatorDep,
     service: PulseServiceDep,
     audit_service: AuditServiceDep,
+    timezone: Annotated[str | None, Query()] = None,
 ) -> PulseRunResponse:
-    job, pipeline = service.run_with_pipeline(user_id)
+    job, pipeline = service.run_with_pipeline(user_id, timezone_name=timezone)
     audit_request_action(
         audit_service=audit_service,
         request=request,
@@ -120,7 +122,11 @@ def run_pulse(
         resource_type="pulse_job",
         resource_id=str(job.id),
         status_code=200,
-        metadata={"user_id": str(user_id), "selected_cards": len(job.cards)},
+        metadata={
+            "user_id": str(user_id),
+            "selected_cards": len(job.cards),
+            "timezone": timezone,
+        },
     )
     return PulseRunResponse(
         job=job,

@@ -286,7 +286,19 @@ Desktop can now also emit lightweight `work_activity.record` mutations for local
   - `progress_event.create`
   - `subscription_policy.patch`
 - Desktop-local attachment/note/review actions contribute through `work_activity.record`.
+- `POST /pulse/preview/{user_id}` and `POST /pulse/run/{user_id}` now also accept an optional `timezone` query parameter for deterministic yesterday-summary inspection.
+- `yesterday_summary` is now a first-party pulse card type generated only from the previous local day of `WorkActivityEvent`.
 - No external retrieval or AI summarization is enabled in this phase.
+- Summary timezone resolution order is:
+  - explicit request timezone
+  - first enabled daily policy timezone
+  - app default timezone
+
+### Yesterday-summary scoring knobs
+- `APP_PULSE_WEIGHT_YESTERDAY_SUMMARY`
+- `APP_PULSE_YESTERDAY_SUMMARY_MIN_EVENTS`
+- `APP_PULSE_MODIFIER_YESTERDAY_SUMMARY_ACTIVITY_DIVERSITY`
+- `APP_PULSE_MODIFIER_YESTERDAY_SUMMARY_MULTI_PAPER`
 - Unknown callback identities are stored for review and do not auto-create bindings.
 
 ## Ops endpoints

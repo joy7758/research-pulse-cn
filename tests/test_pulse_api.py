@@ -1,7 +1,16 @@
 from datetime import timedelta
+from uuid import UUID
 
 from research_pulse_cn.db.models import utcnow
-from research_pulse_cn.domain.enums import PaperType, SignalSource, SubscriptionFrequency
+from research_pulse_cn.domain.enums import (
+    PaperType,
+    PulseCardType,
+    SignalSource,
+    SubscriptionFrequency,
+    WorkActivitySource,
+    WorkActivityType,
+)
+from research_pulse_cn.services.work_activity import WorkActivityService
 
 
 def create_api_user(client, *, email: str, headers: dict[str, str]):
@@ -147,3 +156,69 @@ def test_run_endpoint_persists_selected_cards_with_score_fields(client, operator
     assert payload["cards"][0]["source_paper_id"] == paper["id"]
     assert payload["cards"][0]["score_total"] >= 10
     assert payload["cards"][0]["score_breakdown"]["total"] == payload["cards"][0]["score_total"]
+
+
+def test_preview_endpoint_exposes_yesterday_summary_details(
+    client,
+    operator_headers,
+    viewer_headers,
+    session,
+) -> None:
+    user = create_api_user(
+        client,
+        email="yesterday-preview-api@example.com",
+        headers=operator_headers,
+    )
+    WorkActivityService(session).record_event(
+        user_id=UUID(user["id"]),
+        paper_id=None,
+        activity_type=WorkActivityType.NOTE_SAVED,
+        summary="Saved a local draft note.",
+        happened_at=utcnow() - timedelta(days=1, hours=1),
+        source=WorkActivitySource.API,
+    )
+    session.commit()
+
+    response = client.post(f"/pulse/preview/{user['id']}", headers=viewer_headers)
+
+    assert response.status_code == 200
+    payload = response.json()
+    yesterday_candidate = next(
+        candidate
+        for candidate in payload["candidates"]
+        if candidate["card_type"] == PulseCardType.YESTERDAY_SUMMARY
+    )
+    assert yesterday_candidate["candidate_metadata"]["summary_date"]
+    assert yesterday_candidate["candidate_metadata"]["total_events"] == 1
+    assert yesterday_candidate["score_breakdown"]["total"] >= 10
+
+
+def test_run_endpoint_persists_yesterday_summary_card(
+    client,
+    operator_headers,
+    session,
+) -> None:
+    user = create_api_user(
+        client,
+        email="yesterday-run-api@example.com",
+        headers=operator_headers,
+    )
+    WorkActivityService(session).record_event(
+        user_id=UUID(user["id"]),
+        paper_id=None,
+        activity_type=WorkActivityType.RESPONSE_LETTER_GENERATED,
+        summary="Generated a response-letter draft.",
+        happened_at=utcnow() - timedelta(days=1, hours=2),
+        source=WorkActivitySource.API,
+    )
+    session.commit()
+
+    response = client.post(f"/pulse/run/{user['id']}", headers=operator_headers)
+
+    assert response.status_code == 200
+    payload = response.json()
+    yesterday_card = next(
+        card for card in payload["cards"] if card["card_type"] == PulseCardType.YESTERDAY_SUMMARY
+    )
+    assert yesterday_card["source_paper_id"] is None
+    assert yesterday_card["candidate_metadata"]["summary_date"]

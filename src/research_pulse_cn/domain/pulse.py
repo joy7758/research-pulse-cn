@@ -142,6 +142,9 @@ class PulseScoringConfig:
     dedupe_window_hours: int
     min_score: int
     max_cards_per_run: int
+    yesterday_summary_min_events: int
+    yesterday_summary_activity_diversity_bonus: int
+    yesterday_summary_multi_paper_bonus: int
     score_weights: dict[PulseCardType, int]
     urgency_modifiers: dict[str, int]
     quiet_hours: list[dict[str, Any]] = field(default_factory=list)
@@ -153,6 +156,11 @@ class PulseScoringConfig:
             "dedupe_window_hours": self.dedupe_window_hours,
             "min_score": self.min_score,
             "max_cards_per_run": self.max_cards_per_run,
+            "yesterday_summary_min_events": self.yesterday_summary_min_events,
+            "yesterday_summary_activity_diversity_bonus": (
+                self.yesterday_summary_activity_diversity_bonus
+            ),
+            "yesterday_summary_multi_paper_bonus": (self.yesterday_summary_multi_paper_bonus),
             "score_weights": {
                 card_type.value: weight for card_type, weight in self.score_weights.items()
             },
