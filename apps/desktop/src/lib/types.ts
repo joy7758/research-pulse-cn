@@ -259,7 +259,56 @@ export type DigestHighlightRead = {
   title: string;
   summary: string;
   whyNow: string | null;
+  actionText: string | null;
+  deepLink: string | null;
   paper: PaperListItemRead | null;
+};
+
+export type TodaySectionKindRead =
+  | "today_focus"
+  | "yesterday_recap"
+  | "signal_updates"
+  | "related_papers"
+  | "other_updates"
+  | string;
+
+export type TodaySectionItemRead = {
+  sortOrder: number;
+  pulseCardId: string;
+  cardType: PulseCardTypeRead;
+  sourcePaperId: string | null;
+  title: string;
+  summary: string;
+  whyNow: string | null;
+  actionText: string | null;
+  deepLink: string | null;
+  paper: PaperListItemRead | null;
+};
+
+export type TodaySectionRead = {
+  kind: TodaySectionKindRead;
+  title: string;
+  itemCount: number;
+  items: TodaySectionItemRead[];
+};
+
+export type TodayQuickStatsRead = {
+  selectedCardCount: number;
+  relatedPaperCount: number;
+  signalUpdateCount: number;
+  touchedPaperCount: number;
+};
+
+export type TodayFocusCardRead = TodaySectionItemRead;
+
+export type TodayPublicationPreviewRead = {
+  digestTitle: string | null;
+  digestSubtitle: string | null;
+  digestHighlights: DigestHighlightRead[];
+  primaryCtaText: string | null;
+  primaryCtaPath: string | null;
+  miniProgramPath: string | null;
+  articleUrl: string | null;
 };
 
 export type TodayOverviewRead = {
@@ -273,6 +322,13 @@ export type TodayOverviewRead = {
   selectedCardCount: number;
   deepLinkPath: string | null;
   highlights: DigestHighlightRead[];
+  isStructured: boolean;
+  sectionOrder: TodaySectionKindRead[];
+  sections: TodaySectionRead[];
+  quickStats: TodayQuickStatsRead | null;
+  focusCard: TodayFocusCardRead | null;
+  publicationPreview: TodayPublicationPreviewRead | null;
+  fallbackMode: "structured" | "highlights_only" | "empty" | string;
   message: string | null;
   updatedAt: string | null;
 };

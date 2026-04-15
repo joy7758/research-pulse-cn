@@ -90,7 +90,8 @@
 - Existing `highlights` and `items` remain available so older compact readers do not break.
 - Desktop and sync compatibility stays additive in this phase:
   - digest sync payloads continue to expose `highlights` and `items`
-  - sectioned fields are added without introducing a new desktop digest UI
+  - sectioned fields are added without requiring desktop admin/orchestration calls
+  - desktop Today now prefers the structured digest payload when present and falls back to legacy highlights/items otherwise
 
 ## Current Non-Goals
 - AI copywriting or summary generation

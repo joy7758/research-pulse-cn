@@ -46,10 +46,23 @@
 - `SyncStatusRead`
 - `UserConnectionRead`
 - `TodayOverviewRead`
+- `TodaySectionRead`
+- `TodayQuickStatsRead`
+- `TodayFocusCardRead`
+- `TodayPublicationPreviewRead`
 - `PaperListItemRead`
 - `PaperDetailRead`
 
 The frontend consumes typed Tauri commands instead of embedding HTTP or sync logic directly into React components.
+
+`TodayOverviewRead` now prefers synced structured digest content when available:
+- `section_order`
+- `sections`
+- `quick_stats`
+- `focus_card`
+- `publication_preview`
+
+If older cached digests only expose `highlights` / `items`, desktop derives a conservative fallback Today layout instead of failing.
 
 ## Derived Progress Percentage Heuristic
 - Desktop views expose `progress_percentage` as a derived read-model heuristic only.

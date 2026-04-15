@@ -2284,22 +2284,85 @@ mod tests {
                 "deep_link_path": "/mini/pulse-digests/user-1/2026-04-15",
                 "highlights": [{
                     "sort_order": 1,
-                    "pulse_card_id": "card-1",
-                    "card_type": "signal_change",
+                    "pulse_card_id": "card-focus",
+                    "card_type": "today_suggestion",
                     "source_paper_id": "paper-1",
-                    "title": "Signal update",
-                    "summary": "Summary",
-                    "why_now": "Why now"
+                    "title": "Execute next action for Digest Paper",
+                    "summary": "Finish the response memo.",
+                    "why_now": "This is the clearest next step for today.",
+                    "action_text": "Finish the response memo",
+                    "deep_link": "/papers/paper-1"
                 }],
                 "items": [{
                     "sort_order": 1,
-                    "pulse_card_id": "card-1",
-                    "card_type": "signal_change",
+                    "pulse_card_id": "card-focus",
+                    "card_type": "today_suggestion",
                     "source_paper_id": "paper-1",
-                    "title": "Signal update",
-                    "summary": "Summary",
-                    "why_now": "Why now"
+                    "title": "Execute next action for Digest Paper",
+                    "summary": "Finish the response memo.",
+                    "why_now": "This is the clearest next step for today.",
+                    "action_text": "Finish the response memo",
+                    "deep_link": "/papers/paper-1"
                 }],
+                "section_order": [
+                    "today_focus",
+                    "yesterday_recap",
+                    "signal_updates",
+                    "related_papers",
+                    "other_updates"
+                ],
+                "sections": [{
+                    "kind": "today_focus",
+                    "title": "Today Focus",
+                    "item_count": 1,
+                    "items": [{
+                        "sort_order": 1,
+                        "pulse_card_id": "card-focus",
+                        "card_type": "today_suggestion",
+                        "source_paper_id": "paper-1",
+                        "title": "Execute next action for Digest Paper",
+                        "summary": "Finish the response memo.",
+                        "why_now": "This is the clearest next step for today.",
+                        "action_text": "Finish the response memo",
+                        "deep_link": "/papers/paper-1"
+                    }]
+                }],
+                "quick_stats": {
+                    "selected_card_count": 1,
+                    "related_paper_count": 0,
+                    "signal_update_count": 0,
+                    "touched_paper_count": 1
+                },
+                "focus_card": {
+                    "sort_order": 1,
+                    "pulse_card_id": "card-focus",
+                    "card_type": "today_suggestion",
+                    "source_paper_id": "paper-1",
+                    "title": "Execute next action for Digest Paper",
+                    "summary": "Finish the response memo.",
+                    "why_now": "This is the clearest next step for today.",
+                    "action_text": "Finish the response memo",
+                    "deep_link": "/papers/paper-1"
+                },
+                "publication_preview": {
+                    "digest_title": "Daily digest for 2026-04-15",
+                    "digest_subtitle": "1 today focus from 1 selected pulse card.",
+                    "digest_highlights": [{
+                        "sort_order": 1,
+                        "pulse_card_id": "card-focus",
+                        "card_type": "today_suggestion",
+                        "source_paper_id": "paper-1",
+                        "title": "Execute next action for Digest Paper",
+                        "summary": "Finish the response memo.",
+                        "why_now": "This is the clearest next step for today.",
+                        "action_text": "Finish the response memo",
+                        "deep_link": "/papers/paper-1"
+                    }],
+                    "primary_cta_text": "Finish the response memo",
+                    "primary_cta_path": "/mini/pulse-digests/user-1/2026-04-15",
+                    "mini_program_path": "mini/pulse-digests/user-1/2026-04-15",
+                    "article_url": null
+                },
                 "updated_at": "2026-04-15T00:00:00Z"
             }),
         }
@@ -2571,6 +2634,32 @@ mod tests {
     }
 
     #[test]
+    fn sync_now_response_includes_structured_today_overview_when_digest_is_synced() {
+        let service = service();
+        let api = FakeApi::default();
+        connect(
+            &service,
+            &api,
+            vec![Ok(RemoteSyncFeed {
+                events: vec![paper_event("revision", 1)],
+                next_after_sequence: 1,
+                has_more: false,
+            })],
+        );
+        api.feed_results.replace(vec![Ok(RemoteSyncFeed {
+            events: vec![digest_event(2)],
+            next_after_sequence: 2,
+            has_more: false,
+        })]);
+
+        let response = service.sync_with(&api).unwrap();
+
+        assert!(response.today_overview.is_structured);
+        assert_eq!(response.today_overview.sections.len(), 1);
+        assert_eq!(response.today_overview.sections[0].kind, "today_focus");
+    }
+
+    #[test]
     fn duplicate_mutation_result_is_not_fatal() {
         let service = service();
         let api = FakeApi {
@@ -2827,6 +2916,44 @@ mod tests {
         assert_eq!(status.pending_mutation_count, 0);
         assert!(service.list_papers(None).unwrap().is_empty());
         assert!(service.list_pending_mutations().unwrap().is_empty());
+    }
+
+    #[test]
+    fn today_overview_prefers_structured_digest_payload_when_available() {
+        let service = service();
+        let api = FakeApi::default();
+        connect(
+            &service,
+            &api,
+            vec![Ok(RemoteSyncFeed {
+                events: vec![paper_event("revision", 1), digest_event(2)],
+                next_after_sequence: 2,
+                has_more: false,
+            })],
+        );
+
+        let today = service.get_today_overview().unwrap();
+        assert!(today.is_structured);
+        assert_eq!(today.fallback_mode, "structured");
+        assert_eq!(today.section_order[0], "today_focus");
+        assert_eq!(today.sections[0].kind, "today_focus");
+        assert_eq!(
+            today
+                .focus_card
+                .as_ref()
+                .map(|card| card.card_type.as_str()),
+            Some("today_suggestion"),
+        );
+        assert_eq!(
+            today
+                .publication_preview
+                .as_ref()
+                .and_then(|preview| preview.primary_cta_text.as_deref()),
+            Some("Finish the response memo"),
+        );
+
+        let bootstrap = service.app_bootstrap().unwrap();
+        assert!(bootstrap.today_overview.is_structured);
     }
 
     #[test]

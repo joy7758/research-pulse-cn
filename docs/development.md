@@ -193,6 +193,10 @@ Desktop Settings can now also edit synced `SubscriptionPolicy` delivery-control 
   - edit quiet-control fields from Settings
   - queue `subscription_policy.patch` mutations through the existing sync writeback path
   - show a local-only hint panel from `getDeliveryControlLocalHint`
+- Desktop Today structured digest rendering in v1:
+  - prefer synced `section_order`, `sections`, `quick_stats`, `focus_card`, and `publication_preview`
+  - fall back to legacy `highlights` / `items` deterministically when structured fields are absent
+  - stay read-only and avoid admin-only orchestration or dispatch APIs
 - Changing or clearing the workspace root does not move or delete existing managed files.
 - `clearLocalCache` and `disconnectDevice` do not delete managed workspace files, local note files, or generated review notes.
 

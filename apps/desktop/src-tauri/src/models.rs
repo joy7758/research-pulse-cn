@@ -273,7 +273,69 @@ pub struct DigestHighlightRead {
     pub title: String,
     pub summary: String,
     pub why_now: Option<String>,
+    pub action_text: Option<String>,
+    pub deep_link: Option<String>,
     pub paper: Option<PaperListItemRead>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct TodaySectionItemRead {
+    pub sort_order: i64,
+    pub pulse_card_id: String,
+    pub card_type: String,
+    pub source_paper_id: Option<String>,
+    pub title: String,
+    pub summary: String,
+    pub why_now: Option<String>,
+    pub action_text: Option<String>,
+    pub deep_link: Option<String>,
+    pub paper: Option<PaperListItemRead>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct TodaySectionRead {
+    pub kind: String,
+    pub title: String,
+    pub item_count: i64,
+    pub items: Vec<TodaySectionItemRead>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct TodayQuickStatsRead {
+    pub selected_card_count: i64,
+    pub related_paper_count: i64,
+    pub signal_update_count: i64,
+    pub touched_paper_count: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct TodayFocusCardRead {
+    pub sort_order: i64,
+    pub pulse_card_id: String,
+    pub card_type: String,
+    pub source_paper_id: Option<String>,
+    pub title: String,
+    pub summary: String,
+    pub why_now: Option<String>,
+    pub action_text: Option<String>,
+    pub deep_link: Option<String>,
+    pub paper: Option<PaperListItemRead>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct TodayPublicationPreviewRead {
+    pub digest_title: Option<String>,
+    pub digest_subtitle: Option<String>,
+    pub digest_highlights: Vec<DigestHighlightRead>,
+    pub primary_cta_text: Option<String>,
+    pub primary_cta_path: Option<String>,
+    pub mini_program_path: Option<String>,
+    pub article_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -289,6 +351,13 @@ pub struct TodayOverviewRead {
     pub selected_card_count: i64,
     pub deep_link_path: Option<String>,
     pub highlights: Vec<DigestHighlightRead>,
+    pub is_structured: bool,
+    pub section_order: Vec<String>,
+    pub sections: Vec<TodaySectionRead>,
+    pub quick_stats: Option<TodayQuickStatsRead>,
+    pub focus_card: Option<TodayFocusCardRead>,
+    pub publication_preview: Option<TodayPublicationPreviewRead>,
+    pub fallback_mode: String,
     pub message: Option<String>,
     pub updated_at: Option<String>,
 }
@@ -306,6 +375,13 @@ impl Default for TodayOverviewRead {
             selected_card_count: 0,
             deep_link_path: None,
             highlights: Vec::new(),
+            is_structured: false,
+            section_order: Vec::new(),
+            sections: Vec::new(),
+            quick_stats: None,
+            focus_card: None,
+            publication_preview: None,
+            fallback_mode: "empty".to_string(),
             message: Some("No digest issue is cached yet.".to_string()),
             updated_at: None,
         }

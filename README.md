@@ -125,6 +125,15 @@ Desktop Settings now also exposes synced delivery-control fields from cached `Su
 
 These edits still queue `subscription_policy.patch` through the existing sync writeback path. The Settings hint panel is local-only and is not an authoritative backend dispatch decision.
 
+Desktop Today now also prefers the orchestrated sectioned digest payload when available:
+- `today_focus`
+- `yesterday_recap`
+- `signal_updates`
+- `related_papers`
+- `other_updates`
+
+Older cached digests that only have `highlights` / `items` still render through a deterministic desktop fallback path.
+
 ## Pulse input layer
 The backend now includes a pulse input layer for future retrieval and recap work:
 - `WorkActivityEvent` for structured "what the user did" signals

@@ -10,7 +10,9 @@ use crate::models::{
     PaperListItemRead, PaperNoteSummaryRead, PaperWorkspaceRead, PendingMutationRead,
     ProgressEventRead, RemoteSyncEvent, RemoteSyncMutationResult, ReviewCommentItemRead,
     ReviewRoundDetailRead, ReviewRoundSummaryRead, SignalSnapshotRead, SubscriptionPolicyRead,
-    SyncStatusRead, TodayOverviewRead, UserConnectionRead, WorkspaceStatusRead,
+    SyncStatusRead, TodayFocusCardRead, TodayOverviewRead, TodayPublicationPreviewRead,
+    TodayQuickStatsRead, TodaySectionItemRead, TodaySectionRead, UserConnectionRead,
+    WorkspaceStatusRead,
 };
 use crate::notes::{note_status_for_path, read_note_file_stats};
 use crate::progress::derive_progress_percentage;
@@ -22,6 +24,13 @@ use crate::workspace::{
 
 const DEFAULT_PAPER_LIMIT: usize = 50;
 const MAX_PAPER_LIMIT: usize = 200;
+const TODAY_SECTION_ORDER: [&str; 5] = [
+    "today_focus",
+    "yesterday_recap",
+    "signal_updates",
+    "related_papers",
+    "other_updates",
+];
 #[derive(Debug, Clone)]
 pub struct LocalCache {
     path: PathBuf,
@@ -183,6 +192,11 @@ impl LocalCache {
                     deep_link_path TEXT,
                     highlights_json TEXT NOT NULL DEFAULT '[]',
                     items_json TEXT NOT NULL DEFAULT '[]',
+                    section_order_json TEXT NOT NULL DEFAULT '[]',
+                    sections_json TEXT NOT NULL DEFAULT '[]',
+                    quick_stats_json TEXT NOT NULL DEFAULT '{}',
+                    focus_card_json TEXT,
+                    publication_preview_json TEXT,
                     updated_at TEXT
                 );
                 CREATE INDEX IF NOT EXISTS idx_digest_issue_cache_user_date
@@ -324,10 +338,37 @@ impl LocalCache {
                 CREATE INDEX IF NOT EXISTS idx_review_comment_item_cache_paper
                     ON review_comment_item_cache (paper_id, review_round_id, reviewer_label, sort_order, created_at, id);
 
-                PRAGMA user_version = 5;
                 "#,
             )
             .context("failed to initialize desktop cache schema")?;
+        ensure_text_column(
+            &connection,
+            "digest_issue_cache",
+            "section_order_json",
+            "TEXT NOT NULL DEFAULT '[]'",
+        )?;
+        ensure_text_column(
+            &connection,
+            "digest_issue_cache",
+            "sections_json",
+            "TEXT NOT NULL DEFAULT '[]'",
+        )?;
+        ensure_text_column(
+            &connection,
+            "digest_issue_cache",
+            "quick_stats_json",
+            "TEXT NOT NULL DEFAULT '{}'",
+        )?;
+        ensure_text_column(&connection, "digest_issue_cache", "focus_card_json", "TEXT")?;
+        ensure_text_column(
+            &connection,
+            "digest_issue_cache",
+            "publication_preview_json",
+            "TEXT",
+        )?;
+        connection
+            .execute_batch("PRAGMA user_version = 6;")
+            .context("failed to finalize desktop cache schema version")?;
         let default_workspace = default_workspace_root_record();
         connection.execute(
             r#"
@@ -1935,6 +1976,12 @@ impl LocalCache {
                     selected_card_count,
                     deep_link_path,
                     highlights_json,
+                    items_json,
+                    section_order_json,
+                    sections_json,
+                    quick_stats_json,
+                    focus_card_json,
+                    publication_preview_json,
                     updated_at
                 FROM digest_issue_cache
                 WHERE user_id = ?1
@@ -1953,7 +2000,13 @@ impl LocalCache {
                         row.get::<_, i64>(6)?,
                         row.get::<_, Option<String>>(7)?,
                         row.get::<_, String>(8)?,
-                        row.get::<_, Option<String>>(9)?,
+                        row.get::<_, String>(9)?,
+                        row.get::<_, String>(10)?,
+                        row.get::<_, String>(11)?,
+                        row.get::<_, String>(12)?,
+                        row.get::<_, Option<String>>(13)?,
+                        row.get::<_, Option<String>>(14)?,
+                        row.get::<_, Option<String>>(15)?,
                     ))
                 },
             )
@@ -1966,6 +2019,56 @@ impl LocalCache {
         };
 
         let highlights = self.materialize_digest_items(&row.8)?;
+        let section_order = parse_json_string_array(Some(row.10.clone()));
+        let structured_sections = self.materialize_today_sections(&row.11)?;
+        let structured_quick_stats = self.materialize_today_quick_stats(Some(row.12.clone()));
+        let structured_focus_card = self.materialize_today_focus_card(row.13.clone())?;
+        let structured_publication_preview =
+            self.materialize_publication_preview(row.14.clone())?;
+        let has_structured_payload = !section_order.is_empty()
+            || !structured_sections.is_empty()
+            || structured_quick_stats.is_some()
+            || structured_focus_card.is_some()
+            || structured_publication_preview.is_some();
+        let fallback = if has_structured_payload {
+            None
+        } else {
+            Some(self.build_legacy_today_fallback(&row.9, &row.8)?)
+        };
+        let mut sections = match &fallback {
+            Some(fallback_read) => fallback_read.sections.clone(),
+            None => structured_sections,
+        };
+        let ordered_section_order = if has_structured_payload && !section_order.is_empty() {
+            order_section_kinds(section_order)
+        } else {
+            TODAY_SECTION_ORDER
+                .iter()
+                .map(|kind| kind.to_string())
+                .collect()
+        };
+        sections = order_today_sections(sections, &ordered_section_order);
+        let focus_card = if has_structured_payload {
+            structured_focus_card.or_else(|| {
+                first_section_item(&sections, "today_focus").map(section_item_to_focus_card)
+            })
+        } else {
+            fallback
+                .as_ref()
+                .and_then(|fallback_read| fallback_read.focus_card.clone())
+        };
+        let quick_stats = if has_structured_payload {
+            structured_quick_stats.or_else(|| Some(self.build_quick_stats_from_sections(&sections)))
+        } else {
+            fallback
+                .as_ref()
+                .and_then(|fallback_read| fallback_read.quick_stats.clone())
+        };
+        let publication_preview = if has_structured_payload {
+            structured_publication_preview
+        } else {
+            None
+        };
         Ok(TodayOverviewRead {
             state: "ready".to_string(),
             issue_id: Some(row.0),
@@ -1977,8 +2080,19 @@ impl LocalCache {
             selected_card_count: row.6,
             deep_link_path: row.7,
             highlights,
+            is_structured: has_structured_payload,
+            section_order: ordered_section_order,
+            sections,
+            quick_stats,
+            focus_card,
+            publication_preview,
+            fallback_mode: if has_structured_payload {
+                "structured".to_string()
+            } else {
+                "highlights_only".to_string()
+            },
             message: None,
-            updated_at: row.9,
+            updated_at: row.15,
         })
     }
 
@@ -2195,24 +2309,180 @@ impl LocalCache {
     fn materialize_digest_items(&self, raw_items: &str) -> Result<Vec<DigestHighlightRead>> {
         let items: Vec<Value> = serde_json::from_str(raw_items).unwrap_or_default();
         let mut materialized = Vec::new();
-        for item in items {
-            let source_paper_id = value_as_string(item.get("source_paper_id"));
-            let paper = match source_paper_id.as_deref() {
-                Some(paper_id) => self.paper_summary_by_id(paper_id)?,
-                None => None,
-            };
-            materialized.push(DigestHighlightRead {
-                sort_order: value_as_i64(item.get("sort_order")),
-                pulse_card_id: value_as_string(item.get("pulse_card_id")).unwrap_or_default(),
-                card_type: value_as_string(item.get("card_type")).unwrap_or_default(),
-                source_paper_id,
-                title: value_as_string(item.get("title")).unwrap_or_default(),
-                summary: value_as_string(item.get("summary")).unwrap_or_default(),
-                why_now: value_as_string(item.get("why_now")),
-                paper,
+        for item in &items {
+            materialized.push(section_item_to_digest_highlight(
+                self.materialize_today_section_item(item)?,
+            ));
+        }
+        Ok(materialized)
+    }
+
+    fn materialize_today_sections(&self, raw_sections: &str) -> Result<Vec<TodaySectionRead>> {
+        let sections: Vec<Value> = serde_json::from_str(raw_sections).unwrap_or_default();
+        let mut materialized = Vec::new();
+        for section in sections {
+            let raw_items = section
+                .get("items")
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default();
+            let mut items = Vec::new();
+            for item in &raw_items {
+                items.push(self.materialize_today_section_item(item)?);
+            }
+            materialized.push(TodaySectionRead {
+                kind: value_as_string(section.get("kind")).unwrap_or_default(),
+                title: value_as_string(section.get("title")).unwrap_or_default(),
+                item_count: section
+                    .get("item_count")
+                    .and_then(Value::as_i64)
+                    .unwrap_or(items.len() as i64),
+                items,
             });
         }
         Ok(materialized)
+    }
+
+    fn materialize_today_section_item(&self, item: &Value) -> Result<TodaySectionItemRead> {
+        let source_paper_id = value_as_string(item.get("source_paper_id"));
+        let paper = match source_paper_id.as_deref() {
+            Some(paper_id) => self.paper_summary_by_id(paper_id)?,
+            None => None,
+        };
+        Ok(TodaySectionItemRead {
+            sort_order: value_as_i64(item.get("sort_order")),
+            pulse_card_id: value_as_string(item.get("pulse_card_id")).unwrap_or_default(),
+            card_type: value_as_string(item.get("card_type")).unwrap_or_default(),
+            source_paper_id,
+            title: value_as_string(item.get("title")).unwrap_or_default(),
+            summary: value_as_string(item.get("summary")).unwrap_or_default(),
+            why_now: value_as_string(item.get("why_now")),
+            action_text: value_as_string(item.get("action_text")),
+            deep_link: value_as_string(item.get("deep_link")),
+            paper,
+        })
+    }
+
+    fn materialize_today_focus_card(
+        &self,
+        raw_focus_card: Option<String>,
+    ) -> Result<Option<TodayFocusCardRead>> {
+        let Some(value) = parse_json_value(raw_focus_card) else {
+            return Ok(None);
+        };
+        if value.is_null() {
+            return Ok(None);
+        }
+        Ok(Some(section_item_to_focus_card(
+            &self.materialize_today_section_item(&value)?,
+        )))
+    }
+
+    fn materialize_today_quick_stats(
+        &self,
+        raw_quick_stats: Option<String>,
+    ) -> Option<TodayQuickStatsRead> {
+        let value = parse_json_value(raw_quick_stats)?;
+        if value
+            .as_object()
+            .map(|object| object.is_empty())
+            .unwrap_or(false)
+        {
+            return None;
+        }
+        Some(TodayQuickStatsRead {
+            selected_card_count: value_as_i64(value.get("selected_card_count")),
+            related_paper_count: value_as_i64(value.get("related_paper_count")),
+            signal_update_count: value_as_i64(value.get("signal_update_count")),
+            touched_paper_count: value_as_i64(value.get("touched_paper_count")),
+        })
+    }
+
+    fn materialize_publication_preview(
+        &self,
+        raw_publication_preview: Option<String>,
+    ) -> Result<Option<TodayPublicationPreviewRead>> {
+        let Some(value) = parse_json_value(raw_publication_preview) else {
+            return Ok(None);
+        };
+        if value.is_null() {
+            return Ok(None);
+        }
+        let raw_highlights = value
+            .get("digest_highlights")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        let mut digest_highlights = Vec::new();
+        for highlight in &raw_highlights {
+            digest_highlights.push(section_item_to_digest_highlight(
+                self.materialize_today_section_item(highlight)?,
+            ));
+        }
+        Ok(Some(TodayPublicationPreviewRead {
+            digest_title: value_as_string(value.get("digest_title")),
+            digest_subtitle: value_as_string(value.get("digest_subtitle")),
+            digest_highlights,
+            primary_cta_text: value_as_string(value.get("primary_cta_text")),
+            primary_cta_path: value_as_string(value.get("primary_cta_path")),
+            mini_program_path: value_as_string(value.get("mini_program_path")),
+            article_url: value_as_string(value.get("article_url")),
+        }))
+    }
+
+    fn build_legacy_today_fallback(
+        &self,
+        raw_items: &str,
+        raw_highlights: &str,
+    ) -> Result<LegacyTodayFallback> {
+        let items = self.materialize_legacy_items(raw_items, raw_highlights)?;
+        let sections = build_sections_from_legacy_items(items.clone());
+        let focus_card =
+            first_section_item(&sections, "today_focus").map(section_item_to_focus_card);
+        Ok(LegacyTodayFallback {
+            sections: order_today_sections(
+                sections,
+                &TODAY_SECTION_ORDER
+                    .iter()
+                    .map(|kind| kind.to_string())
+                    .collect::<Vec<_>>(),
+            ),
+            quick_stats: Some(build_quick_stats_from_items(&items)),
+            focus_card,
+        })
+    }
+
+    fn materialize_legacy_items(
+        &self,
+        raw_items: &str,
+        raw_highlights: &str,
+    ) -> Result<Vec<TodaySectionItemRead>> {
+        let raw_values: Vec<Value> = if raw_items.trim().is_empty() {
+            Vec::new()
+        } else {
+            serde_json::from_str(raw_items).unwrap_or_default()
+        };
+        let fallback_values: Vec<Value> = if raw_values.is_empty() {
+            serde_json::from_str(raw_highlights).unwrap_or_default()
+        } else {
+            raw_values
+        };
+        let mut items = Vec::new();
+        for item in &fallback_values {
+            items.push(self.materialize_today_section_item(item)?);
+        }
+        Ok(items)
+    }
+
+    fn build_quick_stats_from_sections(
+        &self,
+        sections: &[TodaySectionRead],
+    ) -> TodayQuickStatsRead {
+        let mut items = Vec::new();
+        for section in sections {
+            items.extend(section.items.clone());
+        }
+        build_quick_stats_from_items(&items)
     }
 
     fn paper_summary_by_id(&self, paper_id: &str) -> Result<Option<PaperListItemRead>> {
@@ -2543,8 +2813,13 @@ fn upsert_digest_issue(connection: &Connection, payload: &Value) -> Result<()> {
             deep_link_path,
             highlights_json,
             items_json,
+            section_order_json,
+            sections_json,
+            quick_stats_json,
+            focus_card_json,
+            publication_preview_json,
             updated_at
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)
         ON CONFLICT(id) DO UPDATE SET
             user_id = excluded.user_id,
             issue_date = excluded.issue_date,
@@ -2556,6 +2831,11 @@ fn upsert_digest_issue(connection: &Connection, payload: &Value) -> Result<()> {
             deep_link_path = excluded.deep_link_path,
             highlights_json = excluded.highlights_json,
             items_json = excluded.items_json,
+            section_order_json = excluded.section_order_json,
+            sections_json = excluded.sections_json,
+            quick_stats_json = excluded.quick_stats_json,
+            focus_card_json = excluded.focus_card_json,
+            publication_preview_json = excluded.publication_preview_json,
             updated_at = excluded.updated_at
         "#,
         params![
@@ -2580,6 +2860,19 @@ fn upsert_digest_issue(connection: &Connection, payload: &Value) -> Result<()> {
                     .unwrap_or(&Value::Array(Vec::new())),
             )?,
             serde_json::to_string(payload.get("items").unwrap_or(&Value::Array(Vec::new())))?,
+            serde_json::to_string(
+                payload
+                    .get("section_order")
+                    .unwrap_or(&Value::Array(Vec::new())),
+            )?,
+            serde_json::to_string(payload.get("sections").unwrap_or(&Value::Array(Vec::new())),)?,
+            serde_json::to_string(
+                payload
+                    .get("quick_stats")
+                    .unwrap_or(&Value::Object(Default::default())),
+            )?,
+            maybe_json_string(payload.get("focus_card"))?,
+            maybe_json_string(payload.get("publication_preview"))?,
             value_as_string(payload.get("updated_at")),
         ],
     )?;
@@ -2601,6 +2894,200 @@ fn subscription_policy_outbox_state(
 struct ResourceOutboxState {
     pending_count: i64,
     last_error: Option<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct LegacyTodayFallback {
+    sections: Vec<TodaySectionRead>,
+    quick_stats: Option<TodayQuickStatsRead>,
+    focus_card: Option<TodayFocusCardRead>,
+}
+
+fn section_item_to_digest_highlight(item: TodaySectionItemRead) -> DigestHighlightRead {
+    DigestHighlightRead {
+        sort_order: item.sort_order,
+        pulse_card_id: item.pulse_card_id,
+        card_type: item.card_type,
+        source_paper_id: item.source_paper_id,
+        title: item.title,
+        summary: item.summary,
+        why_now: item.why_now,
+        action_text: item.action_text,
+        deep_link: item.deep_link,
+        paper: item.paper,
+    }
+}
+
+fn section_item_to_focus_card(item: &TodaySectionItemRead) -> TodayFocusCardRead {
+    TodayFocusCardRead {
+        sort_order: item.sort_order,
+        pulse_card_id: item.pulse_card_id.clone(),
+        card_type: item.card_type.clone(),
+        source_paper_id: item.source_paper_id.clone(),
+        title: item.title.clone(),
+        summary: item.summary.clone(),
+        why_now: item.why_now.clone(),
+        action_text: item.action_text.clone(),
+        deep_link: item.deep_link.clone(),
+        paper: item.paper.clone(),
+    }
+}
+
+fn first_section_item<'a>(
+    sections: &'a [TodaySectionRead],
+    section_kind: &str,
+) -> Option<&'a TodaySectionItemRead> {
+    sections
+        .iter()
+        .find(|section| section.kind == section_kind)
+        .and_then(|section| section.items.first())
+}
+
+fn build_quick_stats_from_items(items: &[TodaySectionItemRead]) -> TodayQuickStatsRead {
+    let touched_paper_ids = items
+        .iter()
+        .filter_map(|item| item.source_paper_id.as_ref())
+        .collect::<std::collections::BTreeSet<_>>();
+    TodayQuickStatsRead {
+        selected_card_count: items.len() as i64,
+        related_paper_count: items
+            .iter()
+            .filter(|item| item.card_type == "related_paper")
+            .count() as i64,
+        signal_update_count: items
+            .iter()
+            .filter(|item| item.card_type == "signal_change")
+            .count() as i64,
+        touched_paper_count: touched_paper_ids.len() as i64,
+    }
+}
+
+fn build_sections_from_legacy_items(items: Vec<TodaySectionItemRead>) -> Vec<TodaySectionRead> {
+    let mut today_focus = Vec::new();
+    let mut yesterday_recap = Vec::new();
+    let mut signal_updates = Vec::new();
+    let mut related_papers = Vec::new();
+    let mut other_updates = Vec::new();
+
+    for item in items {
+        let card_type = item.card_type.as_str();
+        if today_focus.is_empty()
+            && matches!(
+                card_type,
+                "today_suggestion" | "next_action" | "stalled_progress" | "deadline_risk"
+            )
+        {
+            today_focus.push(item);
+            continue;
+        }
+        if yesterday_recap.is_empty() && card_type == "yesterday_summary" {
+            yesterday_recap.push(item);
+            continue;
+        }
+        if card_type == "signal_change" {
+            signal_updates.push(item);
+            continue;
+        }
+        if card_type == "related_paper" {
+            related_papers.push(item);
+            continue;
+        }
+        other_updates.push(item);
+    }
+
+    vec![
+        build_today_section("today_focus", "Today Focus", today_focus),
+        build_today_section("yesterday_recap", "Yesterday Recap", yesterday_recap),
+        build_today_section("signal_updates", "Signal Updates", signal_updates),
+        build_today_section("related_papers", "Related Papers", related_papers),
+        build_today_section("other_updates", "Other Updates", other_updates),
+    ]
+    .into_iter()
+    .filter(|section| !section.items.is_empty())
+    .collect()
+}
+
+fn build_today_section(
+    kind: &str,
+    title: &str,
+    items: Vec<TodaySectionItemRead>,
+) -> TodaySectionRead {
+    TodaySectionRead {
+        kind: kind.to_string(),
+        title: title.to_string(),
+        item_count: items.len() as i64,
+        items,
+    }
+}
+
+fn order_section_kinds(section_order: Vec<String>) -> Vec<String> {
+    let mut ordered = Vec::new();
+    for kind in TODAY_SECTION_ORDER {
+        if section_order.iter().any(|value| value == kind) {
+            ordered.push(kind.to_string());
+        }
+    }
+    for kind in section_order {
+        if !ordered.iter().any(|value| value == &kind) {
+            ordered.push(kind);
+        }
+    }
+    if ordered.is_empty() {
+        TODAY_SECTION_ORDER
+            .iter()
+            .map(|kind| kind.to_string())
+            .collect()
+    } else {
+        ordered
+    }
+}
+
+fn order_today_sections(
+    mut sections: Vec<TodaySectionRead>,
+    section_order: &[String],
+) -> Vec<TodaySectionRead> {
+    sections.sort_by(|left, right| {
+        let left_index = section_order
+            .iter()
+            .position(|kind| kind == &left.kind)
+            .unwrap_or(section_order.len());
+        let right_index = section_order
+            .iter()
+            .position(|kind| kind == &right.kind)
+            .unwrap_or(section_order.len());
+        left_index
+            .cmp(&right_index)
+            .then(left.title.cmp(&right.title))
+            .then(left.kind.cmp(&right.kind))
+    });
+    sections
+}
+
+fn ensure_text_column(
+    connection: &Connection,
+    table_name: &str,
+    column_name: &str,
+    definition: &str,
+) -> Result<()> {
+    if table_has_column(connection, table_name, column_name)? {
+        return Ok(());
+    }
+    connection.execute(
+        &format!("ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}"),
+        [],
+    )?;
+    Ok(())
+}
+
+fn table_has_column(connection: &Connection, table_name: &str, column_name: &str) -> Result<bool> {
+    let mut statement = connection.prepare(&format!("PRAGMA table_info({table_name})"))?;
+    let rows = statement.query_map([], |row| row.get::<_, String>(1))?;
+    for row in rows {
+        if row? == column_name {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 fn query_resource_outbox_state(
@@ -2896,6 +3383,12 @@ fn parse_json_array(raw: Option<String>) -> Vec<String> {
         .unwrap_or_default()
 }
 
+fn parse_json_string_array(raw: Option<String>) -> Vec<String> {
+    parse_json_value(raw)
+        .and_then(|value| serde_json::from_value::<Vec<String>>(value).ok())
+        .unwrap_or_default()
+}
+
 fn timestamp_now() -> String {
     chrono::Utc::now().to_rfc3339()
 }
@@ -3064,7 +3557,9 @@ mod tests {
                             "source_paper_id": "paper-1",
                             "title": "Signal update",
                             "summary": "Summary",
-                            "why_now": "Why now"
+                            "why_now": "Why now",
+                            "action_text": "Review signal delta",
+                            "deep_link": "/papers/paper-1"
                         }, {
                             "sort_order": 2,
                             "pulse_card_id": "card-2",
@@ -3072,7 +3567,9 @@ mod tests {
                             "source_paper_id": serde_json::Value::Null,
                             "title": "Yesterday summary for 2026-04-14",
                             "summary": "Yesterday recorded 2 activities.",
-                            "why_now": "2026-04-14 provides a concise recap before today's work starts."
+                            "why_now": "2026-04-14 provides a concise recap before today's work starts.",
+                            "action_text": serde_json::Value::Null,
+                            "deep_link": serde_json::Value::Null
                         }],
                         "items": [{
                             "sort_order": 1,
@@ -3081,7 +3578,9 @@ mod tests {
                             "source_paper_id": "paper-1",
                             "title": "Signal update",
                             "summary": "Summary",
-                            "why_now": "Why now"
+                            "why_now": "Why now",
+                            "action_text": "Review signal delta",
+                            "deep_link": "/papers/paper-1"
                         }, {
                             "sort_order": 2,
                             "pulse_card_id": "card-2",
@@ -3089,8 +3588,77 @@ mod tests {
                             "source_paper_id": serde_json::Value::Null,
                             "title": "Yesterday summary for 2026-04-14",
                             "summary": "Yesterday recorded 2 activities.",
-                            "why_now": "2026-04-14 provides a concise recap before today's work starts."
+                            "why_now": "2026-04-14 provides a concise recap before today's work starts.",
+                            "action_text": serde_json::Value::Null,
+                            "deep_link": serde_json::Value::Null
                         }],
+                        "section_order": [
+                            "today_focus",
+                            "yesterday_recap",
+                            "signal_updates",
+                            "related_papers",
+                            "other_updates"
+                        ],
+                        "sections": [
+                            {
+                                "kind": "yesterday_recap",
+                                "title": "Yesterday Recap",
+                                "item_count": 1,
+                                "items": [{
+                                    "sort_order": 2,
+                                    "pulse_card_id": "card-2",
+                                    "card_type": "yesterday_summary",
+                                    "source_paper_id": serde_json::Value::Null,
+                                    "title": "Yesterday summary for 2026-04-14",
+                                    "summary": "Yesterday recorded 2 activities.",
+                                    "why_now": "2026-04-14 provides a concise recap before today's work starts.",
+                                    "action_text": serde_json::Value::Null,
+                                    "deep_link": serde_json::Value::Null
+                                }]
+                            },
+                            {
+                                "kind": "signal_updates",
+                                "title": "Signal Updates",
+                                "item_count": 1,
+                                "items": [{
+                                    "sort_order": 1,
+                                    "pulse_card_id": "card-1",
+                                    "card_type": "signal_change",
+                                    "source_paper_id": "paper-1",
+                                    "title": "Signal update",
+                                    "summary": "Summary",
+                                    "why_now": "Why now",
+                                    "action_text": "Review signal delta",
+                                    "deep_link": "/papers/paper-1"
+                                }]
+                            }
+                        ],
+                        "quick_stats": {
+                            "selected_card_count": 2,
+                            "related_paper_count": 0,
+                            "signal_update_count": 1,
+                            "touched_paper_count": 1
+                        },
+                        "focus_card": serde_json::Value::Null,
+                        "publication_preview": {
+                            "digest_title": "Digest",
+                            "digest_subtitle": "Summary",
+                            "digest_highlights": [{
+                                "sort_order": 1,
+                                "pulse_card_id": "card-1",
+                                "card_type": "signal_change",
+                                "source_paper_id": "paper-1",
+                                "title": "Signal update",
+                                "summary": "Summary",
+                                "why_now": "Why now",
+                                "action_text": "Review signal delta",
+                                "deep_link": "/papers/paper-1"
+                            }],
+                            "primary_cta_text": "Review signal delta",
+                            "primary_cta_path": "/mini/pulse-digests/user-1/2026-04-15",
+                            "mini_program_path": "mini/pulse-digests/user-1/2026-04-15",
+                            "article_url": null
+                        },
                         "updated_at": "2026-04-15T00:00:00Z"
                     }),
                 },
@@ -3107,10 +3675,137 @@ mod tests {
 
         let today = cache.read_today_overview().unwrap();
         assert_eq!(today.state, "ready");
+        assert!(today.is_structured);
+        assert_eq!(today.fallback_mode, "structured");
         assert_eq!(today.highlights.len(), 2);
+        assert_eq!(
+            today.highlights[0].action_text.as_deref(),
+            Some("Review signal delta")
+        );
         assert_eq!(today.highlights[0].paper.as_ref().unwrap().id, "paper-1");
         assert_eq!(today.highlights[1].card_type, "yesterday_summary");
         assert!(today.highlights[1].paper.is_none());
+        assert_eq!(
+            today.section_order,
+            super::TODAY_SECTION_ORDER
+                .iter()
+                .map(|kind| kind.to_string())
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(today.sections.len(), 2);
+        assert_eq!(today.sections[0].kind, "yesterday_recap");
+        assert_eq!(today.sections[1].kind, "signal_updates");
+        assert_eq!(
+            today
+                .publication_preview
+                .as_ref()
+                .and_then(|preview| preview.primary_cta_text.as_deref()),
+            Some("Review signal delta"),
+        );
+    }
+
+    #[test]
+    fn read_today_overview_falls_back_to_legacy_highlights_when_sections_are_missing() {
+        let cache = cache();
+        cache
+            .upsert_connection(
+                "http://localhost:8000",
+                "device-1",
+                "Desktop",
+                "user-1",
+                "Researcher",
+                Some("researcher@example.com"),
+                Some("materials science"),
+            )
+            .unwrap();
+        cache
+            .apply_event_batch(&[
+                RemoteSyncEvent {
+                    id: "evt-paper-1".to_string(),
+                    sequence: 1,
+                    user_id: "user-1".to_string(),
+                    entity_type: "paper_profile".to_string(),
+                    entity_id: "paper-1".to_string(),
+                    event_type: "updated".to_string(),
+                    event_source: "api".to_string(),
+                    occurred_at: "2026-04-15T00:00:00Z".to_string(),
+                    payload: serde_json::json!({
+                        "id": "paper-1",
+                        "user_id": "user-1",
+                        "title": "Legacy Digest Paper",
+                        "type": "revision",
+                        "stage": "revision",
+                        "venue": "Journal",
+                        "priority": 5,
+                        "next_action": "Finish response memo",
+                        "blocker": serde_json::Value::Null,
+                        "last_touch_at": "2026-04-15T00:00:00Z",
+                        "updated_at": "2026-04-15T00:00:00Z",
+                        "identifiers": {},
+                        "source_links": [],
+                    }),
+                },
+                RemoteSyncEvent {
+                    id: "evt-digest-legacy".to_string(),
+                    sequence: 2,
+                    user_id: "user-1".to_string(),
+                    entity_type: "pulse_digest_issue".to_string(),
+                    entity_id: "digest-1".to_string(),
+                    event_type: "updated".to_string(),
+                    event_source: "worker".to_string(),
+                    occurred_at: "2026-04-15T00:00:00Z".to_string(),
+                    payload: serde_json::json!({
+                        "id": "digest-1",
+                        "user_id": "user-1",
+                        "issue_date": "2026-04-15",
+                        "status": "ready",
+                        "title": "Legacy digest",
+                        "summary": "Legacy summary",
+                        "highlight_count": 2,
+                        "selected_card_count": 2,
+                        "deep_link_path": "/mini/pulse-digests/user-1/2026-04-15",
+                        "highlights": [{
+                            "sort_order": 1,
+                            "pulse_card_id": "card-1",
+                            "card_type": "today_suggestion",
+                            "source_paper_id": "paper-1",
+                            "title": "Do the next step",
+                            "summary": "Finish response memo",
+                            "why_now": "Best next step today",
+                            "action_text": "Finish response memo",
+                            "deep_link": "/papers/paper-1"
+                        }, {
+                            "sort_order": 2,
+                            "pulse_card_id": "card-2",
+                            "card_type": "yesterday_summary",
+                            "source_paper_id": serde_json::Value::Null,
+                            "title": "Yesterday summary for 2026-04-14",
+                            "summary": "Yesterday recorded 2 activities.",
+                            "why_now": "Recap before today's work",
+                            "action_text": serde_json::Value::Null,
+                            "deep_link": serde_json::Value::Null
+                        }],
+                        "items": [],
+                        "updated_at": "2026-04-15T00:00:00Z"
+                    }),
+                },
+            ])
+            .unwrap();
+
+        let today = cache.read_today_overview().unwrap();
+        assert!(!today.is_structured);
+        assert_eq!(today.fallback_mode, "highlights_only");
+        assert_eq!(today.sections.len(), 2);
+        assert_eq!(today.sections[0].kind, "today_focus");
+        assert_eq!(today.sections[1].kind, "yesterday_recap");
+        assert_eq!(
+            today
+                .focus_card
+                .as_ref()
+                .map(|card| card.card_type.as_str()),
+            Some("today_suggestion"),
+        );
+        assert!(today.publication_preview.is_none());
     }
 
     #[test]

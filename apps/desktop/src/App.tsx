@@ -17,6 +17,7 @@ import {
   buildSubscriptionPolicyPatchInput,
   buildTodayEmptyState,
   deliveryControlWeekdays,
+  orderTodaySections,
   sortPapers,
   sortDeliveryControlSettings,
   summarizeDeliveryControlHint,
@@ -568,6 +569,24 @@ function TodayView({ todayOverview }: { todayOverview: TodayOverviewRead }) {
     );
   }
 
+  const orderedSections = orderTodaySections(
+    todayOverview.sections.filter((section) => section.items.length > 0),
+    todayOverview.sectionOrder,
+  );
+  const todayFocusSection =
+    orderedSections.find((section) => section.kind === "today_focus") ??
+    (todayOverview.focusCard
+      ? {
+          kind: "today_focus",
+          title: "Today Focus",
+          itemCount: 1,
+          items: [todayOverview.focusCard],
+        }
+      : null);
+  const nonFocusSections = orderedSections.filter(
+    (section) => section.kind !== "today_focus",
+  );
+
   return (
     <section className="page-grid">
       <div className="panel">
@@ -586,36 +605,123 @@ function TodayView({ todayOverview }: { todayOverview: TodayOverviewRead }) {
             value={todayOverview.deepLinkPath ?? "Mini path pending"}
           />
         </div>
-      </div>
-      <div className="panel">
-        <div className="eyebrow">Highlights</div>
-        <div className="list-stack">
-          {todayOverview.highlights.map((highlight) => (
-            <article className="list-card" key={highlight.pulseCardId}>
-              <div className="list-card-topline">
-                <span>#{highlight.sortOrder}</span>
-                <span>{highlight.cardType}</span>
-              </div>
-              <h3>{highlight.title}</h3>
-              <p>{highlight.summary}</p>
-              {highlight.paper ? (
-                <div className="pill-row">
-                  <span className="pill">{highlight.paper.title}</span>
-                  <span className="pill">
-                    {highlight.paper.progressPercentage}% progress
-                  </span>
-                  {highlight.paper.pendingMutationCount ? (
-                    <span className="pill pill-accent">
-                      {highlight.paper.pendingMutationCount} pending write
-                    </span>
-                  ) : null}
-                </div>
-              ) : null}
-            </article>
-          ))}
+        {todayOverview.quickStats ? (
+          <div className="stat-grid today-stat-grid">
+            <StatCard
+              label="Selected Cards"
+              value={String(todayOverview.quickStats.selectedCardCount)}
+            />
+            <StatCard
+              label="Related Papers"
+              value={String(todayOverview.quickStats.relatedPaperCount)}
+            />
+            <StatCard
+              label="Signal Updates"
+              value={String(todayOverview.quickStats.signalUpdateCount)}
+            />
+            <StatCard
+              label="Touched Papers"
+              value={String(todayOverview.quickStats.touchedPaperCount)}
+            />
+          </div>
+        ) : null}
+        <div className="pill-row">
+          <span className="pill">
+            {todayOverview.isStructured ? "Structured digest" : "Legacy digest fallback"}
+          </span>
+          <span className="pill">Mode {todayOverview.fallbackMode}</span>
         </div>
       </div>
+
+      {todayOverview.publicationPreview ? (
+        <div className="panel today-preview-panel">
+          <div className="eyebrow">Publication Preview</div>
+          <h3>{todayOverview.publicationPreview.digestTitle ?? "Daily digest preview"}</h3>
+          {todayOverview.publicationPreview.digestSubtitle ? (
+            <p>{todayOverview.publicationPreview.digestSubtitle}</p>
+          ) : null}
+          <div className="pill-row">
+            {todayOverview.publicationPreview.primaryCtaText ? (
+              <span className="pill pill-accent">
+                CTA {todayOverview.publicationPreview.primaryCtaText}
+              </span>
+            ) : null}
+            {todayOverview.publicationPreview.primaryCtaPath ? (
+              <span className="pill">
+                Path {todayOverview.publicationPreview.primaryCtaPath}
+              </span>
+            ) : null}
+            {todayOverview.publicationPreview.articleUrl ? (
+              <span className="pill">Article ready</span>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      {todayFocusSection ? (
+        <TodaySectionPanel section={todayFocusSection} accent />
+      ) : null}
+
+      {nonFocusSections.map((section) => (
+        <TodaySectionPanel key={section.kind} section={section} />
+      ))}
+
+      {!todayFocusSection && !nonFocusSections.length ? (
+        <div className="panel">
+          <div className="eyebrow">Today</div>
+          <p className="panel-message">
+            No structured digest sections are available yet. Run sync after the backend
+            publishes a digest issue.
+          </p>
+        </div>
+      ) : null}
     </section>
+  );
+}
+
+function TodaySectionPanel({
+  section,
+  accent = false,
+}: {
+  section: {
+    kind: string;
+    title: string;
+    itemCount: number;
+    items: TodayOverviewRead["sections"][number]["items"];
+  };
+  accent?: boolean;
+}) {
+  return (
+    <div className={`panel ${accent ? "today-focus-panel" : ""}`}>
+        <div className="today-section-header">
+          <div>
+          <div className="eyebrow">{section.kind.split("_").join(" ")}</div>
+          <h3>{section.title}</h3>
+          </div>
+        <span className="pill">{section.itemCount} item{section.itemCount === 1 ? "" : "s"}</span>
+      </div>
+      <div className="list-stack">
+        {section.items.map((item) => (
+          <article className={`list-card ${accent ? "list-card-focus" : ""}`} key={item.pulseCardId}>
+            <div className="list-card-topline">
+              <span>#{item.sortOrder}</span>
+              <span>{item.cardType}</span>
+            </div>
+            <h3>{item.title}</h3>
+            <p>{item.summary}</p>
+            {item.whyNow ? <p className="today-item-why-now">{item.whyNow}</p> : null}
+            <div className="pill-row">
+              {item.actionText ? <span className="pill pill-accent">{item.actionText}</span> : null}
+              {item.deepLink ? <span className="pill">{item.deepLink}</span> : null}
+              {item.paper ? <span className="pill">{item.paper.title}</span> : null}
+              {item.paper ? (
+                <span className="pill">{item.paper.progressPercentage}% progress</span>
+              ) : null}
+            </div>
+          </article>
+        ))}
+      </div>
+    </div>
   );
 }
 

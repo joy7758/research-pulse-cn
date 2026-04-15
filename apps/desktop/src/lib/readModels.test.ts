@@ -7,10 +7,12 @@ import {
   deliveryControlWeekdays,
   deriveProgressPercentage,
   extractQuietHoursDraft,
+  orderTodaySections,
   serializeAllowedWeekdays,
   sortDeliveryControlSettings,
   sortPapers,
   summarizeDeliveryControlHint,
+  todaySectionOrder,
   toDatetimeLocalValue,
 } from "./readModels";
 
@@ -35,9 +37,45 @@ describe("desktop read model helpers", () => {
       selectedCardCount: 0,
       deepLinkPath: null,
       highlights: [],
+      isStructured: false,
+      sectionOrder: [...todaySectionOrder],
+      sections: [],
+      quickStats: null,
+      focusCard: null,
+      publicationPreview: null,
+      fallbackMode: "empty",
       message: "No digest yet.",
       updatedAt: null,
     });
+  });
+
+  it("orders Today sections by the stable structured digest order", () => {
+    const sections = orderTodaySections([
+      {
+        kind: "related_papers",
+        title: "Related Papers",
+        itemCount: 1,
+        items: [],
+      },
+      {
+        kind: "today_focus",
+        title: "Today Focus",
+        itemCount: 1,
+        items: [],
+      },
+      {
+        kind: "other_updates",
+        title: "Other Updates",
+        itemCount: 1,
+        items: [],
+      },
+    ]);
+
+    expect(sections.map((section) => section.kind)).toEqual([
+      "today_focus",
+      "related_papers",
+      "other_updates",
+    ]);
   });
 
   it("sorts paper list items by stable desktop ordering", () => {

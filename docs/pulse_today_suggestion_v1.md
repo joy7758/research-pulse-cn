@@ -84,10 +84,11 @@
 ## Digest Compatibility Notes
 - Digest building tolerates selected `today_suggestion` cards without special branching.
 - Official-account daily digest orchestration now prefers `today_suggestion` as the `today_focus` section head when one is selected.
+- Desktop Today rendering now uses that structured `today_focus` section when synced digest payloads include it.
 - In this phase, `today_suggestion` is usually paper-centric:
   - `source_paper_id` is normally set
 - Compact digest and mini/desktop read payloads still should not assume every card shares the same metadata shape.
-- Desktop compatibility is limited to type and Today-view tolerance in this phase.
+- Desktop compatibility in this phase now includes structured Today rendering while remaining read-only.
 
 ## Current Non-Goals
 - no external academic retrieval

@@ -5,6 +5,8 @@ import type {
   QueueSubscriptionPolicyPatchInput,
   QuietHoursWindowRead,
   TodayOverviewRead,
+  TodaySectionKindRead,
+  TodaySectionRead,
 } from "./types";
 
 export const progressPercentageByPaperType = {
@@ -23,6 +25,14 @@ export const deliveryControlWeekdays = [
   { value: 4, label: "Fri" },
   { value: 5, label: "Sat" },
   { value: 6, label: "Sun" },
+] as const;
+
+export const todaySectionOrder: TodaySectionKindRead[] = [
+  "today_focus",
+  "yesterday_recap",
+  "signal_updates",
+  "related_papers",
+  "other_updates",
 ] as const;
 
 export type KnownPaperType = keyof typeof progressPercentageByPaperType;
@@ -55,9 +65,37 @@ export function buildTodayEmptyState(message?: string): TodayOverviewRead {
     selectedCardCount: 0,
     deepLinkPath: null,
     highlights: [],
+    isStructured: false,
+    sectionOrder: [...todaySectionOrder],
+    sections: [],
+    quickStats: null,
+    focusCard: null,
+    publicationPreview: null,
+    fallbackMode: "empty",
     message: message ?? "No digest issue is cached yet.",
     updatedAt: null,
   };
+}
+
+export function orderTodaySections(
+  sections: TodaySectionRead[],
+  sectionOrder: readonly TodaySectionKindRead[] = todaySectionOrder,
+): TodaySectionRead[] {
+  const orderIndex = new Map(
+    sectionOrder.map((kind, index) => [kind, index] as const),
+  );
+  return [...sections].sort((left, right) => {
+    const leftIndex = orderIndex.get(left.kind) ?? Number.MAX_SAFE_INTEGER;
+    const rightIndex = orderIndex.get(right.kind) ?? Number.MAX_SAFE_INTEGER;
+    if (leftIndex !== rightIndex) {
+      return leftIndex - rightIndex;
+    }
+    const titleOrder = left.title.localeCompare(right.title);
+    if (titleOrder !== 0) {
+      return titleOrder;
+    }
+    return left.kind.localeCompare(right.kind);
+  });
 }
 
 export function sortPapers(papers: PaperListItemRead[]): PaperListItemRead[] {
