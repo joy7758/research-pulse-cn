@@ -62,6 +62,24 @@ The shell lives under `apps/subscription-editor-web` and uses only:
 
 The shell is not a mini-program build and does not introduce new auth. It consumes short-lived handoff grants only.
 
+## Result share web shell
+- Install share-shell dependencies:
+  - `make result-share-install`
+- Run the share shell:
+  - `make result-share-dev`
+- Run share-shell lint + typecheck:
+  - `make result-share-lint`
+- Run share-shell tests:
+  - `make result-share-test`
+- Build the share shell:
+  - `make result-share-build`
+
+The shell lives under `apps/result-share-web` and uses only:
+- `GET /result-shares/{share_token}/bootstrap`
+- `GET /result-shares/{share_token}/content`
+
+The shell is public/token-based and read-only. It does not introduce login, editing, or source-file sharing.
+
 ## Group workspace and result sharing
 - Admin-managed workspace routes:
   - `GET /admin/group-workspaces`
@@ -82,6 +100,10 @@ The shell is not a mini-program build and does not introduce new auth. It consum
   - `GET /result-shares/{share_token}/content`
 
 This phase shares structured results only. It explicitly excludes PDFs, source files, local attachment paths, and local note contents.
+The browser shell for that boundary now uses:
+- `/share/<token>` path parsing when practical
+- `?share_token=` and `#share_token=` local-dev fallbacks
+- in-memory token handling only
 
 Desktop sync in this phase uses:
 - `GET /sync/me`

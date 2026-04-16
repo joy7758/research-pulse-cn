@@ -115,3 +115,4 @@
 - Structured digest issues are now also compatible with read-only `ResultShareGrant` links.
 - `digest_issue` result sharing reuses the same sectioned payload when present and falls back to legacy highlights/items when older digest rows lack structured sections.
 - Share views stay read-only and exclude provider secrets, openid/unionid, local file paths, and local note contents.
+- The public `apps/result-share-web` shell consumes that same structured-or-fallback digest shape without introducing any new digest orchestration contract.

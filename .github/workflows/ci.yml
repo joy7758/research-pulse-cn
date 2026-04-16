@@ -90,3 +90,34 @@ jobs:
 
       - name: Editor web build
         run: npm run build
+
+  result-share-web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/result-share-web
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: apps/result-share-web/package-lock.json
+
+      - name: Install result share dependencies
+        run: npm ci
+
+      - name: Result share lint
+        run: npm run lint
+
+      - name: Result share typecheck
+        run: npm run typecheck
+
+      - name: Result share tests
+        run: npm run test
+
+      - name: Result share build
+        run: npm run build

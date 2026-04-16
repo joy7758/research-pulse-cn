@@ -3,9 +3,10 @@ NPM ?= npm
 PACKAGE = research_pulse_cn
 DESKTOP_DIR = apps/desktop
 SUBSCRIPTION_EDITOR_WEB_DIR = apps/subscription-editor-web
+RESULT_SHARE_WEB_DIR = apps/result-share-web
 export PATH := $(HOME)/.cargo/bin:$(PATH)
 
-.PHONY: install run run-api migrate seed worker run-worker run-scheduler scheduler-tick bootstrap-admin lint format test check docker-up docker-down desktop-install desktop-dev desktop-lint desktop-test desktop-build-web subscription-editor-install subscription-editor-dev subscription-editor-lint subscription-editor-test subscription-editor-build
+.PHONY: install run run-api migrate seed worker run-worker run-scheduler scheduler-tick bootstrap-admin lint format test check docker-up docker-down desktop-install desktop-dev desktop-lint desktop-test desktop-build-web subscription-editor-install subscription-editor-dev subscription-editor-lint subscription-editor-test subscription-editor-build result-share-install result-share-dev result-share-lint result-share-test result-share-build
 
 install:
 	$(PYTHON) -m pip install --upgrade pip
@@ -88,3 +89,19 @@ subscription-editor-test:
 
 subscription-editor-build:
 	cd $(SUBSCRIPTION_EDITOR_WEB_DIR) && $(NPM) run build
+
+result-share-install:
+	cd $(RESULT_SHARE_WEB_DIR) && $(NPM) install
+
+result-share-dev:
+	cd $(RESULT_SHARE_WEB_DIR) && $(NPM) run dev
+
+result-share-lint:
+	cd $(RESULT_SHARE_WEB_DIR) && $(NPM) run lint
+	cd $(RESULT_SHARE_WEB_DIR) && $(NPM) run typecheck
+
+result-share-test:
+	cd $(RESULT_SHARE_WEB_DIR) && $(NPM) run test
+
+result-share-build:
+	cd $(RESULT_SHARE_WEB_DIR) && $(NPM) run build

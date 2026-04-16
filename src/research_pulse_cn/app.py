@@ -36,10 +36,10 @@ def create_app() -> FastAPI:
         openapi_url="/openapi.json",
         redoc_url="/redoc",
     )
-    if settings.subscription_editor_web_allowed_origin_list:
+    if settings.browser_allowed_origin_list:
         app.add_middleware(
             CORSMiddleware,
-            allow_origins=settings.subscription_editor_web_allowed_origin_list,
+            allow_origins=settings.browser_allowed_origin_list,
             allow_credentials=False,
             allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
             allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
