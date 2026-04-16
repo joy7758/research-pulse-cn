@@ -276,6 +276,13 @@ class Settings(BaseSettings):
         ),
         validation_alias="APP_USER_WORKBENCH_ADMIN_WEB_ALLOWED_ORIGINS",
     )
+    group_workspace_invite_web_allowed_origins: str = Field(
+        default=(
+            "http://127.0.0.1:5177,http://localhost:5177,"
+            "http://127.0.0.1:4177,http://localhost:4177"
+        ),
+        validation_alias="APP_GROUP_WORKSPACE_INVITE_WEB_ALLOWED_ORIGINS",
+    )
     group_workspace_invites_enabled: bool = Field(
         default=False,
         validation_alias="APP_GROUP_WORKSPACE_INVITES_ENABLED",
@@ -574,6 +581,22 @@ class Settings(BaseSettings):
         return values
 
     @property
+    def group_workspace_invite_web_allowed_origin_list(self) -> list[str]:
+        """Return allowed browser origins for the group workspace invite shell."""
+        values: list[str] = []
+        seen: set[str] = set()
+        raw_values = (
+            str(self.group_workspace_invite_web_allowed_origins).replace(";", ",").split(",")
+        )
+        for raw_value in raw_values:
+            cleaned = raw_value.strip().rstrip("/")
+            if not cleaned or cleaned in seen:
+                continue
+            seen.add(cleaned)
+            values.append(cleaned)
+        return values
+
+    @property
     def browser_allowed_origin_list(self) -> list[str]:
         """Return combined loopback origins for thin browser shells."""
         values: list[str] = []
@@ -583,6 +606,7 @@ class Settings(BaseSettings):
             *self.result_share_web_allowed_origin_list,
             *self.group_workspace_admin_web_allowed_origin_list,
             *self.user_workbench_admin_web_allowed_origin_list,
+            *self.group_workspace_invite_web_allowed_origin_list,
         ):
             if origin in seen:
                 continue

@@ -183,3 +183,34 @@ jobs:
 
       - name: User workbench build
         run: npm run build
+
+  group-workspace-invite-web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/group-workspace-invite-web
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: apps/group-workspace-invite-web/package-lock.json
+
+      - name: Install workspace invite dependencies
+        run: npm ci
+
+      - name: Workspace invite lint
+        run: npm run lint
+
+      - name: Workspace invite typecheck
+        run: npm run typecheck
+
+      - name: Workspace invite tests
+        run: npm run test
+
+      - name: Workspace invite build
+        run: npm run build

@@ -70,3 +70,4 @@
 - potential workspace invite or handoff flows if justified
 
 The internal admin/operator shell for creating and revoking `workspace_board` shares now lives separately under `apps/group-workspace-admin-web`, so this public shell stays strictly read-only.
+Workspace invite bootstrap and self-service claim now also have their own separate thin shell under `apps/group-workspace-invite-web`, so result sharing and membership growth remain distinct browser surfaces.

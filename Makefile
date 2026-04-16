@@ -6,9 +6,10 @@ SUBSCRIPTION_EDITOR_WEB_DIR = apps/subscription-editor-web
 RESULT_SHARE_WEB_DIR = apps/result-share-web
 GROUP_WORKSPACE_ADMIN_WEB_DIR = apps/group-workspace-admin-web
 USER_WORKBENCH_ADMIN_WEB_DIR = apps/user-workbench-admin-web
+GROUP_WORKSPACE_INVITE_WEB_DIR = apps/group-workspace-invite-web
 export PATH := $(HOME)/.cargo/bin:$(PATH)
 
-.PHONY: install run run-api migrate seed worker run-worker run-scheduler scheduler-tick bootstrap-admin lint format test check docker-up docker-down desktop-install desktop-dev desktop-lint desktop-test desktop-build-web subscription-editor-install subscription-editor-dev subscription-editor-lint subscription-editor-test subscription-editor-build result-share-install result-share-dev result-share-lint result-share-test result-share-build workspace-admin-install workspace-admin-dev workspace-admin-lint workspace-admin-test workspace-admin-build user-workbench-install user-workbench-dev user-workbench-lint user-workbench-test user-workbench-build
+.PHONY: install run run-api migrate seed worker run-worker run-scheduler scheduler-tick bootstrap-admin lint format test check docker-up docker-down desktop-install desktop-dev desktop-lint desktop-test desktop-build-web subscription-editor-install subscription-editor-dev subscription-editor-lint subscription-editor-test subscription-editor-build result-share-install result-share-dev result-share-lint result-share-test result-share-build workspace-admin-install workspace-admin-dev workspace-admin-lint workspace-admin-test workspace-admin-build user-workbench-install user-workbench-dev user-workbench-lint user-workbench-test user-workbench-build workspace-invite-install workspace-invite-dev workspace-invite-lint workspace-invite-test workspace-invite-build
 
 install:
 	$(PYTHON) -m pip install --upgrade pip
@@ -139,3 +140,19 @@ user-workbench-test:
 
 user-workbench-build:
 	cd $(USER_WORKBENCH_ADMIN_WEB_DIR) && $(NPM) run build
+
+workspace-invite-install:
+	cd $(GROUP_WORKSPACE_INVITE_WEB_DIR) && $(NPM) install
+
+workspace-invite-dev:
+	cd $(GROUP_WORKSPACE_INVITE_WEB_DIR) && $(NPM) run dev
+
+workspace-invite-lint:
+	cd $(GROUP_WORKSPACE_INVITE_WEB_DIR) && $(NPM) run lint
+	cd $(GROUP_WORKSPACE_INVITE_WEB_DIR) && $(NPM) run typecheck
+
+workspace-invite-test:
+	cd $(GROUP_WORKSPACE_INVITE_WEB_DIR) && $(NPM) run test
+
+workspace-invite-build:
+	cd $(GROUP_WORKSPACE_INVITE_WEB_DIR) && $(NPM) run build

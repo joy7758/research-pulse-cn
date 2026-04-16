@@ -130,6 +130,26 @@ The shell lives under `apps/user-workbench-admin-web` and uses:
 
 The shell is internal/admin-only, keeps bearer tokens in memory only, and stays strictly read-only.
 
+## Group workspace invite web shell
+- Install invite-shell dependencies:
+  - `make workspace-invite-install`
+- Run the invite shell:
+  - `make workspace-invite-dev`
+- Run invite-shell lint + typecheck:
+  - `make workspace-invite-lint`
+- Run invite-shell tests:
+  - `make workspace-invite-test`
+- Build the invite shell:
+  - `make workspace-invite-build`
+
+The shell lives under `apps/group-workspace-invite-web` and uses only:
+- `GET /workspace-invites/{invite_token}/bootstrap`
+- `GET /subscription-self-service/workspace-invites/{invite_token}/claim-preview`
+- `POST /subscription-self-service/workspace-invites/{invite_token}/claim`
+- `GET /subscription-self-service/workspace-memberships`
+
+The shell is public + self-service-token-assisted, keeps invite/self-service tokens in memory only, and does not introduce end-user login, editing, or source-file sharing.
+
 ## Group workspace and result sharing
 - Admin-managed workspace routes:
   - `GET /admin/group-workspaces`
@@ -160,6 +180,12 @@ The shell is internal/admin-only, keeps bearer tokens in memory only, and stays 
   - `GET /subscription-self-service/workspace-invites/{invite_token}/claim-preview`
   - `POST /subscription-self-service/workspace-invites/{invite_token}/claim`
   - `GET /subscription-self-service/workspace-memberships`
+
+The browser shell for that invite/join boundary now also supports:
+- `/invite/<token>` path parsing when practical
+- `?invite_token=` and `#invite_token=` fallbacks
+- optional `?self_service_token=` and `#self_service_token=` local-dev fallbacks
+- in-memory token handling only
 
 This phase shares structured results only. It explicitly excludes PDFs, source files, local attachment paths, and local note contents.
 The browser shell for that boundary now uses:
