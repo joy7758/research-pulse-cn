@@ -113,6 +113,73 @@ export function WorkspaceBoardView({ viewModel }: WorkspaceBoardViewProps) {
         </section>
       ) : null}
 
+      {viewModel.resultCollectHandoff ? (
+        <section className="panel-card">
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">Result collect handoff</p>
+              <h3>Next step: collect papers into this workspace</h3>
+            </div>
+            <span className="pill">
+              {viewModel.resultCollectHandoff.directCollectViaCurrentShare
+                ? "Direct collect available"
+                : "Read-only handoff"}
+            </span>
+          </div>
+          <dl className="summary-list compact">
+            <div>
+              <dt>Separate result share token required</dt>
+              <dd>
+                {viewModel.resultCollectHandoff.separateResultShareTokenRequired ? "Yes" : "No"}
+              </dd>
+            </div>
+            <div>
+              <dt>Collect supported via self-service</dt>
+              <dd>
+                {viewModel.resultCollectHandoff.collectSupportedViaSelfService ? "Yes" : "No"}
+              </dd>
+            </div>
+            <div>
+              <dt>Direct collect via current share</dt>
+              <dd>
+                {viewModel.resultCollectHandoff.directCollectViaCurrentShare ? "Yes" : "No"}
+              </dd>
+            </div>
+            <div>
+              <dt>Supported share kinds</dt>
+              <dd>{viewModel.resultCollectHandoff.supportedShareKinds.join(", ")}</dd>
+            </div>
+            <div>
+              <dt>Source files included</dt>
+              <dd>{viewModel.resultCollectHandoff.sourceFilesIncluded ? "Yes" : "No"}</dd>
+            </div>
+          </dl>
+          <ul className="bullet-list">
+            <li>This workspace-board share is read-only and cannot collect papers directly.</li>
+            {viewModel.resultCollectHandoff.notes.map((note, index) => (
+              <li key={`${index}:${note}`}>{note}</li>
+            ))}
+          </ul>
+          {viewModel.resultCollectHandoff.resultShareShellEntryUrl ? (
+            <p className="soft-copy">
+              Result-share shell entry:{" "}
+              <a
+                href={viewModel.resultCollectHandoff.resultShareShellEntryUrl}
+                rel="noreferrer"
+                target="_blank"
+              >
+                {viewModel.resultCollectHandoff.resultShareShellEntryUrl}
+              </a>
+            </p>
+          ) : (
+            <p className="soft-copy">
+              Open the existing result-share shell with a separate digest or paper share token to
+              continue.
+            </p>
+          )}
+        </section>
+      ) : null}
+
       <section className="panel-card">
         <div className="section-heading">
           <div>

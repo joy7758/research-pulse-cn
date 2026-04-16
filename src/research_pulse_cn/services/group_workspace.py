@@ -794,6 +794,9 @@ class GroupWorkspaceService:
                 "workspace_invite_handoff_reserve": self._share_workspace_invite_handoff_summary(
                     stored
                 ),
+                "result_collect_handoff_reserve": self._share_result_collect_handoff_summary(
+                    stored
+                ),
                 "notes": [
                     "This share link exposes structured read-only results only.",
                     "Source files, local attachments, and local note contents are excluded.",
@@ -1482,6 +1485,34 @@ class GroupWorkspaceService:
                 (
                     "Joining requires a separate invite token and the existing "
                     "self-service claim flow."
+                ),
+                "Source files and local attachments are not included.",
+            ],
+        }
+
+    def _share_result_collect_handoff_summary(
+        self, grant: ResultShareGrant
+    ) -> dict[str, Any] | None:
+        if grant.share_kind != ResultShareKind.WORKSPACE_BOARD:
+            return None
+        return {
+            "supported": True,
+            "share_kind": ResultShareKind.WORKSPACE_BOARD.value,
+            "separate_result_share_token_required": True,
+            "result_share_bootstrap_available": True,
+            "collect_supported_via_self_service": True,
+            "direct_collect_via_current_share": False,
+            "source_files_included": False,
+            "supported_share_kinds": [
+                ResultShareKind.DIGEST_ISSUE.value,
+                ResultShareKind.PAPER_SNAPSHOT.value,
+            ],
+            "result_share_shell_entry_url": self.settings.result_share_web_entry_url,
+            "notes": [
+                "This workspace-board share is read-only and cannot collect papers directly.",
+                (
+                    "Collecting papers into the workspace requires a separate digest or "
+                    "paper share token and the existing self-service collect flow."
                 ),
                 "Source files and local attachments are not included.",
             ],

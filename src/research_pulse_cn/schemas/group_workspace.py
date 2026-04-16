@@ -330,11 +330,27 @@ class ShareGrantWorkspaceInviteHandoffReserveRead(BaseModel):
     notes: list[str] = Field(default_factory=list)
 
 
+class ShareGrantResultCollectHandoffReserveRead(BaseModel):
+    supported: bool
+    share_kind: Literal["workspace_board"]
+    separate_result_share_token_required: bool
+    result_share_bootstrap_available: bool
+    collect_supported_via_self_service: bool
+    direct_collect_via_current_share: bool
+    source_files_included: bool
+    supported_share_kinds: list[Literal["digest_issue", "paper_snapshot"]] = Field(
+        default_factory=list
+    )
+    result_share_shell_entry_url: str | None = None
+    notes: list[str] = Field(default_factory=list)
+
+
 class ShareGrantBootstrapRead(BaseModel):
     grant: ShareGrantPublicSummaryRead
     target: ShareGrantTargetSummaryRead
     collection_reserve: ShareGrantCollectionReserveRead | None = None
     workspace_invite_handoff_reserve: ShareGrantWorkspaceInviteHandoffReserveRead | None = None
+    result_collect_handoff_reserve: ShareGrantResultCollectHandoffReserveRead | None = None
     notes: list[str] = Field(default_factory=list)
 
 

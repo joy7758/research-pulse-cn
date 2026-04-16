@@ -257,7 +257,9 @@ def test_result_share_grants_resolve_digest_paper_and_workspace_safely(
 ) -> None:
     settings = get_settings()
     original_invite_entry_url = settings.group_workspace_invite_web_entry_base_url
+    original_result_share_entry_url = settings.result_share_web_entry_base_url
     settings.group_workspace_invite_web_entry_base_url = "http://127.0.0.1:5177/"
+    settings.result_share_web_entry_base_url = "http://127.0.0.1:5174/"
     owner = create_user(
         client,
         operator_headers,
@@ -332,12 +334,14 @@ def test_result_share_grants_resolve_digest_paper_and_workspace_safely(
         assert paper_bootstrap.status_code == 200
         assert paper_bootstrap.json()["grant"]["share_kind"] == ResultShareKind.PAPER_SNAPSHOT.value
         assert paper_bootstrap.json()["workspace_invite_handoff_reserve"] is None
+        assert paper_bootstrap.json()["result_collect_handoff_reserve"] is None
         assert paper_content.status_code == 200
         assert paper_content.json()["share_kind"] == ResultShareKind.PAPER_SNAPSHOT.value
         assert paper_content.json()["owner_email"] is None
 
         assert digest_bootstrap.status_code == 200
         assert digest_bootstrap.json()["workspace_invite_handoff_reserve"] is None
+        assert digest_bootstrap.json()["result_collect_handoff_reserve"] is None
         assert digest_content.status_code == 200
         digest_payload = digest_content.json()
         assert digest_payload["share_kind"] == ResultShareKind.DIGEST_ISSUE.value
@@ -363,6 +367,29 @@ def test_result_share_grants_resolve_digest_paper_and_workspace_safely(
                 "Source files and local attachments are not included.",
             ],
         }
+        collect_handoff_payload = workspace_bootstrap.json()["result_collect_handoff_reserve"]
+        assert collect_handoff_payload == {
+            "supported": True,
+            "share_kind": ResultShareKind.WORKSPACE_BOARD.value,
+            "separate_result_share_token_required": True,
+            "result_share_bootstrap_available": True,
+            "collect_supported_via_self_service": True,
+            "direct_collect_via_current_share": False,
+            "source_files_included": False,
+            "supported_share_kinds": [
+                ResultShareKind.DIGEST_ISSUE.value,
+                ResultShareKind.PAPER_SNAPSHOT.value,
+            ],
+            "result_share_shell_entry_url": "http://127.0.0.1:5174",
+            "notes": [
+                "This workspace-board share is read-only and cannot collect papers directly.",
+                (
+                    "Collecting papers into the workspace requires a separate digest or "
+                    "paper share token and the existing self-service collect flow."
+                ),
+                "Source files and local attachments are not included.",
+            ],
+        }
 
         assert workspace_content.status_code == 200
         workspace_payload = workspace_content.json()
@@ -381,6 +408,7 @@ def test_result_share_grants_resolve_digest_paper_and_workspace_safely(
             assert "unionid" not in serialized
     finally:
         settings.group_workspace_invite_web_entry_base_url = original_invite_entry_url
+        settings.result_share_web_entry_base_url = original_result_share_entry_url
 
 
 def test_revoked_and_expired_result_share_grants_are_rejected(

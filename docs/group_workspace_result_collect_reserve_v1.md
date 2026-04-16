@@ -87,4 +87,5 @@
 
 The existing public share shell under `apps/result-share-web` is now the minimal browser consumer of this reserve: it keeps public share reads read-only, adds self-service-token-assisted collect-preview and collect panels, and still excludes source files and local attachments.
 The same shell may now also show a separate invite/join handoff summary on `workspace_board` shares, but that summary remains informational only and does not make workspace-board pages collectable or claim-capable.
+`workspace_board` shares may now also show a separate `result_collect_handoff_reserve` summary in the public shell, but that summary remains informational only and still requires a separate `digest_issue` or `paper_snapshot` share token plus the existing self-service collect boundary.
 The separate invite shell under `apps/group-workspace-invite-web` may now also show a result-collect handoff summary after membership is claimed or confirmed, but that summary remains informational only and still requires a separate result-share token plus the existing self-service collect boundary.

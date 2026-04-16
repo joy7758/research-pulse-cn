@@ -63,6 +63,23 @@ function bootstrapFixture(
             ],
           }
         : null,
+    result_collect_handoff_reserve:
+      kind === "workspace_board"
+        ? {
+            supported: true,
+            share_kind: "workspace_board",
+            separate_result_share_token_required: true,
+            result_share_bootstrap_available: true,
+            collect_supported_via_self_service: true,
+            direct_collect_via_current_share: false,
+            source_files_included: false,
+            supported_share_kinds: ["digest_issue", "paper_snapshot"],
+            result_share_shell_entry_url: "http://127.0.0.1:5174",
+            notes: [
+              "Collecting papers into the workspace requires a separate digest or paper share token and the existing self-service collect flow.",
+            ],
+          }
+        : null,
     notes: ["Structured read-only share."],
   };
 }
@@ -591,6 +608,9 @@ describe("result share shell", () => {
     expect(screen.getByText("Invite and join stay in a separate flow")).toBeVisible();
     expect(screen.getByText(/separate invite token required/i)).toBeVisible();
     expect(screen.getByText("http://127.0.0.1:5177")).toBeVisible();
+    expect(screen.getByText("Next step: collect papers into this workspace")).toBeVisible();
+    expect(screen.getByText(/separate result share token required/i)).toBeVisible();
+    expect(screen.getByText("http://127.0.0.1:5174")).toBeVisible();
 
     await user.type(screen.getByLabelText(/self-service token/i), "self-service-token");
     await user.click(screen.getByRole("button", { name: /connect self-service token/i }));
@@ -604,6 +624,7 @@ describe("result share shell", () => {
       getShareBootstrap: vi.fn().mockResolvedValue({
         ...bootstrapFixture("workspace_board"),
         workspace_invite_handoff_reserve: null,
+        result_collect_handoff_reserve: null,
       }),
       getShareContent: vi.fn().mockResolvedValue(workspaceFixture()),
     });
@@ -617,6 +638,9 @@ describe("result share shell", () => {
 
     expect(await screen.findByText("Workspace description")).toBeVisible();
     expect(screen.queryByText("Invite and join stay in a separate flow")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Next step: collect papers into this workspace"),
+    ).not.toBeInTheDocument();
   });
 
   it("shows a clear invalid token state when the share token is revoked or invalid", async () => {

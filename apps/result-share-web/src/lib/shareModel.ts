@@ -65,6 +65,7 @@ function buildGrantSummary(
   notes: string[];
   collectionReserve: ShareGrantBootstrapRead["collection_reserve"];
   workspaceInviteHandoffReserve: ShareGrantBootstrapRead["workspace_invite_handoff_reserve"];
+  resultCollectHandoffReserve: ShareGrantBootstrapRead["result_collect_handoff_reserve"];
 } {
   return {
     shareKind: bootstrap.grant.share_kind,
@@ -76,6 +77,7 @@ function buildGrantSummary(
     notes: bootstrap.notes,
     collectionReserve: bootstrap.collection_reserve,
     workspaceInviteHandoffReserve: bootstrap.workspace_invite_handoff_reserve,
+    resultCollectHandoffReserve: bootstrap.result_collect_handoff_reserve,
   };
 }
 
@@ -224,6 +226,26 @@ export function buildWorkspaceBoardViewModel(
           inviteShellEntryUrl:
             grantSummary.workspaceInviteHandoffReserve.invite_shell_entry_url,
           notes: grantSummary.workspaceInviteHandoffReserve.notes,
+        }
+      : null,
+    resultCollectHandoff: grantSummary.resultCollectHandoffReserve
+      ? {
+          supported: grantSummary.resultCollectHandoffReserve.supported,
+          separateResultShareTokenRequired:
+            grantSummary.resultCollectHandoffReserve.separate_result_share_token_required,
+          resultShareBootstrapAvailable:
+            grantSummary.resultCollectHandoffReserve.result_share_bootstrap_available,
+          collectSupportedViaSelfService:
+            grantSummary.resultCollectHandoffReserve.collect_supported_via_self_service,
+          directCollectViaCurrentShare:
+            grantSummary.resultCollectHandoffReserve.direct_collect_via_current_share,
+          sourceFilesIncluded:
+            grantSummary.resultCollectHandoffReserve.source_files_included,
+          supportedShareKinds:
+            grantSummary.resultCollectHandoffReserve.supported_share_kinds,
+          resultShareShellEntryUrl:
+            grantSummary.resultCollectHandoffReserve.result_share_shell_entry_url,
+          notes: grantSummary.resultCollectHandoffReserve.notes,
         }
       : null,
   };

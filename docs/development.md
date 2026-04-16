@@ -86,6 +86,10 @@ The shell is public/token-based for share rendering and self-service-token-assis
 - the page stays read-only
 - joining still requires a separate invite token
 - claim still stays in the separate invite/self-service flow
+`workspace_board` share pages may now also render a separate result-collect handoff summary:
+- the page still cannot collect directly
+- collecting papers still requires a separate digest or paper share token
+- collect still stays in the separate result-share/self-service flow
 
 ## Group workspace admin web shell
 - Install workspace-admin dependencies:
@@ -212,6 +216,10 @@ Result collect now also stays inside that same structured-only boundary:
 - it is informational only
 - it may include an invite shell entry URL hint
 - it does not make the share page claim-capable
+`workspace_board` shares may now also carry a read-only `result_collect_handoff_reserve` summary:
+- it is informational only
+- it may include a result-share shell entry URL hint
+- it does not make the current board share collect-capable
 Invite-facing responses now may also carry a read-only `result_collect_handoff_reserve` summary:
 - it is informational only
 - it may include a result-share shell entry URL hint
