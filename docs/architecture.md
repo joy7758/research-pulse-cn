@@ -17,10 +17,11 @@ Core flow:
 11. `SubscriptionEditorHandoffGrant` derives a short-lived `/subscription-editor/*` token from mini reserve plus an existing self-service grant without turning mini auth into a write boundary, and a thin web shell under `apps/subscription-editor-web` consumes that token without creating a generic login surface.
 12. Admin-managed `GroupWorkspace` containers now group selected users and papers into compact shared boards, while `ResultShareGrant` exposes opaque public read-only links for structured digest issues, paper snapshots, and workspace boards without turning sharing into file sync.
 13. A thin public browser shell under `apps/result-share-web` now consumes those token-based share endpoints directly and renders only safe read-only structured outputs.
-14. Sync devices consume incremental `SyncEvent` feeds and push idempotent mutations back through the same service layer.
-15. A Tauri desktop shell consumes the same sync feed, keeps a local SQLite outbox, performs limited writeback through `/sync/push`, manages a local-only paper workspace, stores local markdown notes/templates, keeps local review-matrix / response-letter workflows, exposes synced `SubscriptionPolicy` quiet-control fields in Settings with non-authoritative local hints, and renders sectioned daily digests on the Today page when the synced cache includes structured digest payloads.
-16. A pulse input layer now records lightweight work activity and research watch profiles so future retrieval can start from explicit inputs instead of implicit guesses.
-17. An external retrieval boundary now converts those inputs into persisted source-specific plans, executes official-source fetches behind provider adapters, stores normalized scholarly results, and lets the pulse pipeline consume those persisted records for deterministic `related_paper` cards without executing retrieval inline.
+14. A thin internal browser shell under `apps/group-workspace-admin-web` now consumes the admin-managed workspace and share-grant endpoints, reuses existing `GET /users` and `GET /papers` reads as lookup sources, and keeps admin bearer tokens in memory only.
+15. Sync devices consume incremental `SyncEvent` feeds and push idempotent mutations back through the same service layer.
+16. A Tauri desktop shell consumes the same sync feed, keeps a local SQLite outbox, performs limited writeback through `/sync/push`, manages a local-only paper workspace, stores local markdown notes/templates, keeps local review-matrix / response-letter workflows, exposes synced `SubscriptionPolicy` quiet-control fields in Settings with non-authoritative local hints, and renders sectioned daily digests on the Today page when the synced cache includes structured digest payloads.
+17. A pulse input layer now records lightweight work activity and research watch profiles so future retrieval can start from explicit inputs instead of implicit guesses.
+18. An external retrieval boundary now converts those inputs into persisted source-specific plans, executes official-source fetches behind provider adapters, stores normalized scholarly results, and lets the pulse pipeline consume those persisted records for deterministic `related_paper` cards without executing retrieval inline.
 
 ## Module boundaries
 
@@ -279,6 +280,11 @@ Tie-break order is deterministic:
   - reads only `/result-shares/{share_token}/bootstrap`
   - reads only `/result-shares/{share_token}/content`
   - clears query or fragment share tokens from the visible URL after moving them into in-memory state
+- A separate internal admin shell under `apps/group-workspace-admin-web` stays inside the admin boundary:
+  - accepts admin/operator bearer tokens from manual paste or query/fragment fallback
+  - clears query or fragment bearer tokens from the visible URL after moving them into in-memory state
+  - manages only workspace list/detail, member/paper add-remove, and `workspace_board` share-grant create/revoke flows
+  - does not add source-file semantics or public editing
 
 ### Derived progress percentage
 - Mini paper views expose a deterministic `progress_percentage` derived from `PaperProfile.type`.

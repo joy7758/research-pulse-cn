@@ -42,3 +42,7 @@ apps/subscription-editor-web/dist/
 # Result share web shell
 apps/result-share-web/node_modules/
 apps/result-share-web/dist/
+
+# Group workspace admin web shell
+apps/group-workspace-admin-web/node_modules/
+apps/group-workspace-admin-web/dist/

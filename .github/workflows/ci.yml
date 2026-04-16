@@ -121,3 +121,34 @@ jobs:
 
       - name: Result share build
         run: npm run build
+
+  group-workspace-admin-web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/group-workspace-admin-web
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: apps/group-workspace-admin-web/package-lock.json
+
+      - name: Install workspace admin dependencies
+        run: npm ci
+
+      - name: Workspace admin lint
+        run: npm run lint
+
+      - name: Workspace admin typecheck
+        run: npm run typecheck
+
+      - name: Workspace admin tests
+        run: npm run test
+
+      - name: Workspace admin build
+        run: npm run build
