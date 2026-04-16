@@ -80,7 +80,9 @@
 - real-time collaboration
 
 ## Future Work
-- result collect UI inside share pages
+- richer collect UI inside share pages
 - mini handoff into collect flow
 - later source-file sharing as explicit opt-in
 - richer workspace curation and review flows
+
+The existing public share shell under `apps/result-share-web` is now the minimal browser consumer of this reserve: it keeps public share reads read-only, adds self-service-token-assisted collect-preview and collect panels, and still excludes source files and local attachments.

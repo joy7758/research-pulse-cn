@@ -1,7 +1,12 @@
 import type {
+  CollectActionResultViewModel,
+  CollectablePaperViewModel,
   DigestDisplaySection,
   DigestShareViewModel,
   PaperSnapshotViewModel,
+  ResultCollectViewModel,
+  ResultShareCollectPreviewRead,
+  ResultShareCollectResponseRead,
   ResultShareApiErrorShape,
   ResultShareKind,
   ResultShareViewModel,
@@ -24,6 +29,14 @@ export const stableSectionOrder: SharedTodaySectionKind[] = [
   "related_papers",
   "other_updates",
 ];
+
+export function formatReasonCode(reasonCode: string): string {
+  return reasonCode
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.slice(0, 1).toUpperCase() + part.slice(1))
+    .join(" ");
+}
 
 const sectionTitleByKind: Record<string, string> = {
   today_focus: "Today Focus",
@@ -50,6 +63,7 @@ function buildGrantSummary(
   expiresAt: string | null;
   targetTitle: string | null;
   notes: string[];
+  collectionReserve: ShareGrantBootstrapRead["collection_reserve"];
 } {
   return {
     shareKind: bootstrap.grant.share_kind,
@@ -59,6 +73,7 @@ function buildGrantSummary(
     expiresAt: bootstrap.grant.expires_at,
     targetTitle: bootstrap.target.title,
     notes: bootstrap.notes,
+    collectionReserve: bootstrap.collection_reserve,
   };
 }
 
@@ -209,6 +224,107 @@ export function buildResultShareViewModel(
   }
 }
 
+function buildCollectablePaperViewModel(
+  paper: ResultShareCollectPreviewRead["collectable_items"][number],
+): CollectablePaperViewModel {
+  const subtitleParts = [paper.type, paper.stage, paper.venue ?? "Venue unavailable"].filter(
+    Boolean,
+  );
+  const sourceParts = [
+    paper.source_section_kind,
+    paper.source_card_type,
+  ].filter((value): value is string => Boolean(value?.trim()));
+  return {
+    paperId: paper.paper_id,
+    title: paper.title,
+    subtitle: subtitleParts.join(" · "),
+    nextAction: paper.next_action,
+    blocker: paper.blocker,
+    sourceSummary: sourceParts.length > 0 ? sourceParts.join(" / ") : null,
+    notes: paper.notes ?? [],
+  };
+}
+
+export function buildResultCollectViewModel(
+  bootstrap: ShareGrantBootstrapRead,
+  preview: ResultShareCollectPreviewRead,
+): ResultCollectViewModel {
+  const collectionReserve = bootstrap.collection_reserve;
+  const shareKind = preview.share?.share_kind ?? bootstrap.grant.share_kind;
+  const shareKindCollectable = collectionReserve?.share_kind_collectable ?? false;
+  const collectionSupported = collectionReserve?.supported ?? false;
+  const collectSupportedViaSelfService =
+    collectionReserve?.collect_supported_via_self_service ?? false;
+
+  return {
+    shareKind,
+    collectionSupported,
+    shareKindCollectable,
+    collectSupportedViaSelfService,
+    canCollect: preview.can_collect,
+    requiresPaperSelection:
+      shareKind === "digest_issue" && preview.collectable_items.length > 1,
+    reasonCodes: preview.reason_codes,
+    notes: [...(collectionReserve?.notes ?? []), ...preview.notes],
+    collectableItems: preview.collectable_items.map(buildCollectablePaperViewModel),
+    eligibleWorkspaces: preview.eligible_workspaces.map((item) => ({
+      workspaceId: item.workspace.id,
+      label: `${item.workspace.name} (${item.workspace.slug})`,
+      description: item.workspace.description,
+      membershipRole: item.membership_role,
+      status: item.workspace.status,
+    })),
+  };
+}
+
+export function buildCollectActionResultViewModel(
+  response: ResultShareCollectResponseRead,
+): CollectActionResultViewModel {
+  if (response.action === "collected") {
+    return {
+      action: response.action,
+      title: "Collected into workspace",
+      message:
+        "Selected paper summaries were added to the workspace through the self-service collect boundary.",
+      notes: response.notes,
+      itemResults: response.collected_results.map((item) => ({
+        paperId: item.paper_id,
+        title: item.paper.title,
+        status: item.status,
+        reasonCodes: item.reason_codes,
+      })),
+    };
+  }
+  if (response.action === "already_present") {
+    return {
+      action: response.action,
+      title: "Already present",
+      message:
+        "The selected paper summaries were already present in the target workspace. No duplicate inclusion was created.",
+      notes: response.notes,
+      itemResults: response.collected_results.map((item) => ({
+        paperId: item.paper_id,
+        title: item.paper.title,
+        status: item.status,
+        reasonCodes: item.reason_codes,
+      })),
+    };
+  }
+  return {
+    action: response.action,
+    title: "Collect rejected",
+    message:
+      "The current self-service token could not complete the collect action. Review the reason codes before trying again.",
+    notes: response.notes,
+    itemResults: response.collected_results.map((item) => ({
+      paperId: item.paper_id,
+      title: item.paper.title,
+      status: item.status,
+      reasonCodes: item.reason_codes,
+    })),
+  };
+}
+
 export function buildShareErrorViewModel(
   error: Pick<ResultShareApiErrorShape, "kind" | "detail">,
 ): ShareErrorViewModel {
@@ -229,6 +345,12 @@ export function buildShareErrorViewModel(
       return {
         kind: error.kind,
         title: "Invalid share link",
+        message: error.detail,
+      };
+    case "unauthorized_self_service":
+      return {
+        kind: error.kind,
+        title: "Self-service token rejected",
         message: error.detail,
       };
     case "network_error":

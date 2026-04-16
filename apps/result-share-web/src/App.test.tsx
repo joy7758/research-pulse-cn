@@ -1,16 +1,22 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { vi } from "vitest";
 
 import { ResultShareShell } from "./App";
-import { ResultShareApiError } from "./lib/apiClient";
+import { ResultShareApiError, type ResultShareApiClient } from "./lib/apiClient";
 import type {
+  GroupWorkspaceResultCollectionRead,
+  ResultShareCollectPreviewRead,
+  ResultShareCollectResponseRead,
   SharedDigestIssueRead,
   SharedPaperSnapshotRead,
   SharedWorkspaceBoardRead,
   ShareGrantBootstrapRead,
 } from "./lib/types";
 
-function bootstrapFixture(kind: ShareGrantBootstrapRead["grant"]["share_kind"]): ShareGrantBootstrapRead {
+function bootstrapFixture(
+  kind: ShareGrantBootstrapRead["grant"]["share_kind"],
+): ShareGrantBootstrapRead {
   return {
     grant: {
       id: "grant-1",
@@ -31,6 +37,16 @@ function bootstrapFixture(kind: ShareGrantBootstrapRead["grant"]["share_kind"]):
             ? "Shared Paper"
             : "Digest title",
     },
+    collection_reserve: {
+      supported: kind !== "workspace_board",
+      share_kind_collectable: kind !== "workspace_board",
+      collect_supported_via_self_service: kind !== "workspace_board",
+      source_files_included: false,
+      notes:
+        kind === "workspace_board"
+          ? ["Workspace-board shares are not collectable in this phase."]
+          : ["Structured paper collection is available through a separate self-service grant."],
+    },
     notes: ["Structured read-only share."],
   };
 }
@@ -44,7 +60,7 @@ function digestFixture(): SharedDigestIssueRead {
     title: "Digest title",
     summary: "Digest summary",
     highlight_count: 1,
-    selected_card_count: 1,
+    selected_card_count: 2,
     deep_link_path: "/mini/pulse-digests/user-1/2026-04-16",
     highlights: [],
     is_structured: true,
@@ -54,28 +70,40 @@ function digestFixture(): SharedDigestIssueRead {
       {
         kind: "today_focus",
         title: "Today Focus",
-        item_count: 1,
+        item_count: 2,
         items: [
           {
             sort_order: 1,
             pulse_card_id: "card-1",
             card_type: "today_suggestion",
             source_paper_id: "paper-1",
-            title: "Focus title",
+            title: "Digest Paper A",
             summary: "Focus summary",
             why_now: "Why now",
             action_text: "Do the work",
             deep_link: "/papers/paper-1",
             paper: null,
           },
+          {
+            sort_order: 2,
+            pulse_card_id: "card-2",
+            card_type: "signal_change",
+            source_paper_id: "paper-2",
+            title: "Digest Paper B",
+            summary: "Signal summary",
+            why_now: null,
+            action_text: null,
+            deep_link: null,
+            paper: null,
+          },
         ],
       },
     ],
     quick_stats: {
-      selected_card_count: 1,
+      selected_card_count: 2,
       related_paper_count: 0,
-      signal_update_count: 0,
-      touched_paper_count: 1,
+      signal_update_count: 1,
+      touched_paper_count: 2,
     },
     focus_card: null,
     publication_preview: {
@@ -153,6 +181,279 @@ function workspaceFixture(): SharedWorkspaceBoardRead {
   };
 }
 
+function paperSnapshotPreview(): ResultShareCollectPreviewRead {
+  return {
+    share: {
+      id: "share-1",
+      share_kind: "paper_snapshot",
+      status: "active",
+      display_label: "Paper share",
+      expires_at: null,
+      target: {
+        workspace_id: null,
+        digest_issue_id: null,
+        paper_id: "paper-1",
+        title: "Shared Paper",
+      },
+    },
+    collectable_items: [
+      {
+        paper_id: "paper-1",
+        title: "Shared Paper",
+        type: "published",
+        stage: "published",
+        venue: "JOM",
+        priority: 4,
+        next_action: "Review delta",
+        blocker: null,
+        progress_percentage: 100,
+        source_card_type: null,
+        source_pulse_card_id: null,
+        source_section_kind: null,
+        notes: null,
+      },
+    ],
+    eligible_workspaces: [
+      {
+        workspace: {
+          id: "workspace-1",
+          slug: "materials-group",
+          name: "Materials Group",
+          description: "Workspace description",
+          status: "active",
+        },
+        membership_role: "editor",
+      },
+    ],
+    can_collect: true,
+    reason_codes: [],
+    notes: ["Single paper collect is available."],
+  };
+}
+
+function digestPreview(): ResultShareCollectPreviewRead {
+  return {
+    share: {
+      id: "share-2",
+      share_kind: "digest_issue",
+      status: "active",
+      display_label: "Digest share",
+      expires_at: null,
+      target: {
+        workspace_id: null,
+        digest_issue_id: "digest-1",
+        paper_id: null,
+        title: "Digest title",
+      },
+    },
+    collectable_items: [
+      {
+        paper_id: "paper-1",
+        title: "Digest Paper A",
+        type: "published",
+        stage: "published",
+        venue: "JOM",
+        priority: 4,
+        next_action: "Review A",
+        blocker: null,
+        progress_percentage: 100,
+        source_card_type: "today_suggestion",
+        source_pulse_card_id: "card-1",
+        source_section_kind: "today_focus",
+        notes: [],
+      },
+      {
+        paper_id: "paper-2",
+        title: "Digest Paper B",
+        type: "published",
+        stage: "published",
+        venue: "JOM",
+        priority: 3,
+        next_action: "Review B",
+        blocker: null,
+        progress_percentage: 100,
+        source_card_type: "signal_change",
+        source_pulse_card_id: "card-2",
+        source_section_kind: "signal_updates",
+        notes: [],
+      },
+    ],
+    eligible_workspaces: [
+      {
+        workspace: {
+          id: "workspace-1",
+          slug: "materials-group",
+          name: "Materials Group",
+          description: "Workspace description",
+          status: "active",
+        },
+        membership_role: "owner",
+      },
+    ],
+    can_collect: true,
+    reason_codes: [],
+    notes: ["Explicit paper selection is required for multi-paper digest collect."],
+  };
+}
+
+function boardPreview(): ResultShareCollectPreviewRead {
+  return {
+    share: {
+      id: "share-3",
+      share_kind: "workspace_board",
+      status: "active",
+      display_label: "Workspace board",
+      expires_at: null,
+      target: {
+        workspace_id: "workspace-1",
+        digest_issue_id: null,
+        paper_id: null,
+        title: "Materials Group",
+      },
+    },
+    collectable_items: [],
+    eligible_workspaces: [],
+    can_collect: false,
+    reason_codes: ["share_kind_not_collectable"],
+    notes: ["Workspace-board shares are not collectable in this phase."],
+  };
+}
+
+function collectedResponse(): ResultShareCollectResponseRead {
+  return {
+    action: "collected",
+    workspace: {
+      id: "workspace-1",
+      slug: "materials-group",
+      name: "Materials Group",
+      description: "Workspace description",
+      status: "active",
+    },
+    collected_results: [
+      {
+        paper_id: "paper-1",
+        status: "collected",
+        reason_codes: [],
+        collect_record: null,
+        paper: {
+          paper_id: "paper-1",
+          title: "Shared Paper",
+          type: "published",
+          stage: "published",
+          venue: "JOM",
+          priority: 4,
+          next_action: "Review delta",
+          blocker: null,
+          progress_percentage: 100,
+        },
+      },
+    ],
+    notes: ["Structured paper objects were collected into the workspace without source files."],
+  };
+}
+
+function alreadyPresentResponse(): ResultShareCollectResponseRead {
+  return {
+    action: "already_present",
+    workspace: {
+      id: "workspace-1",
+      slug: "materials-group",
+      name: "Materials Group",
+      description: "Workspace description",
+      status: "active",
+    },
+    collected_results: [
+      {
+        paper_id: "paper-1",
+        status: "already_present",
+        reason_codes: ["already_present"],
+        collect_record: null,
+        paper: {
+          paper_id: "paper-1",
+          title: "Digest Paper A",
+          type: "published",
+          stage: "published",
+          venue: "JOM",
+          priority: 4,
+          next_action: "Review A",
+          blocker: null,
+          progress_percentage: 100,
+        },
+      },
+    ],
+    notes: [],
+  };
+}
+
+function collectionHistory(title: string): GroupWorkspaceResultCollectionRead[] {
+  return [
+    {
+      record: {
+        id: "record-1",
+        workspace_id: "workspace-1",
+        user_id: "user-1",
+        result_share_grant_id: "share-1",
+        share_kind: "paper_snapshot",
+        digest_issue_id: null,
+        source_pulse_card_id: null,
+        source_paper_id: "paper-1",
+        collected_paper_id: "paper-1",
+        status: "collected",
+        reason_codes: [],
+        created_at: "2026-04-16T07:00:00Z",
+        updated_at: "2026-04-16T07:00:00Z",
+      },
+      workspace: {
+        id: "workspace-1",
+        slug: "materials-group",
+        name: "Materials Group",
+        description: "Workspace description",
+        status: "active",
+      },
+      paper: {
+        paper_id: "paper-1",
+        title,
+        type: "published",
+        stage: "published",
+        venue: "JOM",
+        priority: 4,
+        next_action: "Review delta",
+        blocker: null,
+        progress_percentage: 100,
+      },
+    },
+  ];
+}
+
+function createApiClientFactory(overrides: Partial<ResultShareApiClient> = {}) {
+  return () => createClientStub(overrides);
+}
+
+function createClientStub(overrides: Partial<ResultShareApiClient>): ResultShareApiClient {
+  return {
+    getShareBootstrap:
+      "getShareBootstrap" in overrides
+        ? (overrides.getShareBootstrap as ReturnType<typeof vi.fn>)
+        : vi.fn().mockResolvedValue(bootstrapFixture("digest_issue")),
+    getShareContent:
+      "getShareContent" in overrides
+        ? (overrides.getShareContent as ReturnType<typeof vi.fn>)
+        : vi.fn().mockResolvedValue(digestFixture()),
+    getCollectPreview:
+      "getCollectPreview" in overrides
+        ? (overrides.getCollectPreview as ReturnType<typeof vi.fn>)
+        : vi.fn().mockResolvedValue(digestPreview()),
+    postCollect:
+      "postCollect" in overrides
+        ? (overrides.postCollect as ReturnType<typeof vi.fn>)
+        : vi.fn().mockResolvedValue(collectedResponse()),
+    listWorkspaceResultCollections:
+      "listWorkspaceResultCollections" in overrides
+        ? (overrides.listWorkspaceResultCollections as ReturnType<typeof vi.fn>)
+        : vi.fn().mockResolvedValue(collectionHistory("Shared Paper")),
+  };
+}
+
 describe("result share shell", () => {
   it("renders the token entry state by default", () => {
     render(<ResultShareShell />);
@@ -162,7 +463,7 @@ describe("result share shell", () => {
   });
 
   it("loads and renders a digest share from the /share/<token> path", async () => {
-    const apiClientFactory = () => ({
+    const apiClientFactory = createApiClientFactory({
       getShareBootstrap: vi.fn().mockResolvedValue(bootstrapFixture("digest_issue")),
       getShareContent: vi.fn().mockResolvedValue(digestFixture()),
     });
@@ -178,26 +479,89 @@ describe("result share shell", () => {
     expect(screen.getByText("Today Focus")).toBeVisible();
   });
 
-  it("supports manual token entry and renders paper shares", async () => {
+  it("supports paper_snapshot collect preview and collect with a self-service token", async () => {
     const user = userEvent.setup();
-    const apiClientFactory = () => ({
+    const getCollectPreview = vi
+      .fn()
+      .mockResolvedValueOnce(paperSnapshotPreview())
+      .mockResolvedValueOnce(paperSnapshotPreview());
+    const listWorkspaceResultCollections = vi
+      .fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce(collectionHistory("Shared Paper"));
+    const apiClientFactory = createApiClientFactory({
       getShareBootstrap: vi.fn().mockResolvedValue(bootstrapFixture("paper_snapshot")),
       getShareContent: vi.fn().mockResolvedValue(paperFixture()),
+      getCollectPreview,
+      postCollect: vi.fn().mockResolvedValue(collectedResponse()),
+      listWorkspaceResultCollections,
     });
 
     render(<ResultShareShell apiClientFactory={apiClientFactory} />);
 
-    await user.type(screen.getByLabelText(/share token/i), "manual-paper-token");
+    await user.type(screen.getByLabelText(/share token/i), "paper-share-token");
     await user.click(screen.getByRole("button", { name: /open share/i }));
+    expect(
+      await screen.findByRole("heading", {
+        level: 1,
+        name: "Shared Paper",
+      }),
+    ).toBeVisible();
 
-    expect(await screen.findByText("Review delta")).toBeVisible();
-    expect(screen.getByText("Review delta")).toBeVisible();
+    await user.type(screen.getByLabelText(/self-service token/i), "self-service-token");
+    await user.click(screen.getByRole("button", { name: /connect self-service token/i }));
+
+    expect(await screen.findByText("Review workspace intake options")).toBeVisible();
+    expect(screen.getByText("Single paper flow")).toBeVisible();
+
+    await user.click(screen.getByRole("button", { name: /collect into workspace/i }));
+
+    expect(await screen.findByText("Collected into workspace")).toBeVisible();
+    expect(screen.getByText(/without source files/i)).toBeVisible();
+    expect(screen.getByText("Current self-service collection history")).toBeVisible();
   });
 
-  it("renders workspace board shares", async () => {
-    const apiClientFactory = () => ({
+  it("requires explicit paper selection for multi-paper digest collect", async () => {
+    const user = userEvent.setup();
+    const apiClientFactory = createApiClientFactory({
+      getShareBootstrap: vi.fn().mockResolvedValue(bootstrapFixture("digest_issue")),
+      getShareContent: vi.fn().mockResolvedValue(digestFixture()),
+      getCollectPreview: vi
+        .fn()
+        .mockResolvedValueOnce(digestPreview())
+        .mockResolvedValueOnce(digestPreview()),
+      postCollect: vi.fn().mockResolvedValue(alreadyPresentResponse()),
+      listWorkspaceResultCollections: vi
+        .fn()
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce(collectionHistory("Digest Paper A")),
+    });
+
+    render(<ResultShareShell apiClientFactory={apiClientFactory} />);
+
+    await user.type(screen.getByLabelText(/share token/i), "digest-share-token");
+    await user.click(screen.getByRole("button", { name: /open share/i }));
+    await user.type(screen.getByLabelText(/self-service token/i), "self-service-token");
+    await user.click(screen.getByRole("button", { name: /connect self-service token/i }));
+
+    expect(await screen.findByText("Explicit paper selection required")).toBeVisible();
+    const collectButton = screen.getByRole("button", { name: /collect into workspace/i });
+    expect(collectButton).toBeDisabled();
+
+    await user.click(screen.getAllByRole("checkbox")[0]);
+    await waitFor(() => expect(collectButton).toBeEnabled());
+
+    await user.click(collectButton);
+    expect(await screen.findByText("Already present")).toBeVisible();
+  });
+
+  it("shows workspace_board shares as non-collectable in v1", async () => {
+    const user = userEvent.setup();
+    const apiClientFactory = createApiClientFactory({
       getShareBootstrap: vi.fn().mockResolvedValue(bootstrapFixture("workspace_board")),
       getShareContent: vi.fn().mockResolvedValue(workspaceFixture()),
+      getCollectPreview: vi.fn().mockResolvedValue(boardPreview()),
+      listWorkspaceResultCollections: vi.fn().mockResolvedValue([]),
     });
 
     render(
@@ -208,13 +572,17 @@ describe("result share shell", () => {
     );
 
     expect(await screen.findByText("Workspace description")).toBeVisible();
-    expect(screen.getByText("Structured paper snapshots")).toBeVisible();
-    expect(screen.getByText("Workspace description")).toBeVisible();
+
+    await user.type(screen.getByLabelText(/self-service token/i), "self-service-token");
+    await user.click(screen.getByRole("button", { name: /connect self-service token/i }));
+
+    expect(await screen.findByText("Not collectable in v1")).toBeVisible();
+    expect(screen.getByText(/share kind not collectable/i)).toBeVisible();
   });
 
   it("shows a clear invalid token state when the share token is revoked or invalid", async () => {
     const user = userEvent.setup();
-    const apiClientFactory = () => ({
+    const apiClientFactory = createApiClientFactory({
       getShareBootstrap: vi.fn().mockRejectedValue(
         new ResultShareApiError({
           status: 401,
@@ -223,7 +591,6 @@ describe("result share shell", () => {
           kind: "expired_token",
         }),
       ),
-      getShareContent: vi.fn(),
     });
 
     render(<ResultShareShell apiClientFactory={apiClientFactory} />);

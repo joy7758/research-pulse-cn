@@ -1,9 +1,11 @@
 import {
+  clearVisibleShareAndSelfServiceTokenHints,
   clearVisibleShareTokenHints,
   extractShareTokenFromFragment,
   extractShareTokenFromLocation,
   extractShareTokenFromPath,
   extractShareTokenFromSearch,
+  extractShareTokensFromLocation,
 } from "./token";
 
 describe("result share token helpers", () => {
@@ -62,5 +64,43 @@ describe("result share token helpers", () => {
       "",
       "/share?debug=1#tab=digest",
     );
+  });
+
+  it("extracts a self-service token from query or fragment without persisting it", () => {
+    expect(
+      extractShareTokensFromLocation({
+        pathname: "/share/path-token",
+        search: "?self_service_token=query-self-token",
+        hash: "#debug=1",
+      }),
+    ).toMatchObject({
+      shareToken: "path-token",
+      shareSource: "path",
+      selfServiceToken: "query-self-token",
+      selfServiceSource: "query",
+    });
+  });
+
+  it("clears share and self-service token hints together", () => {
+    const replaceState = vi.fn();
+
+    const extracted = clearVisibleShareAndSelfServiceTokenHints(
+      {
+        pathname: "/share",
+        search: "?share_token=query-token&self_service_token=self-token&debug=1",
+        hash: "#tab=digest",
+      } as Pick<Location, "pathname" | "search" | "hash">,
+      { replaceState } as Pick<History, "replaceState">,
+    );
+
+    expect(extracted).toMatchObject({
+      shareToken: "query-token",
+      shareSource: "query",
+      selfServiceToken: "self-token",
+      selfServiceSource: "query",
+      cleanedSearch: "?debug=1",
+      cleanedHash: "#tab=digest",
+    });
+    expect(replaceState).toHaveBeenCalledWith(null, "", "/share?debug=1#tab=digest");
   });
 });

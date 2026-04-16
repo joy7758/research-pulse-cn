@@ -1,4 +1,7 @@
 import type {
+  GroupWorkspaceResultCollectionRead,
+  ResultShareCollectPreviewRead,
+  ResultShareCollectResponseRead,
   ResultShareApiErrorShape,
   SharedResultContentRead,
   ShareGrantBootstrapRead,
@@ -41,6 +44,21 @@ async function parseResponseBody(response: Response): Promise<unknown> {
   return text ? { detail: text } : null;
 }
 
+function normalizeDetail(body: unknown, fallbackStatus: number): string {
+  if (body && typeof body === "object" && "detail" in body) {
+    const detail = body.detail;
+    if (typeof detail === "string") {
+      return detail;
+    }
+    if (Array.isArray(detail)) {
+      return detail
+        .map((entry) => (typeof entry === "string" ? entry : JSON.stringify(entry)))
+        .join("; ");
+    }
+  }
+  return `result share request failed with status ${fallbackStatus}`;
+}
+
 function inferErrorKind(status: number | null, detail: string): ShareTokenErrorKind {
   const normalized = detail.toLowerCase();
   if (status === null) {
@@ -52,6 +70,14 @@ function inferErrorKind(status: number | null, detail: string): ShareTokenErrorK
   if (normalized.includes("expired")) {
     return "expired_token";
   }
+  if (
+    status === 401 &&
+    (normalized.includes("credentials")
+      || normalized.includes("bearer")
+      || normalized.includes("not authenticated"))
+  ) {
+    return "unauthorized_self_service";
+  }
   if (status === 401 || status === 404 || normalized.includes("not found")) {
     return "invalid_token";
   }
@@ -59,10 +85,7 @@ function inferErrorKind(status: number | null, detail: string): ShareTokenErrorK
 }
 
 function toApiError(response: Response, body: unknown): ResultShareApiError {
-  const detail =
-    body && typeof body === "object" && "detail" in body && typeof body.detail === "string"
-      ? body.detail
-      : `result share request failed with status ${response.status}`;
+  const detail = normalizeDetail(body, response.status);
   return new ResultShareApiError({
     status: response.status,
     detail,
@@ -74,14 +97,32 @@ function toApiError(response: Response, body: unknown): ResultShareApiError {
 export function createResultShareApiClient(config: ResultShareApiClientConfig) {
   const fetchImpl = config.fetchImpl ?? fetch;
 
-  async function request<T>(shareToken: string, suffix: "/bootstrap" | "/content"): Promise<T> {
-    const url = buildEndpointUrl(
-      config.apiBaseUrl,
-      `/result-shares/${encodeURIComponent(shareToken)}/${suffix.slice(1)}`,
-    );
+  async function request<T>({
+    path,
+    method = "GET",
+    selfServiceToken,
+    jsonBody,
+  }: {
+    path: string;
+    method?: "GET" | "POST";
+    selfServiceToken?: string;
+    jsonBody?: unknown;
+  }): Promise<T> {
+    const url = buildEndpointUrl(config.apiBaseUrl, path);
+    const headers = new Headers();
+    if (selfServiceToken) {
+      headers.set("Authorization", `Bearer ${selfServiceToken}`);
+    }
+    if (jsonBody !== undefined) {
+      headers.set("Content-Type", "application/json");
+    }
 
     try {
-      const response = await fetchImpl(url);
+      const response = await fetchImpl(url, {
+        method,
+        headers,
+        body: jsonBody === undefined ? undefined : JSON.stringify(jsonBody),
+      });
       const body = await parseResponseBody(response);
       if (!response.ok) {
         throw toApiError(response, body);
@@ -104,8 +145,33 @@ export function createResultShareApiClient(config: ResultShareApiClientConfig) {
 
   return {
     getShareBootstrap: (shareToken: string) =>
-      request<ShareGrantBootstrapRead>(shareToken, "/bootstrap"),
+      request<ShareGrantBootstrapRead>({
+        path: `/result-shares/${encodeURIComponent(shareToken)}/bootstrap`,
+      }),
     getShareContent: (shareToken: string) =>
-      request<SharedResultContentRead>(shareToken, "/content"),
+      request<SharedResultContentRead>({
+        path: `/result-shares/${encodeURIComponent(shareToken)}/content`,
+      }),
+    getCollectPreview: (shareToken: string, selfServiceToken: string) =>
+      request<ResultShareCollectPreviewRead>({
+        path: `/subscription-self-service/result-shares/${encodeURIComponent(shareToken)}/collect-preview`,
+        selfServiceToken,
+      }),
+    postCollect: (
+      shareToken: string,
+      selfServiceToken: string,
+      payload: { workspace_id: string; paper_ids?: string[] },
+    ) =>
+      request<ResultShareCollectResponseRead>({
+        path: `/subscription-self-service/result-shares/${encodeURIComponent(shareToken)}/collect`,
+        method: "POST",
+        selfServiceToken,
+        jsonBody: payload,
+      }),
+    listWorkspaceResultCollections: (selfServiceToken: string) =>
+      request<GroupWorkspaceResultCollectionRead[]>({
+        path: "/subscription-self-service/workspace-result-collections",
+        selfServiceToken,
+      }),
   };
 }

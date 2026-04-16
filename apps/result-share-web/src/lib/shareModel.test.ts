@@ -1,4 +1,6 @@
 import type {
+  ResultShareCollectPreviewRead,
+  ResultShareCollectResponseRead,
   ResultShareApiErrorShape,
   SharedDigestIssueRead,
   SharedPaperSnapshotRead,
@@ -6,8 +8,10 @@ import type {
   ShareGrantBootstrapRead,
 } from "./types";
 import {
+  buildCollectActionResultViewModel,
   buildDigestShareViewModel,
   buildPaperSnapshotViewModel,
+  buildResultCollectViewModel,
   buildShareErrorViewModel,
   buildWorkspaceBoardViewModel,
 } from "./shareModel";
@@ -27,6 +31,13 @@ function bootstrapFixture(kind: ShareGrantBootstrapRead["grant"]["share_kind"]):
       digest_issue_id: kind === "digest_issue" ? "digest-1" : null,
       paper_id: kind === "paper_snapshot" ? "paper-1" : null,
       title: kind === "workspace_board" ? "Materials Group" : "Shared Target",
+    },
+    collection_reserve: {
+      supported: kind !== "workspace_board",
+      share_kind_collectable: kind !== "workspace_board",
+      collect_supported_via_self_service: kind !== "workspace_board",
+      source_files_included: false,
+      notes: ["Source files remain excluded."],
     },
     notes: ["Structured read-only share."],
   };
@@ -260,5 +271,192 @@ describe("result share view shaping", () => {
     expect(buildShareErrorViewModel(revokedError).title).toBe("Share link revoked");
     expect(buildShareErrorViewModel(expiredError).title).toBe("Share link expired");
     expect(buildShareErrorViewModel(invalidError).title).toBe("Invalid share link");
+  });
+
+  it("shapes collect preview for paper snapshots and digests", () => {
+    const singlePaperPreview: ResultShareCollectPreviewRead = {
+      share: {
+        id: "share-1",
+        share_kind: "paper_snapshot",
+        status: "active",
+        display_label: "Paper share",
+        expires_at: null,
+        target: {
+          workspace_id: null,
+          digest_issue_id: null,
+          paper_id: "paper-1",
+          title: "Shared Paper",
+        },
+      },
+      collectable_items: [
+        {
+          paper_id: "paper-1",
+          title: "Shared Paper",
+          type: "published",
+          stage: "published",
+          venue: "JOM",
+          priority: 4,
+          next_action: "Review delta",
+          blocker: null,
+          progress_percentage: 100,
+          source_card_type: null,
+          source_pulse_card_id: null,
+          source_section_kind: null,
+          notes: null,
+        },
+      ],
+      eligible_workspaces: [
+        {
+          workspace: {
+            id: "workspace-1",
+            slug: "materials-group",
+            name: "Materials Group",
+            description: "Workspace description",
+            status: "active",
+          },
+          membership_role: "editor",
+        },
+      ],
+      can_collect: true,
+      reason_codes: [],
+      notes: ["Single paper collect is available."],
+    };
+    const multiDigestPreview: ResultShareCollectPreviewRead = {
+      share: {
+        id: "share-2",
+        share_kind: "digest_issue",
+        status: "active",
+        display_label: "Digest share",
+        expires_at: null,
+        target: {
+          workspace_id: null,
+          digest_issue_id: "digest-1",
+          paper_id: null,
+          title: "Digest title",
+        },
+      },
+      collectable_items: [
+        {
+          paper_id: "paper-1",
+          title: "Digest Paper A",
+          type: "published",
+          stage: "published",
+          venue: "JOM",
+          priority: 4,
+          next_action: "Review A",
+          blocker: null,
+          progress_percentage: 100,
+          source_card_type: "today_suggestion",
+          source_pulse_card_id: "card-1",
+          source_section_kind: "today_focus",
+          notes: [],
+        },
+        {
+          paper_id: "paper-2",
+          title: "Digest Paper B",
+          type: "published",
+          stage: "published",
+          venue: "JOM",
+          priority: 3,
+          next_action: "Review B",
+          blocker: null,
+          progress_percentage: 100,
+          source_card_type: "signal_change",
+          source_pulse_card_id: "card-2",
+          source_section_kind: "signal_updates",
+          notes: [],
+        },
+      ],
+      eligible_workspaces: [],
+      can_collect: false,
+      reason_codes: ["paper_selection_required", "no_eligible_workspace_membership"],
+      notes: ["Explicit paper selection is required for multi-paper digest collect."],
+    };
+
+    expect(
+      buildResultCollectViewModel(bootstrapFixture("paper_snapshot"), singlePaperPreview),
+    ).toMatchObject({
+      shareKind: "paper_snapshot",
+      collectionSupported: true,
+      requiresPaperSelection: false,
+      canCollect: true,
+    });
+    expect(
+      buildResultCollectViewModel(bootstrapFixture("digest_issue"), multiDigestPreview),
+    ).toMatchObject({
+      shareKind: "digest_issue",
+      requiresPaperSelection: true,
+      reasonCodes: ["paper_selection_required", "no_eligible_workspace_membership"],
+    });
+  });
+
+  it("shapes collect action results for collected and already-present outcomes", () => {
+    const collectedResponse: ResultShareCollectResponseRead = {
+      action: "collected",
+      workspace: {
+        id: "workspace-1",
+        slug: "materials-group",
+        name: "Materials Group",
+        description: "Workspace description",
+        status: "active",
+      },
+      collected_results: [
+        {
+          paper_id: "paper-1",
+          status: "collected",
+          reason_codes: [],
+          collect_record: null,
+          paper: {
+            paper_id: "paper-1",
+            title: "Digest Paper A",
+            type: "published",
+            stage: "published",
+            venue: "JOM",
+            priority: 4,
+            next_action: "Review A",
+            blocker: null,
+            progress_percentage: 100,
+          },
+        },
+      ],
+      notes: ["Collected without source files."],
+    };
+    const alreadyPresentResponse: ResultShareCollectResponseRead = {
+      action: "already_present",
+      workspace: {
+        id: "workspace-1",
+        slug: "materials-group",
+        name: "Materials Group",
+        description: "Workspace description",
+        status: "active",
+      },
+      collected_results: [
+        {
+          paper_id: "paper-1",
+          status: "already_present",
+          reason_codes: ["already_present"],
+          collect_record: null,
+          paper: {
+            paper_id: "paper-1",
+            title: "Digest Paper A",
+            type: "published",
+            stage: "published",
+            venue: "JOM",
+            priority: 4,
+            next_action: "Review A",
+            blocker: null,
+            progress_percentage: 100,
+          },
+        },
+      ],
+      notes: [],
+    };
+
+    expect(buildCollectActionResultViewModel(collectedResponse).title).toBe(
+      "Collected into workspace",
+    );
+    expect(buildCollectActionResultViewModel(alreadyPresentResponse).title).toBe(
+      "Already present",
+    );
   });
 });
