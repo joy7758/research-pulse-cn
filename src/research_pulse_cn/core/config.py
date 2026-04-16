@@ -293,6 +293,22 @@ class Settings(BaseSettings):
         default=None,
         validation_alias="APP_RESULT_SHARE_WEB_ENTRY_BASE_URL",
     )
+    result_share_alias_enabled: bool = Field(
+        default=False,
+        validation_alias="APP_RESULT_SHARE_ALIAS_ENABLED",
+    )
+    result_share_alias_length: int = Field(
+        default=16,
+        validation_alias="APP_RESULT_SHARE_ALIAS_LENGTH",
+    )
+    result_share_alias_ttl_hours: int = Field(
+        default=168,
+        validation_alias="APP_RESULT_SHARE_ALIAS_TTL_HOURS",
+    )
+    result_share_redirect_enabled: bool = Field(
+        default=False,
+        validation_alias="APP_RESULT_SHARE_REDIRECT_ENABLED",
+    )
     group_workspace_invites_enabled: bool = Field(
         default=False,
         validation_alias="APP_GROUP_WORKSPACE_INVITES_ENABLED",

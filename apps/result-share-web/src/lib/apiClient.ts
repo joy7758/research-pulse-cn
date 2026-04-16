@@ -148,13 +148,26 @@ export function createResultShareApiClient(config: ResultShareApiClientConfig) {
       request<ShareGrantBootstrapRead>({
         path: `/result-shares/${encodeURIComponent(shareToken)}/bootstrap`,
       }),
+    getAliasBootstrap: (shareAlias: string) =>
+      request<ShareGrantBootstrapRead>({
+        path: `/share-aliases/${encodeURIComponent(shareAlias)}/bootstrap`,
+      }),
     getShareContent: (shareToken: string) =>
       request<SharedResultContentRead>({
         path: `/result-shares/${encodeURIComponent(shareToken)}/content`,
       }),
+    getAliasContent: (shareAlias: string) =>
+      request<SharedResultContentRead>({
+        path: `/share-aliases/${encodeURIComponent(shareAlias)}/content`,
+      }),
     getCollectPreview: (shareToken: string, selfServiceToken: string) =>
       request<ResultShareCollectPreviewRead>({
         path: `/subscription-self-service/result-shares/${encodeURIComponent(shareToken)}/collect-preview`,
+        selfServiceToken,
+      }),
+    getAliasCollectPreview: (shareAlias: string, selfServiceToken: string) =>
+      request<ResultShareCollectPreviewRead>({
+        path: `/subscription-self-service/share-aliases/${encodeURIComponent(shareAlias)}/collect-preview`,
         selfServiceToken,
       }),
     postCollect: (
@@ -164,6 +177,17 @@ export function createResultShareApiClient(config: ResultShareApiClientConfig) {
     ) =>
       request<ResultShareCollectResponseRead>({
         path: `/subscription-self-service/result-shares/${encodeURIComponent(shareToken)}/collect`,
+        method: "POST",
+        selfServiceToken,
+        jsonBody: payload,
+      }),
+    postAliasCollect: (
+      shareAlias: string,
+      selfServiceToken: string,
+      payload: { workspace_id: string; paper_ids?: string[] },
+    ) =>
+      request<ResultShareCollectResponseRead>({
+        path: `/subscription-self-service/share-aliases/${encodeURIComponent(shareAlias)}/collect`,
         method: "POST",
         selfServiceToken,
         jsonBody: payload,

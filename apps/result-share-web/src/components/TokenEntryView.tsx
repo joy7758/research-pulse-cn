@@ -1,28 +1,39 @@
 import type { FormEvent } from "react";
+import type { ResultShareAccessMode } from "../lib/types";
 
 type TokenEntryViewProps = {
   apiBaseUrl: string;
-  shareToken: string;
+  shareAccessMode: ResultShareAccessMode;
+  shareValue: string;
   loading: boolean;
   errorTitle: string | null;
   errorMessage: string | null;
   noticeMessage: string | null;
   onApiBaseUrlChange: (value: string) => void;
-  onShareTokenChange: (value: string) => void;
+  onShareAccessModeChange: (value: ResultShareAccessMode) => void;
+  onShareValueChange: (value: string) => void;
   onSubmit: () => void;
 };
 
 export function TokenEntryView({
   apiBaseUrl,
-  shareToken,
+  shareAccessMode,
+  shareValue,
   loading,
   errorTitle,
   errorMessage,
   noticeMessage,
   onApiBaseUrlChange,
-  onShareTokenChange,
+  onShareAccessModeChange,
+  onShareValueChange,
   onSubmit,
 }: TokenEntryViewProps) {
+  const accessLabel = shareAccessMode === "alias" ? "Share Alias" : "Share Token";
+  const accessPlaceholder =
+    shareAccessMode === "alias" ? "Paste a share alias" : "Paste a share token";
+  const accessRoute =
+    shareAccessMode === "alias" ? "/share-alias/<alias>" : "/share/<token>";
+
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     onSubmit();
@@ -34,10 +45,10 @@ export function TokenEntryView({
         <p className="eyebrow">Result Share</p>
         <h1>Open a read-only structured share</h1>
         <p className="lede">
-          Paste a share token or open the shell with a <code>/share/&lt;token&gt;</code> URL.
-          This shell only consumes public read-only share endpoints and never stores tokens in
-          browser storage. After bootstrap loads, you can optionally connect a self-service token
-          in memory to preview or perform collect actions.
+          Paste a share token or alias, or open the shell with a <code>{accessRoute}</code> URL.
+          This shell only consumes public read-only share endpoints and never stores tokens or
+          aliases in browser storage. After bootstrap loads, you can optionally connect a
+          self-service token in memory to preview or perform collect actions.
         </p>
 
         {noticeMessage ? <div className="inline-banner info">{noticeMessage}</div> : null}
@@ -61,13 +72,27 @@ export function TokenEntryView({
           </label>
 
           <label>
-            Share Token
+            Share Access Mode
+            <select
+              name="shareAccessMode"
+              value={shareAccessMode}
+              onChange={(event) =>
+                onShareAccessModeChange(event.target.value as ResultShareAccessMode)
+              }
+            >
+              <option value="token">Raw share token</option>
+              <option value="alias">Opaque share alias</option>
+            </select>
+          </label>
+
+          <label>
+            {accessLabel}
             <textarea
-              name="shareToken"
-              placeholder="Paste a share token"
+              name="shareValue"
+              placeholder={accessPlaceholder}
               rows={4}
-              value={shareToken}
-              onChange={(event) => onShareTokenChange(event.target.value)}
+              value={shareValue}
+              onChange={(event) => onShareValueChange(event.target.value)}
             />
           </label>
 

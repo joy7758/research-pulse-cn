@@ -1,4 +1,5 @@
 export type ResultShareKind = "digest_issue" | "paper_snapshot" | "workspace_board" | string;
+export type ResultShareAccessMode = "token" | "alias";
 export type ResultShareGrantStatus = "active" | "revoked" | "expired" | string;
 export type DigestFallbackMode = "structured" | "highlights_only" | "empty" | string;
 export type GroupWorkspaceCollectStatus =

@@ -24,6 +24,7 @@ Private repository. Proprietary and confidential.
 - A thin React/Vite subscription editor web shell under `apps/subscription-editor-web` for manually exercising handoff-grant-protected `/subscription-editor/*` flows in a browser or future WebView shell
 - Admin-managed group workspaces with structured workspace boards plus opaque read-only result share grants for `digest_issue`, `paper_snapshot`, and `workspace_board` without exposing source files, local attachment paths, or local note contents
 - A thin public React/Vite result-share shell under `apps/result-share-web` for opening `ResultShareGrant` links in a browser, optionally connecting an in-memory self-service token for collect-preview/collect flows, and surfacing manual invite/join plus result-collect handoff summaries on `workspace_board` shares without introducing source-file sharing, browser token persistence, or a generic login system
+- The same result-sharing boundary now also supports admin-issued opaque `ResultShareAlias` links so public browser entry can use aliases without exposing the underlying raw share token
 - A thin internal React/Vite admin shell under `apps/group-workspace-admin-web` for operator-managed workspace list/detail, member/paper add-remove flows, and `workspace_board` share-grant issuance without introducing end-user login or source-file sharing
 - A thin internal React/Vite admin shell under `apps/user-workbench-admin-web` for read-only search and drilldown across users, papers, and research watch profiles without introducing end-user login, file sharing, or business write flows
 - A backend-only workspace invite/join reserve that adds opaque invite grants, public invite bootstrap, self-service claim-preview/claim routes, and safe membership summaries without introducing source-file sharing or a generic login system
@@ -109,9 +110,15 @@ Group workspace/result sharing in this phase now has two thin browser shells:
 - internal admin/operator management in `apps/group-workspace-admin-web`
 - public read-only share rendering in `apps/result-share-web`
 - public invite bootstrap plus self-service claim rendering in `apps/group-workspace-invite-web`
+- public opaque-alias entry for the same result-share shell:
+  - `GET /share-aliases/{alias}/bootstrap`
+  - `GET /share-aliases/{alias}/content`
+  - optional `GET /s/{alias}` redirect boundary
 - self-service result collect reserve for:
   - `GET /subscription-self-service/result-shares/{share_token}/collect-preview`
   - `POST /subscription-self-service/result-shares/{share_token}/collect`
+  - `GET /subscription-self-service/share-aliases/{alias}/collect-preview`
+  - `POST /subscription-self-service/share-aliases/{alias}/collect`
   - `GET /subscription-self-service/workspace-result-collections`
 - PDFs, source files, local attachments, and local note contents are still excluded
 - workspace invite/join now also has a backend reserve:
@@ -228,18 +235,24 @@ The repository now also includes a thin public browser shell under `apps/result-
 - Vite
 
 This shell:
-- accepts a share token from `/share/<token>`, query/fragment fallback, or manual paste
+- accepts a raw share token from `/share/<token>`, query/fragment fallback, or manual paste
+- accepts an opaque share alias from `/share-alias/<alias>`, query/fragment fallback, or manual paste
 - accepts an optional self-service token from manual paste or local-dev query/fragment fallback
-- keeps query/fragment token hints in memory only after clearing them from the visible URL
+- keeps query/fragment token or alias hints in memory only after clearing them from the visible URL
 - calls only:
   - `GET /result-shares/{share_token}/bootstrap`
   - `GET /result-shares/{share_token}/content`
+  - `GET /share-aliases/{alias}/bootstrap`
+  - `GET /share-aliases/{alias}/content`
   - `GET /subscription-self-service/result-shares/{share_token}/collect-preview`
   - `POST /subscription-self-service/result-shares/{share_token}/collect`
+  - `GET /subscription-self-service/share-aliases/{alias}/collect-preview`
+  - `POST /subscription-self-service/share-aliases/{alias}/collect`
   - `GET /subscription-self-service/workspace-result-collections`
 - renders read-only `digest_issue`, `paper_snapshot`, and `workspace_board` views plus an explicit self-service collect flow for collectable share kinds
 - shows a manual invite/join handoff summary on `workspace_board` shares without mixing the share page into invite claim auth
 - shows a separate manual result-collect handoff summary on `workspace_board` shares without turning the board share itself into a collect source
+- keeps raw token mode and opaque alias mode additive over the same underlying `ResultShareGrant` semantics
 - does not add login, editing, or source-file sharing
 
 The separate invite shell under `apps/group-workspace-invite-web` now also:

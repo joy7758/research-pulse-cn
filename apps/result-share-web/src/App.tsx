@@ -20,13 +20,14 @@ import {
 } from "./lib/shareModel";
 import {
   clearVisibleShareAndSelfServiceTokenHints,
-  extractShareTokensFromLocation,
+  extractShareAccessFromLocation,
   type ShareTokenSource,
 } from "./lib/token";
 import type {
   CollectActionResultViewModel,
   GroupWorkspaceResultCollectionRead,
   ResultCollectViewModel,
+  ResultShareAccessMode,
   ResultShareCollectPreviewRead,
   ResultShareCollectResponseRead,
   ResultShareViewModel,
@@ -47,7 +48,10 @@ type ResultShareShellProps = {
 
 type ConnectedState = {
   apiBaseUrl: string;
-  shareToken: string;
+  shareAccess: {
+    mode: ResultShareAccessMode;
+    value: string;
+  };
   client: ResultShareApiClient;
   bootstrap: ShareGrantBootstrapRead;
   content: SharedResultContentRead;
@@ -115,7 +119,8 @@ export function ResultShareShell({
   const [apiBaseUrlInput, setApiBaseUrlInput] = useState(
     initialApiBaseUrl ?? DEFAULT_API_BASE_URL,
   );
-  const [shareTokenInput, setShareTokenInput] = useState("");
+  const [shareAccessMode, setShareAccessMode] = useState<ResultShareAccessMode>("token");
+  const [shareValueInput, setShareValueInput] = useState("");
   const [selfServiceTokenInput, setSelfServiceTokenInput] = useState("");
   const [connectedState, setConnectedState] = useState<ConnectedState | null>(null);
   const [selfServiceState, setSelfServiceState] = useState<SelfServiceState | null>(null);
@@ -132,13 +137,13 @@ export function ResultShareShell({
   const loadSelfServiceState = useCallback(
     async ({
       client,
-      shareToken,
+      shareAccess,
       bootstrap,
       selfServiceToken,
       source,
     }: {
       client: ResultShareApiClient;
-      shareToken: string;
+      shareAccess: ConnectedState["shareAccess"];
       bootstrap: ShareGrantBootstrapRead;
       selfServiceToken: string;
       source: Exclude<ShareTokenSource, "path" | "none">;
@@ -163,7 +168,9 @@ export function ResultShareShell({
 
       try {
         const [preview, collections] = await Promise.all([
-          client.getCollectPreview(shareToken, trimmedToken),
+          shareAccess.mode === "alias"
+            ? client.getAliasCollectPreview(shareAccess.value, trimmedToken)
+            : client.getCollectPreview(shareAccess.value, trimmedToken),
           client.listWorkspaceResultCollections(trimmedToken),
         ]);
         setSelectedWorkspaceId((current) => reconcileWorkspaceSelection(preview, current));
@@ -196,27 +203,32 @@ export function ResultShareShell({
     [],
   );
 
-  const connectWithToken = useCallback(
+  const connectWithAccess = useCallback(
     async ({
-      shareToken,
+      shareMode,
+      shareValue,
       apiBaseUrl,
       source,
       selfServiceToken,
       selfServiceSource,
     }: {
-      shareToken: string;
+      shareMode: ResultShareAccessMode;
+      shareValue: string;
       apiBaseUrl: string;
       source: Exclude<ShareTokenSource, "none">;
       selfServiceToken?: string | null;
       selfServiceSource?: Exclude<ShareTokenSource, "path" | "none"> | null;
     }) => {
-      const trimmedToken = shareToken.trim();
+      const trimmedShareValue = shareValue.trim();
       const trimmedApiBaseUrl = apiBaseUrl.trim();
-      if (!trimmedToken) {
+      if (!trimmedShareValue) {
         setErrorState({
           kind: "invalid_token",
-          title: "Missing share token",
-          message: "Paste a share token or open a share URL first.",
+          title: shareMode === "alias" ? "Missing share alias" : "Missing share token",
+          message:
+            shareMode === "alias"
+              ? "Paste a share alias or open a share-alias URL first."
+              : "Paste a share token or open a share URL first.",
         });
         return;
       }
@@ -230,6 +242,7 @@ export function ResultShareShell({
       }
 
       setLoading(true);
+      setShareAccessMode(shareMode);
       setErrorState(null);
       setSelfServiceError(null);
       setSelfServiceState(null);
@@ -237,7 +250,9 @@ export function ResultShareShell({
       setSelectedPaperIds([]);
       setNoticeMessage(
         source === "query" || source === "fragment"
-          ? "Share token was moved from the URL into in-memory state."
+          ? `${
+              shareMode === "alias" ? "Share alias" : "Share token"
+            } was moved from the URL into in-memory state.`
           : null,
       );
 
@@ -245,24 +260,34 @@ export function ResultShareShell({
 
       try {
         const [bootstrap, content] = await Promise.all([
-          client.getShareBootstrap(trimmedToken),
-          client.getShareContent(trimmedToken),
+          shareMode === "alias"
+            ? client.getAliasBootstrap(trimmedShareValue)
+            : client.getShareBootstrap(trimmedShareValue),
+          shareMode === "alias"
+            ? client.getAliasContent(trimmedShareValue)
+            : client.getShareContent(trimmedShareValue),
         ]);
         const nextConnectedState = {
           apiBaseUrl: trimmedApiBaseUrl,
-          shareToken: trimmedToken,
+          shareAccess: {
+            mode: shareMode,
+            value: trimmedShareValue,
+          },
           client,
           bootstrap,
           content,
           viewModel: buildResultShareViewModel(bootstrap, content),
         };
         setConnectedState(nextConnectedState);
-        setShareTokenInput("");
+        setShareValueInput("");
 
         if (selfServiceToken && selfServiceSource) {
           await loadSelfServiceState({
             client,
-            shareToken: trimmedToken,
+            shareAccess: {
+              mode: shareMode,
+              value: trimmedShareValue,
+            },
             bootstrap,
             selfServiceToken,
             source: selfServiceSource,
@@ -273,12 +298,12 @@ export function ResultShareShell({
           error instanceof ResultShareApiError
             ? buildShareErrorViewModel(error)
             : buildShareErrorViewModel({
-                kind: "request_failed",
-                detail: error instanceof Error ? error.message : String(error),
-              });
+              kind: "request_failed",
+              detail: error instanceof Error ? error.message : String(error),
+            });
         setConnectedState(null);
         setErrorState(shareError);
-        setShareTokenInput(source === "manual" ? trimmedToken : "");
+        setShareValueInput(source === "manual" ? trimmedShareValue : "");
       } finally {
         setLoading(false);
       }
@@ -292,7 +317,7 @@ export function ResultShareShell({
     }
     locationConsumedRef.current = true;
 
-    const extracted = extractShareTokensFromLocation(resolvedLocation);
+    const extracted = extractShareAccessFromLocation(resolvedLocation);
     const shouldClearVisibleHints =
       extracted.shareSource === "query" ||
       extracted.shareSource === "fragment" ||
@@ -303,17 +328,22 @@ export function ResultShareShell({
       clearVisibleShareAndSelfServiceTokenHints(resolvedLocation, resolvedHistory);
     }
 
-    if (!extracted.shareToken || extracted.shareSource === "none") {
+    if (
+      !extracted.shareValue ||
+      extracted.shareMode === null ||
+      extracted.shareSource === "none"
+    ) {
       if (extracted.selfServiceToken) {
         setNoticeMessage(
-          "A self-service token was found, but no share token was present to open.",
+          "A self-service token was found, but no share token or alias was present to open.",
         );
       }
       return;
     }
 
-    void connectWithToken({
-      shareToken: extracted.shareToken,
+    void connectWithAccess({
+      shareMode: extracted.shareMode,
+      shareValue: extracted.shareValue,
       apiBaseUrl: apiBaseUrlInput,
       source: extracted.shareSource,
       selfServiceToken: extracted.selfServiceToken,
@@ -323,15 +353,16 @@ export function ResultShareShell({
           ? extracted.selfServiceSource
           : null,
     });
-  }, [apiBaseUrlInput, connectWithToken, resolvedHistory, resolvedLocation]);
+  }, [apiBaseUrlInput, connectWithAccess, resolvedHistory, resolvedLocation]);
 
   const handleOpenShare = useCallback(() => {
-    void connectWithToken({
-      shareToken: shareTokenInput,
+    void connectWithAccess({
+      shareMode: shareAccessMode,
+      shareValue: shareValueInput,
       apiBaseUrl: apiBaseUrlInput,
       source: "manual",
     });
-  }, [apiBaseUrlInput, connectWithToken, shareTokenInput]);
+  }, [apiBaseUrlInput, connectWithAccess, shareAccessMode, shareValueInput]);
 
   const handleConnectSelfService = useCallback(() => {
     if (!connectedState) {
@@ -344,7 +375,7 @@ export function ResultShareShell({
     }
     void loadSelfServiceState({
       client: connectedState.client,
-      shareToken: connectedState.shareToken,
+      shareAccess: connectedState.shareAccess,
       bootstrap: connectedState.bootstrap,
       selfServiceToken: selfServiceTokenInput,
       source: "manual",
@@ -403,19 +434,34 @@ export function ResultShareShell({
     setCollectSubmitting(true);
     setSelfServiceError(null);
     try {
-      const response = await connectedState.client.postCollect(
-        connectedState.shareToken,
-        selfServiceState.token,
-        {
-          workspace_id: selectedWorkspaceId,
-          ...(paperIdsPayload ? { paper_ids: paperIdsPayload } : {}),
-        },
-      );
+      const response =
+        connectedState.shareAccess.mode === "alias"
+          ? await connectedState.client.postAliasCollect(
+              connectedState.shareAccess.value,
+              selfServiceState.token,
+              {
+                workspace_id: selectedWorkspaceId,
+                ...(paperIdsPayload ? { paper_ids: paperIdsPayload } : {}),
+              },
+            )
+          : await connectedState.client.postCollect(
+              connectedState.shareAccess.value,
+              selfServiceState.token,
+              {
+                workspace_id: selectedWorkspaceId,
+                ...(paperIdsPayload ? { paper_ids: paperIdsPayload } : {}),
+              },
+            );
       const [preview, collections] = await Promise.all([
-        connectedState.client.getCollectPreview(
-          connectedState.shareToken,
-          selfServiceState.token,
-        ),
+        connectedState.shareAccess.mode === "alias"
+          ? connectedState.client.getAliasCollectPreview(
+              connectedState.shareAccess.value,
+              selfServiceState.token,
+            )
+          : connectedState.client.getCollectPreview(
+              connectedState.shareAccess.value,
+              selfServiceState.token,
+            ),
         connectedState.client.listWorkspaceResultCollections(selfServiceState.token),
       ]);
       setSelectedWorkspaceId((current) => reconcileWorkspaceSelection(preview, current));
@@ -445,7 +491,8 @@ export function ResultShareShell({
   const handleOpenAnother = useCallback(() => {
     setConnectedState(null);
     setSelfServiceState(null);
-    setShareTokenInput("");
+    setShareValueInput("");
+    setShareAccessMode("token");
     setSelfServiceTokenInput("");
     setSelectedWorkspaceId("");
     setSelectedPaperIds([]);
@@ -503,13 +550,15 @@ export function ResultShareShell({
     return (
       <TokenEntryView
         apiBaseUrl={apiBaseUrlInput}
-        shareToken={shareTokenInput}
+        shareAccessMode={shareAccessMode}
+        shareValue={shareValueInput}
         loading={loading}
         errorTitle={errorState?.title ?? null}
         errorMessage={errorState?.message ?? null}
         noticeMessage={noticeMessage}
         onApiBaseUrlChange={setApiBaseUrlInput}
-        onShareTokenChange={setShareTokenInput}
+        onShareAccessModeChange={setShareAccessMode}
+        onShareValueChange={setShareValueInput}
         onSubmit={handleOpenShare}
       />
     );
@@ -534,6 +583,10 @@ export function ResultShareShell({
           <div className="hero-chip">
             <span>Status</span>
             <strong>{readyHeader?.status}</strong>
+          </div>
+          <div className="hero-chip">
+            <span>Access</span>
+            <strong>{connectedState.shareAccess.mode}</strong>
           </div>
           <div className="hero-chip">
             <span>API base</span>

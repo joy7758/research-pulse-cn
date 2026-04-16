@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import hashlib
+import secrets
+import string
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -24,6 +26,7 @@ from research_pulse_cn.db.models import (
     GroupWorkspaceResultCollectRecord,
     PaperProfile,
     PulseDigestIssue,
+    ResultShareAlias,
     ResultShareGrant,
     utcnow,
 )
@@ -35,13 +38,16 @@ from research_pulse_cn.domain.enums import (
     GroupWorkspaceResultCollectStatus,
     GroupWorkspaceStatus,
     PulseCardType,
+    ResultShareAliasStatus,
     ResultShareGrantStatus,
     ResultShareKind,
 )
 from research_pulse_cn.domain.group_workspace import (
     GroupWorkspaceInviteGrantContext,
     IssuedGroupWorkspaceInviteGrant,
+    IssuedResultShareAlias,
     IssuedResultShareGrant,
+    ResultShareAliasContext,
     ResultShareGrantContext,
 )
 from research_pulse_cn.domain.progress import derive_progress_percentage
@@ -87,6 +93,8 @@ RESULT_COLLECTABLE_SHARE_KINDS = frozenset(
         ResultShareKind.PAPER_SNAPSHOT,
     }
 )
+
+RESULT_SHARE_ALIAS_ALPHABET = string.ascii_letters + string.digits
 
 
 class GroupWorkspaceService:
@@ -597,6 +605,28 @@ class GroupWorkspaceService:
         self._mark_expired_if_needed(grant)
         return grant
 
+    def list_result_share_aliases(
+        self,
+        *,
+        result_share_grant_id: UUID | None = None,
+        share_kind: ResultShareKind | None = None,
+        status: ResultShareAliasStatus | None = None,
+    ) -> list[ResultShareAlias]:
+        aliases = self.repository.list_result_share_aliases(
+            result_share_grant_id=result_share_grant_id,
+            share_kind=share_kind,
+            status=status,
+        )
+        self._refresh_expired_aliases(aliases)
+        return aliases
+
+    def get_result_share_alias(self, alias_id: UUID) -> ResultShareAlias:
+        alias = self.repository.get_result_share_alias(alias_id)
+        if alias is None:
+            raise NotFoundError(f"result share alias {alias_id} was not found")
+        self._mark_alias_expired_if_needed(alias)
+        return alias
+
     def list_result_collect_records(
         self,
         *,
@@ -628,6 +658,25 @@ class GroupWorkspaceService:
             "last_used_at": grant.last_used_at,
             "created_at": grant.created_at,
             "updated_at": grant.updated_at,
+        }
+
+    def serialize_result_share_alias(self, alias: ResultShareAlias) -> dict[str, Any]:
+        share_kind = (
+            alias.result_share_grant.share_kind
+            if alias.result_share_grant is not None
+            else self.get_result_share_grant(alias.result_share_grant_id).share_kind
+        )
+        return {
+            "id": alias.id,
+            "result_share_grant_id": alias.result_share_grant_id,
+            "share_kind": share_kind,
+            "status": alias.status,
+            "display_label": alias.display_label,
+            "alias_prefix": alias.alias_prefix,
+            "expires_at": alias.expires_at,
+            "last_used_at": alias.last_used_at,
+            "created_at": alias.created_at,
+            "updated_at": alias.updated_at,
         }
 
     def serialize_result_collect_record(
@@ -748,6 +797,47 @@ class GroupWorkspaceService:
             commit_session(self.session)
         return self.get_result_share_grant(grant_id)
 
+    def create_result_share_alias(
+        self,
+        *,
+        result_share_grant_id: UUID,
+        display_label: str | None,
+        issued_by_admin_id: UUID | None,
+        expires_at: datetime | None,
+    ) -> tuple[ResultShareAlias, IssuedResultShareAlias]:
+        self._ensure_result_share_alias_enabled()
+        grant = self.get_result_share_grant(result_share_grant_id)
+        now = self.now_provider()
+        effective_expires_at = expires_at
+        if effective_expires_at is None and self.settings.result_share_alias_ttl_hours > 0:
+            effective_expires_at = now + timedelta(hours=self.settings.result_share_alias_ttl_hours)
+        raw_alias = self._generate_result_share_alias()
+        alias = ResultShareAlias(
+            result_share_grant_id=grant.id,
+            alias_hash=hash_token(raw_alias),
+            alias_prefix=raw_alias[:6],
+            status=ResultShareAliasStatus.ACTIVE,
+            display_label=display_label,
+            issued_by_admin_id=issued_by_admin_id,
+            expires_at=effective_expires_at,
+        )
+        self.repository.add_result_share_alias(alias)
+        commit_session(self.session)
+        persisted = self.get_result_share_alias(alias.id)
+        self.metrics.increment("result_share_aliases_issued_total")
+        return persisted, IssuedResultShareAlias(
+            alias_id=persisted.id,
+            plain_text_alias=raw_alias,
+            expires_at=persisted.expires_at,
+        )
+
+    def revoke_result_share_alias(self, alias_id: UUID) -> ResultShareAlias:
+        alias = self.get_result_share_alias(alias_id)
+        if alias.status != ResultShareAliasStatus.REVOKED:
+            alias.status = ResultShareAliasStatus.REVOKED
+            commit_session(self.session)
+        return self.get_result_share_alias(alias_id)
+
     def authenticate_share_token(self, raw_token: str) -> ResultShareGrantContext:
         grant = self.repository.get_result_share_grant_by_token_hash(hash_token(raw_token))
         if grant is None:
@@ -772,6 +862,52 @@ class GroupWorkspaceService:
             expires_at=grant.expires_at,
             last_used_at=grant.last_used_at,
         )
+
+    def authenticate_share_alias(self, raw_alias: str) -> ResultShareAliasContext:
+        self._ensure_result_share_alias_enabled()
+        alias = self.repository.get_result_share_alias_by_hash(hash_token(raw_alias))
+        if alias is None:
+            raise AuthenticationError("result share alias was not found")
+        now = self.now_provider()
+        if alias.status == ResultShareAliasStatus.REVOKED:
+            raise AuthenticationError("result share alias has been revoked")
+        if alias.status == ResultShareAliasStatus.EXPIRED:
+            raise AuthenticationError("result share alias has expired")
+        if self._mark_alias_expired_if_needed(alias, now=now):
+            raise AuthenticationError("result share alias has expired")
+        grant = alias.result_share_grant or self.get_result_share_grant(alias.result_share_grant_id)
+        if grant.status == ResultShareGrantStatus.REVOKED:
+            raise AuthenticationError("result share grant has been revoked")
+        if grant.status == ResultShareGrantStatus.EXPIRED:
+            raise AuthenticationError("result share grant has expired")
+        if self._mark_expired_if_needed(grant, now=now):
+            raise AuthenticationError("result share grant has expired")
+        alias.last_used_at = now
+        grant.last_used_at = now
+        commit_session(self.session)
+        self.metrics.increment("result_share_alias_resolutions_total")
+        return ResultShareAliasContext(
+            alias_id=alias.id,
+            grant_id=grant.id,
+            share_kind=grant.share_kind,
+            workspace_id=grant.workspace_id,
+            digest_issue_id=grant.digest_issue_id,
+            paper_id=grant.paper_id,
+            status=alias.status,
+            display_label=alias.display_label,
+            expires_at=alias.expires_at,
+            last_used_at=alias.last_used_at,
+        )
+
+    def build_share_alias_redirect_url(self, raw_alias: str) -> str:
+        if not self.settings.result_share_redirect_enabled:
+            raise ValidationFailedError("result share alias redirect is disabled")
+        entry_url = self.settings.result_share_web_entry_url
+        if not entry_url:
+            raise ValidationFailedError("result share web entry URL is not configured")
+        self.authenticate_share_alias(raw_alias)
+        self.metrics.increment("result_share_alias_redirects_total")
+        return f"{entry_url}/share-alias/{raw_alias}"
 
     def share_bootstrap(self, grant: ResultShareGrantContext) -> dict[str, Any]:
         stored = self.get_result_share_grant(grant.grant_id)
@@ -856,6 +992,30 @@ class GroupWorkspaceService:
             "notes": list(evaluation["notes"]),
         }
 
+    def preview_result_share_collect_by_alias(
+        self,
+        *,
+        raw_alias: str,
+        grant: SubscriptionSelfServiceGrantContext,
+    ) -> dict[str, Any]:
+        self.metrics.increment("group_workspace_result_collect_previews_total")
+        evaluation = self._evaluate_collect_preview_by_alias(
+            raw_alias=raw_alias,
+            user_id=grant.user_id,
+        )
+        return {
+            "share": (
+                None
+                if evaluation["share_grant"] is None
+                else self._result_collect_share_summary(evaluation["share_grant"])
+            ),
+            "collectable_items": list(evaluation["collectable_items"]),
+            "eligible_workspaces": list(evaluation["eligible_workspaces"]),
+            "can_collect": evaluation["can_collect"],
+            "reason_codes": list(evaluation["reason_codes"]),
+            "notes": list(evaluation["notes"]),
+        }
+
     def collect_result_share(
         self,
         *,
@@ -866,6 +1026,21 @@ class GroupWorkspaceService:
     ) -> dict[str, Any]:
         self.metrics.increment("group_workspace_result_collect_actions_total")
         evaluation = self._evaluate_collect_preview(raw_token=raw_token, user_id=grant.user_id)
+        return self._collect_result_share_from_evaluation(
+            evaluation=evaluation,
+            grant=grant,
+            workspace_id=workspace_id,
+            paper_ids=paper_ids,
+        )
+
+    def _collect_result_share_from_evaluation(
+        self,
+        *,
+        evaluation: dict[str, Any],
+        grant: SubscriptionSelfServiceGrantContext,
+        workspace_id: UUID,
+        paper_ids: Sequence[UUID] | None = None,
+    ) -> dict[str, Any]:
         share_grant: ResultShareGrant | None = evaluation["share_grant"]
         if share_grant is None:
             return {
@@ -962,6 +1137,26 @@ class GroupWorkspaceService:
                 "Structured paper objects were collected into the workspace without source files."
             ],
         }
+
+    def collect_result_share_by_alias(
+        self,
+        *,
+        raw_alias: str,
+        grant: SubscriptionSelfServiceGrantContext,
+        workspace_id: UUID,
+        paper_ids: Sequence[UUID] | None = None,
+    ) -> dict[str, Any]:
+        self.metrics.increment("group_workspace_result_collect_actions_total")
+        evaluation = self._evaluate_collect_preview_by_alias(
+            raw_alias=raw_alias,
+            user_id=grant.user_id,
+        )
+        return self._collect_result_share_from_evaluation(
+            evaluation=evaluation,
+            grant=grant,
+            workspace_id=workspace_id,
+            paper_ids=paper_ids,
+        )
 
     def self_service_workspace_result_collections(
         self,
@@ -1210,6 +1405,14 @@ class GroupWorkspaceService:
         if updated:
             commit_session(self.session)
 
+    def _refresh_expired_aliases(self, aliases: Sequence[ResultShareAlias]) -> None:
+        updated = False
+        now = self.now_provider()
+        for alias in aliases:
+            updated = self._mark_alias_expired_if_needed(alias, now=now) or updated
+        if updated:
+            commit_session(self.session)
+
     def _mark_expired_if_needed(
         self,
         grant: ResultShareGrant,
@@ -1226,6 +1429,47 @@ class GroupWorkspaceService:
             grant.status = ResultShareGrantStatus.EXPIRED
             return True
         return False
+
+    def _mark_alias_expired_if_needed(
+        self,
+        alias: ResultShareAlias,
+        *,
+        now: datetime | None = None,
+    ) -> bool:
+        current_time = self._coerce_utc(now or self.now_provider())
+        expires_at = self._coerce_utc(alias.expires_at)
+        if (
+            alias.status == ResultShareAliasStatus.ACTIVE
+            and expires_at is not None
+            and expires_at <= current_time
+        ):
+            alias.status = ResultShareAliasStatus.EXPIRED
+            return True
+        return False
+
+    def _ensure_result_share_alias_enabled(self) -> None:
+        if not self.settings.result_share_alias_enabled:
+            raise ValidationFailedError("result share aliasing is disabled")
+
+    def _generate_result_share_alias(self) -> str:
+        length = max(8, int(self.settings.result_share_alias_length))
+        while True:
+            alias = "".join(secrets.choice(RESULT_SHARE_ALIAS_ALPHABET) for _ in range(length))
+            if self.repository.get_result_share_alias_by_hash(hash_token(alias)) is None:
+                return alias
+
+    def _result_share_grant_context(self, grant: ResultShareGrant) -> ResultShareGrantContext:
+        return ResultShareGrantContext(
+            grant_id=grant.id,
+            share_kind=grant.share_kind,
+            workspace_id=grant.workspace_id,
+            digest_issue_id=grant.digest_issue_id,
+            paper_id=grant.paper_id,
+            status=grant.status,
+            display_label=grant.display_label,
+            expires_at=grant.expires_at,
+            last_used_at=grant.last_used_at,
+        )
 
     def _grant_matches_user(self, grant: ResultShareGrant, *, user_id: UUID) -> bool:
         if grant.digest_issue is not None:
@@ -1674,6 +1918,47 @@ class GroupWorkspaceService:
         self._mark_expired_if_needed(share_grant, now=now)
         share_grant.last_used_at = now
         commit_session(self.session)
+        return self._evaluate_collect_preview_for_share_grant(
+            share_grant=share_grant,
+            user_id=user_id,
+        )
+
+    def _evaluate_collect_preview_by_alias(
+        self,
+        *,
+        raw_alias: str,
+        user_id: UUID,
+    ) -> dict[str, Any]:
+        try:
+            alias_context = self.authenticate_share_alias(raw_alias)
+        except AuthenticationError as exc:
+            detail = str(exc).lower()
+            if "revoked" in detail:
+                reason_code = "share_revoked"
+            elif "expired" in detail:
+                reason_code = "share_expired"
+            else:
+                reason_code = "share_not_found"
+            return {
+                "share_grant": None,
+                "collectable_items": [],
+                "eligible_workspaces": [],
+                "reason_codes": [reason_code],
+                "notes": [],
+                "can_collect": False,
+            }
+        share_grant = self.get_result_share_grant(alias_context.grant_id)
+        return self._evaluate_collect_preview_for_share_grant(
+            share_grant=share_grant,
+            user_id=user_id,
+        )
+
+    def _evaluate_collect_preview_for_share_grant(
+        self,
+        *,
+        share_grant: ResultShareGrant,
+        user_id: UUID,
+    ) -> dict[str, Any]:
         reason_codes: list[str] = []
         if not self.settings.group_workspace_result_collect_enabled:
             reason_codes.append("collect_disabled")

@@ -468,17 +468,33 @@ function createClientStub(overrides: Partial<ResultShareApiClient>): ResultShare
       "getShareBootstrap" in overrides
         ? (overrides.getShareBootstrap as ReturnType<typeof vi.fn>)
         : vi.fn().mockResolvedValue(bootstrapFixture("digest_issue")),
+    getAliasBootstrap:
+      "getAliasBootstrap" in overrides
+        ? (overrides.getAliasBootstrap as ReturnType<typeof vi.fn>)
+        : vi.fn().mockResolvedValue(bootstrapFixture("digest_issue")),
     getShareContent:
       "getShareContent" in overrides
         ? (overrides.getShareContent as ReturnType<typeof vi.fn>)
+        : vi.fn().mockResolvedValue(digestFixture()),
+    getAliasContent:
+      "getAliasContent" in overrides
+        ? (overrides.getAliasContent as ReturnType<typeof vi.fn>)
         : vi.fn().mockResolvedValue(digestFixture()),
     getCollectPreview:
       "getCollectPreview" in overrides
         ? (overrides.getCollectPreview as ReturnType<typeof vi.fn>)
         : vi.fn().mockResolvedValue(digestPreview()),
+    getAliasCollectPreview:
+      "getAliasCollectPreview" in overrides
+        ? (overrides.getAliasCollectPreview as ReturnType<typeof vi.fn>)
+        : vi.fn().mockResolvedValue(digestPreview()),
     postCollect:
       "postCollect" in overrides
         ? (overrides.postCollect as ReturnType<typeof vi.fn>)
+        : vi.fn().mockResolvedValue(collectedResponse()),
+    postAliasCollect:
+      "postAliasCollect" in overrides
+        ? (overrides.postAliasCollect as ReturnType<typeof vi.fn>)
         : vi.fn().mockResolvedValue(collectedResponse()),
     listWorkspaceResultCollections:
       "listWorkspaceResultCollections" in overrides
@@ -510,6 +526,24 @@ describe("result share shell", () => {
 
     expect(await screen.findByText("Focus summary")).toBeVisible();
     expect(screen.getByText("Today Focus")).toBeVisible();
+  });
+
+  it("loads and renders a digest share from the /share-alias/<alias> path", async () => {
+    const apiClientFactory = createApiClientFactory({
+      getAliasBootstrap: vi.fn().mockResolvedValue(bootstrapFixture("digest_issue")),
+      getAliasContent: vi.fn().mockResolvedValue(digestFixture()),
+    });
+
+    render(
+      <ResultShareShell
+        apiClientFactory={apiClientFactory}
+        locationLike={{ pathname: "/share-alias/alias-123", search: "", hash: "" }}
+      />,
+    );
+
+    expect(await screen.findByText("Focus summary")).toBeVisible();
+    expect(screen.getByText("Today Focus")).toBeVisible();
+    expect(screen.getByText("alias")).toBeVisible();
   });
 
   it("supports paper_snapshot collect preview and collect with a self-service token", async () => {
@@ -552,6 +586,51 @@ describe("result share shell", () => {
     expect(await screen.findByText("Collected into workspace")).toBeVisible();
     expect(screen.getByText(/without source files/i)).toBeVisible();
     expect(screen.getByText("Current self-service collection history")).toBeVisible();
+  });
+
+  it("supports alias-based paper_snapshot collect preview and collect", async () => {
+    const user = userEvent.setup();
+    const getAliasCollectPreview = vi
+      .fn()
+      .mockResolvedValueOnce(paperSnapshotPreview())
+      .mockResolvedValueOnce(paperSnapshotPreview());
+    const postAliasCollect = vi.fn().mockResolvedValue(collectedResponse());
+    const listWorkspaceResultCollections = vi
+      .fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce(collectionHistory("Shared Paper"));
+    const apiClientFactory = createApiClientFactory({
+      getAliasBootstrap: vi.fn().mockResolvedValue(bootstrapFixture("paper_snapshot")),
+      getAliasContent: vi.fn().mockResolvedValue(paperFixture()),
+      getAliasCollectPreview,
+      postAliasCollect,
+      listWorkspaceResultCollections,
+    });
+
+    render(<ResultShareShell apiClientFactory={apiClientFactory} />);
+
+    await user.selectOptions(screen.getByLabelText(/share access mode/i), "alias");
+    await user.type(screen.getByLabelText(/share alias/i), "paper-share-alias");
+    await user.click(screen.getByRole("button", { name: /open share/i }));
+    expect(
+      await screen.findByRole("heading", {
+        level: 1,
+        name: "Shared Paper",
+      }),
+    ).toBeVisible();
+
+    await user.type(screen.getByLabelText(/self-service token/i), "self-service-token");
+    await user.click(screen.getByRole("button", { name: /connect self-service token/i }));
+
+    expect(await screen.findByText("Review workspace intake options")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: /collect into workspace/i }));
+
+    expect(await screen.findByText("Collected into workspace")).toBeVisible();
+    expect(postAliasCollect).toHaveBeenCalledWith(
+      "paper-share-alias",
+      "self-service-token",
+      expect.any(Object),
+    );
   });
 
   it("requires explicit paper selection for multi-paper digest collect", async () => {
@@ -617,6 +696,26 @@ describe("result share shell", () => {
 
     expect(await screen.findByText("Not collectable in v1")).toBeVisible();
     expect(screen.getByText(/share kind not collectable/i)).toBeVisible();
+  });
+
+  it("renders workspace_board shares through alias mode without changing handoff behavior", async () => {
+    const apiClientFactory = createApiClientFactory({
+      getAliasBootstrap: vi.fn().mockResolvedValue(bootstrapFixture("workspace_board")),
+      getAliasContent: vi.fn().mockResolvedValue(workspaceFixture()),
+    });
+
+    render(
+      <ResultShareShell
+        apiClientFactory={apiClientFactory}
+        locationLike={{ pathname: "/share-alias/workspace-alias", search: "", hash: "" }}
+      />,
+    );
+
+    expect(await screen.findByText("Workspace description")).toBeVisible();
+    expect(screen.getByText("Invite and join stay in a separate flow")).toBeVisible();
+    expect(screen.getByText("Next step: collect papers into this workspace")).toBeVisible();
+    expect(screen.getByText("http://127.0.0.1:5177")).toBeVisible();
+    expect(screen.getByText("http://127.0.0.1:5174")).toBeVisible();
   });
 
   it("keeps workspace_board rendering stable when the handoff reserve is omitted", async () => {

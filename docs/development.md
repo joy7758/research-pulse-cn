@@ -77,8 +77,12 @@ The shell is not a mini-program build and does not introduce new auth. It consum
 The shell lives under `apps/result-share-web` and uses only:
 - `GET /result-shares/{share_token}/bootstrap`
 - `GET /result-shares/{share_token}/content`
+- `GET /share-aliases/{alias}/bootstrap`
+- `GET /share-aliases/{alias}/content`
 - `GET /subscription-self-service/result-shares/{share_token}/collect-preview`
 - `POST /subscription-self-service/result-shares/{share_token}/collect`
+- `GET /subscription-self-service/share-aliases/{alias}/collect-preview`
+- `POST /subscription-self-service/share-aliases/{alias}/collect`
 - `GET /subscription-self-service/workspace-result-collections`
 
 The shell is public/token-based for share rendering and self-service-token-assisted for collect-preview/collect. It keeps both tokens in memory only and does not introduce login, editing, or source-file sharing.
@@ -116,6 +120,10 @@ The shell lives under `apps/group-workspace-admin-web` and uses:
 - `GET /admin/result-share-grants`
 - `POST /admin/result-share-grants`
 - `POST /admin/result-share-grants/{grant_id}/revoke`
+- `GET /admin/result-share-aliases`
+- `POST /admin/result-share-aliases`
+- `GET /admin/result-share-aliases/{alias_id}`
+- `POST /admin/result-share-aliases/{alias_id}/revoke`
 - plus existing `GET /users` and `GET /papers` reads as internal lookup sources
 
 The shell is internal/admin-only, keeps bearer tokens in memory only, and does not introduce end-user login or source-file sharing.
@@ -189,9 +197,14 @@ After membership is claimed or confirmed, the same shell may also show a manual 
 - Public read-only share routes:
   - `GET /result-shares/{share_token}/bootstrap`
   - `GET /result-shares/{share_token}/content`
+  - `GET /share-aliases/{alias}/bootstrap`
+  - `GET /share-aliases/{alias}/content`
+  - optional `GET /s/{alias}` redirect boundary
 - Self-service result collect routes:
   - `GET /subscription-self-service/result-shares/{share_token}/collect-preview`
   - `POST /subscription-self-service/result-shares/{share_token}/collect`
+  - `GET /subscription-self-service/share-aliases/{alias}/collect-preview`
+  - `POST /subscription-self-service/share-aliases/{alias}/collect`
   - `GET /subscription-self-service/workspace-result-collections`
 - Public invite bootstrap route:
   - `GET /workspace-invites/{invite_token}/bootstrap`
@@ -226,7 +239,9 @@ Invite-facing responses now may also carry a read-only `result_collect_handoff_r
 - it does not make the invite page collect-capable
 The browser shell for that boundary now uses:
 - `/share/<token>` path parsing when practical
+- `/share-alias/<alias>` path parsing when practical
 - `?share_token=` and `#share_token=` local-dev fallbacks
+- `?share_alias=` and `#share_alias=` local-dev fallbacks
 - optional `?self_service_token=` and `#self_service_token=` local-dev fallbacks
 - in-memory token handling only
 

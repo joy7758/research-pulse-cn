@@ -91,6 +91,9 @@ COUNTER_NAMES = (
     "group_workspace_result_collect_previews_total",
     "group_workspace_result_collect_actions_total",
     "group_workspace_result_collect_records_created_total",
+    "result_share_aliases_issued_total",
+    "result_share_alias_resolutions_total",
+    "result_share_alias_redirects_total",
 )
 
 

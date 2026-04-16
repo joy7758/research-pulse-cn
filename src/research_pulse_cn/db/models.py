@@ -60,6 +60,7 @@ from research_pulse_cn.domain.enums import (
     PulseJobScheduledReason,
     PulseJobStatus,
     ResearchWatchProfileSourceMode,
+    ResultShareAliasStatus,
     ResultShareGrantStatus,
     ResultShareKind,
     SignalSource,
@@ -137,6 +138,9 @@ class AdminAccount(TimestampMixin, Base):
         back_populates="added_by_admin",
     )
     issued_result_share_grants: Mapped[list[ResultShareGrant]] = relationship(
+        back_populates="issued_by_admin",
+    )
+    issued_result_share_aliases: Mapped[list[ResultShareAlias]] = relationship(
         back_populates="issued_by_admin",
     )
     issued_group_workspace_invite_grants: Mapped[list[GroupWorkspaceInviteGrant]] = relationship(
@@ -1125,9 +1129,52 @@ class ResultShareGrant(TimestampMixin, Base):
     issued_by_admin: Mapped[AdminAccount | None] = relationship(
         back_populates="issued_result_share_grants"
     )
+    aliases: Mapped[list[ResultShareAlias]] = relationship(
+        back_populates="result_share_grant",
+        order_by="ResultShareAlias.created_at.desc()",
+    )
     result_collect_records: Mapped[list[GroupWorkspaceResultCollectRecord]] = relationship(
         back_populates="result_share_grant",
         order_by="GroupWorkspaceResultCollectRecord.created_at.desc()",
+    )
+
+
+class ResultShareAlias(TimestampMixin, Base):
+    __tablename__ = "result_share_aliases"
+    __table_args__ = (
+        Index(
+            "ix_result_share_aliases_status_created_at",
+            "status",
+            "created_at",
+        ),
+        Index(
+            "ix_result_share_aliases_result_share_grant_created_at",
+            "result_share_grant_id",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    result_share_grant_id: Mapped[UUID] = mapped_column(
+        ForeignKey("result_share_grants.id", ondelete="CASCADE")
+    )
+    alias_hash: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    alias_prefix: Mapped[str | None] = mapped_column(String(64))
+    status: Mapped[ResultShareAliasStatus] = mapped_column(
+        Enum(ResultShareAliasStatus, native_enum=False),
+        nullable=False,
+        default=ResultShareAliasStatus.ACTIVE,
+    )
+    display_label: Mapped[str | None] = mapped_column(String(255))
+    issued_by_admin_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("admin_accounts.id", ondelete="SET NULL")
+    )
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    result_share_grant: Mapped[ResultShareGrant] = relationship(back_populates="aliases")
+    issued_by_admin: Mapped[AdminAccount | None] = relationship(
+        back_populates="issued_result_share_aliases"
     )
 
 

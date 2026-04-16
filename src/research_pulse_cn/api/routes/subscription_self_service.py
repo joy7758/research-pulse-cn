@@ -487,6 +487,37 @@ def preview_subscription_self_service_result_share_collect(
     return ResultShareCollectPreviewRead(**payload)
 
 
+@router.get(
+    "/share-aliases/{alias}/collect-preview",
+    response_model=ResultShareCollectPreviewRead,
+)
+def preview_subscription_self_service_result_share_collect_by_alias(
+    alias: str,
+    request: Request,
+    grant: GrantDep,
+    service: WorkspaceServiceDep,
+    audit_service: AuditServiceDep,
+) -> ResultShareCollectPreviewRead:
+    payload = service.preview_result_share_collect_by_alias(raw_alias=alias, grant=grant)
+    audit_service.safe_record(
+        actor=_self_service_actor(grant),
+        action="subscription_self_service.result_share_collect_preview",
+        resource_type="result_share_alias",
+        resource_id=None if payload["share"] is None else str(payload["share"]["id"]),
+        request_id=getattr(request.state, "request_id", None),
+        route=request.url.path,
+        method=request.method,
+        status_code=200,
+        metadata={
+            "grant_id": str(grant.grant_id),
+            "user_id": str(grant.user_id),
+            "reason_codes": payload["reason_codes"],
+            "can_collect": payload["can_collect"],
+        },
+    )
+    return ResultShareCollectPreviewRead(**payload)
+
+
 @router.post(
     "/result-shares/{share_token}/collect",
     response_model=ResultShareCollectResponse,
@@ -509,6 +540,56 @@ def collect_subscription_self_service_result_share(
         actor=_self_service_actor(grant),
         action="subscription_self_service.result_share_collect",
         resource_type="result_share_grant",
+        resource_id=(
+            None
+            if not response_payload["collected_results"]
+            else str(
+                response_payload["collected_results"][0]["collect_record"]["result_share_grant_id"]
+            )
+            if response_payload["collected_results"][0]["collect_record"] is not None
+            else None
+        ),
+        request_id=getattr(request.state, "request_id", None),
+        route=request.url.path,
+        method=request.method,
+        status_code=200,
+        metadata={
+            "grant_id": str(grant.grant_id),
+            "user_id": str(grant.user_id),
+            "workspace_id": (
+                None
+                if response_payload["workspace"] is None
+                else str(response_payload["workspace"]["id"])
+            ),
+            "action": response_payload["action"],
+            "result_count": len(response_payload["collected_results"]),
+        },
+    )
+    return ResultShareCollectResponse(**response_payload)
+
+
+@router.post(
+    "/share-aliases/{alias}/collect",
+    response_model=ResultShareCollectResponse,
+)
+def collect_subscription_self_service_result_share_by_alias(
+    alias: str,
+    payload: ResultShareCollectRequest,
+    request: Request,
+    grant: GrantDep,
+    service: WorkspaceServiceDep,
+    audit_service: AuditServiceDep,
+) -> ResultShareCollectResponse:
+    response_payload = service.collect_result_share_by_alias(
+        raw_alias=alias,
+        grant=grant,
+        workspace_id=payload.workspace_id,
+        paper_ids=payload.paper_ids,
+    )
+    audit_service.safe_record(
+        actor=_self_service_actor(grant),
+        action="subscription_self_service.result_share_collect",
+        resource_type="result_share_alias",
         resource_id=(
             None
             if not response_payload["collected_results"]

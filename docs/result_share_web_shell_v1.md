@@ -10,21 +10,30 @@
 
 ## Token Bootstrap Flow
 - The shell lives under `apps/result-share-web`.
-- It accepts share tokens from:
+- It accepts raw share tokens from:
   - `/share/<token>` pathnames
   - `?share_token=...` query fallback
   - `#share_token=...` fragment fallback
+  - manual paste
+- It also accepts opaque share aliases from:
+  - `/share-alias/<alias>` pathnames
+  - `?share_alias=...` query fallback
+  - `#share_alias=...` fragment fallback
   - manual paste
 - It also accepts an optional self-service token from:
   - manual paste
   - local-dev `?self_service_token=...` query fallback
   - local-dev `#self_service_token=...` fragment fallback
-- Query and fragment tokens are moved into in-memory state and immediately cleared from the visible URL.
+- Query and fragment tokens or aliases are moved into in-memory state and immediately cleared from the visible URL.
 - The shell then calls:
   - `GET /result-shares/{share_token}/bootstrap`
   - `GET /result-shares/{share_token}/content`
+  - `GET /share-aliases/{alias}/bootstrap`
+  - `GET /share-aliases/{alias}/content`
   - `GET /subscription-self-service/result-shares/{share_token}/collect-preview`
   - `POST /subscription-self-service/result-shares/{share_token}/collect`
+  - `GET /subscription-self-service/share-aliases/{alias}/collect-preview`
+  - `POST /subscription-self-service/share-aliases/{alias}/collect`
   - `GET /subscription-self-service/workspace-result-collections`
 
 ## Read-Only Result Types
@@ -50,6 +59,7 @@
 - `workspace_board`
   - remains non-collectable in v1
   - may also surface invite/join and result-collect handoff summaries
+- Alias mode stays additive over the same underlying `ResultShareGrant` semantics and never reveals the raw share token.
 - The shell keeps the current share view intact while collect actions run in parallel panels.
 
 ## Workspace-Board Invite Handoff Summary

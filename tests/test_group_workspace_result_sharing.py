@@ -118,6 +118,21 @@ def create_result_share_grant(
     return response.json()
 
 
+def create_result_share_alias(
+    client,
+    headers,
+    *,
+    result_share_grant_id: str,
+    expires_at: str | None = None,
+) -> dict:
+    payload: dict[str, object] = {"result_share_grant_id": result_share_grant_id}
+    if expires_at is not None:
+        payload["expires_at"] = expires_at
+    response = client.post("/admin/result-share-aliases", headers=headers, json=payload)
+    assert response.status_code == 201
+    return response.json()
+
+
 def create_digest_issue(client, headers, *, user_id: str, title: str) -> dict:
     paper = create_paper(client, headers, user_id=user_id, title=title)
     add_signal_pair(client, headers, paper_id=paper["id"])
@@ -452,3 +467,198 @@ def test_revoked_and_expired_result_share_grants_are_rejected(
     )
     expired_content = client.get(f"/result-shares/{expired_share['plain_text_token']}/content")
     assert expired_content.status_code == 401
+
+
+def test_result_share_aliases_resolve_same_safe_content_and_redirect(
+    client,
+    operator_headers,
+    viewer_headers,
+) -> None:
+    settings = get_settings()
+    original_alias_enabled = settings.result_share_alias_enabled
+    original_redirect_enabled = settings.result_share_redirect_enabled
+    original_entry_url = settings.result_share_web_entry_base_url
+    settings.result_share_alias_enabled = True
+    settings.result_share_redirect_enabled = True
+    settings.result_share_web_entry_base_url = "http://127.0.0.1:5174/"
+    owner = create_user(
+        client,
+        operator_headers,
+        email="alias-owner@example.com",
+        name="Alias Owner",
+    )
+    paper = create_paper(
+        client,
+        operator_headers,
+        user_id=owner["id"],
+        title="Alias Paper",
+        source_links=["/Users/zhangbin/GitHub/research-pulse-cn/alias-source.pdf"],
+    )
+    add_signal_pair(client, operator_headers, paper_id=paper["id"])
+    share = create_result_share_grant(
+        client,
+        operator_headers,
+        share_kind=ResultShareKind.PAPER_SNAPSHOT,
+        paper_id=paper["id"],
+    )
+    try:
+        viewer_create = client.post(
+            "/admin/result-share-aliases",
+            headers=viewer_headers,
+            json={"result_share_grant_id": share["grant"]["id"]},
+        )
+        assert viewer_create.status_code == 403
+
+        alias = create_result_share_alias(
+            client,
+            operator_headers,
+            result_share_grant_id=share["grant"]["id"],
+        )
+        assert alias["plain_text_alias"]
+        assert alias["alias"]["alias_prefix"] == alias["plain_text_alias"][:6]
+
+        listed = client.get("/admin/result-share-aliases", headers=operator_headers)
+        assert listed.status_code == 200
+        assert listed.json()[0]["id"] == alias["alias"]["id"]
+
+        detail = client.get(
+            f"/admin/result-share-aliases/{alias['alias']['id']}",
+            headers=operator_headers,
+        )
+        assert detail.status_code == 200
+        assert detail.json()["result_share_grant_id"] == share["grant"]["id"]
+
+        token_bootstrap = client.get(f"/result-shares/{share['plain_text_token']}/bootstrap")
+        token_content = client.get(f"/result-shares/{share['plain_text_token']}/content")
+        alias_bootstrap = client.get(f"/share-aliases/{alias['plain_text_alias']}/bootstrap")
+        alias_content = client.get(f"/share-aliases/{alias['plain_text_alias']}/content")
+
+        assert token_bootstrap.status_code == 200
+        assert alias_bootstrap.status_code == 200
+        assert alias_bootstrap.json() == token_bootstrap.json()
+        assert alias_content.status_code == 200
+        assert alias_content.json() == token_content.json()
+        assert "plain_text_token" not in json.dumps(alias_bootstrap.json())
+        assert "alias_hash" not in json.dumps(detail.json())
+        assert "/Users/zhangbin/GitHub/research-pulse-cn/alias-source.pdf" not in json.dumps(
+            alias_content.json()
+        )
+
+        redirect = client.get(f"/s/{alias['plain_text_alias']}", follow_redirects=False)
+        assert redirect.status_code == 307
+        assert redirect.headers["location"] == (
+            f"http://127.0.0.1:5174/share-alias/{alias['plain_text_alias']}"
+        )
+        assert share["plain_text_token"] not in redirect.headers["location"]
+    finally:
+        settings.result_share_alias_enabled = original_alias_enabled
+        settings.result_share_redirect_enabled = original_redirect_enabled
+        settings.result_share_web_entry_base_url = original_entry_url
+
+
+def test_revoked_expired_and_underlying_grant_failures_block_result_share_aliases(
+    client,
+    operator_headers,
+) -> None:
+    settings = get_settings()
+    original_alias_enabled = settings.result_share_alias_enabled
+    original_redirect_enabled = settings.result_share_redirect_enabled
+    settings.result_share_alias_enabled = True
+    settings.result_share_redirect_enabled = False
+    owner = create_user(
+        client,
+        operator_headers,
+        email="alias-failure@example.com",
+        name="Alias Failure",
+    )
+    paper = create_paper(client, operator_headers, user_id=owner["id"], title="Alias Failure Paper")
+    add_signal_pair(client, operator_headers, paper_id=paper["id"])
+    active_share = create_result_share_grant(
+        client,
+        operator_headers,
+        share_kind=ResultShareKind.PAPER_SNAPSHOT,
+        paper_id=paper["id"],
+    )
+    revoked_share = create_result_share_grant(
+        client,
+        operator_headers,
+        share_kind=ResultShareKind.PAPER_SNAPSHOT,
+        paper_id=paper["id"],
+    )
+    expired_share = create_result_share_grant(
+        client,
+        operator_headers,
+        share_kind=ResultShareKind.PAPER_SNAPSHOT,
+        paper_id=paper["id"],
+        expires_at=(utcnow() - timedelta(hours=1)).isoformat(),
+    )
+    active_alias = create_result_share_alias(
+        client,
+        operator_headers,
+        result_share_grant_id=active_share["grant"]["id"],
+    )
+    revoked_alias = create_result_share_alias(
+        client,
+        operator_headers,
+        result_share_grant_id=active_share["grant"]["id"],
+    )
+    expired_alias = create_result_share_alias(
+        client,
+        operator_headers,
+        result_share_grant_id=active_share["grant"]["id"],
+        expires_at=(utcnow() - timedelta(hours=1)).isoformat(),
+    )
+    revoked_grant_alias = create_result_share_alias(
+        client,
+        operator_headers,
+        result_share_grant_id=revoked_share["grant"]["id"],
+    )
+    expired_grant_alias = create_result_share_alias(
+        client,
+        operator_headers,
+        result_share_grant_id=expired_share["grant"]["id"],
+    )
+
+    try:
+        revoke_alias_response = client.post(
+            f"/admin/result-share-aliases/{revoked_alias['alias']['id']}/revoke",
+            headers=operator_headers,
+        )
+        assert revoke_alias_response.status_code == 200
+
+        revoke_grant_response = client.post(
+            f"/admin/result-share-grants/{revoked_share['grant']['id']}/revoke",
+            headers=operator_headers,
+        )
+        assert revoke_grant_response.status_code == 200
+
+        assert (
+            client.get(f"/share-aliases/{active_alias['plain_text_alias']}/bootstrap").status_code
+            == 200
+        )
+        revoked_alias_response = client.get(
+            f"/share-aliases/{revoked_alias['plain_text_alias']}/bootstrap"
+        )
+        assert revoked_alias_response.status_code == 401
+        assert "revoked" in revoked_alias_response.json()["detail"].lower()
+
+        expired_alias_response = client.get(
+            f"/share-aliases/{expired_alias['plain_text_alias']}/bootstrap"
+        )
+        assert expired_alias_response.status_code == 401
+        assert "expired" in expired_alias_response.json()["detail"].lower()
+
+        revoked_grant_alias_response = client.get(
+            f"/share-aliases/{revoked_grant_alias['plain_text_alias']}/bootstrap"
+        )
+        assert revoked_grant_alias_response.status_code == 401
+        assert "revoked" in revoked_grant_alias_response.json()["detail"].lower()
+
+        expired_grant_alias_response = client.get(
+            f"/share-aliases/{expired_grant_alias['plain_text_alias']}/bootstrap"
+        )
+        assert expired_grant_alias_response.status_code == 401
+        assert "expired" in expired_grant_alias_response.json()["detail"].lower()
+    finally:
+        settings.result_share_alias_enabled = original_alias_enabled
+        settings.result_share_redirect_enabled = original_redirect_enabled
