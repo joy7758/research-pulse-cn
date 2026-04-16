@@ -45,6 +45,9 @@ from research_pulse_cn.api.routes.subscription_self_service_admin import (
     router as subscription_self_service_admin_router,
 )
 from research_pulse_cn.api.routes.sync import router as sync_router
+from research_pulse_cn.api.routes.user_workbench_admin import (
+    router as user_workbench_admin_router,
+)
 from research_pulse_cn.api.routes.users import router as users_router
 from research_pulse_cn.api.routes.work_activity import router as work_activity_router
 
@@ -56,6 +59,7 @@ api_router.include_router(client_devices_router)
 api_router.include_router(digest_admin_router)
 api_router.include_router(mini_admin_router)
 api_router.include_router(group_workspace_admin_router)
+api_router.include_router(user_workbench_admin_router)
 api_router.include_router(subscription_self_service_admin_router)
 api_router.include_router(subscription_editor_handoff_admin_router)
 api_router.include_router(official_account_binding_handshake_admin_router)

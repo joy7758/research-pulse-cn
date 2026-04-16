@@ -7,6 +7,7 @@ The shell is intentionally narrow:
 - it consumes existing admin workspace and share-grant endpoints
 - it keeps admin bearer tokens only in memory
 - it remains focused on structured workspace results instead of raw files
+- it now sits alongside a separate read-only user workbench shell for user/paper/watch-profile drilldown, keeping workspace management concerns isolated
 
 ## Token Bootstrap Flow
 
