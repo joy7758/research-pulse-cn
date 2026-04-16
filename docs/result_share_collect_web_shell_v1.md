@@ -23,6 +23,7 @@
   - remains non-collectable in v1
   - is shown as an informational state only
   - may also show a separate invite/join handoff summary
+  - may also show a separate result-collect handoff summary that points back to the existing digest/paper share shell entry
 
 ## Multiple-Paper Digest Handling
 - The shell shows all collectable digest papers in stable preview order.

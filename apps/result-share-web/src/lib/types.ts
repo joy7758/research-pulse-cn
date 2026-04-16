@@ -51,11 +51,25 @@ export type WorkspaceInviteHandoffReserveRead = {
   notes: string[];
 };
 
+export type ResultCollectHandoffReserveRead = {
+  supported: boolean;
+  share_kind: "workspace_board";
+  separate_result_share_token_required: boolean;
+  result_share_bootstrap_available: boolean;
+  collect_supported_via_self_service: boolean;
+  direct_collect_via_current_share: boolean;
+  source_files_included: boolean;
+  supported_share_kinds: Array<"digest_issue" | "paper_snapshot">;
+  result_share_shell_entry_url: string | null;
+  notes: string[];
+};
+
 export type ShareGrantBootstrapRead = {
   grant: ShareGrantPublicSummaryRead;
   target: ShareGrantTargetSummaryRead;
   collection_reserve: ShareGrantCollectionReserveRead | null;
   workspace_invite_handoff_reserve: WorkspaceInviteHandoffReserveRead | null;
+  result_collect_handoff_reserve: ResultCollectHandoffReserveRead | null;
   notes: string[];
 };
 
@@ -302,6 +316,7 @@ export type ShareGrantViewModel = {
   notes: string[];
   collectionReserve: ShareGrantCollectionReserveRead | null;
   workspaceInviteHandoffReserve: WorkspaceInviteHandoffReserveRead | null;
+  resultCollectHandoffReserve: ResultCollectHandoffReserveRead | null;
 };
 
 export type WorkspaceInviteHandoffViewModel = {
@@ -312,6 +327,18 @@ export type WorkspaceInviteHandoffViewModel = {
   directClaimViaSharePage: boolean;
   sourceFilesIncluded: boolean;
   inviteShellEntryUrl: string | null;
+  notes: string[];
+};
+
+export type ResultCollectHandoffViewModel = {
+  supported: boolean;
+  separateResultShareTokenRequired: boolean;
+  resultShareBootstrapAvailable: boolean;
+  collectSupportedViaSelfService: boolean;
+  directCollectViaCurrentShare: boolean;
+  sourceFilesIncluded: boolean;
+  supportedShareKinds: Array<"digest_issue" | "paper_snapshot">;
+  resultShareShellEntryUrl: string | null;
   notes: string[];
 };
 
@@ -353,6 +380,7 @@ export type WorkspaceBoardViewModel = ShareGrantViewModel & {
   members: GroupWorkspaceMemberSummaryRead[];
   papers: WorkspacePaperSnapshotRead[];
   workspaceInviteHandoff: WorkspaceInviteHandoffViewModel | null;
+  resultCollectHandoff: ResultCollectHandoffViewModel | null;
 };
 
 export type ResultShareViewModel =

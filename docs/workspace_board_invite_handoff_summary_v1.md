@@ -46,5 +46,6 @@
 ## Future Work
 - integrated invite token handoff into share pages
 - self-service guided join flow from `workspace_board`
+- aligned board-to-collect handoff messaging that still keeps collect in a separate share-token flow
 - later workspace onboarding UX
 - still no source-file sharing by default

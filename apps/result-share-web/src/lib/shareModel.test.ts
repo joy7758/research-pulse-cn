@@ -53,6 +53,21 @@ function bootstrapFixture(kind: ShareGrantBootstrapRead["grant"]["share_kind"]):
             notes: ["Joining requires a separate invite token."],
           }
         : null,
+    result_collect_handoff_reserve:
+      kind === "workspace_board"
+        ? {
+            supported: true,
+            share_kind: "workspace_board",
+            separate_result_share_token_required: true,
+            result_share_bootstrap_available: true,
+            collect_supported_via_self_service: true,
+            direct_collect_via_current_share: false,
+            source_files_included: false,
+            supported_share_kinds: ["digest_issue", "paper_snapshot"],
+            result_share_shell_entry_url: "http://127.0.0.1:5174",
+            notes: ["Collecting papers requires a separate digest or paper share token."],
+          }
+        : null,
     notes: ["Structured read-only share."],
   };
 }
@@ -266,6 +281,10 @@ describe("result share view shaping", () => {
       "http://127.0.0.1:5177",
     );
     expect(workspaceViewModel.workspaceInviteHandoff?.directClaimViaSharePage).toBe(false);
+    expect(workspaceViewModel.resultCollectHandoff?.resultShareShellEntryUrl).toBe(
+      "http://127.0.0.1:5174",
+    );
+    expect(workspaceViewModel.resultCollectHandoff?.directCollectViaCurrentShare).toBe(false);
   });
 
   it("maps invalid, revoked, and expired token failures to clear public states", () => {

@@ -49,6 +49,7 @@
   - requires explicit paper selection when more than one collectable paper is present
 - `workspace_board`
   - remains non-collectable in v1
+  - may also surface invite/join and result-collect handoff summaries
 - The shell keeps the current share view intact while collect actions run in parallel panels.
 
 ## Workspace-Board Invite Handoff Summary
@@ -59,6 +60,15 @@
   - self-service claim stays in the separate invite flow
   - source files remain excluded
 - When configured, the shell may show an invite entry URL hint that points only to the invite shell entry page and never carries a token.
+
+## Workspace-Board Result Collect Handoff Summary
+- `workspace_board` share pages may also surface a manual result-collect handoff summary.
+- That summary is informational only:
+  - the page remains read-only
+  - collecting papers requires a separate `digest_issue` or `paper_snapshot` share token
+  - collect stays in the separate result-share plus self-service flow
+  - source files remain excluded
+- When configured, the shell may show a result-share entry URL hint that points only to the existing result-share shell entry page and never carries a token.
 
 ## Structured Digest Rendering Vs Fallback Behavior
 - `digest_issue` share pages prefer:

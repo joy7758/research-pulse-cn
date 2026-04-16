@@ -299,7 +299,7 @@ Tie-break order is deterministic:
   - posts `/subscription-self-service/result-shares/{share_token}/collect` only after a separate self-service token is connected
   - reads `/subscription-self-service/workspace-result-collections` only after a separate self-service token is connected
   - clears query or fragment share/self-service tokens from the visible URL after moving them into in-memory state
-  - shows `workspace_invite_handoff_reserve` for `workspace_board` shares as information only
+  - shows `workspace_invite_handoff_reserve` and `result_collect_handoff_reserve` for `workspace_board` shares as information only
 - A separate internal admin shell under `apps/group-workspace-admin-web` stays inside the admin boundary:
   - accepts admin/operator bearer tokens from manual paste or query/fragment fallback
   - clears query or fragment bearer tokens from the visible URL after moving them into in-memory state
@@ -341,6 +341,16 @@ Tie-break order is deterministic:
   - direct claim via share page remains false
   - source files remain excluded
 - An optional invite shell entry URL hint may be configured, but it never carries a token.
+
+### Workspace-board result collect handoff reserve
+- `workspace_board` share pages remain read-only and still cannot collect papers directly.
+- Public share bootstrap may now also include an informational `result_collect_handoff_reserve` block:
+  - separate digest or paper share token required
+  - result-share bootstrap available in a separate flow
+  - collect supported via self-service in a separate flow
+  - direct collect via current share remains false
+  - source files remain excluded
+- An optional result-share shell entry URL hint may be configured, but it never carries a token.
 
 ### Invite and join reserve boundary
 - Workspace invites are distinct from result shares:
