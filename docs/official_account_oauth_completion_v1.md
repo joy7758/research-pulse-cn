@@ -93,6 +93,7 @@
   - OAuth start
   - OAuth status
   - narrow reserve/bootstrap/settings surfaces
+  - future editor bootstrap/contract/preview surfaces that may reflect `oauth_enabled`
 - Mini grant auth:
   - read-only `/mini/*`
   - no OAuth start or edit actions

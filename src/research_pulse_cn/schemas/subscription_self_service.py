@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -121,13 +121,13 @@ class SubscriptionSelfServiceSettingsRead(BaseModel):
 class SubscriptionSelfServiceSettingsPatchRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    enabled: bool | None = None
-    quiet_hours: dict[str, Any] | None = None
-    timezone: str | None = None
-    allowed_weekdays: list[int] | None = None
-    muted_until: datetime | None = None
-    minimum_selected_cards: int | None = Field(default=None, ge=0)
-    skip_if_no_today_focus: bool | None = None
+    enabled: Any | None = None
+    quiet_hours: Any | None = None
+    timezone: Any | None = None
+    allowed_weekdays: Any | None = None
+    muted_until: Any | None = None
+    minimum_selected_cards: Any | None = None
+    skip_if_no_today_focus: Any | None = None
 
 
 class SubscriptionSelfServiceBootstrapResponse(BaseModel):
@@ -222,3 +222,88 @@ class SubscriptionSelfServiceDeliveryControlPreviewRead(BaseModel):
     local_weekday: int
     next_allowed_at: datetime | None = None
     latest_digest_issue: SubscriptionSelfServiceDigestIssueSummaryRead | None = None
+
+
+class SubscriptionSelfServiceEditorEntryRead(BaseModel):
+    supported: bool
+    oauth_enabled: bool
+    editor_contract_available: bool
+    editor_preview_available: bool
+    supported_editable_fields: list[str] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
+
+
+class SubscriptionSettingsDraftRead(SubscriptionSelfServiceSettingsRead):
+    self_service_grant_status: SubscriptionSelfServiceGrantStatus
+
+
+class SubscriptionEditorFieldRead(BaseModel):
+    field_id: str
+    label: str
+    value_type: str
+    editable: bool
+    required: bool
+    nullable: bool
+    description: str | None = None
+    validation_hints: dict[str, Any] = Field(default_factory=dict)
+
+
+class SubscriptionEditorSectionRead(BaseModel):
+    section_id: str
+    title: str
+    description: str | None = None
+    editable: bool
+    field_ids: list[str] = Field(default_factory=list)
+
+
+class SubscriptionSelfServiceEditorContractRead(BaseModel):
+    contract_version: str
+    channel: ChannelType
+    editable_section_ids: list[str] = Field(default_factory=list)
+    weekday_numbering_note: str
+    sections: list[SubscriptionEditorSectionRead] = Field(default_factory=list)
+    fields: list[SubscriptionEditorFieldRead] = Field(default_factory=list)
+
+
+class SubscriptionSettingsValidationIssueRead(BaseModel):
+    field_id: str
+    code: str
+    message: str
+
+
+class SubscriptionSettingsAuthoritativePreviewRead(BaseModel):
+    state: Literal["ready", "no_digest_context", "invalid_input"] | str
+    decision: DigestDeliveryDecisionStatus | None = None
+    reason_codes: list[str] = Field(default_factory=list)
+    normalized_control_policy: dict[str, Any] | None = None
+    current_local_time: datetime | None = None
+    local_weekday: int | None = None
+    next_allowed_at: datetime | None = None
+    latest_digest_issue: SubscriptionSelfServiceDigestIssueSummaryRead | None = None
+
+
+class SubscriptionSettingsPreviewRead(BaseModel):
+    contract_version: str
+    normalized_draft: SubscriptionSettingsDraftRead
+    changed_fields: list[str] = Field(default_factory=list)
+    validation_errors: list[SubscriptionSettingsValidationIssueRead] = Field(default_factory=list)
+    validation_warnings: list[SubscriptionSettingsValidationIssueRead] = Field(default_factory=list)
+    authoritative_preview: SubscriptionSettingsAuthoritativePreviewRead
+
+
+class SubscriptionSettingsSaveResultRead(BaseModel):
+    contract_version: str
+    saved_settings: SubscriptionSelfServiceSettingsRead
+    changed_fields: list[str] = Field(default_factory=list)
+    authoritative_preview: SubscriptionSettingsAuthoritativePreviewRead | None = None
+
+
+class SubscriptionSelfServiceEditorBootstrapRead(BaseModel):
+    contract_version: str
+    grant: SubscriptionSelfServiceGrantSummaryRead
+    user: SubscriptionSelfServiceUserSummaryRead
+    official_account_binding_summary: SubscriptionSelfServiceBindingSummaryRead | None = None
+    current_settings_draft: SubscriptionSettingsDraftRead
+    latest_digest_summary: SubscriptionSelfServiceDigestIssueSummaryRead | None = None
+    authoritative_preview_supported: bool
+    self_service_entry: SubscriptionSelfServiceEditorEntryRead

@@ -19,6 +19,7 @@ Private repository. Proprietary and confidential.
 - Official-account provider boundary with `disabled` / `dry_run` / explicit `real` mode, callback ingress, and token-backed real-send activation
 - Deterministic user-side delivery control on top of official-account digest dispatch, including quiet hours, mute-until, weekday allow-lists, minimum digest thresholds, and persisted delivery decisions
 - Admin-issued subscription self-service reserve grants that expose safe official-account settings reads, safe settings patching, and authoritative delivery-control preview without real WeChat OAuth
+- Self-service editor reserve endpoints that add machine-readable field/section contracts, preview-before-save semantics, and future mobile/web handoff metadata on top of the same self-service grant boundary
 - Official-account binding handshake reserve sessions that connect callback evidence, existing bindings, and self-service grants, plus real official-account webpage OAuth completion for code/state exchange and safe binding create/reuse without introducing a generic app login system
 - Mini read-only reserve endpoints that now consume structured digests, expose a safe subscription reserve summary, and keep mini grant auth separate from self-service grant auth
 - Tauri 2 desktop shell with Rust-side pull sync, local SQLite cache, mutation outbox, minimal writeback for paper/progress/subscription policy edits, a local paper workspace layer, local markdown notes/templates, and a local review-matrix workflow that generates reviewer-matrix / response-letter drafts
@@ -256,6 +257,12 @@ Important values:
   - `GET /mini/subscription-reserve`
   - mini grant auth only
   - authoritative delivery preview reuse without write access
+- self-service editor reserve is exposed through:
+  - `GET /subscription-self-service/editor-bootstrap`
+  - `GET /subscription-self-service/editor-contract`
+  - `POST /subscription-self-service/settings/preview`
+  - `PATCH /subscription-self-service/settings?include_preview=true`
+  - authoritative preview-before-save without persisting draft state
 - `subscription-self-service` editable fields are limited to:
   - `enabled`
   - `quiet_hours`
@@ -264,6 +271,10 @@ Important values:
   - `muted_until`
   - `minimum_selected_cards`
   - `skip_if_no_today_focus`
+- mini read-only reserve now also includes a `self_service_entry` handoff block describing:
+  - mini grant remains read-only
+  - a separate self-service grant is still required for edits
+  - editor contract and editor preview are available for future clients
 - `APP_OFFICIAL_ACCOUNT_PROVIDER_MODE`: official-account provider mode: `disabled`, `dry_run`, or `real`
 - `APP_OFFICIAL_ACCOUNT_TRANSPORT_KIND`: outbound transport strategy, currently `template_notice`
 - `APP_WECHAT_OFFICIAL_APP_ID`: official-account app id for provider readiness and callback matching
@@ -457,6 +468,8 @@ Issue-level official-account daily dispatch orchestration is documented in [docs
 
 ## Mini-program read-only reserve
 Mini preview grants, compact mobile read models, and derived paper progress percentages are documented in [docs/mini_program_readonly_reserve.md](docs/mini_program_readonly_reserve.md).
+
+User-side editor reserve bootstrap, machine-readable contract, and preview-before-save semantics are documented in [docs/user_subscription_self_service_editor_reserve_v1.md](docs/user_subscription_self_service_editor_reserve_v1.md).
 
 ## Official-account provider boundary
 Dry-run dispatch, callback ingress, subscription-state updates, and provider-safe settings are documented in [docs/official_account_provider_boundary.md](docs/official_account_provider_boundary.md).

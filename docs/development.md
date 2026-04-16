@@ -258,9 +258,13 @@ Mini routes stay read-only and require mini-read grant auth only.
   - `GET /subscription-self-service/settings`
   - `PATCH /subscription-self-service/settings`
   - `GET /subscription-self-service/delivery-control-preview`
+  - `GET /subscription-self-service/editor-bootstrap`
+  - `GET /subscription-self-service/editor-contract`
+  - `POST /subscription-self-service/settings/preview`
 - Self-service grant tokens are valid only on `/subscription-self-service/*` and cannot access `/admin/*`, `/ops/*`, `/sync/*`, `/mini/*`, or business CRUD routes.
 - Mini grant tokens remain valid only on `/mini/*` and cannot access `/subscription-self-service/*`.
 - Self-service patching preserves unknown existing `SubscriptionPolicy.policy` keys while allowing only the supported safe subset to change.
+- Preview-before-save now reuses the same normalization and validation path as save, but returns an authoritative preview without persisting draft state.
 - Publication preparation is stub-only:
   - jobs move to `prepared`
   - no real external send occurs
@@ -278,6 +282,7 @@ Mini routes stay read-only and require mini-read grant auth only.
   - `GET /mini/bootstrap`
   - `GET /mini/today`
   - `GET /mini/digest-issues/{digest_issue_id}`
+  - `GET /mini/subscription-reserve`
   - `GET /mini/papers`
   - `GET /mini/papers/{paper_id}`
 - Mini defaults live in `.env.example`:
@@ -289,6 +294,10 @@ Mini routes stay read-only and require mini-read grant auth only.
   - a user overview
   - a digest landing
   - a paper-detail landing
+- `/mini/subscription-reserve` now also includes a read-only `self_service_entry` handoff summary that explains:
+  - mini remains read-only
+  - a separate self-service grant is required for edits
+  - editor contract and preview APIs exist for future clients
 - No real mini-program auth, session exchange, or frontend code exists in v1.
 
 ## Official-account provider boundary

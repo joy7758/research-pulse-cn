@@ -80,6 +80,9 @@
   - `GET /subscription-self-service/settings`
   - `PATCH /subscription-self-service/settings`
   - `GET /subscription-self-service/delivery-control-preview`
+  - `GET /subscription-self-service/editor-bootstrap`
+  - `GET /subscription-self-service/editor-contract`
+  - `POST /subscription-self-service/settings/preview`
   - `GET /subscription-self-service/wechat-binding-reserve/bootstrap`
   - `POST /subscription-self-service/wechat-binding-reserve/session`
   - `GET /subscription-self-service/wechat-binding-reserve/session`
@@ -92,6 +95,10 @@
   - safe binding summary when linked
   - current official-account subscription settings
   - latest digest issue summary when available
+- A later editor-reserve layer can now sit on top of the same grant boundary:
+  - machine-readable field/section contract
+  - authoritative preview-before-save
+  - structured save result for future mobile/web editing pages
 - The handshake-reserve sub-boundary is still read-limited for self-service:
   - self-service can create/read/cancel its own reserve session
   - self-service can issue an official-account authorize URL and inspect safe OAuth progress
@@ -102,6 +109,7 @@
 - `/subscription-self-service/delivery-control-preview` uses the backend delivery-control evaluator and is authoritative for current backend state.
 - Desktop Settings local hints remain best-effort and cache-based only.
 - Mini read-only subscription reserve may now also expose an authoritative preview, but mini grant auth still cannot patch settings.
+- Mini read-only reserve may now also expose a `self_service_entry` handoff summary so future clients know editor contract and preview APIs exist without gaining edit rights.
 - Future binding handoff also stays separate:
   - self-service handshake reserve can show active reserve state
   - self-service OAuth start/status can drive real webpage authorization completion

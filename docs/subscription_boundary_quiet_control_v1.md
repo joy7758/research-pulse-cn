@@ -126,6 +126,9 @@
   - `minimum_selected_cards`
   - `skip_if_no_today_focus`
 - `/subscription-self-service/delivery-control-preview` is authoritative for current backend state, unlike desktop local hints.
+- A later editor-reserve layer can reuse the same normalization and evaluator path through:
+  - `GET /subscription-self-service/editor-contract`
+  - `POST /subscription-self-service/settings/preview`
 
 ## Provider Readiness Vs Policy Eligibility Distinction
 - Provider readiness answers:

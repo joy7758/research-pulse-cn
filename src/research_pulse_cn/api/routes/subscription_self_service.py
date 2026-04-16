@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 
 from research_pulse_cn.api.dependencies import (
     get_audit_service,
@@ -23,6 +23,8 @@ from research_pulse_cn.domain.subscription_self_service import (
 from research_pulse_cn.schemas.subscription_self_service import (
     SubscriptionSelfServiceBootstrapResponse,
     SubscriptionSelfServiceDeliveryControlPreviewRead,
+    SubscriptionSelfServiceEditorBootstrapRead,
+    SubscriptionSelfServiceEditorContractRead,
     SubscriptionSelfServiceHandshakeBootstrapResponse,
     SubscriptionSelfServiceHandshakeSessionCreateRequest,
     SubscriptionSelfServiceHandshakeSessionIssueResponse,
@@ -32,6 +34,8 @@ from research_pulse_cn.schemas.subscription_self_service import (
     SubscriptionSelfServiceOAuthStatusResponse,
     SubscriptionSelfServiceSettingsPatchRequest,
     SubscriptionSelfServiceSettingsRead,
+    SubscriptionSettingsPreviewRead,
+    SubscriptionSettingsSaveResultRead,
 )
 from research_pulse_cn.services.audit import AuditService
 from research_pulse_cn.services.official_account_binding_handshake import (
@@ -86,14 +90,56 @@ def get_subscription_self_service_settings(
     return SubscriptionSelfServiceSettingsRead(**service.get_settings(grant))
 
 
-@router.patch("/settings", response_model=SubscriptionSelfServiceSettingsRead)
+@router.get(
+    "/editor-bootstrap",
+    response_model=SubscriptionSelfServiceEditorBootstrapRead,
+)
+def get_subscription_self_service_editor_bootstrap(
+    grant: GrantDep,
+    service: SelfServiceDep,
+) -> SubscriptionSelfServiceEditorBootstrapRead:
+    return SubscriptionSelfServiceEditorBootstrapRead(**service.get_editor_bootstrap(grant))
+
+
+@router.get(
+    "/editor-contract",
+    response_model=SubscriptionSelfServiceEditorContractRead,
+)
+def get_subscription_self_service_editor_contract(
+    _grant: GrantDep,
+    service: SelfServiceDep,
+) -> SubscriptionSelfServiceEditorContractRead:
+    return SubscriptionSelfServiceEditorContractRead(**service.get_editor_contract())
+
+
+@router.post(
+    "/settings/preview",
+    response_model=SubscriptionSettingsPreviewRead,
+)
+def preview_subscription_self_service_settings(
+    payload: SubscriptionSelfServiceSettingsPatchRequest,
+    grant: GrantDep,
+    service: SelfServiceDep,
+) -> SubscriptionSettingsPreviewRead:
+    preview = service.preview_settings(
+        grant,
+        payload=payload.model_dump(exclude_unset=True),
+    )
+    return SubscriptionSettingsPreviewRead(**preview)
+
+
+@router.patch(
+    "/settings",
+    response_model=SubscriptionSelfServiceSettingsRead | SubscriptionSettingsSaveResultRead,
+)
 def patch_subscription_self_service_settings(
     payload: SubscriptionSelfServiceSettingsPatchRequest,
     request: Request,
     grant: GrantDep,
     service: SelfServiceDep,
     audit_service: AuditServiceDep,
-) -> SubscriptionSelfServiceSettingsRead:
+    include_preview: bool = Query(default=False),
+) -> SubscriptionSelfServiceSettingsRead | SubscriptionSettingsSaveResultRead:
     explicit_fields = set(payload.model_fields_set)
     settings = service.patch_settings(
         grant,
@@ -105,6 +151,7 @@ def patch_subscription_self_service_settings(
         minimum_selected_cards=payload.minimum_selected_cards,
         skip_if_no_today_focus=payload.skip_if_no_today_focus,
         update_fields=explicit_fields,
+        include_preview=include_preview,
     )
     audit_service.safe_record(
         actor=_self_service_actor(grant),
@@ -112,8 +159,14 @@ def patch_subscription_self_service_settings(
         resource_type="subscription_policy",
         resource_id=(
             None
-            if settings["subscription_policy_id"] is None
-            else str(settings["subscription_policy_id"])
+            if (
+                settings.get("subscription_policy_id") is None
+                and settings.get("saved_settings", {}).get("subscription_policy_id") is None
+            )
+            else str(
+                settings.get("subscription_policy_id")
+                or settings["saved_settings"]["subscription_policy_id"]
+            )
         ),
         request_id=getattr(request.state, "request_id", None),
         route=request.url.path,
@@ -126,6 +179,8 @@ def patch_subscription_self_service_settings(
             "updated_fields": sorted(explicit_fields),
         },
     )
+    if include_preview:
+        return SubscriptionSettingsSaveResultRead(**settings)
     return SubscriptionSelfServiceSettingsRead(**settings)
 
 

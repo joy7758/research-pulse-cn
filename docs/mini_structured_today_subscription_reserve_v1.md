@@ -40,6 +40,7 @@
   - authoritative delivery-control preview summary
   - latest digest issue summary when available
   - `self_service_reserve` informational block
+  - `self_service_entry` handoff block for future editor clients
   - `binding_handoff_reserve` informational block
 - Safe binding summary excludes:
   - `openid`
@@ -51,6 +52,10 @@
 - Mini delivery preview is authoritative because it reuses the backend delivery-control evaluator.
 - Desktop Settings still shows a local-only hint derived from cached policy data.
 - Self-service grant endpoints remain the only future-safe place for user-side edits.
+- `self_service_entry` now makes the next-step editor boundary explicit:
+  - editor contract is available
+  - preview-before-save is available
+  - mini grant still cannot call either endpoint
 - Mini grant auth does not become valid on `/subscription-self-service/*`, and self-service grant auth does not become valid on `/mini/*`.
 - `binding_handoff_reserve` now makes the next-step boundary explicit:
   - mini grant cannot initiate or complete binding handoff

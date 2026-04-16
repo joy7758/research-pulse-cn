@@ -251,6 +251,7 @@ class MiniService:
                         else subscription_reserve["latest_digest_issue"]["id"]
                     ),
                     "self_service_reserve": subscription_reserve["self_service_reserve"],
+                    "self_service_entry": subscription_reserve["self_service_entry"],
                 },
             }
 
@@ -793,6 +794,27 @@ class MiniService:
             grant.user_id,
             issue=latest_issue,
         )
+        self_service_entry = {
+            "supported": True,
+            "oauth_enabled": self.settings.official_account_oauth_enabled,
+            "editable_via_current_mini_grant": False,
+            "separate_self_service_grant_required": True,
+            "editor_contract_available": True,
+            "editor_preview_available": True,
+            "supported_editable_fields": list(MINI_SELF_SERVICE_EDITABLE_FIELDS),
+            "notes": [
+                "Mini remains read-only in this phase.",
+                (
+                    "A separate self-service grant is required for editor bootstrap, "
+                    "contract, and preview-before-save."
+                ),
+                (
+                    "Official-account OAuth completion is available through self-service reserve."
+                    if self.settings.official_account_oauth_enabled
+                    else "Real WeChat OAuth handoff is not enabled yet."
+                ),
+            ],
+        }
         return {
             "grant": self._grant_context_payload(grant),
             "user": self._user_summary(user),
@@ -806,23 +828,8 @@ class MiniService:
                     self._digest_issue_payload(latest_issue)
                 )
             ),
-            "self_service_reserve": {
-                "supported": True,
-                "oauth_enabled": self.settings.official_account_oauth_enabled,
-                "editable_via_current_mini_grant": False,
-                "separate_self_service_grant_required": True,
-                "supported_editable_fields": list(MINI_SELF_SERVICE_EDITABLE_FIELDS),
-                "notes": [
-                    "Mini remains read-only in this phase.",
-                    "A separate self-service grant is required for subscription edits.",
-                    (
-                        "Official-account OAuth completion is available "
-                        "through self-service reserve."
-                        if self.settings.official_account_oauth_enabled
-                        else "Real WeChat OAuth handoff is not enabled yet."
-                    ),
-                ],
-            },
+            "self_service_reserve": self_service_entry,
+            "self_service_entry": self_service_entry,
             "binding_handoff_reserve": self.binding_handshake_service.mini_binding_handoff_reserve(
                 user_id=grant.user_id
             ),

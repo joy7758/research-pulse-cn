@@ -16,6 +16,19 @@ class ConflictError(ResearchPulseError):
 class ValidationFailedError(ResearchPulseError):
     """Raised when deterministic validation rejects a generated payload."""
 
+    def __init__(
+        self,
+        detail: str,
+        *,
+        errors: list[dict[str, object]] | None = None,
+    ) -> None:
+        super().__init__(detail)
+        self.detail = detail
+        self.errors = list(errors or [])
+
+    def __str__(self) -> str:
+        return self.detail
+
 
 class DeliveryDispatchError(ResearchPulseError):
     """Raised when a delivery adapter cannot dispatch a payload."""

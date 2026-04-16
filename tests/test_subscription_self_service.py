@@ -401,3 +401,250 @@ def test_delivery_control_preview_returns_authoritative_evaluator_output(
     assert payload["decision"] == "skipped"
     assert "insufficient_selected_cards" in payload["reason_codes"]
     assert payload["latest_digest_issue"]["id"] == digest_issue["id"]
+
+
+def test_editor_bootstrap_returns_safe_current_settings_binding_and_digest_summary(
+    client,
+    operator_headers,
+) -> None:
+    user = create_user(client, operator_headers, email="self-service-editor-bootstrap@example.com")
+    digest_issue = create_digest_issue(client, operator_headers, user_id=user["id"])
+    ensure_policy(
+        client,
+        operator_headers,
+        user_id=user["id"],
+        channel=ChannelType.OFFICIAL_ACCOUNT.value,
+        quiet_hours={"timezone": "UTC", "windows": [{"start": "22:00", "end": "07:00"}]},
+        policy={"timezone": "UTC", "allowed_weekdays": [0, 1, 2]},
+    )
+    binding = create_official_account_binding(
+        client,
+        operator_headers,
+        user_id=user["id"],
+        openid="self-service-editor-bootstrap-openid",
+    )
+    created = create_self_service_grant(
+        client,
+        operator_headers,
+        user_id=user["id"],
+        binding_id=binding["id"],
+    )
+
+    response = client.get(
+        "/subscription-self-service/editor-bootstrap",
+        headers={"Authorization": f"Bearer {created['plain_text_token']}"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["contract_version"] == "v1"
+    assert payload["official_account_binding_summary"]["id"] == binding["id"]
+    assert "openid" not in payload["official_account_binding_summary"]
+    assert payload["current_settings_draft"]["self_service_grant_status"] == "active"
+    assert payload["latest_digest_summary"]["id"] == digest_issue["id"]
+    assert payload["authoritative_preview_supported"] is True
+    assert payload["self_service_entry"]["editor_contract_available"] is True
+    assert payload["self_service_entry"]["editor_preview_available"] is True
+
+
+def test_editor_contract_returns_deterministic_sections_and_fields(
+    client,
+    operator_headers,
+) -> None:
+    user = create_user(client, operator_headers, email="self-service-editor-contract@example.com")
+    created = create_self_service_grant(client, operator_headers, user_id=user["id"])
+
+    response = client.get(
+        "/subscription-self-service/editor-contract",
+        headers={"Authorization": f"Bearer {created['plain_text_token']}"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["contract_version"] == "v1"
+    assert payload["editable_section_ids"] == [
+        "delivery_controls",
+        "schedule_controls",
+        "content_thresholds",
+    ]
+    assert "0 = Monday" in payload["weekday_numbering_note"]
+    field_ids = [field["field_id"] for field in payload["fields"]]
+    assert field_ids[:4] == ["channel", "enabled", "quiet_hours", "timezone"]
+    enabled_field = next(field for field in payload["fields"] if field["field_id"] == "enabled")
+    assert enabled_field["editable"] is True
+    assert enabled_field["value_type"] == "boolean"
+
+
+def test_settings_preview_normalizes_without_persisting_and_returns_authoritative_preview(
+    client,
+    operator_headers,
+) -> None:
+    user = create_user(client, operator_headers, email="self-service-preview-save@example.com")
+    digest_issue = create_digest_issue(client, operator_headers, user_id=user["id"])
+    policy = ensure_policy(
+        client,
+        operator_headers,
+        user_id=user["id"],
+        channel=ChannelType.OFFICIAL_ACCOUNT.value,
+        policy={
+            "timezone": "UTC",
+            "allowed_weekdays": [0, 1],
+            "minimum_selected_cards": 1,
+            "custom_existing_key": "preserve-me",
+        },
+    )
+    created = create_self_service_grant(client, operator_headers, user_id=user["id"])
+    token_headers = {"Authorization": f"Bearer {created['plain_text_token']}"}
+
+    preview = client.post(
+        "/subscription-self-service/settings/preview",
+        headers=token_headers,
+        json={
+            "timezone": "Asia/Shanghai",
+            "allowed_weekdays": [4, 2, 2, 0],
+            "minimum_selected_cards": 2,
+            "skip_if_no_today_focus": True,
+        },
+    )
+    refreshed_policy = client.get(
+        f"/subscription-policies/{policy['id']}",
+        headers=operator_headers,
+    )
+
+    assert preview.status_code == 200
+    payload = preview.json()
+    assert payload["normalized_draft"]["timezone"] == "Asia/Shanghai"
+    assert payload["normalized_draft"]["allowed_weekdays"] == [0, 2, 4]
+    assert payload["changed_fields"] == [
+        "allowed_weekdays",
+        "minimum_selected_cards",
+        "skip_if_no_today_focus",
+        "timezone",
+    ]
+    assert payload["validation_errors"] == []
+    assert payload["authoritative_preview"]["state"] == "ready"
+    assert payload["authoritative_preview"]["latest_digest_issue"]["id"] == digest_issue["id"]
+    assert refreshed_policy.status_code == 200
+    assert refreshed_policy.json()["policy"]["timezone"] == "UTC"
+    assert refreshed_policy.json()["policy"]["custom_existing_key"] == "preserve-me"
+
+
+def test_settings_preview_returns_field_specific_validation_errors_for_invalid_input(
+    client,
+    operator_headers,
+) -> None:
+    user = create_user(client, operator_headers, email="self-service-preview-invalid@example.com")
+    created = create_self_service_grant(client, operator_headers, user_id=user["id"])
+
+    response = client.post(
+        "/subscription-self-service/settings/preview",
+        headers={"Authorization": f"Bearer {created['plain_text_token']}"},
+        json={
+            "timezone": "",
+            "allowed_weekdays": [0, 7],
+            "skip_if_no_today_focus": "yes",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["authoritative_preview"]["state"] == "invalid_input"
+    field_ids = {error["field_id"] for error in payload["validation_errors"]}
+    assert "timezone" in field_ids
+    assert "allowed_weekdays" in field_ids
+    assert "skip_if_no_today_focus" in field_ids
+
+
+def test_settings_preview_returns_no_digest_context_when_no_digest_exists(
+    client,
+    operator_headers,
+) -> None:
+    user = create_user(client, operator_headers, email="self-service-preview-no-digest@example.com")
+    ensure_policy(
+        client,
+        operator_headers,
+        user_id=user["id"],
+        channel=ChannelType.OFFICIAL_ACCOUNT.value,
+        policy={"timezone": "UTC", "minimum_selected_cards": 1},
+    )
+    created = create_self_service_grant(client, operator_headers, user_id=user["id"])
+
+    response = client.post(
+        "/subscription-self-service/settings/preview",
+        headers={"Authorization": f"Bearer {created['plain_text_token']}"},
+        json={"minimum_selected_cards": 2},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["authoritative_preview"]["state"] == "no_digest_context"
+    assert payload["authoritative_preview"]["decision"] is None
+    assert payload["authoritative_preview"]["latest_digest_issue"] is None
+
+
+def test_patch_settings_with_include_preview_returns_saved_settings_and_preview(
+    client,
+    operator_headers,
+) -> None:
+    user = create_user(client, operator_headers, email="self-service-patch-preview@example.com")
+    create_digest_issue(client, operator_headers, user_id=user["id"])
+    ensure_policy(
+        client,
+        operator_headers,
+        user_id=user["id"],
+        channel=ChannelType.OFFICIAL_ACCOUNT.value,
+        policy={
+            "timezone": "UTC",
+            "allowed_weekdays": [0, 1],
+            "custom_existing_key": "preserve-me",
+        },
+    )
+    created = create_self_service_grant(client, operator_headers, user_id=user["id"])
+
+    response = client.patch(
+        "/subscription-self-service/settings?include_preview=true",
+        headers={"Authorization": f"Bearer {created['plain_text_token']}"},
+        json={
+            "allowed_weekdays": [0, 2, 4],
+            "minimum_selected_cards": 2,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["contract_version"] == "v1"
+    assert payload["saved_settings"]["allowed_weekdays"] == [0, 2, 4]
+    assert payload["saved_settings"]["minimum_selected_cards"] == 2
+    assert payload["changed_fields"] == ["allowed_weekdays", "minimum_selected_cards"]
+    assert payload["authoritative_preview"]["state"] == "ready"
+
+
+def test_mini_grant_cannot_access_editor_endpoints(
+    client,
+    operator_headers,
+) -> None:
+    user = create_user(client, operator_headers, email="self-service-editor-boundary@example.com")
+    mini_grant = client.post(
+        "/admin/mini-read-grants",
+        headers=operator_headers,
+        json={"user_id": user["id"], "grant_type": "preview"},
+    )
+    assert mini_grant.status_code == 201
+
+    editor_bootstrap = client.get(
+        "/subscription-self-service/editor-bootstrap",
+        headers={"Authorization": f"Bearer {mini_grant.json()['plain_text_token']}"},
+    )
+    editor_contract = client.get(
+        "/subscription-self-service/editor-contract",
+        headers={"Authorization": f"Bearer {mini_grant.json()['plain_text_token']}"},
+    )
+    editor_preview = client.post(
+        "/subscription-self-service/settings/preview",
+        headers={"Authorization": f"Bearer {mini_grant.json()['plain_text_token']}"},
+        json={"enabled": False},
+    )
+
+    assert editor_bootstrap.status_code == 401
+    assert editor_contract.status_code == 401
+    assert editor_preview.status_code == 401

@@ -244,6 +244,8 @@ class MiniSelfServiceReserveRead(BaseModel):
     oauth_enabled: bool
     editable_via_current_mini_grant: bool
     separate_self_service_grant_required: bool
+    editor_contract_available: bool = False
+    editor_preview_available: bool = False
     supported_editable_fields: list[str] = Field(default_factory=list)
     notes: list[str] = Field(default_factory=list)
 
@@ -262,6 +264,7 @@ class MiniSubscriptionReserveSummaryRead(BaseModel):
     delivery_preview_state: Literal["ready", "empty"] | str
     latest_digest_issue_id: UUID | None = None
     self_service_reserve: MiniSelfServiceReserveRead
+    self_service_entry: MiniSelfServiceReserveRead | None = None
 
 
 class MiniSubscriptionReserveRead(BaseModel):
@@ -272,6 +275,7 @@ class MiniSubscriptionReserveRead(BaseModel):
     delivery_control_preview: MiniDeliveryControlPreviewRead
     latest_digest_issue: MiniDigestIssueSummaryRead | None = None
     self_service_reserve: MiniSelfServiceReserveRead
+    self_service_entry: MiniSelfServiceReserveRead | None = None
     binding_handoff_reserve: MiniBindingHandoffReserveRead
 
 
