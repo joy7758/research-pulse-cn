@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -20,6 +21,7 @@ from research_pulse_cn.db.models import (
     GroupWorkspaceInviteGrant,
     GroupWorkspaceMember,
     GroupWorkspacePaper,
+    GroupWorkspaceResultCollectRecord,
     PaperProfile,
     PulseDigestIssue,
     ResultShareGrant,
@@ -30,6 +32,7 @@ from research_pulse_cn.domain.enums import (
     GroupWorkspaceInviteGrantStatus,
     GroupWorkspaceInviteRole,
     GroupWorkspaceMemberRole,
+    GroupWorkspaceResultCollectStatus,
     GroupWorkspaceStatus,
     PulseCardType,
     ResultShareGrantStatus,
@@ -75,6 +78,13 @@ INVITE_ROLE_ASSIGNABLE_VALUES = frozenset(
     {
         GroupWorkspaceInviteRole.EDITOR,
         GroupWorkspaceInviteRole.VIEWER,
+    }
+)
+
+RESULT_COLLECTABLE_SHARE_KINDS = frozenset(
+    {
+        ResultShareKind.DIGEST_ISSUE,
+        ResultShareKind.PAPER_SNAPSHOT,
     }
 )
 
@@ -583,6 +593,23 @@ class GroupWorkspaceService:
         self._mark_expired_if_needed(grant)
         return grant
 
+    def list_result_collect_records(
+        self,
+        *,
+        workspace_id: UUID | None = None,
+        user_id: UUID | None = None,
+        result_share_grant_id: UUID | None = None,
+        status: GroupWorkspaceResultCollectStatus | None = None,
+        collected_paper_id: UUID | None = None,
+    ) -> list[GroupWorkspaceResultCollectRecord]:
+        return self.repository.list_result_collect_records(
+            workspace_id=workspace_id,
+            user_id=user_id,
+            result_share_grant_id=result_share_grant_id,
+            status=status,
+            collected_paper_id=collected_paper_id,
+        )
+
     def serialize_result_share_grant(self, grant: ResultShareGrant) -> dict[str, Any]:
         return {
             "id": grant.id,
@@ -597,6 +624,26 @@ class GroupWorkspaceService:
             "last_used_at": grant.last_used_at,
             "created_at": grant.created_at,
             "updated_at": grant.updated_at,
+        }
+
+    def serialize_result_collect_record(
+        self,
+        record: GroupWorkspaceResultCollectRecord,
+    ) -> dict[str, Any]:
+        return {
+            "id": record.id,
+            "workspace_id": record.workspace_id,
+            "user_id": record.user_id,
+            "result_share_grant_id": record.result_share_grant_id,
+            "share_kind": record.share_kind,
+            "digest_issue_id": record.digest_issue_id,
+            "source_pulse_card_id": record.source_pulse_card_id,
+            "source_paper_id": record.source_paper_id,
+            "collected_paper_id": record.collected_paper_id,
+            "status": record.status,
+            "reason_codes": list(record.reason_codes or []),
+            "created_at": record.created_at,
+            "updated_at": record.updated_at,
         }
 
     def create_result_share_grant(
@@ -739,6 +786,7 @@ class GroupWorkspaceService:
                     "created_at": stored.created_at,
                 },
                 "target": self._share_target_summary(stored),
+                "collection_reserve": self._share_collection_reserve_summary(stored),
                 "notes": [
                     "This share link exposes structured read-only results only.",
                     "Source files, local attachments, and local note contents are excluded.",
@@ -777,6 +825,159 @@ class GroupWorkspaceService:
             for membership in self.list_workspace_memberships_for_user(user_id=user_id)
         ]
 
+    def preview_result_share_collect(
+        self,
+        *,
+        raw_token: str,
+        grant: SubscriptionSelfServiceGrantContext,
+    ) -> dict[str, Any]:
+        self.metrics.increment("group_workspace_result_collect_previews_total")
+        evaluation = self._evaluate_collect_preview(raw_token=raw_token, user_id=grant.user_id)
+        return {
+            "share": (
+                None
+                if evaluation["share_grant"] is None
+                else self._result_collect_share_summary(evaluation["share_grant"])
+            ),
+            "collectable_items": list(evaluation["collectable_items"]),
+            "eligible_workspaces": list(evaluation["eligible_workspaces"]),
+            "can_collect": evaluation["can_collect"],
+            "reason_codes": list(evaluation["reason_codes"]),
+            "notes": list(evaluation["notes"]),
+        }
+
+    def collect_result_share(
+        self,
+        *,
+        raw_token: str,
+        grant: SubscriptionSelfServiceGrantContext,
+        workspace_id: UUID,
+        paper_ids: Sequence[UUID] | None = None,
+    ) -> dict[str, Any]:
+        self.metrics.increment("group_workspace_result_collect_actions_total")
+        evaluation = self._evaluate_collect_preview(raw_token=raw_token, user_id=grant.user_id)
+        share_grant: ResultShareGrant | None = evaluation["share_grant"]
+        if share_grant is None:
+            return {
+                "action": "rejected",
+                "workspace": None,
+                "collected_results": [],
+                "notes": list(evaluation["reason_codes"] or ["share_not_found"]),
+            }
+
+        workspace = self.repository.get_workspace(workspace_id)
+        membership = self.repository.get_workspace_member_for_user(
+            workspace_id=workspace_id,
+            user_id=grant.user_id,
+        )
+        request_reasons = list(evaluation["reason_codes"])
+        if workspace is None or membership is None:
+            request_reasons.append("workspace_not_found")
+        else:
+            if workspace.status != GroupWorkspaceStatus.ACTIVE:
+                request_reasons.append("workspace_archived")
+            if (
+                membership.role
+                not in self.settings.group_workspace_result_collect_allowed_role_list
+            ):
+                request_reasons.append("role_not_allowed")
+        request_reasons = self._dedupe_reason_codes(request_reasons)
+        if request_reasons:
+            return {
+                "action": "rejected",
+                "workspace": None if workspace is None else self._workspace_safe_summary(workspace),
+                "collected_results": [],
+                "notes": request_reasons,
+            }
+
+        assert workspace is not None
+        selected_items, selection_reason_codes = self._select_collectable_items(
+            share_kind=share_grant.share_kind,
+            collectable_items=evaluation["collectable_items"],
+            paper_ids=paper_ids,
+        )
+        if selection_reason_codes:
+            return {
+                "action": "rejected",
+                "workspace": self._workspace_safe_summary(workspace),
+                "collected_results": [],
+                "notes": selection_reason_codes,
+            }
+
+        collected_results: list[dict[str, Any]] = []
+        any_collected = False
+        all_already_present = True
+        for item in selected_items:
+            result_status, record = self._collect_single_result_item(
+                share_grant=share_grant,
+                workspace=workspace,
+                user_id=grant.user_id,
+                item=item,
+            )
+            if result_status == GroupWorkspaceResultCollectStatus.COLLECTED:
+                any_collected = True
+                all_already_present = False
+            elif result_status != GroupWorkspaceResultCollectStatus.ALREADY_PRESENT:
+                all_already_present = False
+            collected_results.append(
+                {
+                    "paper_id": item["paper_id"],
+                    "status": result_status,
+                    "reason_codes": (
+                        ["already_present"]
+                        if result_status == GroupWorkspaceResultCollectStatus.ALREADY_PRESENT
+                        else []
+                    ),
+                    "collect_record": (
+                        None if record is None else self.serialize_result_collect_record(record)
+                    ),
+                    "paper": self._collected_paper_summary(
+                        self._require_paper(UUID(str(item["paper_id"])))
+                    ),
+                }
+            )
+
+        commit_session(self.session)
+        return {
+            "action": (
+                "collected"
+                if any_collected
+                else "already_present"
+                if all_already_present
+                else "rejected"
+            ),
+            "workspace": self._workspace_safe_summary(self.get_workspace(workspace.id)),
+            "collected_results": collected_results,
+            "notes": [
+                "Structured paper objects were collected into the workspace without source files."
+            ],
+        }
+
+    def self_service_workspace_result_collections(
+        self,
+        *,
+        user_id: UUID,
+        workspace_id: UUID | None = None,
+        status: GroupWorkspaceResultCollectStatus | None = None,
+    ) -> list[dict[str, Any]]:
+        records = self.list_result_collect_records(
+            workspace_id=workspace_id,
+            user_id=user_id,
+            status=status,
+        )
+        payloads: list[dict[str, Any]] = []
+        for record in records:
+            if record.workspace is None or record.collected_paper is None:
+                continue
+            payloads.append(
+                {
+                    "record": self.serialize_result_collect_record(record),
+                    "workspace": self._workspace_safe_summary(record.workspace),
+                    "paper": self._collected_paper_summary(record.collected_paper),
+                }
+            )
+        return payloads
+
     def mini_workspace_invite_reserve(self) -> dict[str, Any]:
         return {
             "supported": True,
@@ -786,6 +987,21 @@ class GroupWorkspaceService:
             "notes": [
                 "Mini remains read-only in this phase.",
                 "Claiming workspace membership requires a separate self-service grant.",
+            ],
+        }
+
+    def mini_workspace_collect_reserve(self) -> dict[str, Any]:
+        return {
+            "supported": True,
+            "editable_via_current_mini_grant": False,
+            "separate_self_service_grant_required": True,
+            "supported_share_kinds": [
+                ResultShareKind.DIGEST_ISSUE.value,
+                ResultShareKind.PAPER_SNAPSHOT.value,
+            ],
+            "notes": [
+                "Mini remains read-only in this phase.",
+                "Workspace result collection requires a separate self-service grant.",
             ],
         }
 
@@ -1185,6 +1401,358 @@ class GroupWorkspaceService:
             "paper_id": grant.paper_id,
             "title": title,
         }
+
+    def _share_collection_reserve_summary(self, grant: ResultShareGrant) -> dict[str, Any]:
+        share_kind_collectable = (
+            grant.share_kind in RESULT_COLLECTABLE_SHARE_KINDS
+            and grant.share_kind
+            in self.settings.group_workspace_result_collect_allowed_share_kind_list
+        )
+        supported = share_kind_collectable and self.settings.group_workspace_result_collect_enabled
+        if share_kind_collectable and not self.settings.group_workspace_result_collect_enabled:
+            notes = [
+                "Structured paper collection is currently disabled.",
+                "Source files and local attachments are not included.",
+            ]
+        elif share_kind_collectable:
+            notes = [
+                "Structured paper collection is available through a separate self-service grant.",
+                "Source files and local attachments are not included.",
+            ]
+        else:
+            notes = [
+                "Workspace-board shares are not collectable in this phase.",
+                "Source files and local attachments are not included.",
+            ]
+        return {
+            "supported": supported,
+            "share_kind_collectable": share_kind_collectable,
+            "collect_supported_via_self_service": supported,
+            "source_files_included": False,
+            "notes": notes,
+        }
+
+    def _result_collect_share_summary(self, grant: ResultShareGrant) -> dict[str, Any]:
+        return {
+            "id": grant.id,
+            "share_kind": grant.share_kind,
+            "status": grant.status,
+            "display_label": grant.display_label,
+            "expires_at": grant.expires_at,
+            "target": self._share_target_summary(grant),
+        }
+
+    def _collected_paper_summary(self, paper: PaperProfile) -> dict[str, Any]:
+        return {
+            "paper_id": paper.id,
+            "title": paper.title,
+            "type": paper.type,
+            "stage": paper.stage,
+            "venue": paper.venue,
+            "priority": paper.priority,
+            "next_action": paper.next_action,
+            "blocker": paper.blocker,
+            "progress_percentage": derive_progress_percentage(paper.type),
+        }
+
+    def _collectable_paper_summary(
+        self,
+        paper: PaperProfile,
+        *,
+        source_card_type: str | None = None,
+        source_pulse_card_id: UUID | None = None,
+        source_section_kind: str | None = None,
+        notes: list[str] | None = None,
+    ) -> dict[str, Any]:
+        return {
+            **self._collected_paper_summary(paper),
+            "source_card_type": source_card_type,
+            "source_pulse_card_id": source_pulse_card_id,
+            "source_section_kind": source_section_kind,
+            "notes": None if notes is None else list(notes),
+        }
+
+    def _eligible_collect_workspaces(self, *, user_id: UUID) -> list[dict[str, Any]]:
+        memberships = self.list_workspace_memberships_for_user(user_id=user_id)
+        allowed_roles = set(self.settings.group_workspace_result_collect_allowed_role_list)
+        eligible: list[dict[str, Any]] = []
+        for membership in memberships:
+            workspace = membership.workspace
+            if workspace is None or workspace.status != GroupWorkspaceStatus.ACTIVE:
+                continue
+            if membership.role not in allowed_roles:
+                continue
+            eligible.append(
+                {
+                    "workspace": self._workspace_safe_summary(workspace),
+                    "membership_role": membership.role,
+                }
+            )
+        return eligible
+
+    def _extract_collectable_items(
+        self,
+        grant: ResultShareGrant,
+    ) -> tuple[list[dict[str, Any]], list[str], list[str]]:
+        share_kind = grant.share_kind
+        if share_kind not in self.settings.group_workspace_result_collect_allowed_share_kind_list:
+            return [], ["share_kind_not_collectable"], []
+        if share_kind == ResultShareKind.WORKSPACE_BOARD:
+            return [], ["share_kind_not_collectable"], []
+        if share_kind == ResultShareKind.PAPER_SNAPSHOT:
+            if grant.paper is None:
+                return [], ["no_collectable_papers"], []
+            return (
+                [self._collectable_paper_summary(grant.paper)],
+                [],
+                ["Collection adds structured paper records to a workspace without source files."],
+            )
+        if share_kind != ResultShareKind.DIGEST_ISSUE:
+            return [], ["share_kind_not_collectable"], []
+        if grant.digest_issue is None:
+            return [], ["no_collectable_papers"], []
+        payload = self._shared_digest_issue_payload(grant.digest_issue)
+        sections = list(payload.get("sections") or [])
+        stable_items: list[tuple[str | None, dict[str, Any]]] = []
+        if sections:
+            for section in sections:
+                section_kind = str(section.get("kind") or "")
+                for item in list(section.get("items") or []):
+                    stable_items.append((section_kind, item))
+        else:
+            for item in list(payload.get("items") or []):
+                stable_items.append((None, item))
+        collectable_items: list[dict[str, Any]] = []
+        seen_paper_ids: set[UUID] = set()
+        for section_kind, item in stable_items:
+            paper_id = item.get("source_paper_id")
+            if paper_id is None:
+                continue
+            paper = item.get("paper")
+            if not isinstance(paper, dict):
+                continue
+            try:
+                paper_uuid = UUID(str(paper_id))
+            except ValueError:
+                continue
+            if paper_uuid in seen_paper_ids:
+                continue
+            seen_paper_ids.add(paper_uuid)
+            resolved_paper = self.paper_repository.get(paper_uuid)
+            if resolved_paper is None:
+                continue
+            collectable_items.append(
+                self._collectable_paper_summary(
+                    resolved_paper,
+                    source_card_type=item.get("card_type"),
+                    source_pulse_card_id=(
+                        None
+                        if item.get("pulse_card_id") is None
+                        else UUID(str(item["pulse_card_id"]))
+                    ),
+                    source_section_kind=section_kind,
+                    notes=[],
+                )
+            )
+            if (
+                len(collectable_items)
+                >= self.settings.group_workspace_result_collect_max_papers_per_digest
+            ):
+                break
+        reason_codes = [] if collectable_items else ["no_collectable_papers"]
+        notes = [
+            (
+                "Digest collection dedupes papers by source_paper_id and preserves "
+                "stable first-seen order."
+            )
+        ]
+        return collectable_items, reason_codes, notes
+
+    def _evaluate_collect_preview(
+        self,
+        *,
+        raw_token: str,
+        user_id: UUID,
+    ) -> dict[str, Any]:
+        share_grant = self.repository.get_result_share_grant_by_token_hash(hash_token(raw_token))
+        if share_grant is None:
+            return {
+                "share_grant": None,
+                "collectable_items": [],
+                "eligible_workspaces": [],
+                "reason_codes": ["share_not_found"],
+                "notes": [],
+                "can_collect": False,
+            }
+        now = self.now_provider()
+        self._mark_expired_if_needed(share_grant, now=now)
+        share_grant.last_used_at = now
+        commit_session(self.session)
+        reason_codes: list[str] = []
+        if not self.settings.group_workspace_result_collect_enabled:
+            reason_codes.append("collect_disabled")
+        if share_grant.status == ResultShareGrantStatus.REVOKED:
+            reason_codes.append("share_revoked")
+        elif share_grant.status == ResultShareGrantStatus.EXPIRED:
+            reason_codes.append("share_expired")
+        collectable_items, extract_reasons, notes = self._extract_collectable_items(share_grant)
+        reason_codes.extend(extract_reasons)
+        eligible_workspaces = self._eligible_collect_workspaces(user_id=user_id)
+        if not eligible_workspaces:
+            reason_codes.append("no_eligible_workspace_membership")
+        reason_codes = self._dedupe_reason_codes(reason_codes)
+        return {
+            "share_grant": share_grant,
+            "collectable_items": collectable_items,
+            "eligible_workspaces": eligible_workspaces,
+            "reason_codes": reason_codes,
+            "notes": notes,
+            "can_collect": not reason_codes,
+        }
+
+    def _select_collectable_items(
+        self,
+        *,
+        share_kind: ResultShareKind,
+        collectable_items: Sequence[dict[str, Any]],
+        paper_ids: Sequence[UUID] | None,
+    ) -> tuple[list[dict[str, Any]], list[str]]:
+        if not collectable_items:
+            return [], ["no_collectable_papers"]
+        item_ids = [UUID(str(item["paper_id"])) for item in collectable_items]
+        if share_kind == ResultShareKind.PAPER_SNAPSHOT:
+            target_id = item_ids[0]
+            if not paper_ids:
+                return [collectable_items[0]], []
+            requested = {UUID(str(paper_id)) for paper_id in paper_ids}
+            if requested == {target_id}:
+                return [collectable_items[0]], []
+            return [], ["paper_not_collectable"]
+        if share_kind == ResultShareKind.DIGEST_ISSUE:
+            if not paper_ids:
+                if len(collectable_items) == 1:
+                    return [collectable_items[0]], []
+                return [], ["paper_selection_required"]
+            requested = {UUID(str(paper_id)) for paper_id in paper_ids}
+            valid = set(item_ids)
+            if not requested.issubset(valid):
+                return [], ["paper_not_collectable"]
+            selected = [
+                item for item in collectable_items if UUID(str(item["paper_id"])) in requested
+            ]
+            return selected, []
+        return [], ["share_kind_not_collectable"]
+
+    def _collect_single_result_item(
+        self,
+        *,
+        share_grant: ResultShareGrant,
+        workspace: GroupWorkspace,
+        user_id: UUID,
+        item: dict[str, Any],
+    ) -> tuple[GroupWorkspaceResultCollectStatus, GroupWorkspaceResultCollectRecord | None]:
+        paper_id = UUID(str(item["paper_id"]))
+        idempotency_key = self._build_result_collect_idempotency_key(
+            workspace_id=workspace.id,
+            user_id=user_id,
+            share_grant=share_grant,
+            item=item,
+        )
+        existing_record = self.repository.get_result_collect_record_by_idempotency_key(
+            idempotency_key
+        )
+        workspace_paper = self.repository.get_workspace_paper(
+            workspace_id=workspace.id,
+            paper_id=paper_id,
+        )
+        if workspace_paper is not None:
+            if existing_record is None:
+                existing_record = GroupWorkspaceResultCollectRecord(
+                    workspace_id=workspace.id,
+                    user_id=user_id,
+                    result_share_grant_id=share_grant.id,
+                    share_kind=share_grant.share_kind,
+                    digest_issue_id=share_grant.digest_issue_id,
+                    source_pulse_card_id=item.get("source_pulse_card_id"),
+                    source_paper_id=paper_id,
+                    collected_paper_id=paper_id,
+                    idempotency_key=idempotency_key,
+                    status=GroupWorkspaceResultCollectStatus.ALREADY_PRESENT,
+                    reason_codes=["already_present"],
+                )
+                self.repository.add_result_collect_record(existing_record)
+                self.session.flush()
+                self.metrics.increment("group_workspace_result_collect_records_created_total")
+            return GroupWorkspaceResultCollectStatus.ALREADY_PRESENT, existing_record
+
+        collected_paper = self._require_paper(paper_id)
+        self.repository.add_workspace_paper(
+            GroupWorkspacePaper(
+                workspace_id=workspace.id,
+                paper_id=collected_paper.id,
+                added_by_admin_id=None,
+            )
+        )
+        if existing_record is None:
+            existing_record = GroupWorkspaceResultCollectRecord(
+                workspace_id=workspace.id,
+                user_id=user_id,
+                result_share_grant_id=share_grant.id,
+                share_kind=share_grant.share_kind,
+                digest_issue_id=share_grant.digest_issue_id,
+                source_pulse_card_id=item.get("source_pulse_card_id"),
+                source_paper_id=paper_id,
+                collected_paper_id=paper_id,
+                idempotency_key=idempotency_key,
+                status=GroupWorkspaceResultCollectStatus.COLLECTED,
+                reason_codes=[],
+            )
+            self.repository.add_result_collect_record(existing_record)
+            self.session.flush()
+            self.metrics.increment("group_workspace_result_collect_records_created_total")
+        else:
+            existing_record.status = GroupWorkspaceResultCollectStatus.COLLECTED
+            existing_record.reason_codes = []
+        return GroupWorkspaceResultCollectStatus.COLLECTED, existing_record
+
+    def _build_result_collect_idempotency_key(
+        self,
+        *,
+        workspace_id: UUID,
+        user_id: UUID,
+        share_grant: ResultShareGrant,
+        item: dict[str, Any],
+    ) -> str:
+        raw_value = ":".join(
+            [
+                str(workspace_id),
+                str(user_id),
+                str(share_grant.id),
+                share_grant.share_kind.value,
+                "" if share_grant.digest_issue_id is None else str(share_grant.digest_issue_id),
+                ""
+                if item.get("source_pulse_card_id") is None
+                else str(item["source_pulse_card_id"]),
+                str(item["paper_id"]),
+            ]
+        )
+        return hashlib.sha256(raw_value.encode("utf-8")).hexdigest()
+
+    def _dedupe_reason_codes(self, values: Sequence[str]) -> list[str]:
+        deduped: list[str] = []
+        seen: set[str] = set()
+        for value in values:
+            if not value or value in seen:
+                continue
+            seen.add(value)
+            deduped.append(value)
+        return deduped
+
+    def _require_paper(self, paper_id: UUID) -> PaperProfile:
+        paper = self.paper_repository.get(paper_id)
+        if paper is None:
+            raise NotFoundError(f"paper {paper_id} was not found")
+        return paper
 
     def _shared_workspace_board_payload(self, workspace: GroupWorkspace) -> dict[str, Any]:
         return {

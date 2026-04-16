@@ -48,6 +48,9 @@
   - `GET /subscription-self-service/workspace-invites/{invite_token}/claim-preview`
   - `POST /subscription-self-service/workspace-invites/{invite_token}/claim`
   - `GET /subscription-self-service/workspace-memberships`
+  - `GET /subscription-self-service/result-shares/{share_token}/collect-preview`
+  - `POST /subscription-self-service/result-shares/{share_token}/collect`
+  - `GET /subscription-self-service/workspace-result-collections`
 - Tokens are rejected on:
   - `/admin/*`
   - `/ops/*`
@@ -95,6 +98,9 @@
   - `GET /subscription-self-service/workspace-invites/{invite_token}/claim-preview`
   - `POST /subscription-self-service/workspace-invites/{invite_token}/claim`
   - `GET /subscription-self-service/workspace-memberships`
+  - `GET /subscription-self-service/result-shares/{share_token}/collect-preview`
+  - `POST /subscription-self-service/result-shares/{share_token}/collect`
+  - `GET /subscription-self-service/workspace-result-collections`
 - `bootstrap` returns:
   - safe grant summary
   - safe user summary
@@ -125,6 +131,10 @@
 - Workspace invite join also stays separate:
   - public invite bootstrap is read-only and token-based
   - claim requires an existing self-service grant
+  - mini only gets an informational reserve summary in this phase
+- Result collect also stays separate:
+  - public share bootstrap remains read-only and token-based
+  - collect requires an existing self-service grant plus eligible workspace membership
   - mini only gets an informational reserve summary in this phase
 - The authoritative preview does not create `DigestDeliveryDecision` rows in this phase.
 

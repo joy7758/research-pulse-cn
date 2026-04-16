@@ -353,6 +353,12 @@ class ResultShareGrantStatus(StrEnum):
     EXPIRED = "expired"
 
 
+class GroupWorkspaceResultCollectStatus(StrEnum):
+    COLLECTED = "collected"
+    ALREADY_PRESENT = "already_present"
+    REJECTED = "rejected"
+
+
 ACTIVE_DELIVERY_CHANNELS = frozenset(
     {
         ChannelType.IN_APP,

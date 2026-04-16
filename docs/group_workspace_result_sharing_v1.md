@@ -142,6 +142,11 @@
   - public invite bootstrap is read-only
   - membership claim stays behind `/subscription-self-service/*`
   - invites are not interchangeable with result share grants
+- Result collect now also remains a separate reserve boundary:
+  - public share routes stay read-only
+  - collect stays behind `/subscription-self-service/*`
+  - only structured paper objects are collectable
+  - source files are still excluded
 
 ## Current Non-Goals
 - source-file or PDF sharing
@@ -152,6 +157,22 @@
 - desktop or mini UI work
 - new delivery channels
 - generic user login/session system
+
+## Result Collect Reserve Relationship
+- `GET /result-shares/{share_token}/bootstrap` now also carries a compact `collection_reserve` hint.
+- `collection_reserve` is informational only:
+  - `paper_snapshot` and `digest_issue` may be collectable
+  - `workspace_board` remains non-collectable in v1
+  - collect is routed through self-service, not public share auth
+- Collect routes in v1:
+  - `GET /subscription-self-service/result-shares/{share_token}/collect-preview`
+  - `POST /subscription-self-service/result-shares/{share_token}/collect`
+  - `GET /subscription-self-service/workspace-result-collections`
+- Result collect still excludes:
+  - source files
+  - local attachments
+  - local note contents
+  - workspace-board import
 
 ## Future Work
 - user-managed workspace membership

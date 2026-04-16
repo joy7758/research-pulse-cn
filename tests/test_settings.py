@@ -53,3 +53,35 @@ def test_settings_include_group_workspace_invite_web_origins(monkeypatch) -> Non
         "http://localhost:5177",
     ]
     assert "http://127.0.0.1:5177" in settings.browser_allowed_origin_list
+
+
+def test_settings_parse_group_workspace_result_collect_lists(monkeypatch) -> None:
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("APP_DATABASE_URL", "sqlite+pysqlite:///tmp/research-pulse-cn-test.db")
+    monkeypatch.setenv(
+        "APP_GROUP_WORKSPACE_RESULT_COLLECT_ALLOWED_SHARE_KINDS",
+        "digest_issue, paper_snapshot, workspace_board",
+    )
+    monkeypatch.setenv(
+        "APP_GROUP_WORKSPACE_RESULT_COLLECT_ALLOWED_ROLES",
+        "owner, editor, viewer",
+    )
+    get_settings.cache_clear()
+
+    settings = get_settings()
+
+    assert [
+        item.value
+        for item in settings.group_workspace_result_collect_allowed_share_kind_list
+    ] == [
+        "digest_issue",
+        "paper_snapshot",
+        "workspace_board",
+    ]
+    assert [
+        item.value for item in settings.group_workspace_result_collect_allowed_role_list
+    ] == [
+        "owner",
+        "editor",
+        "viewer",
+    ]

@@ -60,6 +60,10 @@
   - public invite bootstrap stays token-based and read-only
   - self-service token stays separate and is only used for claim preview, claim, and membership reads
   - invite and self-service tokens stay in memory only in the browser shell
+- Result collect remains a separate self-service reserve:
+  - invites expand membership
+  - collect expands workspace paper membership
+  - neither reserve introduces source-file sharing in this phase
 - Mini read grants remain informational only:
   - mini can surface reserve hints
   - mini cannot claim membership directly in this phase

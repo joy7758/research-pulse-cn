@@ -13,6 +13,7 @@ from research_pulse_cn.api.security import require_admin_role
 from research_pulse_cn.domain.auth import ActorContext
 from research_pulse_cn.domain.enums import (
     AdminRole,
+    GroupWorkspaceResultCollectStatus,
     GroupWorkspaceStatus,
     ResultShareGrantStatus,
     ResultShareKind,
@@ -25,6 +26,7 @@ from research_pulse_cn.schemas.group_workspace import (
     GroupWorkspacePaperCreateRequest,
     GroupWorkspacePaperRead,
     GroupWorkspaceRead,
+    GroupWorkspaceResultCollectionRead,
     GroupWorkspaceUpdateRequest,
     ResultShareGrantCreateRequest,
     ResultShareGrantIssueResponse,
@@ -38,6 +40,7 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 WorkspaceServiceDep = Annotated[GroupWorkspaceService, Depends(get_group_workspace_service)]
 AuditServiceDep = Annotated[AuditService, Depends(get_audit_service)]
 OperatorDep = Annotated[ActorContext, Depends(require_admin_role(AdminRole.OPERATOR))]
+ViewerDep = Annotated[ActorContext, Depends(require_admin_role(AdminRole.VIEWER))]
 
 
 @router.get("/group-workspaces", response_model=list[GroupWorkspaceRead])
@@ -345,3 +348,37 @@ def revoke_result_share_grant(
         grant=ResultShareGrantRead(**service.serialize_result_share_grant(grant)),
         revoked_at=grant.updated_at,
     )
+
+
+@router.get(
+    "/group-workspace-result-collect-records",
+    response_model=list[GroupWorkspaceResultCollectionRead],
+)
+def list_group_workspace_result_collect_records(
+    _actor: ViewerDep,
+    service: WorkspaceServiceDep,
+    workspace_id: Annotated[UUID | None, Query()] = None,
+    user_id: Annotated[UUID | None, Query()] = None,
+    result_share_grant_id: Annotated[UUID | None, Query()] = None,
+    status: Annotated[GroupWorkspaceResultCollectStatus | None, Query()] = None,
+    collected_paper_id: Annotated[UUID | None, Query()] = None,
+) -> list[GroupWorkspaceResultCollectionRead]:
+    records = service.list_result_collect_records(
+        workspace_id=workspace_id,
+        user_id=user_id,
+        result_share_grant_id=result_share_grant_id,
+        status=status,
+        collected_paper_id=collected_paper_id,
+    )
+    payloads: list[GroupWorkspaceResultCollectionRead] = []
+    for record in records:
+        if record.workspace is None or record.collected_paper is None:
+            continue
+        payloads.append(
+            GroupWorkspaceResultCollectionRead(
+                record=service.serialize_result_collect_record(record),
+                workspace=service._workspace_safe_summary(record.workspace),
+                paper=service._collected_paper_summary(record.collected_paper),
+            )
+        )
+    return payloads

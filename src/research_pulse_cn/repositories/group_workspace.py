@@ -13,6 +13,7 @@ from research_pulse_cn.db.models import (
     GroupWorkspaceInviteGrant,
     GroupWorkspaceMember,
     GroupWorkspacePaper,
+    GroupWorkspaceResultCollectRecord,
     PaperProfile,
     PulseDigestIssue,
     PulseDigestItem,
@@ -22,6 +23,7 @@ from research_pulse_cn.domain.enums import (
     GroupWorkspaceInviteClaimStatus,
     GroupWorkspaceInviteGrantStatus,
     GroupWorkspaceInviteRole,
+    GroupWorkspaceResultCollectStatus,
     GroupWorkspaceStatus,
     ResultShareGrantStatus,
     ResultShareKind,
@@ -86,6 +88,28 @@ class GroupWorkspaceRepository:
             selectinload(GroupWorkspaceInviteClaim.workspace),
             selectinload(GroupWorkspaceInviteClaim.user),
             selectinload(GroupWorkspaceInviteClaim.membership),
+        )
+
+    def _result_collect_record_load_options(self):
+        return (
+            selectinload(GroupWorkspaceResultCollectRecord.workspace),
+            selectinload(GroupWorkspaceResultCollectRecord.user),
+            selectinload(GroupWorkspaceResultCollectRecord.result_share_grant).options(
+                *self._result_share_load_options()
+            ),
+            selectinload(GroupWorkspaceResultCollectRecord.digest_issue),
+            selectinload(GroupWorkspaceResultCollectRecord.source_paper).selectinload(
+                PaperProfile.user
+            ),
+            selectinload(GroupWorkspaceResultCollectRecord.collected_paper).selectinload(
+                PaperProfile.user
+            ),
+            selectinload(GroupWorkspaceResultCollectRecord.collected_paper).selectinload(
+                PaperProfile.signal_snapshots
+            ),
+            selectinload(GroupWorkspaceResultCollectRecord.collected_paper).selectinload(
+                PaperProfile.progress_events
+            ),
         )
 
     def list_workspaces(
@@ -334,3 +358,57 @@ class GroupWorkspaceRepository:
     def add_invite_claim(self, claim: GroupWorkspaceInviteClaim) -> GroupWorkspaceInviteClaim:
         self.session.add(claim)
         return claim
+
+    def list_result_collect_records(
+        self,
+        *,
+        workspace_id: UUID | None = None,
+        user_id: UUID | None = None,
+        result_share_grant_id: UUID | None = None,
+        status: GroupWorkspaceResultCollectStatus | None = None,
+        collected_paper_id: UUID | None = None,
+    ) -> list[GroupWorkspaceResultCollectRecord]:
+        statement = (
+            select(GroupWorkspaceResultCollectRecord)
+            .options(*self._result_collect_record_load_options())
+            .order_by(
+                GroupWorkspaceResultCollectRecord.created_at.desc(),
+                GroupWorkspaceResultCollectRecord.id.desc(),
+            )
+        )
+        if workspace_id is not None:
+            statement = statement.where(
+                GroupWorkspaceResultCollectRecord.workspace_id == workspace_id
+            )
+        if user_id is not None:
+            statement = statement.where(GroupWorkspaceResultCollectRecord.user_id == user_id)
+        if result_share_grant_id is not None:
+            statement = statement.where(
+                GroupWorkspaceResultCollectRecord.result_share_grant_id == result_share_grant_id
+            )
+        if status is not None:
+            statement = statement.where(GroupWorkspaceResultCollectRecord.status == status)
+        if collected_paper_id is not None:
+            statement = statement.where(
+                GroupWorkspaceResultCollectRecord.collected_paper_id == collected_paper_id
+            )
+        return list(self.session.scalars(statement))
+
+    def get_result_collect_record_by_idempotency_key(
+        self,
+        idempotency_key: str,
+    ) -> GroupWorkspaceResultCollectRecord | None:
+        statement = (
+            select(GroupWorkspaceResultCollectRecord)
+            .options(*self._result_collect_record_load_options())
+            .where(GroupWorkspaceResultCollectRecord.idempotency_key == idempotency_key)
+            .limit(1)
+        )
+        return self.session.scalar(statement)
+
+    def add_result_collect_record(
+        self,
+        record: GroupWorkspaceResultCollectRecord,
+    ) -> GroupWorkspaceResultCollectRecord:
+        self.session.add(record)
+        return record

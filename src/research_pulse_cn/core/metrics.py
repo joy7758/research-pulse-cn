@@ -88,6 +88,9 @@ COUNTER_NAMES = (
     "group_workspace_invite_claims_total",
     "result_share_grants_issued_total",
     "result_share_content_requests_total",
+    "group_workspace_result_collect_previews_total",
+    "group_workspace_result_collect_actions_total",
+    "group_workspace_result_collect_records_created_total",
 )
 
 

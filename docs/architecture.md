@@ -302,6 +302,28 @@ Tie-break order is deterministic:
   - manages only workspace list/detail, member/paper add-remove, and `workspace_board` share-grant create/revoke flows
   - does not add source-file semantics or public editing
 
+### Result collect reserve boundary
+- `GroupWorkspaceResultCollectRecord` records one audit-friendly collect outcome per:
+  - collecting user
+  - target workspace
+  - result share context
+  - collected paper
+- Result collect remains separate from result sharing:
+  - public result-share routes stay read-only
+  - collect stays behind `SubscriptionSelfServiceGrant`
+  - collect adds structured `PaperProfile` objects to `GroupWorkspace`
+  - collect does not expose or sync source files, local attachments, or local note contents
+- Supported collectable share kinds in v1:
+  - `digest_issue`
+  - `paper_snapshot`
+- `workspace_board` is intentionally not collectable in v1.
+- Self-service collect routes:
+  - `GET /subscription-self-service/result-shares/{share_token}/collect-preview`
+  - `POST /subscription-self-service/result-shares/{share_token}/collect`
+  - `GET /subscription-self-service/workspace-result-collections`
+- Public share bootstrap now also carries an informational `collection_reserve` block so future browser shells can discover the next-step collect boundary without turning share routes into write surfaces.
+- Mini reserve may advertise the collect next step, but mini auth still cannot collect directly.
+
 ### Invite and join reserve boundary
 - Workspace invites are distinct from result shares:
   - invite bootstrap is public and read-only
@@ -319,6 +341,10 @@ Tie-break order is deterministic:
   - remains read-only except for the explicit self-service claim action
 - Mini reserve may advertise the next step, but mini auth still cannot claim membership directly.
 - Invite/join payloads exclude source files, local attachments, local notes, provider secrets, and WeChat identity secrets.
+- Result collect remains a parallel self-service reserve:
+  - it may use a public share as its read-only source
+  - it still does not make result-share routes writable
+  - it still does not introduce source-file semantics
 
 ### Derived progress percentage
 - Mini paper views expose a deterministic `progress_percentage` derived from `PaperProfile.type`.

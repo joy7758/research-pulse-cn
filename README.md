@@ -28,6 +28,7 @@ Private repository. Proprietary and confidential.
 - A thin internal React/Vite admin shell under `apps/user-workbench-admin-web` for read-only search and drilldown across users, papers, and research watch profiles without introducing end-user login, file sharing, or business write flows
 - A backend-only workspace invite/join reserve that adds opaque invite grants, public invite bootstrap, self-service claim-preview/claim routes, and safe membership summaries without introducing source-file sharing or a generic login system
 - A thin public React/Vite invite shell under `apps/group-workspace-invite-web` for safe workspace-invite bootstrap, self-service claim preview/claim, and membership confirmation without introducing end-user login, browser token persistence, or source-file sharing
+- A backend-only result collect reserve that lets self-service users collect structured `digest_issue` and `paper_snapshot` paper objects into eligible group workspaces without exposing source files, local attachments, or local notes
 - Official-account binding handshake reserve sessions that connect callback evidence, existing bindings, and self-service grants, plus real official-account webpage OAuth completion for code/state exchange and safe binding create/reuse without introducing a generic app login system
 - Mini read-only reserve endpoints that now consume structured digests, expose a safe subscription reserve summary, and keep mini grant auth separate from self-service grant auth
 - Tauri 2 desktop shell with Rust-side pull sync, local SQLite cache, mutation outbox, minimal writeback for paper/progress/subscription policy edits, a local paper workspace layer, local markdown notes/templates, and a local review-matrix workflow that generates reviewer-matrix / response-letter drafts
@@ -107,6 +108,10 @@ Group workspace/result sharing in this phase now has two thin browser shells:
 - internal admin/operator management in `apps/group-workspace-admin-web`
 - public read-only share rendering in `apps/result-share-web`
 - public invite bootstrap plus self-service claim rendering in `apps/group-workspace-invite-web`
+- self-service result collect reserve for:
+  - `GET /subscription-self-service/result-shares/{share_token}/collect-preview`
+  - `POST /subscription-self-service/result-shares/{share_token}/collect`
+  - `GET /subscription-self-service/workspace-result-collections`
 - PDFs, source files, local attachments, and local note contents are still excluded
 - workspace invite/join now also has a backend reserve:
   - `GET /workspace-invites/{invite_token}/bootstrap`
@@ -194,6 +199,10 @@ Mini reserve now also exposes an informational `workspace_invite_reserve` block:
 - mini grant still cannot claim workspace membership directly
 - a separate self-service grant is required
 - invite claim remains self-service-only in this phase
+Mini reserve now also exposes an informational `workspace_collect_reserve` block:
+- mini grant still cannot collect shared results into a workspace directly
+- a separate self-service grant is required
+- collect remains limited to `digest_issue` and `paper_snapshot` in this phase
 
 ## Subscription editor web shell
 The repository now also includes a thin browser/WebView-friendly shell under `apps/subscription-editor-web` using:

@@ -856,6 +856,16 @@ class MiniService:
                     "Workspace invite claims require a separate self-service grant.",
                 ],
             },
+            "workspace_collect_reserve": {
+                "supported": True,
+                "editable_via_current_mini_grant": False,
+                "separate_self_service_grant_required": True,
+                "supported_share_kinds": ["digest_issue", "paper_snapshot"],
+                "notes": [
+                    "Mini remains read-only in this phase.",
+                    "Workspace result collection requires a separate self-service grant.",
+                ],
+            },
         }
 
     def _official_account_binding(self, user_id: UUID):
