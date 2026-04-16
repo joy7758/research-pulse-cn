@@ -248,6 +248,22 @@ class Settings(BaseSettings):
         default=100,
         validation_alias="APP_MINI_PAPERS_MAX_LIMIT",
     )
+    subscription_editor_handoff_enabled: bool = Field(
+        default=False,
+        validation_alias="APP_SUBSCRIPTION_EDITOR_HANDOFF_ENABLED",
+    )
+    subscription_editor_handoff_ttl_minutes: int = Field(
+        default=15,
+        validation_alias="APP_SUBSCRIPTION_EDITOR_HANDOFF_TTL_MINUTES",
+    )
+    subscription_editor_handoff_require_active_self_service_grant: bool = Field(
+        default=True,
+        validation_alias="APP_SUBSCRIPTION_EDITOR_HANDOFF_REQUIRE_ACTIVE_SELF_SERVICE_GRANT",
+    )
+    subscription_editor_handoff_require_channel_binding: bool = Field(
+        default=False,
+        validation_alias="APP_SUBSCRIPTION_EDITOR_HANDOFF_REQUIRE_CHANNEL_BINDING",
+    )
     digest_signal_updates_max_items: int = Field(
         default=2,
         validation_alias="APP_DIGEST_SIGNAL_UPDATES_MAX_ITEMS",

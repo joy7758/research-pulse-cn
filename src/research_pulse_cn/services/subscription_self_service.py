@@ -250,19 +250,22 @@ class SubscriptionSelfServiceService:
             return {
                 "contract_version": SELF_SERVICE_EDITOR_CONTRACT_VERSION,
                 "grant": self._serialize_grant_summary(stored),
-                "user": self._user_summary(user),
-                "official_account_binding_summary": self._safe_binding_summary(stored.binding),
-                "current_settings_draft": self._settings_draft_payload(
+                "user": self.user_summary(user),
+                "official_account_binding_summary": self.safe_binding_summary(stored.binding),
+                "current_settings_draft": self.settings_draft_payload(
                     current_policy,
                     grant_status=grant.status,
                 ),
-                "latest_digest_summary": self._latest_digest_issue_summary(latest_issue),
+                "latest_digest_summary": self.latest_digest_issue_summary(latest_issue),
                 "authoritative_preview_supported": True,
-                "self_service_entry": self._editor_entry_payload(),
+                "self_service_entry": self.editor_entry_payload(),
             }
 
     def get_editor_contract(self) -> dict:
         self.metrics.increment("subscription_self_service_editor_contract_requests_total")
+        return self.editor_contract_payload()
+
+    def editor_contract_payload(self) -> dict:
         return {
             "contract_version": SELF_SERVICE_EDITOR_CONTRACT_VERSION,
             "channel": ChannelType.OFFICIAL_ACCOUNT,
@@ -466,26 +469,11 @@ class SubscriptionSelfServiceService:
             user_id=grant.user_id,
         ):
             self.metrics.increment("subscription_self_service_settings_preview_requests_total")
-            prepared = self._prepare_settings_payload(
-                grant=grant,
+            return self.preview_editor_settings(
+                user_id=grant.user_id,
+                grant_status=grant.status,
                 payload=payload,
             )
-            authoritative_preview = self._authoritative_preview_payload(
-                grant=grant,
-                policy=prepared.effective_policy,
-                validation_errors=prepared.validation_errors,
-            )
-            return {
-                "contract_version": SELF_SERVICE_EDITOR_CONTRACT_VERSION,
-                "normalized_draft": self._settings_draft_payload_from_settings(
-                    prepared.settings_payload,
-                    grant_status=grant.status,
-                ),
-                "changed_fields": list(prepared.changed_fields),
-                "validation_errors": list(prepared.validation_errors),
-                "validation_warnings": list(prepared.validation_warnings),
-                "authoritative_preview": authoritative_preview,
-            }
 
     def patch_settings(
         self,
@@ -505,73 +493,22 @@ class SubscriptionSelfServiceService:
             subscription_self_service_grant_id=grant.grant_id,
             user_id=grant.user_id,
         ):
-            payload = {
-                "enabled": enabled,
-                "quiet_hours": quiet_hours,
-                "timezone": timezone,
-                "allowed_weekdays": allowed_weekdays,
-                "muted_until": muted_until,
-                "minimum_selected_cards": minimum_selected_cards,
-                "skip_if_no_today_focus": skip_if_no_today_focus,
-            }
-            explicit_fields = update_fields or set()
-            payload = {
-                field_id: value
-                for field_id, value in payload.items()
-                if field_id in explicit_fields
-            }
-            prepared = self._prepare_settings_payload(
-                grant=grant,
-                payload=payload,
+            result = self.patch_editor_settings(
+                user_id=grant.user_id,
+                grant_status=grant.status,
+                enabled=enabled,
+                quiet_hours=quiet_hours,
+                timezone=timezone,
+                allowed_weekdays=allowed_weekdays,
+                muted_until=muted_until,
+                minimum_selected_cards=minimum_selected_cards,
+                skip_if_no_today_focus=skip_if_no_today_focus,
+                update_fields=update_fields,
+                include_preview=include_preview,
             )
-            if prepared.validation_errors:
-                raise ValidationFailedError(
-                    "subscription self-service settings validation failed",
-                    errors=prepared.validation_errors,
-                )
-
-            current_policy = self._current_official_account_policy(grant.user_id)
-            if current_policy is None:
-                create_payload = SubscriptionPolicyCreate(
-                    user_id=grant.user_id,
-                    channel=ChannelType.OFFICIAL_ACCOUNT,
-                    enabled=prepared.effective_policy.enabled,
-                    frequency=SubscriptionFrequency.DAILY,
-                    quiet_hours=prepared.effective_policy.quiet_hours,
-                    frequency_cap=prepared.effective_policy.frequency_cap,
-                    endpoint=prepared.effective_policy.endpoint,
-                    policy=dict(prepared.effective_policy.policy or {}),
-                )
-                policy = self.subscription_policy_service.create_policy(create_payload)
-            else:
-                update_payload_data: dict[str, object] = {}
-                if "enabled" in explicit_fields:
-                    update_payload_data["enabled"] = prepared.effective_policy.enabled
-                if "quiet_hours" in explicit_fields:
-                    update_payload_data["quiet_hours"] = prepared.effective_policy.quiet_hours
-                if self._policy_fields_touched(explicit_fields):
-                    update_payload_data["policy"] = dict(prepared.effective_policy.policy or {})
-                update_payload = SubscriptionPolicyUpdate(**update_payload_data)
-                policy = self.subscription_policy_service.update_policy(
-                    current_policy.id,
-                    update_payload,
-                )
-
-            saved_settings = self._settings_payload(policy)
             self.metrics.increment("subscription_self_service_settings_saved_total")
             self.metrics.increment("subscription_self_service_settings_updated_total")
-            if not include_preview:
-                return saved_settings
-            return {
-                "contract_version": SELF_SERVICE_EDITOR_CONTRACT_VERSION,
-                "saved_settings": saved_settings,
-                "changed_fields": list(prepared.changed_fields),
-                "authoritative_preview": self._authoritative_preview_payload(
-                    grant=grant,
-                    policy=policy,
-                    validation_errors=[],
-                ),
-            }
+            return result
 
     def get_delivery_control_preview(self, grant: SubscriptionSelfServiceGrantContext) -> dict:
         with bind_log_context(
@@ -607,13 +544,120 @@ class SubscriptionSelfServiceService:
                 "latest_digest_issue": self._latest_digest_issue_summary(latest_issue),
             }
 
+    def preview_editor_settings(
+        self,
+        *,
+        user_id: UUID,
+        grant_status: SubscriptionSelfServiceGrantStatus,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        prepared = self._prepare_settings_payload(
+            user_id=user_id,
+            payload=payload,
+        )
+        authoritative_preview = self.authoritative_preview_payload_for_user(
+            user_id=user_id,
+            policy=prepared.effective_policy,
+            validation_errors=prepared.validation_errors,
+        )
+        return {
+            "contract_version": SELF_SERVICE_EDITOR_CONTRACT_VERSION,
+            "normalized_draft": self._settings_draft_payload_from_settings(
+                prepared.settings_payload,
+                grant_status=grant_status,
+            ),
+            "changed_fields": list(prepared.changed_fields),
+            "validation_errors": list(prepared.validation_errors),
+            "validation_warnings": list(prepared.validation_warnings),
+            "authoritative_preview": authoritative_preview,
+        }
+
+    def patch_editor_settings(
+        self,
+        *,
+        user_id: UUID,
+        grant_status: SubscriptionSelfServiceGrantStatus,
+        enabled=None,
+        quiet_hours=None,
+        timezone=None,
+        allowed_weekdays=None,
+        muted_until=None,
+        minimum_selected_cards=None,
+        skip_if_no_today_focus=None,
+        update_fields: set[str] | None = None,
+        include_preview: bool = False,
+    ) -> dict[str, Any]:
+        payload = {
+            "enabled": enabled,
+            "quiet_hours": quiet_hours,
+            "timezone": timezone,
+            "allowed_weekdays": allowed_weekdays,
+            "muted_until": muted_until,
+            "minimum_selected_cards": minimum_selected_cards,
+            "skip_if_no_today_focus": skip_if_no_today_focus,
+        }
+        explicit_fields = update_fields or set()
+        payload = {
+            field_id: value for field_id, value in payload.items() if field_id in explicit_fields
+        }
+        prepared = self._prepare_settings_payload(
+            user_id=user_id,
+            payload=payload,
+        )
+        if prepared.validation_errors:
+            raise ValidationFailedError(
+                "subscription settings validation failed",
+                errors=prepared.validation_errors,
+            )
+
+        current_policy = self._current_official_account_policy(user_id)
+        if current_policy is None:
+            create_payload = SubscriptionPolicyCreate(
+                user_id=user_id,
+                channel=ChannelType.OFFICIAL_ACCOUNT,
+                enabled=prepared.effective_policy.enabled,
+                frequency=SubscriptionFrequency.DAILY,
+                quiet_hours=prepared.effective_policy.quiet_hours,
+                frequency_cap=prepared.effective_policy.frequency_cap,
+                endpoint=prepared.effective_policy.endpoint,
+                policy=dict(prepared.effective_policy.policy or {}),
+            )
+            policy = self.subscription_policy_service.create_policy(create_payload)
+        else:
+            update_payload_data: dict[str, object] = {}
+            if "enabled" in explicit_fields:
+                update_payload_data["enabled"] = prepared.effective_policy.enabled
+            if "quiet_hours" in explicit_fields:
+                update_payload_data["quiet_hours"] = prepared.effective_policy.quiet_hours
+            if self._policy_fields_touched(explicit_fields):
+                update_payload_data["policy"] = dict(prepared.effective_policy.policy or {})
+            update_payload = SubscriptionPolicyUpdate(**update_payload_data)
+            policy = self.subscription_policy_service.update_policy(
+                current_policy.id,
+                update_payload,
+            )
+
+        saved_settings = self._settings_payload(policy)
+        if not include_preview:
+            return saved_settings
+        return {
+            "contract_version": SELF_SERVICE_EDITOR_CONTRACT_VERSION,
+            "saved_settings": saved_settings,
+            "changed_fields": list(prepared.changed_fields),
+            "authoritative_preview": self.authoritative_preview_payload_for_user(
+                user_id=user_id,
+                policy=policy,
+                validation_errors=[],
+            ),
+        }
+
     def _prepare_settings_payload(
         self,
         *,
-        grant: SubscriptionSelfServiceGrantContext,
+        user_id: UUID,
         payload: dict[str, Any],
     ) -> SubscriptionSettingsPreparationResult:
-        current_policy = self._current_official_account_policy(grant.user_id)
+        current_policy = self._current_official_account_policy(user_id)
         current_settings = self._settings_payload(current_policy)
         explicit_fields = {
             field_id for field_id in payload.keys() if field_id in SELF_SERVICE_EDITABLE_FIELD_IDS
@@ -789,7 +833,7 @@ class SubscriptionSelfServiceService:
 
         effective_policy = SubscriptionPolicy(
             id=None if current_policy is None else current_policy.id,
-            user_id=grant.user_id,
+            user_id=user_id,
             channel=ChannelType.OFFICIAL_ACCOUNT,
             enabled=effective_enabled,
             frequency=(
@@ -834,6 +878,9 @@ class SubscriptionSelfServiceService:
             changed_fields=changed_fields,
         )
 
+    def editor_entry_payload(self) -> dict[str, Any]:
+        return self._editor_entry_payload()
+
     def _editor_entry_payload(self) -> dict[str, Any]:
         return {
             "supported": True,
@@ -849,6 +896,14 @@ class SubscriptionSelfServiceService:
                 ),
             ],
         }
+
+    def settings_draft_payload(
+        self,
+        policy: SubscriptionPolicy | None,
+        *,
+        grant_status: SubscriptionSelfServiceGrantStatus,
+    ) -> dict[str, Any]:
+        return self._settings_draft_payload(policy, grant_status=grant_status)
 
     def _settings_draft_payload(
         self,
@@ -946,10 +1001,23 @@ class SubscriptionSelfServiceService:
             next_value = self._coerce_utc(next_value)
         return current_value != next_value
 
+    def authoritative_preview_payload_for_user(
+        self,
+        *,
+        user_id: UUID,
+        policy: SubscriptionPolicy,
+        validation_errors: list[dict[str, str]],
+    ) -> dict[str, Any]:
+        return self._authoritative_preview_payload(
+            user_id=user_id,
+            policy=policy,
+            validation_errors=validation_errors,
+        )
+
     def _authoritative_preview_payload(
         self,
         *,
-        grant: SubscriptionSelfServiceGrantContext,
+        user_id: UUID,
         policy: SubscriptionPolicy,
         validation_errors: list[dict[str, str]],
     ) -> dict[str, Any]:
@@ -965,7 +1033,7 @@ class SubscriptionSelfServiceService:
                 "latest_digest_issue": None,
             }
 
-        latest_issue = self._latest_digest_issue(grant.user_id)
+        latest_issue = self._latest_digest_issue(user_id)
         current_time = self.now_provider()
         if current_time.tzinfo is None:
             current_time = current_time.replace(tzinfo=UTC)
@@ -1078,6 +1146,9 @@ class SubscriptionSelfServiceService:
         policies = self.subscription_policy_repository.list(user_id=user_id)
         return find_matching_delivery_policy(policies, channel=ChannelType.OFFICIAL_ACCOUNT)
 
+    def current_official_account_policy_for_user(self, user_id: UUID):
+        return self._current_official_account_policy(user_id)
+
     def _settings_payload(self, policy) -> dict:
         if policy is None:
             normalized = normalize_delivery_control_policy(
@@ -1125,9 +1196,15 @@ class SubscriptionSelfServiceService:
     def _policy_fields_touched(self, explicit_fields: set[str]) -> bool:
         return any(field in explicit_fields for field in SAFE_SELF_SERVICE_POLICY_KEYS)
 
+    def latest_digest_issue_for_user(self, user_id: UUID):
+        return self._latest_digest_issue(user_id)
+
     def _latest_digest_issue(self, user_id: UUID):
         issues = self.digest_service.list_digest_issues(user_id=user_id)
         return issues[0] if issues else None
+
+    def latest_digest_issue_summary(self, issue: PulseDigestIssue | None) -> dict | None:
+        return self._latest_digest_issue_summary(issue)
 
     def _latest_digest_issue_summary(self, issue: PulseDigestIssue | None) -> dict | None:
         if issue is None:
@@ -1155,6 +1232,9 @@ class SubscriptionSelfServiceService:
             "created_at": grant.created_at,
         }
 
+    def safe_binding_summary(self, binding) -> dict | None:
+        return self._safe_binding_summary(binding)
+
     def _safe_binding_summary(self, binding) -> dict | None:
         if binding is None:
             return None
@@ -1170,6 +1250,9 @@ class SubscriptionSelfServiceService:
             "unsubscribed_at": binding.unsubscribed_at,
             "last_seen_at": binding.last_seen_at,
         }
+
+    def user_summary(self, user) -> dict:
+        return self._user_summary(user)
 
     def _user_summary(self, user) -> dict:
         return {

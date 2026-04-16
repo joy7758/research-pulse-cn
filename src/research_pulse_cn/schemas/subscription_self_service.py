@@ -14,6 +14,8 @@ from research_pulse_cn.domain.enums import (
     OfficialAccountBindingHandshakeSessionStatus,
     OfficialAccountOAuthScope,
     PulseDigestIssueStatus,
+    SubscriptionEditorHandoffGrantStatus,
+    SubscriptionEditorHandoffIssuedBy,
     SubscriptionSelfServiceGrantStatus,
     WeChatBindingChannelType,
     WeChatBindingState,
@@ -307,3 +309,64 @@ class SubscriptionSelfServiceEditorBootstrapRead(BaseModel):
     latest_digest_summary: SubscriptionSelfServiceDigestIssueSummaryRead | None = None
     authoritative_preview_supported: bool
     self_service_entry: SubscriptionSelfServiceEditorEntryRead
+
+
+class SubscriptionEditorHandoffGrantRead(BaseModel):
+    id: UUID
+    user_id: UUID
+    channel: ChannelType
+    binding_id: UUID | None
+    mini_grant_id: UUID | None
+    self_service_grant_id: UUID
+    status: SubscriptionEditorHandoffGrantStatus
+    display_label: str | None
+    issued_by: SubscriptionEditorHandoffIssuedBy
+    expires_at: datetime | None
+    last_used_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class SubscriptionEditorLinkedSelfServiceGrantRead(BaseModel):
+    id: UUID
+    channel: ChannelType
+    binding_id: UUID | None
+    status: SubscriptionSelfServiceGrantStatus
+    display_label: str | None
+    expires_at: datetime | None
+    last_used_at: datetime | None
+    created_at: datetime
+
+
+class SubscriptionEditorBootstrapRead(BaseModel):
+    contract_version: str
+    handoff_grant: SubscriptionEditorHandoffGrantRead
+    linked_self_service_grant: SubscriptionEditorLinkedSelfServiceGrantRead | None = None
+    user: SubscriptionSelfServiceUserSummaryRead
+    official_account_binding_summary: SubscriptionSelfServiceBindingSummaryRead | None = None
+    current_settings_draft: SubscriptionSettingsDraftRead
+    latest_digest_summary: SubscriptionSelfServiceDigestIssueSummaryRead | None = None
+    authoritative_preview_supported: bool
+    supported_editor_endpoints: list[str] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
+
+
+class SubscriptionEditorHandoffIssueResponse(BaseModel):
+    handoff_grant: SubscriptionEditorHandoffGrantRead
+    plain_text_token: str
+    expires_at: datetime | None
+    supported_editor_endpoints: list[str] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
+
+
+class SubscriptionEditorHandoffStatusResponse(BaseModel):
+    handoff_grant: SubscriptionEditorHandoffGrantRead | None = None
+    linked_self_service_grant: SubscriptionEditorLinkedSelfServiceGrantRead | None = None
+    linked_binding: SubscriptionSelfServiceBindingSummaryRead | None = None
+    supported_editor_endpoints: list[str] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
+
+
+class SubscriptionEditorHandoffGrantRevokeResponse(BaseModel):
+    grant: SubscriptionEditorHandoffGrantRead
+    revoked_at: datetime

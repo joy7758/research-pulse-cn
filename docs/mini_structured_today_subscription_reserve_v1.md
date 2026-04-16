@@ -42,6 +42,7 @@
   - `self_service_reserve` informational block
   - `self_service_entry` handoff block for future editor clients
   - `binding_handoff_reserve` informational block
+  - `editor_handoff_reserve` informational block for future editor-token minting
 - Safe binding summary excludes:
   - `openid`
   - `unionid`
@@ -61,6 +62,10 @@
   - mini grant cannot initiate or complete binding handoff
   - a separate self-service grant is still required
   - `oauth_enabled` may now reflect real backend OAuth capability, but mini still stays read-only
+- `editor_handoff_reserve` now makes the editor bridge explicit:
+  - mini grant still cannot call editor endpoints directly
+  - a short-lived handoff grant is required
+  - future mini or WebView clients can mint that token through mini reserve without replacing self-service grant auth
 
 ## Current Non-Goals
 - real WeChat OAuth or mini session exchange

@@ -110,6 +110,7 @@
 - Desktop Settings local hints remain best-effort and cache-based only.
 - Mini read-only subscription reserve may now also expose an authoritative preview, but mini grant auth still cannot patch settings.
 - Mini read-only reserve may now also expose a `self_service_entry` handoff summary so future clients know editor contract and preview APIs exist without gaining edit rights.
+- Mini read-only reserve may now also mint a short-lived editor handoff grant through `/mini/subscription-reserve/editor-handoff`, but mini auth itself still remains read-only and separate from both self-service and handoff-grant auth.
 - Future binding handoff also stays separate:
   - self-service handshake reserve can show active reserve state
   - self-service OAuth start/status can drive real webpage authorization completion

@@ -36,6 +36,9 @@ from research_pulse_cn.services.digest import DigestService
 from research_pulse_cn.services.official_account_binding_handshake import (
     OfficialAccountBindingHandshakeService,
 )
+from research_pulse_cn.services.subscription_editor_handoff import (
+    SubscriptionEditorHandoffService,
+)
 from research_pulse_cn.services.subscription_policy import (
     find_matching_delivery_policy,
     normalize_delivery_control_policy,
@@ -92,6 +95,10 @@ class MiniService:
         self.subscription_policy_repository = SubscriptionPolicyRepository(session)
         self.digest_service = DigestService(session, now_provider=self.now_provider)
         self.binding_handshake_service = OfficialAccountBindingHandshakeService(
+            session,
+            now_provider=self.now_provider,
+        )
+        self.editor_handoff_service = SubscriptionEditorHandoffService(
             session,
             now_provider=self.now_provider,
         )
@@ -518,6 +525,8 @@ class MiniService:
             "/mini/bootstrap",
             "/mini/today",
             "/mini/subscription-reserve",
+            "/mini/subscription-reserve/editor-handoff",
+            "/mini/subscription-reserve/editor-handoff-status",
             "/mini/papers",
             "/mini/papers/{paper_id}",
         ]
@@ -832,6 +841,10 @@ class MiniService:
             "self_service_entry": self_service_entry,
             "binding_handoff_reserve": self.binding_handshake_service.mini_binding_handoff_reserve(
                 user_id=grant.user_id
+            ),
+            "editor_handoff_reserve": self.editor_handoff_service.mini_editor_handoff_reserve(
+                mini_grant_id=grant.id,
+                user_id=grant.user_id,
             ),
         }
 

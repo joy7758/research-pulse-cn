@@ -296,12 +296,13 @@ def test_run_endpoint_persists_yesterday_summary_card(
         email="yesterday-run-api@example.com",
         headers=operator_headers,
     )
+    _preview_date, started_at, _ended_at = WorkActivityService(session).previous_day_window()
     WorkActivityService(session).record_event(
         user_id=UUID(user["id"]),
         paper_id=None,
         activity_type=WorkActivityType.RESPONSE_LETTER_GENERATED,
         summary="Generated a response-letter draft.",
-        happened_at=utcnow() - timedelta(days=1, hours=2),
+        happened_at=started_at + timedelta(hours=2),
         source=WorkActivitySource.API,
     )
     session.commit()

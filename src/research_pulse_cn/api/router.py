@@ -25,6 +25,12 @@ from research_pulse_cn.api.routes.pulse import router as pulse_router
 from research_pulse_cn.api.routes.research_watch_profiles import (
     router as research_watch_profiles_router,
 )
+from research_pulse_cn.api.routes.subscription_editor import (
+    router as subscription_editor_router,
+)
+from research_pulse_cn.api.routes.subscription_editor_handoff_admin import (
+    router as subscription_editor_handoff_admin_router,
+)
 from research_pulse_cn.api.routes.subscription_policies import (
     router as subscription_policies_router,
 )
@@ -46,9 +52,11 @@ api_router.include_router(client_devices_router)
 api_router.include_router(digest_admin_router)
 api_router.include_router(mini_admin_router)
 api_router.include_router(subscription_self_service_admin_router)
+api_router.include_router(subscription_editor_handoff_admin_router)
 api_router.include_router(official_account_binding_handshake_admin_router)
 api_router.include_router(mini_router)
 api_router.include_router(subscription_self_service_router)
+api_router.include_router(subscription_editor_router)
 api_router.include_router(official_account_integration_router)
 api_router.include_router(users_router)
 api_router.include_router(papers_router)

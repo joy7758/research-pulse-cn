@@ -12,12 +12,13 @@ Core flow:
 6. Digest issues are upserted from selected pulse cards, orchestrated into sectioned daily packets, and can be prepared for official-account publication.
 7. Official-account publication jobs can be dispatched through the provider boundary either per job or through issue-level dispatch runs, while a separate delivery-control layer decides whether user policy allows sending now.
 8. Official-account callback events, binding handshake reserve sessions, explicit admin claim flow, and real webpage OAuth completion now provide a future-safe bridge from provider callback evidence to `WeChatIdentityBinding` without turning OAuth into a generic app login system.
-9. Mini read grants expose compact mobile-friendly read models for future mini-program landing without opening write access, now including structured Today digest rendering, a read-only subscription reserve summary, and a read-only binding-handoff reserve summary.
-10. Subscription self-service grants expose a narrow user-side settings boundary for future official-account or mini entry without reusing admin or mini auth, and now also expose a separate handshake-reserve sub-boundary.
-11. Sync devices consume incremental `SyncEvent` feeds and push idempotent mutations back through the same service layer.
-12. A Tauri desktop shell consumes the same sync feed, keeps a local SQLite outbox, performs limited writeback through `/sync/push`, manages a local-only paper workspace, stores local markdown notes/templates, keeps local review-matrix / response-letter workflows, exposes synced `SubscriptionPolicy` quiet-control fields in Settings with non-authoritative local hints, and renders sectioned daily digests on the Today page when the synced cache includes structured digest payloads.
-13. A pulse input layer now records lightweight work activity and research watch profiles so future retrieval can start from explicit inputs instead of implicit guesses.
-14. An external retrieval boundary now converts those inputs into persisted source-specific plans, executes official-source fetches behind provider adapters, stores normalized scholarly results, and lets the pulse pipeline consume those persisted records for deterministic `related_paper` cards without executing retrieval inline.
+9. Mini read grants expose compact mobile-friendly read models for future mini-program landing without opening write access, now including structured Today digest rendering, a read-only subscription reserve summary, a read-only binding-handoff reserve summary, and a read-only editor-handoff reserve summary.
+10. Subscription self-service grants expose a narrow user-side settings boundary for future official-account or mini entry without reusing admin or mini auth, and now also expose a separate handshake-reserve sub-boundary plus an explicit editor contract and preview-before-save surface.
+11. `SubscriptionEditorHandoffGrant` derives a short-lived `/subscription-editor/*` token from mini reserve plus an existing self-service grant without turning mini auth into a write boundary.
+12. Sync devices consume incremental `SyncEvent` feeds and push idempotent mutations back through the same service layer.
+13. A Tauri desktop shell consumes the same sync feed, keeps a local SQLite outbox, performs limited writeback through `/sync/push`, manages a local-only paper workspace, stores local markdown notes/templates, keeps local review-matrix / response-letter workflows, exposes synced `SubscriptionPolicy` quiet-control fields in Settings with non-authoritative local hints, and renders sectioned daily digests on the Today page when the synced cache includes structured digest payloads.
+14. A pulse input layer now records lightweight work activity and research watch profiles so future retrieval can start from explicit inputs instead of implicit guesses.
+15. An external retrieval boundary now converts those inputs into persisted source-specific plans, executes official-source fetches behind provider adapters, stores normalized scholarly results, and lets the pulse pipeline consume those persisted records for deterministic `related_paper` cards without executing retrieval inline.
 
 ## Module boundaries
 
@@ -230,8 +231,13 @@ Tie-break order is deterministic:
 - The editor reserve adds a versioned machine-readable contract plus preview-before-save semantics without creating a second policy store.
 - Mini read-only subscription reserve also reuses that evaluator for an authoritative preview, but mini grant auth remains read-only and separate from self-service edit auth.
 - Mini read-only reserve also exposes a `self_service_entry` handoff summary so future UI clients know editor contract and preview endpoints exist without turning mini into a write surface yet.
+- Mini read-only reserve now also exposes an `editor_handoff_reserve` summary so future mobile/WebView clients know a short-lived bridge to `/subscription-editor/*` exists without making mini grant auth directly writable.
 - Self-service grant auth can also create/read/cancel a reserve handshake session, but admin auth remains the only claim path in this phase.
 - Self-service grant auth can also issue an official-account OAuth authorize URL and inspect safe OAuth progress, while mini grant auth remains read-only.
+- `SubscriptionEditorHandoffGrant` adds a separate short-lived auth boundary for `/subscription-editor/*`:
+  - mini can mint the handoff token when reserve conditions are satisfied
+  - the token can reuse existing editor bootstrap/contract/preview/save services
+  - the token cannot call `/mini/*`, `/subscription-self-service/*`, or admin routes
 
 ### Derived progress percentage
 - Mini paper views expose a deterministic `progress_percentage` derived from `PaperProfile.type`.

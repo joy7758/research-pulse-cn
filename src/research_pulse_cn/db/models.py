@@ -55,6 +55,8 @@ from research_pulse_cn.domain.enums import (
     PulseJobStatus,
     ResearchWatchProfileSourceMode,
     SignalSource,
+    SubscriptionEditorHandoffGrantStatus,
+    SubscriptionEditorHandoffIssuedBy,
     SubscriptionFrequency,
     SubscriptionSelfServiceGrantStatus,
     SyncEventSource,
@@ -110,6 +112,11 @@ class AdminAccount(TimestampMixin, Base):
             back_populates="issued_by_admin",
         )
     )
+    issued_subscription_editor_handoff_grants: Mapped[list[SubscriptionEditorHandoffGrant]] = (
+        relationship(
+            back_populates="issued_by_admin",
+        )
+    )
     issued_official_account_binding_handshake_sessions: Mapped[
         list[OfficialAccountBindingHandshakeSession]
     ] = relationship(
@@ -161,6 +168,11 @@ class UserProfile(TimestampMixin, Base):
     subscription_self_service_grants: Mapped[list[SubscriptionSelfServiceGrant]] = relationship(
         back_populates="user",
         cascade="all, delete-orphan",
+    )
+    subscription_editor_handoff_grants: Mapped[list[SubscriptionEditorHandoffGrant]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+        order_by="SubscriptionEditorHandoffGrant.created_at.desc()",
     )
     official_account_binding_handshake_sessions: Mapped[
         list[OfficialAccountBindingHandshakeSession]
@@ -444,6 +456,9 @@ class WeChatIdentityBinding(TimestampMixin, Base):
     subscription_self_service_grants: Mapped[list[SubscriptionSelfServiceGrant]] = relationship(
         back_populates="binding",
     )
+    subscription_editor_handoff_grants: Mapped[list[SubscriptionEditorHandoffGrant]] = relationship(
+        back_populates="binding",
+    )
     claimed_official_account_binding_handshake_sessions: Mapped[
         list[OfficialAccountBindingHandshakeSession]
     ] = relationship(
@@ -540,6 +555,9 @@ class MiniReadGrant(TimestampMixin, Base):
     created_by_admin: Mapped[AdminAccount | None] = relationship(
         back_populates="created_mini_read_grants"
     )
+    subscription_editor_handoff_grants: Mapped[list[SubscriptionEditorHandoffGrant]] = relationship(
+        back_populates="mini_grant",
+    )
 
 
 class SubscriptionSelfServiceGrant(TimestampMixin, Base):
@@ -591,6 +609,73 @@ class SubscriptionSelfServiceGrant(TimestampMixin, Base):
     official_account_binding_handshake_sessions: Mapped[
         list[OfficialAccountBindingHandshakeSession]
     ] = relationship(back_populates="self_service_grant")
+    subscription_editor_handoff_grants: Mapped[list[SubscriptionEditorHandoffGrant]] = relationship(
+        back_populates="self_service_grant",
+    )
+
+
+class SubscriptionEditorHandoffGrant(TimestampMixin, Base):
+    __tablename__ = "subscription_editor_handoff_grants"
+    __table_args__ = (
+        Index(
+            "ix_subscription_editor_handoff_grants_user_channel_created_at",
+            "user_id",
+            "channel",
+            "created_at",
+        ),
+        Index(
+            "ix_subscription_editor_handoff_grants_status_expires_at",
+            "status",
+            "expires_at",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("user_profiles.id", ondelete="CASCADE"))
+    channel: Mapped[ChannelType] = mapped_column(
+        Enum(ChannelType, native_enum=False),
+        nullable=False,
+    )
+    mini_grant_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("mini_read_grants.id", ondelete="SET NULL")
+    )
+    self_service_grant_id: Mapped[UUID] = mapped_column(
+        ForeignKey("subscription_self_service_grants.id", ondelete="CASCADE")
+    )
+    binding_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("wechat_identity_bindings.id", ondelete="SET NULL")
+    )
+    token_hash: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    status: Mapped[SubscriptionEditorHandoffGrantStatus] = mapped_column(
+        Enum(SubscriptionEditorHandoffGrantStatus, native_enum=False),
+        nullable=False,
+        default=SubscriptionEditorHandoffGrantStatus.ACTIVE,
+    )
+    display_label: Mapped[str | None] = mapped_column(String(255))
+    issued_by: Mapped[SubscriptionEditorHandoffIssuedBy] = mapped_column(
+        Enum(SubscriptionEditorHandoffIssuedBy, native_enum=False),
+        nullable=False,
+        default=SubscriptionEditorHandoffIssuedBy.MINI_HANDOFF,
+    )
+    issued_by_admin_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("admin_accounts.id", ondelete="SET NULL")
+    )
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    user: Mapped[UserProfile] = relationship(back_populates="subscription_editor_handoff_grants")
+    mini_grant: Mapped[MiniReadGrant | None] = relationship(
+        back_populates="subscription_editor_handoff_grants"
+    )
+    self_service_grant: Mapped[SubscriptionSelfServiceGrant] = relationship(
+        back_populates="subscription_editor_handoff_grants"
+    )
+    binding: Mapped[WeChatIdentityBinding | None] = relationship(
+        back_populates="subscription_editor_handoff_grants"
+    )
+    issued_by_admin: Mapped[AdminAccount | None] = relationship(
+        back_populates="issued_subscription_editor_handoff_grants"
+    )
 
 
 class OfficialAccountBindingHandshakeSession(TimestampMixin, Base):

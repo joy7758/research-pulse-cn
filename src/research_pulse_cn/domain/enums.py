@@ -286,6 +286,17 @@ class SubscriptionSelfServiceGrantStatus(StrEnum):
     EXPIRED = "expired"
 
 
+class SubscriptionEditorHandoffGrantStatus(StrEnum):
+    ACTIVE = "active"
+    REVOKED = "revoked"
+    EXPIRED = "expired"
+
+
+class SubscriptionEditorHandoffIssuedBy(StrEnum):
+    MINI_HANDOFF = "mini_handoff"
+    ADMIN = "admin"
+
+
 class OfficialAccountOAuthScope(StrEnum):
     SNSAPI_BASE = "snsapi_base"
     SNSAPI_USERINFO = "snsapi_userinfo"

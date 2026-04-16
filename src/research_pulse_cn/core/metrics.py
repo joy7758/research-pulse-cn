@@ -77,6 +77,10 @@ COUNTER_NAMES = (
     "official_account_oauth_exchange_success_total",
     "official_account_oauth_exchange_failed_total",
     "official_account_oauth_bindings_completed_total",
+    "subscription_editor_handoff_grants_issued_total",
+    "subscription_editor_handoff_bootstrap_requests_total",
+    "subscription_editor_handoff_settings_saved_total",
+    "subscription_editor_handoff_grants_revoked_total",
 )
 
 

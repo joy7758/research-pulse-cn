@@ -49,6 +49,7 @@
 - Self-service editor preview is authoritative because it uses the backend delivery-control evaluator directly.
 - Desktop Settings still exposes a local hint only and does not become authoritative through this reserve.
 - Mini remains read-only and only receives a compact `self_service_entry` / reserve summary that explains how future editing handoff will work.
+- Mini reserve can now also mint a short-lived `SubscriptionEditorHandoffGrant` through a separate mini-protected handoff path, but that token is still derived from the self-service grant boundary rather than replacing it.
 
 ## Supported Editable Fields
 - v1 editable field ids:
@@ -90,5 +91,6 @@
 ## Future Work
 - real user-facing web/mobile editor page
 - mini-based editing handoff
+- short-lived mini editor handoff token exchange
 - richer schedule controls
 - self-service analytics or audit views

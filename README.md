@@ -20,6 +20,7 @@ Private repository. Proprietary and confidential.
 - Deterministic user-side delivery control on top of official-account digest dispatch, including quiet hours, mute-until, weekday allow-lists, minimum digest thresholds, and persisted delivery decisions
 - Admin-issued subscription self-service reserve grants that expose safe official-account settings reads, safe settings patching, and authoritative delivery-control preview without real WeChat OAuth
 - Self-service editor reserve endpoints that add machine-readable field/section contracts, preview-before-save semantics, and future mobile/web handoff metadata on top of the same self-service grant boundary
+- Mini editor handoff reserve that adds a short-lived `SubscriptionEditorHandoffGrant` bridge from mini read-only reserve to `/subscription-editor/*` without making mini grants directly writable
 - Official-account binding handshake reserve sessions that connect callback evidence, existing bindings, and self-service grants, plus real official-account webpage OAuth completion for code/state exchange and safe binding create/reuse without introducing a generic app login system
 - Mini read-only reserve endpoints that now consume structured digests, expose a safe subscription reserve summary, and keep mini grant auth separate from self-service grant auth
 - Tauri 2 desktop shell with Rust-side pull sync, local SQLite cache, mutation outbox, minimal writeback for paper/progress/subscription policy edits, a local paper workspace layer, local markdown notes/templates, and a local review-matrix workflow that generates reviewer-matrix / response-letter drafts
@@ -139,6 +140,12 @@ Desktop Today now also prefers the orchestrated sectioned digest payload when av
 Older cached digests that only have `highlights` / `items` still render through a deterministic desktop fallback path.
 
 Mini read-only routes now also prefer the same orchestrated sectioned digest payload when available and fall back to legacy `highlights` / `items` when older digest content is all that exists.
+
+Mini reserve now also exposes a short-lived editor handoff bridge:
+- `POST /mini/subscription-reserve/editor-handoff`
+- `GET /mini/subscription-reserve/editor-handoff-status`
+
+These routes mint or inspect a narrow handoff token for `/subscription-editor/*` only. Mini grants still cannot patch subscription settings directly.
 
 Official-account binding reserve now also adds:
 - admin-created handshake sessions with one-time state tokens

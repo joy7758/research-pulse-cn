@@ -62,6 +62,11 @@ Mini read-only routes now also expose:
 
 Mini routes stay read-only and require mini-read grant auth only.
 `/mini/subscription-reserve` now also includes a read-only `binding_handoff_reserve` summary and still exposes no write/update affordance.
+`/mini/subscription-reserve` now also includes a read-only `editor_handoff_reserve` summary plus two mini-protected handoff endpoints:
+- `POST /mini/subscription-reserve/editor-handoff`
+- `GET /mini/subscription-reserve/editor-handoff-status`
+
+These mini endpoints only mint or inspect a short-lived editor handoff token. They do not make mini grants directly writable.
 
 ## Pulse scoring knobs
 - Defaults live in application settings and `.env.example`
@@ -208,6 +213,20 @@ Mini routes stay read-only and require mini-read grant auth only.
   - stay read-only and avoid admin-only orchestration or dispatch APIs
 - Changing or clearing the workspace root does not move or delete existing managed files.
 - `clearLocalCache` and `disconnectDevice` do not delete managed workspace files, local note files, or generated review notes.
+
+## Mini editor handoff reserve
+- `SubscriptionEditorHandoffGrant` is a dedicated short-lived bearer token for `/subscription-editor/*`.
+- Handoff grant routes:
+  - `GET /subscription-editor/bootstrap`
+  - `GET /subscription-editor/contract`
+  - `POST /subscription-editor/settings/preview`
+  - `PATCH /subscription-editor/settings`
+- Handoff grant auth is separate from:
+  - mini read grant auth
+  - self-service grant auth
+  - admin auth
+- Mini read grant auth still cannot call `/subscription-editor/*`.
+- Self-service grant auth still cannot call `/mini/*`.
 
 ## Official-account digest reserve
 - WeChat identity binding can now be created or reused through explicit admin paths or through official-account OAuth completion tied to a valid handshake session.

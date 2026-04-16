@@ -23,6 +23,9 @@ from research_pulse_cn.services.paper import PaperService
 from research_pulse_cn.services.pulse import PulseService
 from research_pulse_cn.services.research_watch import ResearchWatchProfileService
 from research_pulse_cn.services.scheduler import SchedulerService
+from research_pulse_cn.services.subscription_editor_handoff import (
+    SubscriptionEditorHandoffService,
+)
 from research_pulse_cn.services.subscription_policy import SubscriptionPolicyService
 from research_pulse_cn.services.subscription_self_service import (
     SubscriptionSelfServiceService,
@@ -93,6 +96,12 @@ def get_subscription_self_service_service(
     session: SessionDep,
 ) -> SubscriptionSelfServiceService:
     return SubscriptionSelfServiceService(session)
+
+
+def get_subscription_editor_handoff_service(
+    session: SessionDep,
+) -> SubscriptionEditorHandoffService:
+    return SubscriptionEditorHandoffService(session)
 
 
 def get_scheduler_service(session: SessionDep) -> SchedulerService:

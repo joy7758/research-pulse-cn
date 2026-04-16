@@ -258,6 +258,17 @@ class MiniBindingHandoffReserveRead(BaseModel):
     notes: list[str] = Field(default_factory=list)
 
 
+class MiniEditorHandoffReserveRead(BaseModel):
+    supported: bool
+    enabled: bool
+    editable_via_current_mini_grant: bool
+    handoff_grant_required: bool
+    active_handoff_status: str | None = None
+    supported_editor_endpoints: list[str] = Field(default_factory=list)
+    supported_editable_fields: list[str] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
+
+
 class MiniSubscriptionReserveSummaryRead(BaseModel):
     has_official_account_binding: bool
     has_official_account_subscription_settings: bool
@@ -277,6 +288,7 @@ class MiniSubscriptionReserveRead(BaseModel):
     self_service_reserve: MiniSelfServiceReserveRead
     self_service_entry: MiniSelfServiceReserveRead | None = None
     binding_handoff_reserve: MiniBindingHandoffReserveRead
+    editor_handoff_reserve: MiniEditorHandoffReserveRead
 
 
 class MiniBootstrapResponse(BaseModel):
