@@ -24,6 +24,7 @@ Private repository. Proprietary and confidential.
 - A thin React/Vite subscription editor web shell under `apps/subscription-editor-web` for manually exercising handoff-grant-protected `/subscription-editor/*` flows in a browser or future WebView shell
 - Admin-managed group workspaces with structured workspace boards plus opaque read-only result share grants for `digest_issue`, `paper_snapshot`, and `workspace_board` without exposing source files, local attachment paths, or local note contents
 - A thin public React/Vite result-share shell under `apps/result-share-web` for opening `ResultShareGrant` links in a browser without introducing source-file sharing, browser token persistence, or a generic login system
+- A thin internal React/Vite admin shell under `apps/group-workspace-admin-web` for operator-managed workspace list/detail, member/paper add-remove flows, and `workspace_board` share-grant issuance without introducing end-user login or source-file sharing
 - Official-account binding handshake reserve sessions that connect callback evidence, existing bindings, and self-service grants, plus real official-account webpage OAuth completion for code/state exchange and safe binding create/reuse without introducing a generic app login system
 - Mini read-only reserve endpoints that now consume structured digests, expose a safe subscription reserve summary, and keep mini grant auth separate from self-service grant auth
 - Tauri 2 desktop shell with Rust-side pull sync, local SQLite cache, mutation outbox, minimal writeback for paper/progress/subscription policy edits, a local paper workspace layer, local markdown notes/templates, and a local review-matrix workflow that generates reviewer-matrix / response-letter drafts
@@ -82,11 +83,19 @@ The code keeps pulse generation behind stable interfaces such as `FactCollector`
    `make subscription-editor-install`
 14. Run the subscription editor web shell:
    `make subscription-editor-dev`
+15. Install the result share shell if you want to demo public share links:
+   `make result-share-install`
+16. Run the result share shell:
+   `make result-share-dev`
+17. Install the internal workspace admin shell if you want to manage workspaces in a browser:
+   `make workspace-admin-install`
+18. Run the internal workspace admin shell:
+   `make workspace-admin-dev`
 
-Group workspace/result sharing in this phase is backend-only:
-- admin manages workspaces and result share grants
-- public share links resolve structured read-only content only
-- PDFs, source files, local attachments, and local note contents are excluded
+Group workspace/result sharing in this phase now has two thin browser shells:
+- internal admin/operator management in `apps/group-workspace-admin-web`
+- public read-only share rendering in `apps/result-share-web`
+- PDFs, source files, local attachments, and local note contents are still excluded
 
 Open API docs at `http://127.0.0.1:8000/docs`.
 
@@ -190,6 +199,23 @@ This shell:
 - renders only read-only `digest_issue`, `paper_snapshot`, and `workspace_board` views
 - does not add login, editing, or source-file sharing
 
+## Group workspace admin web shell
+The repository now also includes a thin internal browser shell under `apps/group-workspace-admin-web` using:
+- React
+- TypeScript
+- Vite
+
+This shell:
+- accepts an admin/operator bearer token from manual paste or query/fragment fallback
+- keeps the token in memory only
+- manages only:
+  - `GET/POST/PATCH /admin/group-workspaces`
+  - `GET /admin/group-workspaces/{workspace_id}/board`
+  - member and paper add/remove routes
+  - `workspace_board` share-grant create/revoke flows
+- reuses existing `GET /users` and `GET /papers` reads as internal lookup sources
+- does not add end-user login, public editing, or source-file sharing
+
 Official-account binding reserve now also adds:
 - admin-created handshake sessions with one-time state tokens
 - admin reconciliation candidate listing over unmatched subscribe callback events
@@ -258,6 +284,21 @@ Today-suggestion behavior in this phase:
 - `make desktop-lint`: run desktop lint and typecheck
 - `make desktop-test`: run desktop frontend tests plus Rust cache/sync tests
 - `make desktop-build-web`: build the desktop web frontend without native packaging
+- `make subscription-editor-install`: install subscription-editor shell dependencies under `apps/subscription-editor-web`
+- `make subscription-editor-dev`: run the subscription-editor shell in development mode
+- `make subscription-editor-lint`: run subscription-editor shell lint and typecheck
+- `make subscription-editor-test`: run subscription-editor shell tests
+- `make subscription-editor-build`: build the subscription-editor shell
+- `make result-share-install`: install result-share shell dependencies under `apps/result-share-web`
+- `make result-share-dev`: run the result-share shell in development mode
+- `make result-share-lint`: run result-share shell lint and typecheck
+- `make result-share-test`: run result-share shell tests
+- `make result-share-build`: build the result-share shell
+- `make workspace-admin-install`: install workspace-admin shell dependencies under `apps/group-workspace-admin-web`
+- `make workspace-admin-dev`: run the workspace-admin shell in development mode
+- `make workspace-admin-lint`: run workspace-admin shell lint and typecheck
+- `make workspace-admin-test`: run workspace-admin shell tests
+- `make workspace-admin-build`: build the workspace-admin shell
 - `make subscription-editor-install`: install web-shell dependencies under `apps/subscription-editor-web`
 - `make subscription-editor-dev`: run the subscription editor web shell
 - `make subscription-editor-lint`: run editor web lint and typecheck

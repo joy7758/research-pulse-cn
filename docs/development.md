@@ -80,6 +80,35 @@ The shell lives under `apps/result-share-web` and uses only:
 
 The shell is public/token-based and read-only. It does not introduce login, editing, or source-file sharing.
 
+## Group workspace admin web shell
+- Install workspace-admin dependencies:
+  - `make workspace-admin-install`
+- Run the workspace-admin shell:
+  - `make workspace-admin-dev`
+- Run workspace-admin lint + typecheck:
+  - `make workspace-admin-lint`
+- Run workspace-admin tests:
+  - `make workspace-admin-test`
+- Build the workspace-admin shell:
+  - `make workspace-admin-build`
+
+The shell lives under `apps/group-workspace-admin-web` and uses:
+- `GET /admin/group-workspaces`
+- `POST /admin/group-workspaces`
+- `GET /admin/group-workspaces/{workspace_id}`
+- `PATCH /admin/group-workspaces/{workspace_id}`
+- `GET /admin/group-workspaces/{workspace_id}/board`
+- `POST /admin/group-workspaces/{workspace_id}/members`
+- `DELETE /admin/group-workspaces/{workspace_id}/members/{member_id}`
+- `POST /admin/group-workspaces/{workspace_id}/papers`
+- `DELETE /admin/group-workspaces/{workspace_id}/papers/{paper_id}`
+- `GET /admin/result-share-grants`
+- `POST /admin/result-share-grants`
+- `POST /admin/result-share-grants/{grant_id}/revoke`
+- plus existing `GET /users` and `GET /papers` reads as internal lookup sources
+
+The shell is internal/admin-only, keeps bearer tokens in memory only, and does not introduce end-user login or source-file sharing.
+
 ## Group workspace and result sharing
 - Admin-managed workspace routes:
   - `GET /admin/group-workspaces`

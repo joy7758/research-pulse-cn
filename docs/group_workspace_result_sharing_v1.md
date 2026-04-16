@@ -132,6 +132,11 @@
 - In this phase, workspace and share management are restricted to `operator` and `super_admin`.
 - Share links are sensitive because the token is embedded in the path; treat them as bearer secrets.
 - A thin browser shell under `apps/result-share-web` now consumes those public endpoints directly for demo and forwarding use cases while staying strictly read-only.
+- A separate internal browser shell under `apps/group-workspace-admin-web` now consumes the admin-managed workspace routes for operator workflows:
+  - workspace list/detail
+  - member add/remove
+  - paper add/remove
+  - `workspace_board` share grant create/revoke
 
 ## Current Non-Goals
 - source-file or PDF sharing

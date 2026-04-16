@@ -68,3 +68,5 @@
 - optional signed short links
 - later source-file sharing as explicit opt-in
 - potential workspace invite or handoff flows if justified
+
+The internal admin/operator shell for creating and revoking `workspace_board` shares now lives separately under `apps/group-workspace-admin-web`, so this public shell stays strictly read-only.
