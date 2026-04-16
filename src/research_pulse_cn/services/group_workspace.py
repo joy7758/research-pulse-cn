@@ -787,6 +787,9 @@ class GroupWorkspaceService:
                 },
                 "target": self._share_target_summary(stored),
                 "collection_reserve": self._share_collection_reserve_summary(stored),
+                "workspace_invite_handoff_reserve": self._share_workspace_invite_handoff_summary(
+                    stored
+                ),
                 "notes": [
                     "This share link exposes structured read-only results only.",
                     "Source files, local attachments, and local note contents are excluded.",
@@ -1430,6 +1433,30 @@ class GroupWorkspaceService:
             "collect_supported_via_self_service": supported,
             "source_files_included": False,
             "notes": notes,
+        }
+
+    def _share_workspace_invite_handoff_summary(
+        self, grant: ResultShareGrant
+    ) -> dict[str, Any] | None:
+        if grant.share_kind != ResultShareKind.WORKSPACE_BOARD:
+            return None
+        return {
+            "supported": True,
+            "share_kind": ResultShareKind.WORKSPACE_BOARD.value,
+            "separate_invite_token_required": True,
+            "invite_bootstrap_available": True,
+            "self_service_claim_supported": True,
+            "direct_claim_via_share_page": False,
+            "source_files_included": False,
+            "invite_shell_entry_url": self.settings.group_workspace_invite_web_entry_url,
+            "notes": [
+                "This workspace-board share is read-only and cannot claim membership directly.",
+                (
+                    "Joining requires a separate invite token and the existing "
+                    "self-service claim flow."
+                ),
+                "Source files and local attachments are not included.",
+            ],
         }
 
     def _result_collect_share_summary(self, grant: ResultShareGrant) -> dict[str, Any]:

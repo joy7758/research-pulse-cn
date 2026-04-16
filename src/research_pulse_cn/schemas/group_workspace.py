@@ -300,10 +300,23 @@ class ShareGrantCollectionReserveRead(BaseModel):
     notes: list[str] = Field(default_factory=list)
 
 
+class ShareGrantWorkspaceInviteHandoffReserveRead(BaseModel):
+    supported: bool
+    share_kind: Literal["workspace_board"]
+    separate_invite_token_required: bool
+    invite_bootstrap_available: bool
+    self_service_claim_supported: bool
+    direct_claim_via_share_page: bool
+    source_files_included: bool
+    invite_shell_entry_url: str | None = None
+    notes: list[str] = Field(default_factory=list)
+
+
 class ShareGrantBootstrapRead(BaseModel):
     grant: ShareGrantPublicSummaryRead
     target: ShareGrantTargetSummaryRead
     collection_reserve: ShareGrantCollectionReserveRead | None = None
+    workspace_invite_handoff_reserve: ShareGrantWorkspaceInviteHandoffReserveRead | None = None
     notes: list[str] = Field(default_factory=list)
 
 

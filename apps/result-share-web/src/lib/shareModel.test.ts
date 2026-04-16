@@ -39,6 +39,20 @@ function bootstrapFixture(kind: ShareGrantBootstrapRead["grant"]["share_kind"]):
       source_files_included: false,
       notes: ["Source files remain excluded."],
     },
+    workspace_invite_handoff_reserve:
+      kind === "workspace_board"
+        ? {
+            supported: true,
+            share_kind: "workspace_board",
+            separate_invite_token_required: true,
+            invite_bootstrap_available: true,
+            self_service_claim_supported: true,
+            direct_claim_via_share_page: false,
+            source_files_included: false,
+            invite_shell_entry_url: "http://127.0.0.1:5177",
+            notes: ["Joining requires a separate invite token."],
+          }
+        : null,
     notes: ["Structured read-only share."],
   };
 }
@@ -243,9 +257,15 @@ describe("result share view shaping", () => {
     expect(buildPaperSnapshotViewModel(bootstrapFixture("paper_snapshot"), paper).pageTitle).toBe(
       "Shared Paper",
     );
-    expect(
-      buildWorkspaceBoardViewModel(bootstrapFixture("workspace_board"), workspace).memberCount,
-    ).toBe(1);
+    const workspaceViewModel = buildWorkspaceBoardViewModel(
+      bootstrapFixture("workspace_board"),
+      workspace,
+    );
+    expect(workspaceViewModel.memberCount).toBe(1);
+    expect(workspaceViewModel.workspaceInviteHandoff?.inviteShellEntryUrl).toBe(
+      "http://127.0.0.1:5177",
+    );
+    expect(workspaceViewModel.workspaceInviteHandoff?.directClaimViaSharePage).toBe(false);
   });
 
   it("maps invalid, revoked, and expired token failures to clear public states", () => {

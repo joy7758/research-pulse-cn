@@ -22,6 +22,7 @@
 - `workspace_board`
   - remains non-collectable in v1
   - is shown as an informational state only
+  - may also show a separate invite/join handoff summary
 
 ## Multiple-Paper Digest Handling
 - The shell shows all collectable digest papers in stable preview order.

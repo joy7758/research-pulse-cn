@@ -142,6 +142,10 @@
   - public invite bootstrap is read-only
   - membership claim stays behind `/subscription-self-service/*`
   - invites are not interchangeable with result share grants
+- `workspace_board` share bootstrap now may also carry a `workspace_invite_handoff_reserve` block:
+  - it is informational only
+  - it explains that a separate invite token is required
+  - it does not turn share pages into claim surfaces
 - Result collect now also remains a separate reserve boundary:
   - public share routes stay read-only
   - collect stays behind `/subscription-self-service/*`

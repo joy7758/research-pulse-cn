@@ -16,7 +16,7 @@ Core flow:
 10. Subscription self-service grants expose a narrow user-side settings boundary for future official-account or mini entry without reusing admin or mini auth, and now also expose a separate handshake-reserve sub-boundary plus an explicit editor contract and preview-before-save surface.
 11. `SubscriptionEditorHandoffGrant` derives a short-lived `/subscription-editor/*` token from mini reserve plus an existing self-service grant without turning mini auth into a write boundary, and a thin web shell under `apps/subscription-editor-web` consumes that token without creating a generic login surface.
 12. Admin-managed `GroupWorkspace` containers now group selected users and papers into compact shared boards, while `ResultShareGrant` exposes opaque public read-only links for structured digest issues, paper snapshots, and workspace boards without turning sharing into file sync.
-13. A thin public browser shell under `apps/result-share-web` now consumes those token-based share endpoints directly, optionally connects an in-memory self-service token, renders safe read-only structured outputs, and exposes explicit collect-preview/collect actions for supported share kinds.
+13. A thin public browser shell under `apps/result-share-web` now consumes those token-based share endpoints directly, optionally connects an in-memory self-service token, renders safe read-only structured outputs, exposes explicit collect-preview/collect actions for supported share kinds, and shows a manual invite/join handoff summary for `workspace_board` shares.
 14. A thin public browser shell under `apps/group-workspace-invite-web` now consumes the public invite bootstrap plus self-service claim routes, keeps invite/self-service tokens in memory only, and does not introduce a generic login surface or source-file sharing.
 15. A thin internal browser shell under `apps/group-workspace-admin-web` now consumes the admin-managed workspace and share-grant endpoints, reuses existing `GET /users` and `GET /papers` reads as lookup sources, and keeps admin bearer tokens in memory only.
 16. Sync devices consume incremental `SyncEvent` feeds and push idempotent mutations back through the same service layer.
@@ -299,6 +299,7 @@ Tie-break order is deterministic:
   - posts `/subscription-self-service/result-shares/{share_token}/collect` only after a separate self-service token is connected
   - reads `/subscription-self-service/workspace-result-collections` only after a separate self-service token is connected
   - clears query or fragment share/self-service tokens from the visible URL after moving them into in-memory state
+  - shows `workspace_invite_handoff_reserve` for `workspace_board` shares as information only
 - A separate internal admin shell under `apps/group-workspace-admin-web` stays inside the admin boundary:
   - accepts admin/operator bearer tokens from manual paste or query/fragment fallback
   - clears query or fragment bearer tokens from the visible URL after moving them into in-memory state
@@ -330,6 +331,16 @@ Tie-break order is deterministic:
   - collect-preview/collect remain self-service-only
   - no source-file semantics are introduced
 - Mini reserve may advertise the collect next step, but mini auth still cannot collect directly.
+
+### Workspace-board invite handoff reserve
+- `workspace_board` share pages remain read-only and still cannot claim membership directly.
+- Public share bootstrap may now include an informational `workspace_invite_handoff_reserve` block:
+  - separate invite token required
+  - invite bootstrap available
+  - self-service claim supported in a separate flow
+  - direct claim via share page remains false
+  - source files remain excluded
+- An optional invite shell entry URL hint may be configured, but it never carries a token.
 
 ### Invite and join reserve boundary
 - Workspace invites are distinct from result shares:

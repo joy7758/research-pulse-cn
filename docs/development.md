@@ -82,6 +82,10 @@ The shell lives under `apps/result-share-web` and uses only:
 - `GET /subscription-self-service/workspace-result-collections`
 
 The shell is public/token-based for share rendering and self-service-token-assisted for collect-preview/collect. It keeps both tokens in memory only and does not introduce login, editing, or source-file sharing.
+`workspace_board` share pages now also render a manual invite/join handoff summary:
+- the page stays read-only
+- joining still requires a separate invite token
+- claim still stays in the separate invite/self-service flow
 
 ## Group workspace admin web shell
 - Install workspace-admin dependencies:
@@ -200,6 +204,10 @@ Result collect now also stays inside that same structured-only boundary:
 - collection adds `PaperProfile` objects to eligible workspaces only
 - `workspace_board` remains non-collectable in v1
 - source files, PDFs, local attachments, and local notes are still excluded
+`workspace_board` shares now also carry a read-only `workspace_invite_handoff_reserve` summary:
+- it is informational only
+- it may include an invite shell entry URL hint
+- it does not make the share page claim-capable
 The browser shell for that boundary now uses:
 - `/share/<token>` path parsing when practical
 - `?share_token=` and `#share_token=` local-dev fallbacks

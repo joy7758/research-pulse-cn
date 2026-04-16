@@ -47,6 +47,22 @@ function bootstrapFixture(
           ? ["Workspace-board shares are not collectable in this phase."]
           : ["Structured paper collection is available through a separate self-service grant."],
     },
+    workspace_invite_handoff_reserve:
+      kind === "workspace_board"
+        ? {
+            supported: true,
+            share_kind: "workspace_board",
+            separate_invite_token_required: true,
+            invite_bootstrap_available: true,
+            self_service_claim_supported: true,
+            direct_claim_via_share_page: false,
+            source_files_included: false,
+            invite_shell_entry_url: "http://127.0.0.1:5177",
+            notes: [
+              "Joining requires a separate invite token and the existing self-service claim flow.",
+            ],
+          }
+        : null,
     notes: ["Structured read-only share."],
   };
 }
@@ -572,12 +588,35 @@ describe("result share shell", () => {
     );
 
     expect(await screen.findByText("Workspace description")).toBeVisible();
+    expect(screen.getByText("Invite and join stay in a separate flow")).toBeVisible();
+    expect(screen.getByText(/separate invite token required/i)).toBeVisible();
+    expect(screen.getByText("http://127.0.0.1:5177")).toBeVisible();
 
     await user.type(screen.getByLabelText(/self-service token/i), "self-service-token");
     await user.click(screen.getByRole("button", { name: /connect self-service token/i }));
 
     expect(await screen.findByText("Not collectable in v1")).toBeVisible();
     expect(screen.getByText(/share kind not collectable/i)).toBeVisible();
+  });
+
+  it("keeps workspace_board rendering stable when the handoff reserve is omitted", async () => {
+    const apiClientFactory = createApiClientFactory({
+      getShareBootstrap: vi.fn().mockResolvedValue({
+        ...bootstrapFixture("workspace_board"),
+        workspace_invite_handoff_reserve: null,
+      }),
+      getShareContent: vi.fn().mockResolvedValue(workspaceFixture()),
+    });
+
+    render(
+      <ResultShareShell
+        apiClientFactory={apiClientFactory}
+        locationLike={{ pathname: "/share/workspace-no-handoff", search: "", hash: "" }}
+      />,
+    );
+
+    expect(await screen.findByText("Workspace description")).toBeVisible();
+    expect(screen.queryByText("Invite and join stay in a separate flow")).not.toBeInTheDocument();
   });
 
   it("shows a clear invalid token state when the share token is revoked or invalid", async () => {

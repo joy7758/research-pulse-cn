@@ -60,6 +60,9 @@
   - public invite bootstrap stays token-based and read-only
   - self-service token stays separate and is only used for claim preview, claim, and membership reads
   - invite and self-service tokens stay in memory only in the browser shell
+- `workspace_board` share pages may now also surface a manual handoff summary:
+  - they can point users toward the separate invite flow
+  - they still cannot claim membership directly
 - Result collect remains a separate self-service reserve:
   - invites expand membership
   - collect expands workspace paper membership

@@ -39,10 +39,23 @@ export type ShareGrantCollectionReserveRead = {
   notes: string[];
 };
 
+export type WorkspaceInviteHandoffReserveRead = {
+  supported: boolean;
+  share_kind: "workspace_board";
+  separate_invite_token_required: boolean;
+  invite_bootstrap_available: boolean;
+  self_service_claim_supported: boolean;
+  direct_claim_via_share_page: boolean;
+  source_files_included: boolean;
+  invite_shell_entry_url: string | null;
+  notes: string[];
+};
+
 export type ShareGrantBootstrapRead = {
   grant: ShareGrantPublicSummaryRead;
   target: ShareGrantTargetSummaryRead;
   collection_reserve: ShareGrantCollectionReserveRead | null;
+  workspace_invite_handoff_reserve: WorkspaceInviteHandoffReserveRead | null;
   notes: string[];
 };
 
@@ -288,6 +301,18 @@ export type ShareGrantViewModel = {
   targetTitle: string | null;
   notes: string[];
   collectionReserve: ShareGrantCollectionReserveRead | null;
+  workspaceInviteHandoffReserve: WorkspaceInviteHandoffReserveRead | null;
+};
+
+export type WorkspaceInviteHandoffViewModel = {
+  supported: boolean;
+  separateInviteTokenRequired: boolean;
+  inviteBootstrapAvailable: boolean;
+  selfServiceClaimSupported: boolean;
+  directClaimViaSharePage: boolean;
+  sourceFilesIncluded: boolean;
+  inviteShellEntryUrl: string | null;
+  notes: string[];
 };
 
 export type DigestShareViewModel = ShareGrantViewModel & {
@@ -327,6 +352,7 @@ export type WorkspaceBoardViewModel = ShareGrantViewModel & {
   quickStats: GroupWorkspaceBoardQuickStatsRead;
   members: GroupWorkspaceMemberSummaryRead[];
   papers: WorkspacePaperSnapshotRead[];
+  workspaceInviteHandoff: WorkspaceInviteHandoffViewModel | null;
 };
 
 export type ResultShareViewModel =

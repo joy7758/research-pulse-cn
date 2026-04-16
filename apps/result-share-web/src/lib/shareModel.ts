@@ -64,6 +64,7 @@ function buildGrantSummary(
   targetTitle: string | null;
   notes: string[];
   collectionReserve: ShareGrantBootstrapRead["collection_reserve"];
+  workspaceInviteHandoffReserve: ShareGrantBootstrapRead["workspace_invite_handoff_reserve"];
 } {
   return {
     shareKind: bootstrap.grant.share_kind,
@@ -74,6 +75,7 @@ function buildGrantSummary(
     targetTitle: bootstrap.target.title,
     notes: bootstrap.notes,
     collectionReserve: bootstrap.collection_reserve,
+    workspaceInviteHandoffReserve: bootstrap.workspace_invite_handoff_reserve,
   };
 }
 
@@ -194,8 +196,9 @@ export function buildWorkspaceBoardViewModel(
   bootstrap: ShareGrantBootstrapRead,
   content: SharedWorkspaceBoardRead,
 ): WorkspaceBoardViewModel {
+  const grantSummary = buildGrantSummary(bootstrap);
   return {
-    ...buildGrantSummary(bootstrap),
+    ...grantSummary,
     shareKind: "workspace_board",
     pageTitle: content.workspace.name,
     description: content.workspace.description,
@@ -205,6 +208,24 @@ export function buildWorkspaceBoardViewModel(
     quickStats: content.quick_stats,
     members: content.members,
     papers: content.papers,
+    workspaceInviteHandoff: grantSummary.workspaceInviteHandoffReserve
+      ? {
+          supported: grantSummary.workspaceInviteHandoffReserve.supported,
+          separateInviteTokenRequired:
+            grantSummary.workspaceInviteHandoffReserve.separate_invite_token_required,
+          inviteBootstrapAvailable:
+            grantSummary.workspaceInviteHandoffReserve.invite_bootstrap_available,
+          selfServiceClaimSupported:
+            grantSummary.workspaceInviteHandoffReserve.self_service_claim_supported,
+          directClaimViaSharePage:
+            grantSummary.workspaceInviteHandoffReserve.direct_claim_via_share_page,
+          sourceFilesIncluded:
+            grantSummary.workspaceInviteHandoffReserve.source_files_included,
+          inviteShellEntryUrl:
+            grantSummary.workspaceInviteHandoffReserve.invite_shell_entry_url,
+          notes: grantSummary.workspaceInviteHandoffReserve.notes,
+        }
+      : null,
   };
 }
 

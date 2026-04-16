@@ -285,6 +285,10 @@ class Settings(BaseSettings):
         ),
         validation_alias="APP_GROUP_WORKSPACE_INVITE_WEB_ALLOWED_ORIGINS",
     )
+    group_workspace_invite_web_entry_base_url: str | None = Field(
+        default=None,
+        validation_alias="APP_GROUP_WORKSPACE_INVITE_WEB_ENTRY_BASE_URL",
+    )
     group_workspace_invites_enabled: bool = Field(
         default=False,
         validation_alias="APP_GROUP_WORKSPACE_INVITES_ENABLED",
@@ -613,6 +617,15 @@ class Settings(BaseSettings):
             seen.add(cleaned)
             values.append(cleaned)
         return values
+
+    @property
+    def group_workspace_invite_web_entry_url(self) -> str | None:
+        """Return the optional invite shell entry URL without a trailing slash."""
+        raw_value = self.group_workspace_invite_web_entry_base_url
+        if raw_value is None:
+            return None
+        cleaned = str(raw_value).strip().rstrip("/")
+        return cleaned or None
 
     @property
     def group_workspace_result_collect_allowed_share_kind_list(self) -> list[ResultShareKind]:

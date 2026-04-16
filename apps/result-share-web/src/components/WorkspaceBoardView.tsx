@@ -51,6 +51,68 @@ export function WorkspaceBoardView({ viewModel }: WorkspaceBoardViewProps) {
         </article>
       </section>
 
+      {viewModel.workspaceInviteHandoff ? (
+        <section className="panel-card">
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">Workspace access handoff</p>
+              <h3>Invite and join stay in a separate flow</h3>
+            </div>
+            <span className="pill">
+              {viewModel.workspaceInviteHandoff.directClaimViaSharePage
+                ? "Direct join available"
+                : "Read-only handoff"}
+            </span>
+          </div>
+          <dl className="summary-list compact">
+            <div>
+              <dt>Separate invite token required</dt>
+              <dd>
+                {viewModel.workspaceInviteHandoff.separateInviteTokenRequired ? "Yes" : "No"}
+              </dd>
+            </div>
+            <div>
+              <dt>Self-service claim supported</dt>
+              <dd>
+                {viewModel.workspaceInviteHandoff.selfServiceClaimSupported ? "Yes" : "No"}
+              </dd>
+            </div>
+            <div>
+              <dt>Direct claim via share page</dt>
+              <dd>
+                {viewModel.workspaceInviteHandoff.directClaimViaSharePage ? "Yes" : "No"}
+              </dd>
+            </div>
+            <div>
+              <dt>Source files included</dt>
+              <dd>{viewModel.workspaceInviteHandoff.sourceFilesIncluded ? "Yes" : "No"}</dd>
+            </div>
+          </dl>
+          <ul className="bullet-list">
+            <li>This workspace-board share is read-only and cannot join membership directly.</li>
+            {viewModel.workspaceInviteHandoff.notes.map((note, index) => (
+              <li key={`${index}:${note}`}>{note}</li>
+            ))}
+          </ul>
+          {viewModel.workspaceInviteHandoff.inviteShellEntryUrl ? (
+            <p className="soft-copy">
+              Invite shell entry:{" "}
+              <a
+                href={viewModel.workspaceInviteHandoff.inviteShellEntryUrl}
+                rel="noreferrer"
+                target="_blank"
+              >
+                {viewModel.workspaceInviteHandoff.inviteShellEntryUrl}
+              </a>
+            </p>
+          ) : (
+            <p className="soft-copy">
+              Ask a workspace owner or operator for a separate invite token to continue.
+            </p>
+          )}
+        </section>
+      ) : null}
+
       <section className="panel-card">
         <div className="section-heading">
           <div>

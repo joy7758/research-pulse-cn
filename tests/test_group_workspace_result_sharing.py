@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from datetime import timedelta
 
+from research_pulse_cn.core.config import get_settings
 from research_pulse_cn.db.models import utcnow
 from research_pulse_cn.domain.enums import (
     GroupWorkspaceMemberRole,
@@ -254,6 +255,9 @@ def test_result_share_grants_resolve_digest_paper_and_workspace_safely(
     client,
     operator_headers,
 ) -> None:
+    settings = get_settings()
+    original_invite_entry_url = settings.group_workspace_invite_web_entry_base_url
+    settings.group_workspace_invite_web_entry_base_url = "http://127.0.0.1:5177/"
     owner = create_user(
         client,
         operator_headers,
@@ -311,37 +315,72 @@ def test_result_share_grants_resolve_digest_paper_and_workspace_safely(
     assert listed.status_code == 200
     assert len(listed.json()) == 3
 
-    paper_bootstrap = client.get(f"/result-shares/{paper_share['plain_text_token']}/bootstrap")
-    paper_content = client.get(f"/result-shares/{paper_share['plain_text_token']}/content")
-    digest_content = client.get(f"/result-shares/{digest_share['plain_text_token']}/content")
-    workspace_content = client.get(f"/result-shares/{workspace_share['plain_text_token']}/content")
+    try:
+        paper_bootstrap = client.get(f"/result-shares/{paper_share['plain_text_token']}/bootstrap")
+        paper_content = client.get(f"/result-shares/{paper_share['plain_text_token']}/content")
+        digest_bootstrap = client.get(
+            f"/result-shares/{digest_share['plain_text_token']}/bootstrap"
+        )
+        digest_content = client.get(f"/result-shares/{digest_share['plain_text_token']}/content")
+        workspace_bootstrap = client.get(
+            f"/result-shares/{workspace_share['plain_text_token']}/bootstrap"
+        )
+        workspace_content = client.get(
+            f"/result-shares/{workspace_share['plain_text_token']}/content"
+        )
 
-    assert paper_bootstrap.status_code == 200
-    assert paper_bootstrap.json()["grant"]["share_kind"] == ResultShareKind.PAPER_SNAPSHOT.value
-    assert paper_content.status_code == 200
-    assert paper_content.json()["share_kind"] == ResultShareKind.PAPER_SNAPSHOT.value
-    assert paper_content.json()["owner_email"] is None
+        assert paper_bootstrap.status_code == 200
+        assert paper_bootstrap.json()["grant"]["share_kind"] == ResultShareKind.PAPER_SNAPSHOT.value
+        assert paper_bootstrap.json()["workspace_invite_handoff_reserve"] is None
+        assert paper_content.status_code == 200
+        assert paper_content.json()["share_kind"] == ResultShareKind.PAPER_SNAPSHOT.value
+        assert paper_content.json()["owner_email"] is None
 
-    assert digest_content.status_code == 200
-    digest_payload = digest_content.json()
-    assert digest_payload["share_kind"] == ResultShareKind.DIGEST_ISSUE.value
-    assert digest_payload["fallback_mode"] in {"structured", "highlights_only"}
+        assert digest_bootstrap.status_code == 200
+        assert digest_bootstrap.json()["workspace_invite_handoff_reserve"] is None
+        assert digest_content.status_code == 200
+        digest_payload = digest_content.json()
+        assert digest_payload["share_kind"] == ResultShareKind.DIGEST_ISSUE.value
+        assert digest_payload["fallback_mode"] in {"structured", "highlights_only"}
 
-    assert workspace_content.status_code == 200
-    workspace_payload = workspace_content.json()
-    assert workspace_payload["share_kind"] == ResultShareKind.WORKSPACE_BOARD.value
-    assert workspace_payload["members"][0]["email"] is None
-    assert workspace_payload["papers"][0]["owner_email"] is None
+        assert workspace_bootstrap.status_code == 200
+        handoff_payload = workspace_bootstrap.json()["workspace_invite_handoff_reserve"]
+        assert handoff_payload == {
+            "supported": True,
+            "share_kind": ResultShareKind.WORKSPACE_BOARD.value,
+            "separate_invite_token_required": True,
+            "invite_bootstrap_available": True,
+            "self_service_claim_supported": True,
+            "direct_claim_via_share_page": False,
+            "source_files_included": False,
+            "invite_shell_entry_url": "http://127.0.0.1:5177",
+            "notes": [
+                "This workspace-board share is read-only and cannot claim membership directly.",
+                (
+                    "Joining requires a separate invite token and the existing "
+                    "self-service claim flow."
+                ),
+                "Source files and local attachments are not included.",
+            ],
+        }
 
-    for payload in (
-        paper_content.json(),
-        digest_payload,
-        workspace_payload,
-    ):
-        serialized = json.dumps(payload)
-        assert "/Users/zhangbin/GitHub/research-pulse-cn/share-source.pdf" not in serialized
-        assert "openid" not in serialized
-        assert "unionid" not in serialized
+        assert workspace_content.status_code == 200
+        workspace_payload = workspace_content.json()
+        assert workspace_payload["share_kind"] == ResultShareKind.WORKSPACE_BOARD.value
+        assert workspace_payload["members"][0]["email"] is None
+        assert workspace_payload["papers"][0]["owner_email"] is None
+
+        for payload in (
+            paper_content.json(),
+            digest_payload,
+            workspace_payload,
+        ):
+            serialized = json.dumps(payload)
+            assert "/Users/zhangbin/GitHub/research-pulse-cn/share-source.pdf" not in serialized
+            assert "openid" not in serialized
+            assert "unionid" not in serialized
+    finally:
+        settings.group_workspace_invite_web_entry_base_url = original_invite_entry_url
 
 
 def test_revoked_and_expired_result_share_grants_are_rejected(

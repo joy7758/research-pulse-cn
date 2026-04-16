@@ -51,6 +51,15 @@
   - remains non-collectable in v1
 - The shell keeps the current share view intact while collect actions run in parallel panels.
 
+## Workspace-Board Invite Handoff Summary
+- `workspace_board` share pages now also surface a manual invite/join handoff summary.
+- That summary is informational only:
+  - the page remains read-only
+  - joining requires a separate invite token
+  - self-service claim stays in the separate invite flow
+  - source files remain excluded
+- When configured, the shell may show an invite entry URL hint that points only to the invite shell entry page and never carries a token.
+
 ## Structured Digest Rendering Vs Fallback Behavior
 - `digest_issue` share pages prefer:
   - `section_order`

@@ -86,3 +86,4 @@
 - richer workspace curation and review flows
 
 The existing public share shell under `apps/result-share-web` is now the minimal browser consumer of this reserve: it keeps public share reads read-only, adds self-service-token-assisted collect-preview and collect panels, and still excludes source files and local attachments.
+The same shell may now also show a separate invite/join handoff summary on `workspace_board` shares, but that summary remains informational only and does not make workspace-board pages collectable or claim-capable.
