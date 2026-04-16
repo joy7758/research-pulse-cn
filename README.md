@@ -23,6 +23,7 @@ Private repository. Proprietary and confidential.
 - Mini editor handoff reserve that adds a short-lived `SubscriptionEditorHandoffGrant` bridge from mini read-only reserve to `/subscription-editor/*` without making mini grants directly writable
 - A thin React/Vite subscription editor web shell under `apps/subscription-editor-web` for manually exercising handoff-grant-protected `/subscription-editor/*` flows in a browser or future WebView shell
 - Admin-managed group workspaces with structured workspace boards plus opaque read-only result share grants for `digest_issue`, `paper_snapshot`, and `workspace_board` without exposing source files, local attachment paths, or local note contents
+- A thin public React/Vite result-share shell under `apps/result-share-web` for opening `ResultShareGrant` links in a browser without introducing source-file sharing, browser token persistence, or a generic login system
 - Official-account binding handshake reserve sessions that connect callback evidence, existing bindings, and self-service grants, plus real official-account webpage OAuth completion for code/state exchange and safe binding create/reuse without introducing a generic app login system
 - Mini read-only reserve endpoints that now consume structured digests, expose a safe subscription reserve summary, and keep mini grant auth separate from self-service grant auth
 - Tauri 2 desktop shell with Rust-side pull sync, local SQLite cache, mutation outbox, minimal writeback for paper/progress/subscription policy edits, a local paper workspace layer, local markdown notes/templates, and a local review-matrix workflow that generates reviewer-matrix / response-letter drafts
@@ -173,6 +174,21 @@ This shell:
   - `POST /subscription-editor/settings/preview`
   - `PATCH /subscription-editor/settings`
 - does not create a new auth system or generic app login surface
+
+## Result share web shell
+The repository now also includes a thin public browser shell under `apps/result-share-web` using:
+- React
+- TypeScript
+- Vite
+
+This shell:
+- accepts a share token from `/share/<token>`, query/fragment fallback, or manual paste
+- keeps query/fragment tokens in memory only after clearing them from the visible URL
+- calls only:
+  - `GET /result-shares/{share_token}/bootstrap`
+  - `GET /result-shares/{share_token}/content`
+- renders only read-only `digest_issue`, `paper_snapshot`, and `workspace_board` views
+- does not add login, editing, or source-file sharing
 
 Official-account binding reserve now also adds:
 - admin-created handshake sessions with one-time state tokens

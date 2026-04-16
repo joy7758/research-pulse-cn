@@ -131,6 +131,7 @@
   - `POST /admin/result-share-grants/{grant_id}/revoke`
 - In this phase, workspace and share management are restricted to `operator` and `super_admin`.
 - Share links are sensitive because the token is embedded in the path; treat them as bearer secrets.
+- A thin browser shell under `apps/result-share-web` now consumes those public endpoints directly for demo and forwarding use cases while staying strictly read-only.
 
 ## Current Non-Goals
 - source-file or PDF sharing

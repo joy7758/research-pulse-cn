@@ -255,6 +255,13 @@ class Settings(BaseSettings):
         ),
         validation_alias="APP_SUBSCRIPTION_EDITOR_WEB_ALLOWED_ORIGINS",
     )
+    result_share_web_allowed_origins: str = Field(
+        default=(
+            "http://127.0.0.1:5174,http://localhost:5174,"
+            "http://127.0.0.1:4174,http://localhost:4174"
+        ),
+        validation_alias="APP_RESULT_SHARE_WEB_ALLOWED_ORIGINS",
+    )
     subscription_editor_handoff_enabled: bool = Field(
         default=False,
         validation_alias="APP_SUBSCRIPTION_EDITOR_HANDOFF_ENABLED",
@@ -490,6 +497,35 @@ class Settings(BaseSettings):
                 continue
             seen.add(cleaned)
             values.append(cleaned)
+        return values
+
+    @property
+    def result_share_web_allowed_origin_list(self) -> list[str]:
+        """Return allowed browser origins for the result share shell."""
+        values: list[str] = []
+        seen: set[str] = set()
+        raw_values = str(self.result_share_web_allowed_origins).replace(";", ",").split(",")
+        for raw_value in raw_values:
+            cleaned = raw_value.strip().rstrip("/")
+            if not cleaned or cleaned in seen:
+                continue
+            seen.add(cleaned)
+            values.append(cleaned)
+        return values
+
+    @property
+    def browser_allowed_origin_list(self) -> list[str]:
+        """Return combined loopback origins for thin browser shells."""
+        values: list[str] = []
+        seen: set[str] = set()
+        for origin in (
+            *self.subscription_editor_web_allowed_origin_list,
+            *self.result_share_web_allowed_origin_list,
+        ):
+            if origin in seen:
+                continue
+            seen.add(origin)
+            values.append(origin)
         return values
 
 
