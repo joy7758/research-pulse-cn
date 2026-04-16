@@ -27,6 +27,7 @@ Private repository. Proprietary and confidential.
 - A thin internal React/Vite admin shell under `apps/group-workspace-admin-web` for operator-managed workspace list/detail, member/paper add-remove flows, and `workspace_board` share-grant issuance without introducing end-user login or source-file sharing
 - A thin internal React/Vite admin shell under `apps/user-workbench-admin-web` for read-only search and drilldown across users, papers, and research watch profiles without introducing end-user login, file sharing, or business write flows
 - A backend-only workspace invite/join reserve that adds opaque invite grants, public invite bootstrap, self-service claim-preview/claim routes, and safe membership summaries without introducing source-file sharing or a generic login system
+- A thin public React/Vite invite shell under `apps/group-workspace-invite-web` for safe workspace-invite bootstrap, self-service claim preview/claim, and membership confirmation without introducing end-user login, browser token persistence, or source-file sharing
 - Official-account binding handshake reserve sessions that connect callback evidence, existing bindings, and self-service grants, plus real official-account webpage OAuth completion for code/state exchange and safe binding create/reuse without introducing a generic app login system
 - Mini read-only reserve endpoints that now consume structured digests, expose a safe subscription reserve summary, and keep mini grant auth separate from self-service grant auth
 - Tauri 2 desktop shell with Rust-side pull sync, local SQLite cache, mutation outbox, minimal writeback for paper/progress/subscription policy edits, a local paper workspace layer, local markdown notes/templates, and a local review-matrix workflow that generates reviewer-matrix / response-letter drafts
@@ -97,10 +98,15 @@ The code keeps pulse generation behind stable interfaces such as `FactCollector`
    `make user-workbench-install`
 20. Run the internal user workbench shell:
    `make user-workbench-dev`
+21. Install the workspace invite shell if you want to test public invite bootstrap plus self-service claim flows:
+   `make workspace-invite-install`
+22. Run the workspace invite shell:
+   `make workspace-invite-dev`
 
 Group workspace/result sharing in this phase now has two thin browser shells:
 - internal admin/operator management in `apps/group-workspace-admin-web`
 - public read-only share rendering in `apps/result-share-web`
+- public invite bootstrap plus self-service claim rendering in `apps/group-workspace-invite-web`
 - PDFs, source files, local attachments, and local note contents are still excluded
 - workspace invite/join now also has a backend reserve:
   - `GET /workspace-invites/{invite_token}/bootstrap`
@@ -236,6 +242,23 @@ This shell:
   - `workspace_board` share-grant create/revoke flows
 - reuses existing `GET /users` and `GET /papers` reads as internal lookup sources
 - does not add end-user login, public editing, or source-file sharing
+
+## Group workspace invite web shell
+The repository now also includes a thin public browser shell under `apps/group-workspace-invite-web` using:
+- React
+- TypeScript
+- Vite
+
+This shell:
+- accepts an invite token from `/invite/<token>`, query/fragment fallback, or manual paste
+- accepts an optional self-service token from manual paste or local-dev query/fragment fallback
+- keeps both tokens in memory only after clearing visible URL hints
+- calls only:
+  - `GET /workspace-invites/{invite_token}/bootstrap`
+  - `GET /subscription-self-service/workspace-invites/{invite_token}/claim-preview`
+  - `POST /subscription-self-service/workspace-invites/{invite_token}/claim`
+  - `GET /subscription-self-service/workspace-memberships`
+- does not add a generic login system, source-file sharing, or browser token persistence
 
 ## User workbench admin web shell
 The repository now also includes a thin internal browser shell under `apps/user-workbench-admin-web` using:

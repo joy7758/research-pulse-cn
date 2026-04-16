@@ -35,3 +35,21 @@ def test_settings_parse_enabled_external_retrieval_sources(monkeypatch) -> None:
         "crossref",
         "arxiv",
     ]
+
+
+def test_settings_include_group_workspace_invite_web_origins(monkeypatch) -> None:
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("APP_DATABASE_URL", "sqlite+pysqlite:///tmp/research-pulse-cn-test.db")
+    monkeypatch.setenv(
+        "APP_GROUP_WORKSPACE_INVITE_WEB_ALLOWED_ORIGINS",
+        "http://127.0.0.1:5177,http://localhost:5177/",
+    )
+    get_settings.cache_clear()
+
+    settings = get_settings()
+
+    assert settings.group_workspace_invite_web_allowed_origin_list == [
+        "http://127.0.0.1:5177",
+        "http://localhost:5177",
+    ]
+    assert "http://127.0.0.1:5177" in settings.browser_allowed_origin_list

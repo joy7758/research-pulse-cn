@@ -137,6 +137,7 @@
   - member add/remove
   - paper add/remove
   - `workspace_board` share grant create/revoke
+- A separate public/browser self-service shell under `apps/group-workspace-invite-web` now consumes invite bootstrap plus membership-claim routes without turning result sharing into a login or file-sharing surface.
 - Invite and join now remain a separate reserve boundary:
   - public invite bootstrap is read-only
   - membership claim stays behind `/subscription-self-service/*`

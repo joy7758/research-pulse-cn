@@ -56,6 +56,10 @@
   - `GET /subscription-self-service/workspace-invites/{invite_token}/claim-preview`
   - `POST /subscription-self-service/workspace-invites/{invite_token}/claim`
   - `GET /subscription-self-service/workspace-memberships`
+- A thin browser shell under `apps/group-workspace-invite-web` now consumes those same routes directly:
+  - public invite bootstrap stays token-based and read-only
+  - self-service token stays separate and is only used for claim preview, claim, and membership reads
+  - invite and self-service tokens stay in memory only in the browser shell
 - Mini read grants remain informational only:
   - mini can surface reserve hints
   - mini cannot claim membership directly in this phase
@@ -115,7 +119,7 @@
 - marketing/referral behavior
 
 ## Future Work
-- invite/join public UI
+- richer invite/join public UI polish
 - mini self-service join handoff
 - multi-use invite administration UX
 - later user-managed workspace invites if justified
