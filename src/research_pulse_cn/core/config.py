@@ -309,6 +309,30 @@ class Settings(BaseSettings):
         default=False,
         validation_alias="APP_RESULT_SHARE_REDIRECT_ENABLED",
     )
+    result_share_analytics_enabled: bool = Field(
+        default=False,
+        validation_alias="APP_RESULT_SHARE_ANALYTICS_ENABLED",
+    )
+    result_share_analytics_capture_referrer_host: bool = Field(
+        default=False,
+        validation_alias="APP_RESULT_SHARE_ANALYTICS_CAPTURE_REFERRER_HOST",
+    )
+    result_share_analytics_capture_user_agent_family: bool = Field(
+        default=False,
+        validation_alias="APP_RESULT_SHARE_ANALYTICS_CAPTURE_USER_AGENT_FAMILY",
+    )
+    result_share_analytics_enable_fingerprint: bool = Field(
+        default=False,
+        validation_alias="APP_RESULT_SHARE_ANALYTICS_ENABLE_FINGERPRINT",
+    )
+    result_share_analytics_fingerprint_salt: str | None = Field(
+        default=None,
+        validation_alias="APP_RESULT_SHARE_ANALYTICS_FINGERPRINT_SALT",
+    )
+    result_share_analytics_default_lookback_days: int = Field(
+        default=30,
+        validation_alias="APP_RESULT_SHARE_ANALYTICS_DEFAULT_LOOKBACK_DAYS",
+    )
     group_workspace_invites_enabled: bool = Field(
         default=False,
         validation_alias="APP_GROUP_WORKSPACE_INVITES_ENABLED",

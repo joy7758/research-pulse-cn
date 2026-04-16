@@ -86,6 +86,11 @@ The shell lives under `apps/result-share-web` and uses only:
 - `GET /subscription-self-service/workspace-result-collections`
 
 The shell is public/token-based for share rendering and self-service-token-assisted for collect-preview/collect. It keeps both tokens in memory only and does not introduce login, editing, or source-file sharing.
+Backend-only analytics reserve may now also observe those public share routes for:
+- `bootstrap_view`
+- `content_view`
+- `redirect`
+No browser tracker or third-party analytics script is added in this phase.
 `workspace_board` share pages now also render a manual invite/join handoff summary:
 - the page stays read-only
 - joining still requires a separate invite token
@@ -244,6 +249,9 @@ The browser shell for that boundary now uses:
 - `?share_alias=` and `#share_alias=` local-dev fallbacks
 - optional `?self_service_token=` and `#self_service_token=` local-dev fallbacks
 - in-memory token handling only
+- backend-only analytics reserve admin reads through:
+  - `GET /admin/result-share-analytics/summary`
+  - `GET /admin/result-share-analytics/events`
 
 Desktop sync in this phase uses:
 - `GET /sync/me`

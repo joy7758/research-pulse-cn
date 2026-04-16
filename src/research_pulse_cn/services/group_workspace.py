@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import secrets
 import string
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from urllib.parse import urlparse
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -28,6 +30,7 @@ from research_pulse_cn.db.models import (
     PulseDigestIssue,
     ResultShareAlias,
     ResultShareGrant,
+    ResultShareViewEvent,
     utcnow,
 )
 from research_pulse_cn.domain.enums import (
@@ -41,6 +44,9 @@ from research_pulse_cn.domain.enums import (
     ResultShareAliasStatus,
     ResultShareGrantStatus,
     ResultShareKind,
+    ResultShareViewAccessMode,
+    ResultShareViewEventType,
+    ResultShareViewOutcome,
 )
 from research_pulse_cn.domain.group_workspace import (
     GroupWorkspaceInviteGrantContext,
@@ -95,6 +101,7 @@ RESULT_COLLECTABLE_SHARE_KINDS = frozenset(
 )
 
 RESULT_SHARE_ALIAS_ALPHABET = string.ascii_letters + string.digits
+logger = logging.getLogger(__name__)
 
 
 class GroupWorkspaceService:
@@ -679,6 +686,110 @@ class GroupWorkspaceService:
             "updated_at": alias.updated_at,
         }
 
+    def list_result_share_view_events(
+        self,
+        *,
+        result_share_grant_id: UUID | None = None,
+        result_share_alias_id: UUID | None = None,
+        share_kind: ResultShareKind | None = None,
+        access_mode: ResultShareViewAccessMode | None = None,
+        event_type: ResultShareViewEventType | None = None,
+        outcome: ResultShareViewOutcome | None = None,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
+    ) -> list[ResultShareViewEvent]:
+        normalized_from, normalized_to = self._normalize_result_share_analytics_window(
+            date_from=date_from,
+            date_to=date_to,
+        )
+        return self.repository.list_result_share_view_events(
+            result_share_grant_id=result_share_grant_id,
+            result_share_alias_id=result_share_alias_id,
+            share_kind=share_kind,
+            access_mode=access_mode,
+            event_type=event_type,
+            outcome=outcome,
+            date_from=normalized_from,
+            date_to=normalized_to,
+        )
+
+    def summarize_result_share_view_events(
+        self,
+        *,
+        result_share_grant_id: UUID | None = None,
+        result_share_alias_id: UUID | None = None,
+        share_kind: ResultShareKind | None = None,
+        access_mode: ResultShareViewAccessMode | None = None,
+        event_type: ResultShareViewEventType | None = None,
+        outcome: ResultShareViewOutcome | None = None,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
+    ) -> dict[str, Any]:
+        events = self.list_result_share_view_events(
+            result_share_grant_id=result_share_grant_id,
+            result_share_alias_id=result_share_alias_id,
+            share_kind=share_kind,
+            access_mode=access_mode,
+            event_type=event_type,
+            outcome=outcome,
+            date_from=date_from,
+            date_to=date_to,
+        )
+        by_share_kind: dict[str, int] = {}
+        by_access_mode: dict[str, int] = {}
+        distinct_fingerprints: set[str] = set()
+        last_event_at: datetime | None = None
+        for event in events:
+            by_share_kind[event.share_kind.value] = by_share_kind.get(event.share_kind.value, 0) + 1
+            by_access_mode[event.access_mode.value] = (
+                by_access_mode.get(event.access_mode.value, 0) + 1
+            )
+            if event.request_fingerprint_hash:
+                distinct_fingerprints.add(event.request_fingerprint_hash)
+            if last_event_at is None or event.occurred_at > last_event_at:
+                last_event_at = event.occurred_at
+        return {
+            "total_events": len(events),
+            "resolved_events": sum(
+                1 for event in events if event.outcome == ResultShareViewOutcome.RESOLVED
+            ),
+            "rejected_events": sum(
+                1 for event in events if event.outcome == ResultShareViewOutcome.REJECTED
+            ),
+            "bootstrap_view_count": sum(
+                1 for event in events if event.event_type == ResultShareViewEventType.BOOTSTRAP_VIEW
+            ),
+            "content_view_count": sum(
+                1 for event in events if event.event_type == ResultShareViewEventType.CONTENT_VIEW
+            ),
+            "redirect_count": sum(
+                1 for event in events if event.event_type == ResultShareViewEventType.REDIRECT
+            ),
+            "distinct_fingerprint_count": (
+                len(distinct_fingerprints)
+                if self.settings.result_share_analytics_enable_fingerprint
+                else None
+            ),
+            "by_share_kind": by_share_kind,
+            "by_access_mode": by_access_mode,
+            "last_event_at": last_event_at,
+        }
+
+    def serialize_result_share_view_event(self, event: ResultShareViewEvent) -> dict[str, Any]:
+        return {
+            "id": event.id,
+            "result_share_grant_id": event.result_share_grant_id,
+            "result_share_alias_id": event.result_share_alias_id,
+            "share_kind": event.share_kind,
+            "access_mode": event.access_mode,
+            "event_type": event.event_type,
+            "outcome": event.outcome,
+            "referrer_host": event.referrer_host,
+            "user_agent_family": event.user_agent_family,
+            "occurred_at": event.occurred_at,
+            "created_at": event.created_at,
+        }
+
     def serialize_result_collect_record(
         self,
         record: GroupWorkspaceResultCollectRecord,
@@ -899,6 +1010,56 @@ class GroupWorkspaceService:
             last_used_at=alias.last_used_at,
         )
 
+    def safe_record_result_share_view_event(
+        self,
+        *,
+        access_mode: ResultShareViewAccessMode,
+        event_type: ResultShareViewEventType,
+        outcome: ResultShareViewOutcome,
+        referrer: str | None = None,
+        user_agent: str | None = None,
+        client_host: str | None = None,
+        accept_language: str | None = None,
+        grant_context: ResultShareGrantContext | None = None,
+        alias_context: ResultShareAliasContext | None = None,
+        raw_share_token: str | None = None,
+        raw_alias: str | None = None,
+    ) -> None:
+        if not self.settings.result_share_analytics_enabled:
+            return
+        try:
+            self._record_result_share_view_event(
+                access_mode=access_mode,
+                event_type=event_type,
+                outcome=outcome,
+                referrer=referrer,
+                user_agent=user_agent,
+                client_host=client_host,
+                accept_language=accept_language,
+                grant_context=grant_context,
+                alias_context=alias_context,
+                raw_share_token=raw_share_token,
+                raw_alias=raw_alias,
+            )
+        except Exception:
+            self.session.rollback()
+            logger.warning(
+                "result share analytics event recording failed",
+                exc_info=True,
+                extra={
+                    "share_kind": None if grant_context is None else grant_context.share_kind.value,
+                    "access_mode": access_mode.value,
+                    "event_type": event_type.value,
+                    "outcome": outcome.value,
+                    "result_share_grant_id": (
+                        None if grant_context is None else str(grant_context.grant_id)
+                    ),
+                    "result_share_alias_id": (
+                        None if alias_context is None else str(alias_context.alias_id)
+                    ),
+                },
+            )
+
     def build_share_alias_redirect_url(self, raw_alias: str) -> str:
         if not self.settings.result_share_redirect_enabled:
             raise ValidationFailedError("result share alias redirect is disabled")
@@ -908,6 +1069,175 @@ class GroupWorkspaceService:
         self.authenticate_share_alias(raw_alias)
         self.metrics.increment("result_share_alias_redirects_total")
         return f"{entry_url}/share-alias/{raw_alias}"
+
+    def _record_result_share_view_event(
+        self,
+        *,
+        access_mode: ResultShareViewAccessMode,
+        event_type: ResultShareViewEventType,
+        outcome: ResultShareViewOutcome,
+        referrer: str | None = None,
+        user_agent: str | None = None,
+        client_host: str | None = None,
+        accept_language: str | None = None,
+        grant_context: ResultShareGrantContext | None = None,
+        alias_context: ResultShareAliasContext | None = None,
+        raw_share_token: str | None = None,
+        raw_alias: str | None = None,
+    ) -> None:
+        subject = self._resolve_result_share_view_event_subject(
+            grant_context=grant_context,
+            alias_context=alias_context,
+            raw_share_token=raw_share_token,
+            raw_alias=raw_alias,
+        )
+        if subject is None:
+            return
+        referrer_host = self._extract_result_share_referrer_host(referrer)
+        user_agent_family = self._extract_result_share_user_agent_family(user_agent)
+        fingerprint = self._build_result_share_request_fingerprint(
+            client_host=client_host,
+            referrer_host=referrer_host,
+            user_agent_family=user_agent_family,
+            accept_language=accept_language,
+        )
+        event = ResultShareViewEvent(
+            result_share_grant_id=subject["grant_id"],
+            result_share_alias_id=subject["alias_id"],
+            share_kind=subject["share_kind"],
+            access_mode=access_mode,
+            event_type=event_type,
+            outcome=outcome,
+            request_fingerprint_hash=fingerprint,
+            referrer_host=referrer_host,
+            user_agent_family=user_agent_family,
+            occurred_at=self.now_provider(),
+        )
+        self.repository.add_result_share_view_event(event)
+        commit_session(self.session)
+        self.metrics.increment("result_share_view_events_recorded_total")
+        if event_type == ResultShareViewEventType.BOOTSTRAP_VIEW:
+            self.metrics.increment("result_share_bootstrap_views_total")
+        elif event_type == ResultShareViewEventType.CONTENT_VIEW:
+            self.metrics.increment("result_share_content_views_total")
+        elif event_type == ResultShareViewEventType.REDIRECT:
+            self.metrics.increment("result_share_redirect_views_total")
+
+    def _resolve_result_share_view_event_subject(
+        self,
+        *,
+        grant_context: ResultShareGrantContext | None,
+        alias_context: ResultShareAliasContext | None,
+        raw_share_token: str | None,
+        raw_alias: str | None,
+    ) -> dict[str, Any] | None:
+        if grant_context is not None:
+            return {
+                "grant_id": grant_context.grant_id,
+                "alias_id": None if alias_context is None else alias_context.alias_id,
+                "share_kind": grant_context.share_kind,
+            }
+        if alias_context is not None:
+            return {
+                "grant_id": alias_context.grant_id,
+                "alias_id": alias_context.alias_id,
+                "share_kind": alias_context.share_kind,
+            }
+        if raw_alias:
+            alias = self.repository.get_result_share_alias_by_hash(hash_token(raw_alias))
+            if alias is not None:
+                grant = alias.result_share_grant or self.repository.get_result_share_grant(
+                    alias.result_share_grant_id
+                )
+                if grant is not None:
+                    return {
+                        "grant_id": grant.id,
+                        "alias_id": alias.id,
+                        "share_kind": grant.share_kind,
+                    }
+        if raw_share_token:
+            grant = self.repository.get_result_share_grant_by_token_hash(
+                hash_token(raw_share_token)
+            )
+            if grant is not None:
+                return {
+                    "grant_id": grant.id,
+                    "alias_id": None,
+                    "share_kind": grant.share_kind,
+                }
+        return None
+
+    def _extract_result_share_referrer_host(self, referrer: str | None) -> str | None:
+        if not self.settings.result_share_analytics_capture_referrer_host or not referrer:
+            return None
+        parsed = urlparse(referrer.strip())
+        return parsed.hostname.lower() if parsed.hostname else None
+
+    def _extract_result_share_user_agent_family(self, user_agent: str | None) -> str | None:
+        if not self.settings.result_share_analytics_capture_user_agent_family or not user_agent:
+            return None
+        normalized = user_agent.strip().lower()
+        if not normalized:
+            return None
+        if any(token in normalized for token in ("bot", "crawler", "spider")):
+            return "bot"
+        if "edg/" in normalized or "edge/" in normalized:
+            return "edge"
+        if "firefox/" in normalized:
+            return "firefox"
+        if "chrome/" in normalized or "crios/" in normalized:
+            return "chrome"
+        if "safari/" in normalized:
+            return "safari"
+        if "curl/" in normalized:
+            return "curl"
+        if "wget/" in normalized:
+            return "wget"
+        if "python-requests" in normalized:
+            return "python-requests"
+        return "other"
+
+    def _build_result_share_request_fingerprint(
+        self,
+        *,
+        client_host: str | None,
+        referrer_host: str | None,
+        user_agent_family: str | None,
+        accept_language: str | None,
+    ) -> str | None:
+        if not self.settings.result_share_analytics_enable_fingerprint:
+            return None
+        normalized_accept_language = (accept_language or "").split(",")[0].strip().lower()
+        payload = "|".join(
+            (
+                self.settings.result_share_analytics_fingerprint_salt or "",
+                client_host or "",
+                referrer_host or "",
+                user_agent_family or "",
+                normalized_accept_language,
+            )
+        )
+        if not payload.replace("|", ""):
+            return None
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+    def _normalize_result_share_analytics_window(
+        self,
+        *,
+        date_from: datetime | None,
+        date_to: datetime | None,
+    ) -> tuple[datetime | None, datetime | None]:
+        if date_from is not None and date_to is not None and date_to < date_from:
+            raise ValidationFailedError("date_to must be greater than or equal to date_from")
+        normalized_from = date_from
+        if (
+            normalized_from is None
+            and self.settings.result_share_analytics_default_lookback_days > 0
+        ):
+            normalized_from = self.now_provider() - timedelta(
+                days=self.settings.result_share_analytics_default_lookback_days
+            )
+        return normalized_from, date_to
 
     def share_bootstrap(self, grant: ResultShareGrantContext) -> dict[str, Any]:
         stored = self.get_result_share_grant(grant.grant_id)

@@ -359,6 +359,23 @@ class ResultShareAliasStatus(StrEnum):
     EXPIRED = "expired"
 
 
+class ResultShareViewAccessMode(StrEnum):
+    SHARE_TOKEN = "share_token"
+    ALIAS = "alias"
+    ALIAS_REDIRECT = "alias_redirect"
+
+
+class ResultShareViewEventType(StrEnum):
+    BOOTSTRAP_VIEW = "bootstrap_view"
+    CONTENT_VIEW = "content_view"
+    REDIRECT = "redirect"
+
+
+class ResultShareViewOutcome(StrEnum):
+    RESOLVED = "resolved"
+    REJECTED = "rejected"
+
+
 class GroupWorkspaceResultCollectStatus(StrEnum):
     COLLECTED = "collected"
     ALREADY_PRESENT = "already_present"

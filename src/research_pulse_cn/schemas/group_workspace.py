@@ -20,6 +20,9 @@ from research_pulse_cn.domain.enums import (
     ResultShareAliasStatus,
     ResultShareGrantStatus,
     ResultShareKind,
+    ResultShareViewAccessMode,
+    ResultShareViewEventType,
+    ResultShareViewOutcome,
     SignalSource,
 )
 from research_pulse_cn.schemas.common import ORMModel
@@ -311,6 +314,33 @@ class ResultShareGrantRevokeResponse(BaseModel):
 class ResultShareAliasRevokeResponse(BaseModel):
     alias: ResultShareAliasRead
     revoked_at: datetime
+
+
+class ResultShareAnalyticsSummaryRead(BaseModel):
+    total_events: int
+    resolved_events: int
+    rejected_events: int
+    bootstrap_view_count: int
+    content_view_count: int
+    redirect_count: int
+    distinct_fingerprint_count: int | None = None
+    by_share_kind: dict[str, int] = Field(default_factory=dict)
+    by_access_mode: dict[str, int] = Field(default_factory=dict)
+    last_event_at: datetime | None = None
+
+
+class ResultShareViewEventRead(ORMModel):
+    id: UUID
+    result_share_grant_id: UUID | None = None
+    result_share_alias_id: UUID | None = None
+    share_kind: ResultShareKind
+    access_mode: ResultShareViewAccessMode
+    event_type: ResultShareViewEventType
+    outcome: ResultShareViewOutcome
+    referrer_host: str | None = None
+    user_agent_family: str | None = None
+    occurred_at: datetime
+    created_at: datetime
 
 
 class ShareGrantPublicSummaryRead(BaseModel):

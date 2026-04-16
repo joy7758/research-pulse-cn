@@ -11,6 +11,7 @@
 - Collect-preview, collect, and workspace-result-collection history require a separate self-service grant token.
 - Both the raw share token or alias and the self-service token stay in memory only.
 - Query and fragment token or alias hints are moved into memory and cleared from the visible URL immediately.
+- Backend-only analytics reserve may observe bootstrap/content/redirect access, but it does not change collect request semantics or add browser trackers.
 
 ## Supported Collectable Share Kinds
 - `paper_snapshot`
