@@ -87,6 +87,7 @@
 - generic end-user login/session system
 - campaign or broadcast logic
 - AI preference suggestions or copywriting
+- group workspace sharing or source-file sharing
 
 ## Future Work
 - real user-facing web/mobile editor page

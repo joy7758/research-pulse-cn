@@ -13,6 +13,7 @@ from research_pulse_cn.services.auth import AuthService
 from research_pulse_cn.services.delivery import DeliveryService
 from research_pulse_cn.services.digest import DigestService
 from research_pulse_cn.services.external_retrieval import ExternalRetrievalService
+from research_pulse_cn.services.group_workspace import GroupWorkspaceService
 from research_pulse_cn.services.mini import MiniService
 from research_pulse_cn.services.official_account_binding_handshake import (
     OfficialAccountBindingHandshakeService,
@@ -90,6 +91,10 @@ def get_official_account_oauth_service(session: SessionDep) -> OfficialAccountOA
 
 def get_mini_service(session: SessionDep) -> MiniService:
     return MiniService(session)
+
+
+def get_group_workspace_service(session: SessionDep) -> GroupWorkspaceService:
+    return GroupWorkspaceService(session)
 
 
 def get_subscription_self_service_service(

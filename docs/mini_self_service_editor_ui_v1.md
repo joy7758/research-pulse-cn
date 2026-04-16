@@ -80,3 +80,11 @@
 - tighter handoff UX from mini reserve
 - richer field rendering and section UX
 - better continuity beyond one in-memory browser tab if later justified
+
+## Group Sharing Boundary Compatibility
+- The web shell stays focused on self-service editing only.
+- Group workspace/result sharing is a separate read-only boundary in this phase:
+  - digest result shares
+  - paper snapshot shares
+  - workspace board shares
+- Source-file sharing remains out of scope for both the editor shell and the result-sharing boundary.

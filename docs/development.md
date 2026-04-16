@@ -62,6 +62,27 @@ The shell lives under `apps/subscription-editor-web` and uses only:
 
 The shell is not a mini-program build and does not introduce new auth. It consumes short-lived handoff grants only.
 
+## Group workspace and result sharing
+- Admin-managed workspace routes:
+  - `GET /admin/group-workspaces`
+  - `POST /admin/group-workspaces`
+  - `GET /admin/group-workspaces/{workspace_id}`
+  - `PATCH /admin/group-workspaces/{workspace_id}`
+  - `POST /admin/group-workspaces/{workspace_id}/members`
+  - `DELETE /admin/group-workspaces/{workspace_id}/members/{member_id}`
+  - `POST /admin/group-workspaces/{workspace_id}/papers`
+  - `DELETE /admin/group-workspaces/{workspace_id}/papers/{paper_id}`
+  - `GET /admin/group-workspaces/{workspace_id}/board`
+- Admin-managed result share routes:
+  - `GET /admin/result-share-grants`
+  - `POST /admin/result-share-grants`
+  - `POST /admin/result-share-grants/{grant_id}/revoke`
+- Public read-only share routes:
+  - `GET /result-shares/{share_token}/bootstrap`
+  - `GET /result-shares/{share_token}/content`
+
+This phase shares structured results only. It explicitly excludes PDFs, source files, local attachment paths, and local note contents.
+
 Desktop sync in this phase uses:
 - `GET /sync/me`
 - `POST /sync/push`

@@ -1,0 +1,916 @@
+"""Admin-managed group workspaces and read-only structured result sharing."""
+
+from __future__ import annotations
+
+from collections.abc import Sequence
+from datetime import UTC, datetime
+from typing import Any
+from uuid import UUID
+
+from sqlalchemy.orm import Session
+
+from research_pulse_cn.auth.crypto import generate_refresh_token, hash_token
+from research_pulse_cn.core.errors import AuthenticationError, NotFoundError, ValidationFailedError
+from research_pulse_cn.core.metrics import get_metrics
+from research_pulse_cn.core.request_context import bind_log_context
+from research_pulse_cn.db.models import (
+    GroupWorkspace,
+    GroupWorkspaceMember,
+    GroupWorkspacePaper,
+    PaperProfile,
+    PulseDigestIssue,
+    ResultShareGrant,
+    utcnow,
+)
+from research_pulse_cn.domain.enums import (
+    GroupWorkspaceMemberRole,
+    GroupWorkspaceStatus,
+    PulseCardType,
+    ResultShareGrantStatus,
+    ResultShareKind,
+)
+from research_pulse_cn.domain.group_workspace import IssuedResultShareGrant, ResultShareGrantContext
+from research_pulse_cn.domain.progress import derive_progress_percentage
+from research_pulse_cn.repositories.digest import DigestRepository
+from research_pulse_cn.repositories.group_workspace import GroupWorkspaceRepository
+from research_pulse_cn.repositories.paper import PaperRepository
+from research_pulse_cn.repositories.user import UserRepository
+from research_pulse_cn.services.common import commit_session
+
+WORKSPACE_MEMBER_ROLE_ORDER = {
+    GroupWorkspaceMemberRole.OWNER: 0,
+    GroupWorkspaceMemberRole.EDITOR: 1,
+    GroupWorkspaceMemberRole.VIEWER: 2,
+}
+
+SHARED_SECTION_ORDER = [
+    "today_focus",
+    "yesterday_recap",
+    "signal_updates",
+    "related_papers",
+    "other_updates",
+]
+
+SHARED_SECTION_TITLE_BY_KIND = {
+    "today_focus": "Today Focus",
+    "yesterday_recap": "Yesterday Recap",
+    "signal_updates": "Signal Updates",
+    "related_papers": "Related Papers",
+    "other_updates": "Other Updates",
+}
+
+
+class GroupWorkspaceService:
+    """Create admin-managed group workspaces and resolve public result share grants."""
+
+    def __init__(self, session: Session, *, now_provider=None) -> None:
+        self.session = session
+        self.now_provider = now_provider or utcnow
+        self.repository = GroupWorkspaceRepository(session)
+        self.user_repository = UserRepository(session)
+        self.paper_repository = PaperRepository(session)
+        self.digest_repository = DigestRepository(session)
+        self.metrics = get_metrics()
+
+    def list_workspaces(
+        self,
+        *,
+        status: GroupWorkspaceStatus | None = None,
+        user_id: UUID | None = None,
+    ) -> list[GroupWorkspace]:
+        return self.repository.list_workspaces(status=status, user_id=user_id)
+
+    def get_workspace(self, workspace_id: UUID) -> GroupWorkspace:
+        workspace = self.repository.get_workspace(workspace_id)
+        if workspace is None:
+            raise NotFoundError(f"group workspace {workspace_id} was not found")
+        return workspace
+
+    def create_workspace(
+        self,
+        *,
+        slug: str,
+        name: str,
+        description: str | None,
+        created_by_admin_id: UUID | None,
+    ) -> GroupWorkspace:
+        workspace = GroupWorkspace(
+            slug=slug.strip(),
+            name=name.strip(),
+            description=description,
+            status=GroupWorkspaceStatus.ACTIVE,
+            created_by_admin_id=created_by_admin_id,
+        )
+        self.repository.add_workspace(workspace)
+        commit_session(self.session)
+        persisted = self.get_workspace(workspace.id)
+        self.metrics.increment("group_workspaces_created_total")
+        return persisted
+
+    def update_workspace(
+        self,
+        workspace_id: UUID,
+        *,
+        slug: str | None = None,
+        name: str | None = None,
+        description: str | None = None,
+        status: GroupWorkspaceStatus | None = None,
+        update_fields: set[str] | None = None,
+    ) -> GroupWorkspace:
+        workspace = self.get_workspace(workspace_id)
+        explicit_fields = update_fields or set()
+        if "slug" in explicit_fields and slug is not None:
+            workspace.slug = slug.strip()
+        if "name" in explicit_fields and name is not None:
+            workspace.name = name.strip()
+        if "description" in explicit_fields:
+            workspace.description = description
+        if "status" in explicit_fields and status is not None:
+            workspace.status = status
+        commit_session(self.session)
+        return self.get_workspace(workspace.id)
+
+    def add_member(
+        self,
+        *,
+        workspace_id: UUID,
+        user_id: UUID,
+        role: GroupWorkspaceMemberRole,
+    ) -> GroupWorkspaceMember:
+        workspace = self.get_workspace(workspace_id)
+        user = self.user_repository.get(user_id)
+        if user is None:
+            raise NotFoundError(f"user {user_id} was not found")
+        member = GroupWorkspaceMember(
+            workspace_id=workspace.id,
+            user_id=user.id,
+            role=role,
+            joined_at=self.now_provider(),
+        )
+        self.repository.add_workspace_member(member)
+        commit_session(self.session)
+        refreshed = self.repository.get_workspace_member(
+            workspace_id=workspace.id,
+            member_id=member.id,
+        )
+        if refreshed is None:
+            raise NotFoundError(f"group workspace member {member.id} was not found")
+        return refreshed
+
+    def remove_member(self, *, workspace_id: UUID, member_id: UUID) -> None:
+        self.get_workspace(workspace_id)
+        member = self.repository.get_workspace_member(
+            workspace_id=workspace_id,
+            member_id=member_id,
+        )
+        if member is None:
+            raise NotFoundError(f"group workspace member {member_id} was not found")
+        self.repository.delete_workspace_member(member)
+        commit_session(self.session)
+
+    def add_paper(
+        self,
+        *,
+        workspace_id: UUID,
+        paper_id: UUID,
+        added_by_admin_id: UUID | None,
+    ) -> GroupWorkspacePaper:
+        workspace = self.get_workspace(workspace_id)
+        paper = self.paper_repository.get(paper_id)
+        if paper is None:
+            raise NotFoundError(f"paper {paper_id} was not found")
+        workspace_paper = GroupWorkspacePaper(
+            workspace_id=workspace.id,
+            paper_id=paper.id,
+            added_by_admin_id=added_by_admin_id,
+        )
+        self.repository.add_workspace_paper(workspace_paper)
+        commit_session(self.session)
+        refreshed = self.repository.get_workspace_paper(
+            workspace_id=workspace.id,
+            paper_id=paper.id,
+        )
+        if refreshed is None:
+            raise NotFoundError(f"group workspace paper {paper.id} was not found")
+        return refreshed
+
+    def remove_paper(self, *, workspace_id: UUID, paper_id: UUID) -> None:
+        self.get_workspace(workspace_id)
+        workspace_paper = self.repository.get_workspace_paper(
+            workspace_id=workspace_id,
+            paper_id=paper_id,
+        )
+        if workspace_paper is None:
+            raise NotFoundError(f"group workspace paper {paper_id} was not found")
+        self.repository.delete_workspace_paper(workspace_paper)
+        commit_session(self.session)
+
+    def get_workspace_board(
+        self,
+        workspace_id: UUID,
+        *,
+        expose_admin_fields: bool,
+    ) -> dict[str, Any]:
+        workspace = self.get_workspace(workspace_id)
+        return self._workspace_board_payload(workspace, expose_admin_fields=expose_admin_fields)
+
+    def list_result_share_grants(
+        self,
+        *,
+        workspace_id: UUID | None = None,
+        user_id: UUID | None = None,
+        share_kind: ResultShareKind | None = None,
+        status: ResultShareGrantStatus | None = None,
+    ) -> list[ResultShareGrant]:
+        grants = self.repository.list_result_share_grants(
+            workspace_id=workspace_id,
+            share_kind=share_kind,
+            status=status,
+        )
+        self._refresh_expired_grants(grants)
+        if user_id is not None:
+            grants = [grant for grant in grants if self._grant_matches_user(grant, user_id=user_id)]
+        return grants
+
+    def get_result_share_grant(self, grant_id: UUID) -> ResultShareGrant:
+        grant = self.repository.get_result_share_grant(grant_id)
+        if grant is None:
+            raise NotFoundError(f"result share grant {grant_id} was not found")
+        self._mark_expired_if_needed(grant)
+        return grant
+
+    def serialize_result_share_grant(self, grant: ResultShareGrant) -> dict[str, Any]:
+        return {
+            "id": grant.id,
+            "share_kind": grant.share_kind,
+            "workspace_id": grant.workspace_id,
+            "digest_issue_id": grant.digest_issue_id,
+            "paper_id": grant.paper_id,
+            "status": grant.status,
+            "display_label": grant.display_label,
+            "issued_by_admin_id": grant.issued_by_admin_id,
+            "expires_at": grant.expires_at,
+            "last_used_at": grant.last_used_at,
+            "created_at": grant.created_at,
+            "updated_at": grant.updated_at,
+        }
+
+    def create_result_share_grant(
+        self,
+        *,
+        share_kind: ResultShareKind,
+        workspace_id: UUID | None,
+        digest_issue_id: UUID | None,
+        paper_id: UUID | None,
+        display_label: str | None,
+        issued_by_admin_id: UUID | None,
+        expires_at: datetime | None,
+    ) -> tuple[ResultShareGrant, IssuedResultShareGrant]:
+        workspace = None
+        digest_issue = None
+        paper = None
+        if share_kind == ResultShareKind.WORKSPACE_BOARD:
+            if workspace_id is None or digest_issue_id is not None or paper_id is not None:
+                raise ValidationFailedError(
+                    "workspace_board share grants require workspace_id only",
+                    errors=[
+                        {
+                            "field_id": "share_kind",
+                            "code": "target_mismatch",
+                            "message": "workspace_board share grants require workspace_id only",
+                        }
+                    ],
+                )
+            workspace = self.get_workspace(workspace_id)
+        elif share_kind == ResultShareKind.DIGEST_ISSUE:
+            if digest_issue_id is None or workspace_id is not None or paper_id is not None:
+                raise ValidationFailedError(
+                    "digest_issue share grants require digest_issue_id only",
+                    errors=[
+                        {
+                            "field_id": "share_kind",
+                            "code": "target_mismatch",
+                            "message": "digest_issue share grants require digest_issue_id only",
+                        }
+                    ],
+                )
+            digest_issue = self.digest_repository.get_digest_issue(digest_issue_id)
+            if digest_issue is None:
+                raise NotFoundError(f"digest issue {digest_issue_id} was not found")
+        elif share_kind == ResultShareKind.PAPER_SNAPSHOT:
+            if paper_id is None or workspace_id is not None or digest_issue_id is not None:
+                raise ValidationFailedError(
+                    "paper_snapshot share grants require paper_id only",
+                    errors=[
+                        {
+                            "field_id": "share_kind",
+                            "code": "target_mismatch",
+                            "message": "paper_snapshot share grants require paper_id only",
+                        }
+                    ],
+                )
+            paper = self.paper_repository.get(paper_id)
+            if paper is None:
+                raise NotFoundError(f"paper {paper_id} was not found")
+        else:
+            raise ValidationFailedError(
+                "unsupported result share kind",
+                errors=[
+                    {
+                        "field_id": "share_kind",
+                        "code": "unsupported",
+                        "message": "unsupported result share kind",
+                    }
+                ],
+            )
+
+        raw_token = generate_refresh_token()
+        grant = ResultShareGrant(
+            share_kind=share_kind,
+            workspace_id=None if workspace is None else workspace.id,
+            digest_issue_id=None if digest_issue is None else digest_issue.id,
+            paper_id=None if paper is None else paper.id,
+            token_hash=hash_token(raw_token),
+            status=ResultShareGrantStatus.ACTIVE,
+            display_label=display_label,
+            issued_by_admin_id=issued_by_admin_id,
+            expires_at=expires_at,
+        )
+        self.repository.add_result_share_grant(grant)
+        commit_session(self.session)
+        persisted = self.get_result_share_grant(grant.id)
+        self.metrics.increment("result_share_grants_issued_total")
+        return persisted, IssuedResultShareGrant(
+            grant_id=persisted.id,
+            plain_text_token=raw_token,
+            expires_at=persisted.expires_at,
+        )
+
+    def revoke_result_share_grant(self, grant_id: UUID) -> ResultShareGrant:
+        grant = self.get_result_share_grant(grant_id)
+        if grant.status != ResultShareGrantStatus.REVOKED:
+            grant.status = ResultShareGrantStatus.REVOKED
+            commit_session(self.session)
+        return self.get_result_share_grant(grant_id)
+
+    def authenticate_share_token(self, raw_token: str) -> ResultShareGrantContext:
+        grant = self.repository.get_result_share_grant_by_token_hash(hash_token(raw_token))
+        if grant is None:
+            raise AuthenticationError("result share grant was not found")
+        now = self.now_provider()
+        if grant.status == ResultShareGrantStatus.REVOKED:
+            raise AuthenticationError("result share grant has been revoked")
+        if grant.status == ResultShareGrantStatus.EXPIRED:
+            raise AuthenticationError("result share grant has expired")
+        if self._mark_expired_if_needed(grant, now=now):
+            raise AuthenticationError("result share grant has expired")
+        grant.last_used_at = now
+        commit_session(self.session)
+        return ResultShareGrantContext(
+            grant_id=grant.id,
+            share_kind=grant.share_kind,
+            workspace_id=grant.workspace_id,
+            digest_issue_id=grant.digest_issue_id,
+            paper_id=grant.paper_id,
+            status=grant.status,
+            display_label=grant.display_label,
+            expires_at=grant.expires_at,
+            last_used_at=grant.last_used_at,
+        )
+
+    def share_bootstrap(self, grant: ResultShareGrantContext) -> dict[str, Any]:
+        stored = self.get_result_share_grant(grant.grant_id)
+        with bind_log_context(
+            result_share_grant_id=stored.id,
+            share_kind=stored.share_kind.value,
+            workspace_id=stored.workspace_id,
+        ):
+            return {
+                "grant": {
+                    "id": stored.id,
+                    "share_kind": stored.share_kind,
+                    "display_label": stored.display_label,
+                    "status": stored.status,
+                    "expires_at": stored.expires_at,
+                    "created_at": stored.created_at,
+                },
+                "target": self._share_target_summary(stored),
+                "notes": [
+                    "This share link exposes structured read-only results only.",
+                    "Source files, local attachments, and local note contents are excluded.",
+                ],
+            }
+
+    def share_content(self, grant: ResultShareGrantContext) -> dict[str, Any]:
+        stored = self.get_result_share_grant(grant.grant_id)
+        with bind_log_context(
+            result_share_grant_id=stored.id,
+            share_kind=stored.share_kind.value,
+            workspace_id=stored.workspace_id,
+        ):
+            self.metrics.increment("result_share_content_requests_total")
+            if stored.share_kind == ResultShareKind.DIGEST_ISSUE:
+                if stored.digest_issue is None:
+                    raise NotFoundError("shared digest issue was not found")
+                return self._shared_digest_issue_payload(stored.digest_issue)
+            if stored.share_kind == ResultShareKind.PAPER_SNAPSHOT:
+                if stored.paper is None:
+                    raise NotFoundError("shared paper was not found")
+                return self._shared_paper_snapshot_payload(stored.paper)
+            if stored.share_kind == ResultShareKind.WORKSPACE_BOARD:
+                if stored.workspace is None:
+                    raise NotFoundError("shared workspace was not found")
+                return self._shared_workspace_board_payload(stored.workspace)
+            raise NotFoundError("shared content was not found")
+
+    def _refresh_expired_grants(self, grants: Sequence[ResultShareGrant]) -> None:
+        updated = False
+        now = self.now_provider()
+        for grant in grants:
+            updated = self._mark_expired_if_needed(grant, now=now) or updated
+        if updated:
+            commit_session(self.session)
+
+    def _mark_expired_if_needed(
+        self,
+        grant: ResultShareGrant,
+        *,
+        now: datetime | None = None,
+    ) -> bool:
+        current_time = self._coerce_utc(now or self.now_provider())
+        expires_at = self._coerce_utc(grant.expires_at)
+        if (
+            grant.status == ResultShareGrantStatus.ACTIVE
+            and expires_at is not None
+            and expires_at <= current_time
+        ):
+            grant.status = ResultShareGrantStatus.EXPIRED
+            return True
+        return False
+
+    def _grant_matches_user(self, grant: ResultShareGrant, *, user_id: UUID) -> bool:
+        if grant.digest_issue is not None:
+            return grant.digest_issue.user_id == user_id
+        if grant.paper is not None:
+            return grant.paper.user_id == user_id
+        if grant.workspace is not None:
+            return any(member.user_id == user_id for member in grant.workspace.members)
+        return False
+
+    def _workspace_summary(self, workspace: GroupWorkspace) -> dict[str, Any]:
+        return {
+            "id": workspace.id,
+            "slug": workspace.slug,
+            "name": workspace.name,
+            "description": workspace.description,
+            "status": workspace.status,
+            "created_by_admin_id": workspace.created_by_admin_id,
+            "created_at": workspace.created_at,
+            "updated_at": workspace.updated_at,
+        }
+
+    def _workspace_member_summary(
+        self,
+        member: GroupWorkspaceMember,
+        *,
+        expose_email: bool,
+    ) -> dict[str, Any]:
+        return {
+            "member_id": member.id,
+            "user_id": member.user_id,
+            "role": member.role,
+            "name": member.user.name,
+            "email": member.user.email if expose_email else None,
+            "joined_at": member.joined_at,
+        }
+
+    def _latest_signal_summary(self, paper: PaperProfile) -> dict[str, Any] | None:
+        if not paper.signal_snapshots:
+            return None
+        latest = max(
+            paper.signal_snapshots,
+            key=lambda snapshot: (
+                self._coerce_utc(snapshot.fetched_at) or datetime.min.replace(tzinfo=UTC),
+                str(snapshot.id),
+            ),
+        )
+        return {
+            "source": latest.source,
+            "citation_count": latest.citation_count,
+            "download_count": latest.download_count,
+            "read_count": latest.read_count,
+            "inclusion_status": latest.inclusion_status,
+            "fetched_at": latest.fetched_at,
+        }
+
+    def _workspace_paper_snapshot(
+        self,
+        paper: PaperProfile,
+        *,
+        expose_owner_fields: bool,
+    ) -> dict[str, Any]:
+        return {
+            "paper_id": paper.id,
+            "user_id": paper.user_id,
+            "owner_name": paper.user.name if expose_owner_fields else None,
+            "owner_email": paper.user.email if expose_owner_fields else None,
+            "title": paper.title,
+            "type": paper.type,
+            "stage": paper.stage,
+            "venue": paper.venue,
+            "priority": paper.priority,
+            "next_action": paper.next_action,
+            "blocker": paper.blocker,
+            "last_touch_at": paper.last_touch_at,
+            "progress_percentage": derive_progress_percentage(paper.type),
+            "latest_signal_summary": self._latest_signal_summary(paper),
+        }
+
+    def _workspace_board_payload(
+        self,
+        workspace: GroupWorkspace,
+        *,
+        expose_admin_fields: bool,
+    ) -> dict[str, Any]:
+        members = sorted(
+            workspace.members,
+            key=lambda member: (
+                WORKSPACE_MEMBER_ROLE_ORDER.get(member.role, len(WORKSPACE_MEMBER_ROLE_ORDER)),
+                self._coerce_utc(member.joined_at) or datetime.min.replace(tzinfo=UTC),
+                str(member.user_id),
+            ),
+        )
+        papers = sorted(
+            (entry.paper for entry in workspace.papers),
+            key=lambda paper: (
+                -paper.priority,
+                -(
+                    self._coerce_utc(paper.last_touch_at) or datetime.min.replace(tzinfo=UTC)
+                ).timestamp(),
+                paper.title.lower(),
+                str(paper.id),
+            ),
+        )
+        member_payloads = [
+            self._workspace_member_summary(member, expose_email=expose_admin_fields)
+            for member in members
+        ]
+        paper_payloads = [
+            self._workspace_paper_snapshot(
+                paper,
+                expose_owner_fields=expose_admin_fields,
+            )
+            for paper in papers
+        ]
+        return {
+            "workspace": self._workspace_summary(workspace),
+            "member_count": len(member_payloads),
+            "paper_count": len(paper_payloads),
+            "members": member_payloads,
+            "papers": paper_payloads,
+            "quick_stats": {
+                "member_count": len(member_payloads),
+                "paper_count": len(paper_payloads),
+                "blocked_paper_count": sum(1 for paper in paper_payloads if paper["blocker"]),
+                "papers_with_signals_count": sum(
+                    1 for paper in paper_payloads if paper["latest_signal_summary"] is not None
+                ),
+            },
+        }
+
+    def _share_target_summary(self, grant: ResultShareGrant) -> dict[str, Any]:
+        title: str | None = grant.display_label
+        if grant.share_kind == ResultShareKind.WORKSPACE_BOARD and grant.workspace is not None:
+            title = title or grant.workspace.name
+        elif grant.share_kind == ResultShareKind.DIGEST_ISSUE and grant.digest_issue is not None:
+            title = title or grant.digest_issue.title
+        elif grant.share_kind == ResultShareKind.PAPER_SNAPSHOT and grant.paper is not None:
+            title = title or grant.paper.title
+        return {
+            "workspace_id": grant.workspace_id,
+            "digest_issue_id": grant.digest_issue_id,
+            "paper_id": grant.paper_id,
+            "title": title,
+        }
+
+    def _shared_workspace_board_payload(self, workspace: GroupWorkspace) -> dict[str, Any]:
+        return {
+            "share_kind": ResultShareKind.WORKSPACE_BOARD.value,
+            **self._workspace_board_payload(workspace, expose_admin_fields=False),
+        }
+
+    def _shared_paper_snapshot_payload(self, paper: PaperProfile) -> dict[str, Any]:
+        return {
+            "share_kind": ResultShareKind.PAPER_SNAPSHOT.value,
+            **self._workspace_paper_snapshot(paper, expose_owner_fields=False),
+        }
+
+    def _shared_digest_issue_payload(self, issue: PulseDigestIssue) -> dict[str, Any]:
+        content_payload = dict(issue.content_payload or {})
+        raw_items = list(content_payload.get("items") or [])
+        items = self._normalize_digest_items(
+            raw_items if raw_items else self._digest_items_from_issue(issue),
+            issue=issue,
+        )
+        structured_sections = list(content_payload.get("sections") or [])
+        is_structured = bool(structured_sections)
+        sections = (
+            self._normalize_sections(structured_sections, issue=issue)
+            if is_structured
+            else self._build_fallback_sections(items)
+        )
+        highlights = self._normalize_digest_items(
+            list(content_payload.get("highlights") or []),
+            issue=issue,
+        )
+        if not highlights:
+            highlights = items[: min(issue.highlight_count, len(items))]
+        return {
+            "share_kind": ResultShareKind.DIGEST_ISSUE.value,
+            "id": issue.id,
+            "issue_date": issue.issue_date,
+            "status": issue.status,
+            "title": issue.title,
+            "summary": issue.summary,
+            "highlight_count": issue.highlight_count,
+            "selected_card_count": issue.selected_card_count,
+            "deep_link_path": issue.deep_link_path,
+            "highlights": highlights,
+            "is_structured": is_structured,
+            "fallback_mode": "structured" if is_structured else "highlights_only",
+            "section_order": self._normalize_section_order(
+                content_payload.get("section_order"),
+                is_structured=is_structured,
+            ),
+            "sections": sections,
+            "quick_stats": (
+                self._normalize_quick_stats(content_payload.get("quick_stats"))
+                if is_structured
+                else self._build_quick_stats(items)
+            ),
+            "focus_card": (
+                self._normalize_digest_item(content_payload.get("focus_card"), issue=issue)
+                if is_structured
+                else self._derive_focus_card_from_sections(sections)
+            ),
+            "publication_preview": self._normalize_publication_preview(
+                content_payload.get("publication_preview"),
+                issue=issue,
+            ),
+            "items": items,
+        }
+
+    def _digest_items_from_issue(self, issue: PulseDigestIssue) -> list[dict[str, Any]]:
+        return [
+            {
+                "sort_order": item.sort_order,
+                "pulse_card_id": item.pulse_card_id,
+                "card_type": item.card_type.value,
+                "source_paper_id": item.source_paper_id,
+                "title": item.title,
+                "summary": item.summary,
+                "why_now": item.why_now,
+                "action_text": None,
+                "deep_link": None,
+                "paper": (
+                    None
+                    if item.source_paper is None
+                    else self._workspace_paper_snapshot(
+                        item.source_paper,
+                        expose_owner_fields=False,
+                    )
+                ),
+            }
+            for item in issue.items
+        ]
+
+    def _normalize_digest_item(
+        self,
+        raw_item: dict[str, Any] | None,
+        *,
+        issue: PulseDigestIssue,
+    ) -> dict[str, Any] | None:
+        if not isinstance(raw_item, dict):
+            return None
+        paper = raw_item.get("paper")
+        if not isinstance(paper, dict):
+            paper = self._resolve_paper_snapshot_for_digest_item(raw_item, issue=issue)
+        return {
+            "sort_order": int(raw_item.get("sort_order", 0)),
+            "pulse_card_id": raw_item.get("pulse_card_id"),
+            "card_type": str(raw_item.get("card_type", "")),
+            "source_paper_id": raw_item.get("source_paper_id"),
+            "title": str(raw_item.get("title", "")),
+            "summary": str(raw_item.get("summary", "")),
+            "why_now": raw_item.get("why_now"),
+            "action_text": raw_item.get("action_text"),
+            "deep_link": raw_item.get("deep_link"),
+            "paper": paper,
+        }
+
+    def _normalize_digest_items(
+        self,
+        raw_items: Sequence[dict[str, Any]],
+        *,
+        issue: PulseDigestIssue,
+    ) -> list[dict[str, Any]]:
+        items: list[dict[str, Any]] = []
+        for raw_item in raw_items:
+            normalized = self._normalize_digest_item(raw_item, issue=issue)
+            if normalized is not None:
+                items.append(normalized)
+        return sorted(
+            items,
+            key=lambda item: (
+                int(item.get("sort_order", 0)),
+                str(item.get("pulse_card_id", "")),
+            ),
+        )
+
+    def _normalize_sections(
+        self,
+        raw_sections: Sequence[dict[str, Any]],
+        *,
+        issue: PulseDigestIssue,
+    ) -> list[dict[str, Any]]:
+        normalized_sections: list[dict[str, Any]] = []
+        for raw_section in raw_sections:
+            if not isinstance(raw_section, dict):
+                continue
+            kind = str(raw_section.get("kind") or "other_updates")
+            items = self._normalize_digest_items(list(raw_section.get("items") or []), issue=issue)
+            if not items:
+                continue
+            normalized_sections.append(
+                {
+                    "kind": kind,
+                    "title": str(raw_section.get("title") or self._section_title(kind)),
+                    "item_count": int(raw_section.get("item_count") or len(items)),
+                    "items": items,
+                }
+            )
+        return self._order_sections(normalized_sections)
+
+    def _normalize_section_order(
+        self,
+        raw_section_order: Sequence[str] | None,
+        *,
+        is_structured: bool,
+    ) -> list[str]:
+        if not is_structured:
+            return list(SHARED_SECTION_ORDER)
+        ordered: list[str] = []
+        for kind in list(raw_section_order or []):
+            kind_str = str(kind)
+            if kind_str not in ordered:
+                ordered.append(kind_str)
+        for kind in SHARED_SECTION_ORDER:
+            if kind not in ordered:
+                ordered.append(kind)
+        return ordered
+
+    def _normalize_quick_stats(
+        self,
+        raw_quick_stats: dict[str, Any] | None,
+    ) -> dict[str, Any] | None:
+        if not isinstance(raw_quick_stats, dict):
+            return None
+        return {
+            "selected_card_count": int(raw_quick_stats.get("selected_card_count") or 0),
+            "related_paper_count": int(raw_quick_stats.get("related_paper_count") or 0),
+            "signal_update_count": int(raw_quick_stats.get("signal_update_count") or 0),
+            "touched_paper_count": int(raw_quick_stats.get("touched_paper_count") or 0),
+        }
+
+    def _normalize_publication_preview(
+        self,
+        raw_preview: dict[str, Any] | None,
+        *,
+        issue: PulseDigestIssue,
+    ) -> dict[str, Any] | None:
+        if not isinstance(raw_preview, dict):
+            return None
+        return {
+            "digest_title": raw_preview.get("digest_title"),
+            "digest_subtitle": raw_preview.get("digest_subtitle"),
+            "digest_highlights": self._normalize_digest_items(
+                list(raw_preview.get("digest_highlights") or []),
+                issue=issue,
+            ),
+            "primary_cta_text": raw_preview.get("primary_cta_text"),
+            "primary_cta_path": raw_preview.get("primary_cta_path"),
+            "mini_program_path": raw_preview.get("mini_program_path"),
+            "article_url": raw_preview.get("article_url"),
+        }
+
+    def _build_fallback_sections(self, items: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
+        buckets: dict[str, list[dict[str, Any]]] = {kind: [] for kind in SHARED_SECTION_ORDER}
+        for item in items:
+            buckets[self._fallback_section_kind(str(item.get("card_type") or ""))].append(item)
+        sections: list[dict[str, Any]] = []
+        for kind in SHARED_SECTION_ORDER:
+            bucket = buckets[kind]
+            if not bucket:
+                continue
+            sections.append(
+                {
+                    "kind": kind,
+                    "title": self._section_title(kind),
+                    "item_count": len(bucket),
+                    "items": list(bucket),
+                }
+            )
+        return sections
+
+    def _build_quick_stats(self, items: Sequence[dict[str, Any]]) -> dict[str, Any]:
+        touched_paper_ids = {
+            str(item["source_paper_id"])
+            for item in items
+            if item.get("source_paper_id") is not None
+        }
+        return {
+            "selected_card_count": len(items),
+            "related_paper_count": sum(
+                1 for item in items if item.get("card_type") == PulseCardType.RELATED_PAPER.value
+            ),
+            "signal_update_count": sum(
+                1 for item in items if item.get("card_type") == PulseCardType.SIGNAL_CHANGE.value
+            ),
+            "touched_paper_count": len(touched_paper_ids),
+        }
+
+    def _derive_focus_card_from_sections(
+        self,
+        sections: Sequence[dict[str, Any]],
+    ) -> dict[str, Any] | None:
+        for section in sections:
+            items = list(section.get("items") or [])
+            if items:
+                return items[0]
+        return None
+
+    def _fallback_section_kind(self, card_type: str) -> str:
+        if card_type in {
+            PulseCardType.TODAY_SUGGESTION.value,
+            PulseCardType.NEXT_ACTION.value,
+            PulseCardType.STALLED_PROGRESS.value,
+            PulseCardType.DEADLINE_RISK.value,
+        }:
+            return "today_focus"
+        if card_type == PulseCardType.YESTERDAY_SUMMARY.value:
+            return "yesterday_recap"
+        if card_type == PulseCardType.SIGNAL_CHANGE.value:
+            return "signal_updates"
+        if card_type == PulseCardType.RELATED_PAPER.value:
+            return "related_papers"
+        return "other_updates"
+
+    def _section_title(self, kind: str) -> str:
+        return SHARED_SECTION_TITLE_BY_KIND.get(kind, kind.replace("_", " ").title())
+
+    def _order_sections(self, sections: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
+        order_index = {kind: index for index, kind in enumerate(SHARED_SECTION_ORDER)}
+        return sorted(
+            sections,
+            key=lambda section: (
+                order_index.get(str(section.get("kind")), len(order_index)),
+                str(section.get("title", "")),
+                str(section.get("kind", "")),
+            ),
+        )
+
+    def _resolve_paper_snapshot_for_digest_item(
+        self,
+        raw_item: dict[str, Any],
+        *,
+        issue: PulseDigestIssue,
+    ) -> dict[str, Any] | None:
+        pulse_card_id = raw_item.get("pulse_card_id")
+        source_paper_id = raw_item.get("source_paper_id")
+        for item in issue.items:
+            if pulse_card_id is not None and str(item.pulse_card_id) == str(pulse_card_id):
+                return (
+                    None
+                    if item.source_paper is None
+                    else self._workspace_paper_snapshot(
+                        item.source_paper,
+                        expose_owner_fields=False,
+                    )
+                )
+            if source_paper_id is not None and str(item.source_paper_id) == str(source_paper_id):
+                return (
+                    None
+                    if item.source_paper is None
+                    else self._workspace_paper_snapshot(
+                        item.source_paper,
+                        expose_owner_fields=False,
+                    )
+                )
+        return None
+
+    def _coerce_utc(self, value: datetime | None) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            return value.replace(tzinfo=UTC)
+        return value.astimezone(UTC)

@@ -15,10 +15,11 @@ Core flow:
 9. Mini read grants expose compact mobile-friendly read models for future mini-program landing without opening write access, now including structured Today digest rendering, a read-only subscription reserve summary, a read-only binding-handoff reserve summary, and a read-only editor-handoff reserve summary.
 10. Subscription self-service grants expose a narrow user-side settings boundary for future official-account or mini entry without reusing admin or mini auth, and now also expose a separate handshake-reserve sub-boundary plus an explicit editor contract and preview-before-save surface.
 11. `SubscriptionEditorHandoffGrant` derives a short-lived `/subscription-editor/*` token from mini reserve plus an existing self-service grant without turning mini auth into a write boundary, and a thin web shell under `apps/subscription-editor-web` consumes that token without creating a generic login surface.
-12. Sync devices consume incremental `SyncEvent` feeds and push idempotent mutations back through the same service layer.
-13. A Tauri desktop shell consumes the same sync feed, keeps a local SQLite outbox, performs limited writeback through `/sync/push`, manages a local-only paper workspace, stores local markdown notes/templates, keeps local review-matrix / response-letter workflows, exposes synced `SubscriptionPolicy` quiet-control fields in Settings with non-authoritative local hints, and renders sectioned daily digests on the Today page when the synced cache includes structured digest payloads.
-14. A pulse input layer now records lightweight work activity and research watch profiles so future retrieval can start from explicit inputs instead of implicit guesses.
-15. An external retrieval boundary now converts those inputs into persisted source-specific plans, executes official-source fetches behind provider adapters, stores normalized scholarly results, and lets the pulse pipeline consume those persisted records for deterministic `related_paper` cards without executing retrieval inline.
+12. Admin-managed `GroupWorkspace` containers now group selected users and papers into compact shared boards, while `ResultShareGrant` exposes opaque public read-only links for structured digest issues, paper snapshots, and workspace boards without turning sharing into file sync.
+13. Sync devices consume incremental `SyncEvent` feeds and push idempotent mutations back through the same service layer.
+14. A Tauri desktop shell consumes the same sync feed, keeps a local SQLite outbox, performs limited writeback through `/sync/push`, manages a local-only paper workspace, stores local markdown notes/templates, keeps local review-matrix / response-letter workflows, exposes synced `SubscriptionPolicy` quiet-control fields in Settings with non-authoritative local hints, and renders sectioned daily digests on the Today page when the synced cache includes structured digest payloads.
+15. A pulse input layer now records lightweight work activity and research watch profiles so future retrieval can start from explicit inputs instead of implicit guesses.
+16. An external retrieval boundary now converts those inputs into persisted source-specific plans, executes official-source fetches behind provider adapters, stores normalized scholarly results, and lets the pulse pipeline consume those persisted records for deterministic `related_paper` cards without executing retrieval inline.
 
 ## Module boundaries
 
@@ -242,6 +243,37 @@ Tie-break order is deterministic:
   - mini can mint the handoff token when reserve conditions are satisfied
   - the token can reuse existing editor bootstrap/contract/preview/save services
   - the token cannot call `/mini/*`, `/subscription-self-service/*`, or admin routes
+
+## Group workspace and result sharing
+
+### Workspace boundary
+- `GroupWorkspace` is an admin-managed shared container for structured outcomes.
+- `GroupWorkspaceMember` binds users into one workspace with explicit roles:
+  - `owner`
+  - `editor`
+  - `viewer`
+- `GroupWorkspacePaper` binds selected papers into one workspace board.
+- The board model is read-only and deterministic:
+  - workspace summary
+  - member summaries
+  - safe paper snapshots
+  - compact quick stats
+
+### Result share boundary
+- `ResultShareGrant` is a hashed opaque-token read-only grant for:
+  - `digest_issue`
+  - `paper_snapshot`
+  - `workspace_board`
+- Public share routes resolve:
+  - `GET /result-shares/{share_token}/bootstrap`
+  - `GET /result-shares/{share_token}/content`
+- Share content excludes:
+  - source files
+  - local attachment paths
+  - local note contents
+  - raw provider payloads
+  - openid/unionid
+- This keeps growth/share surfaces additive without weakening existing admin, mini, self-service, or provider auth boundaries.
 
 ### Derived progress percentage
 - Mini paper views expose a deterministic `progress_percentage` derived from `PaperProfile.type`.

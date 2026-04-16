@@ -81,6 +81,9 @@ COUNTER_NAMES = (
     "subscription_editor_handoff_bootstrap_requests_total",
     "subscription_editor_handoff_settings_saved_total",
     "subscription_editor_handoff_grants_revoked_total",
+    "group_workspaces_created_total",
+    "result_share_grants_issued_total",
+    "result_share_content_requests_total",
 )
 
 
