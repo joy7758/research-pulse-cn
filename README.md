@@ -21,6 +21,7 @@ Private repository. Proprietary and confidential.
 - Admin-issued subscription self-service reserve grants that expose safe official-account settings reads, safe settings patching, and authoritative delivery-control preview without real WeChat OAuth
 - Self-service editor reserve endpoints that add machine-readable field/section contracts, preview-before-save semantics, and future mobile/web handoff metadata on top of the same self-service grant boundary
 - Mini editor handoff reserve that adds a short-lived `SubscriptionEditorHandoffGrant` bridge from mini read-only reserve to `/subscription-editor/*` without making mini grants directly writable
+- A thin React/Vite subscription editor web shell under `apps/subscription-editor-web` for manually exercising handoff-grant-protected `/subscription-editor/*` flows in a browser or future WebView shell
 - Official-account binding handshake reserve sessions that connect callback evidence, existing bindings, and self-service grants, plus real official-account webpage OAuth completion for code/state exchange and safe binding create/reuse without introducing a generic app login system
 - Mini read-only reserve endpoints that now consume structured digests, expose a safe subscription reserve summary, and keep mini grant auth separate from self-service grant auth
 - Tauri 2 desktop shell with Rust-side pull sync, local SQLite cache, mutation outbox, minimal writeback for paper/progress/subscription policy edits, a local paper workspace layer, local markdown notes/templates, and a local review-matrix workflow that generates reviewer-matrix / response-letter drafts
@@ -75,6 +76,10 @@ The code keeps pulse generation behind stable interfaces such as `FactCollector`
    `make desktop-install`
 12. Run the desktop shell:
    `make desktop-dev`
+13. Install the subscription editor web shell if you want to test handoff-grant editing flows:
+   `make subscription-editor-install`
+14. Run the subscription editor web shell:
+   `make subscription-editor-dev`
 
 Open API docs at `http://127.0.0.1:8000/docs`.
 
@@ -147,6 +152,22 @@ Mini reserve now also exposes a short-lived editor handoff bridge:
 
 These routes mint or inspect a narrow handoff token for `/subscription-editor/*` only. Mini grants still cannot patch subscription settings directly.
 
+## Subscription editor web shell
+The repository now also includes a thin browser/WebView-friendly shell under `apps/subscription-editor-web` using:
+- React
+- TypeScript
+- Vite
+
+This shell:
+- accepts a short-lived handoff token from manual paste or `#handoff_token=...`
+- keeps the token in memory only
+- calls only:
+  - `GET /subscription-editor/bootstrap`
+  - `GET /subscription-editor/contract`
+  - `POST /subscription-editor/settings/preview`
+  - `PATCH /subscription-editor/settings`
+- does not create a new auth system or generic app login surface
+
 Official-account binding reserve now also adds:
 - admin-created handshake sessions with one-time state tokens
 - admin reconciliation candidate listing over unmatched subscribe callback events
@@ -215,6 +236,11 @@ Today-suggestion behavior in this phase:
 - `make desktop-lint`: run desktop lint and typecheck
 - `make desktop-test`: run desktop frontend tests plus Rust cache/sync tests
 - `make desktop-build-web`: build the desktop web frontend without native packaging
+- `make subscription-editor-install`: install web-shell dependencies under `apps/subscription-editor-web`
+- `make subscription-editor-dev`: run the subscription editor web shell
+- `make subscription-editor-lint`: run editor web lint and typecheck
+- `make subscription-editor-test`: run editor web tests
+- `make subscription-editor-build`: build the editor web shell
 
 ## Environment
 Main environment variables are documented in `.env.example`.
@@ -243,6 +269,7 @@ Important values:
 - `APP_MINI_READ_GRANT_DEFAULT_TTL_HOURS`: default preview-grant lifetime for `/mini/*`
 - `APP_MINI_PAPERS_DEFAULT_LIMIT`: default compact paper page size for mini reads
 - `APP_MINI_PAPERS_MAX_LIMIT`: max compact paper page size for mini reads
+- `APP_SUBSCRIPTION_EDITOR_WEB_ALLOWED_ORIGINS`: browser origins allowed to call the editor shell APIs during local development
 - `APP_DIGEST_SIGNAL_UPDATES_MAX_ITEMS`: max `signal_change` cards kept in the `signal_updates` digest section
 - `APP_DIGEST_RELATED_PAPERS_MAX_ITEMS`: max `related_paper` cards kept in the `related_papers` digest section
 - `APP_DIGEST_OTHER_UPDATES_MAX_ITEMS`: max overflow cards kept in the `other_updates` digest section

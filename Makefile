@@ -2,9 +2,10 @@ PYTHON ?= python3
 NPM ?= npm
 PACKAGE = research_pulse_cn
 DESKTOP_DIR = apps/desktop
+SUBSCRIPTION_EDITOR_WEB_DIR = apps/subscription-editor-web
 export PATH := $(HOME)/.cargo/bin:$(PATH)
 
-.PHONY: install run run-api migrate seed worker run-worker run-scheduler scheduler-tick bootstrap-admin lint format test check docker-up docker-down desktop-install desktop-dev desktop-lint desktop-test desktop-build-web
+.PHONY: install run run-api migrate seed worker run-worker run-scheduler scheduler-tick bootstrap-admin lint format test check docker-up docker-down desktop-install desktop-dev desktop-lint desktop-test desktop-build-web subscription-editor-install subscription-editor-dev subscription-editor-lint subscription-editor-test subscription-editor-build
 
 install:
 	$(PYTHON) -m pip install --upgrade pip
@@ -71,3 +72,19 @@ desktop-test:
 
 desktop-build-web:
 	cd $(DESKTOP_DIR) && $(NPM) run build
+
+subscription-editor-install:
+	cd $(SUBSCRIPTION_EDITOR_WEB_DIR) && $(NPM) install
+
+subscription-editor-dev:
+	cd $(SUBSCRIPTION_EDITOR_WEB_DIR) && $(NPM) run dev
+
+subscription-editor-lint:
+	cd $(SUBSCRIPTION_EDITOR_WEB_DIR) && $(NPM) run lint
+	cd $(SUBSCRIPTION_EDITOR_WEB_DIR) && $(NPM) run typecheck
+
+subscription-editor-test:
+	cd $(SUBSCRIPTION_EDITOR_WEB_DIR) && $(NPM) run test
+
+subscription-editor-build:
+	cd $(SUBSCRIPTION_EDITOR_WEB_DIR) && $(NPM) run build

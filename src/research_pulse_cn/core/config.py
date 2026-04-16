@@ -248,6 +248,13 @@ class Settings(BaseSettings):
         default=100,
         validation_alias="APP_MINI_PAPERS_MAX_LIMIT",
     )
+    subscription_editor_web_allowed_origins: str = Field(
+        default=(
+            "http://127.0.0.1:5173,http://localhost:5173,"
+            "http://127.0.0.1:4173,http://localhost:4173"
+        ),
+        validation_alias="APP_SUBSCRIPTION_EDITOR_WEB_ALLOWED_ORIGINS",
+    )
     subscription_editor_handoff_enabled: bool = Field(
         default=False,
         validation_alias="APP_SUBSCRIPTION_EDITOR_HANDOFF_ENABLED",
@@ -469,6 +476,20 @@ class Settings(BaseSettings):
                 continue
             seen.add(source_kind)
             values.append(source_kind)
+        return values
+
+    @property
+    def subscription_editor_web_allowed_origin_list(self) -> list[str]:
+        """Return allowed browser origins for the subscription editor shell."""
+        values: list[str] = []
+        seen: set[str] = set()
+        raw_values = str(self.subscription_editor_web_allowed_origins).replace(";", ",").split(",")
+        for raw_value in raw_values:
+            cleaned = raw_value.strip().rstrip("/")
+            if not cleaned or cleaned in seen:
+                continue
+            seen.add(cleaned)
+            values.append(cleaned)
         return values
 
 

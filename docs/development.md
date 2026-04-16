@@ -42,6 +42,26 @@
 - Build the desktop web frontend:
   - `make desktop-build-web`
 
+## Subscription editor web shell
+- Install web-shell dependencies:
+  - `make subscription-editor-install`
+- Run the web shell:
+  - `make subscription-editor-dev`
+- Run web-shell lint + typecheck:
+  - `make subscription-editor-lint`
+- Run web-shell tests:
+  - `make subscription-editor-test`
+- Build the web shell:
+  - `make subscription-editor-build`
+
+The shell lives under `apps/subscription-editor-web` and uses only:
+- `GET /subscription-editor/bootstrap`
+- `GET /subscription-editor/contract`
+- `POST /subscription-editor/settings/preview`
+- `PATCH /subscription-editor/settings`
+
+The shell is not a mini-program build and does not introduce new auth. It consumes short-lived handoff grants only.
+
 Desktop sync in this phase uses:
 - `GET /sync/me`
 - `POST /sync/push`
@@ -67,6 +87,7 @@ Mini routes stay read-only and require mini-read grant auth only.
 - `GET /mini/subscription-reserve/editor-handoff-status`
 
 These mini endpoints only mint or inspect a short-lived editor handoff token. They do not make mini grants directly writable.
+The new browser/webview-friendly shell in `apps/subscription-editor-web` is the intended local/manual consumer of that handoff token in this phase.
 
 ## Pulse scoring knobs
 - Defaults live in application settings and `.env.example`
@@ -227,6 +248,7 @@ These mini endpoints only mint or inspect a short-lived editor handoff token. Th
   - admin auth
 - Mini read grant auth still cannot call `/subscription-editor/*`.
 - Self-service grant auth still cannot call `/mini/*`.
+- The editor web shell now consumes the handoff token directly and keeps it in memory only.
 
 ## Official-account digest reserve
 - WeChat identity binding can now be created or reused through explicit admin paths or through official-account OAuth completion tied to a valid handshake session.

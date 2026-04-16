@@ -90,6 +90,7 @@
 
 ## Future Work
 - real user-facing web/mobile editor page
+- the current thin `apps/subscription-editor-web` shell can evolve into a richer editor without changing the backend contract
 - mini-based editing handoff
 - short-lived mini editor handoff token exchange
 - richer schedule controls

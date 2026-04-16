@@ -113,12 +113,14 @@
 ## Current Non-Goals
 - new delivery channels
 - real mini editing UI
+- full browser/web shell polish beyond the thin testable shell
 - desktop UI work
 - generic user login/session system
 - campaign or broadcast behavior
 
 ## Future Work
 - real mini editing UI on top of the current handoff contract
+- tighter handoff into the current `apps/subscription-editor-web` shell
 - richer mobile self-service UX
 - optional direct OAuth-backed editor handoff
 - unified user self-service surface if it is ever justified
