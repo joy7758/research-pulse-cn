@@ -69,6 +69,20 @@ def test_settings_normalize_group_workspace_invite_entry_url(monkeypatch) -> Non
     assert settings.group_workspace_invite_web_entry_url == "http://127.0.0.1:5177"
 
 
+def test_settings_normalize_result_share_entry_url(monkeypatch) -> None:
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("APP_DATABASE_URL", "sqlite+pysqlite:///tmp/research-pulse-cn-test.db")
+    monkeypatch.setenv(
+        "APP_RESULT_SHARE_WEB_ENTRY_BASE_URL",
+        "http://127.0.0.1:5174/",
+    )
+    get_settings.cache_clear()
+
+    settings = get_settings()
+
+    assert settings.result_share_web_entry_url == "http://127.0.0.1:5174"
+
+
 def test_settings_parse_group_workspace_result_collect_lists(monkeypatch) -> None:
     monkeypatch.setenv("APP_ENV", "test")
     monkeypatch.setenv("APP_DATABASE_URL", "sqlite+pysqlite:///tmp/research-pulse-cn-test.db")
@@ -85,16 +99,13 @@ def test_settings_parse_group_workspace_result_collect_lists(monkeypatch) -> Non
     settings = get_settings()
 
     assert [
-        item.value
-        for item in settings.group_workspace_result_collect_allowed_share_kind_list
+        item.value for item in settings.group_workspace_result_collect_allowed_share_kind_list
     ] == [
         "digest_issue",
         "paper_snapshot",
         "workspace_board",
     ]
-    assert [
-        item.value for item in settings.group_workspace_result_collect_allowed_role_list
-    ] == [
+    assert [item.value for item in settings.group_workspace_result_collect_allowed_role_list] == [
         "owner",
         "editor",
         "viewer",

@@ -38,6 +38,7 @@ export type GroupWorkspaceInviteBootstrapRead = {
   role_to_assign: InviteRole;
   remaining_claims: number | null;
   expires_at: string | null;
+  result_collect_handoff_reserve: ResultCollectHandoffReserveRead | null;
   notes: string[];
 };
 
@@ -48,6 +49,7 @@ export type GroupWorkspaceMembershipRead = {
   role: InviteRole;
   joined_at: string;
   workspace_summary: GroupWorkspaceSafeSummaryRead;
+  result_collect_handoff_reserve: ResultCollectHandoffReserveRead | null;
 };
 
 export type GroupWorkspaceInviteClaimRead = {
@@ -70,6 +72,7 @@ export type GroupWorkspaceInviteClaimPreviewRead = {
   current_membership: GroupWorkspaceMembershipRead | null;
   invite: GroupWorkspaceInvitePublicSummaryRead | null;
   workspace: GroupWorkspaceSafeSummaryRead | null;
+  result_collect_handoff_reserve: ResultCollectHandoffReserveRead | null;
 };
 
 export type GroupWorkspaceInviteClaimResponse = {
@@ -78,6 +81,19 @@ export type GroupWorkspaceInviteClaimResponse = {
   invite_claim: GroupWorkspaceInviteClaimRead | null;
   invite: GroupWorkspaceInvitePublicSummaryRead | null;
   workspace: GroupWorkspaceSafeSummaryRead | null;
+  result_collect_handoff_reserve: ResultCollectHandoffReserveRead | null;
+};
+
+export type ResultCollectHandoffReserveRead = {
+  supported: boolean;
+  separate_result_share_token_required: boolean;
+  result_share_bootstrap_available: boolean;
+  collect_supported_via_self_service: boolean;
+  direct_collect_via_invite_page: boolean;
+  source_files_included: boolean;
+  supported_share_kinds: Array<"digest_issue" | "paper_snapshot">;
+  result_share_shell_entry_url: string | null;
+  notes: string[];
 };
 
 export type GroupWorkspaceInviteApiErrorShape = {
@@ -115,4 +131,17 @@ export type MembershipStatusViewModel = {
   reasonCodes: string[];
   canClaim: boolean;
   membership: GroupWorkspaceMembershipRead | null;
+};
+
+export type ResultCollectHandoffViewModel = {
+  title: string;
+  message: string;
+  separateResultShareTokenRequired: boolean;
+  resultShareBootstrapAvailable: boolean;
+  collectSupportedViaSelfService: boolean;
+  directCollectViaInvitePage: boolean;
+  sourceFilesIncluded: boolean;
+  supportedShareKindsText: string;
+  resultShareShellEntryUrl: string | null;
+  notes: string[];
 };

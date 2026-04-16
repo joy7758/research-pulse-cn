@@ -128,6 +128,28 @@ def create_invite_grant(
     return response.json()
 
 
+def assert_result_collect_handoff_reserve(payload: dict, *, entry_url: str | None = None) -> None:
+    reserve = payload["result_collect_handoff_reserve"]
+    assert reserve == {
+        "supported": True,
+        "separate_result_share_token_required": True,
+        "result_share_bootstrap_available": True,
+        "collect_supported_via_self_service": True,
+        "direct_collect_via_invite_page": False,
+        "source_files_included": False,
+        "supported_share_kinds": ["digest_issue", "paper_snapshot"],
+        "result_share_shell_entry_url": entry_url,
+        "notes": [
+            "Joining the workspace does not automatically collect digest or paper shares.",
+            (
+                "Collecting shared results requires a separate result-share token and the "
+                "existing self-service collect flow."
+            ),
+            "Source files and local attachments are not included.",
+        ],
+    }
+
+
 def test_operator_can_create_invite_grant_and_viewer_cannot_mutate(
     client,
     operator_headers,
@@ -161,6 +183,9 @@ def test_public_bootstrap_returns_safe_summary_and_invites_disabled_blocks_flows
     monkeypatch,
 ) -> None:
     enable_invites(monkeypatch)
+    settings = get_settings()
+    original_result_share_entry_url = settings.result_share_web_entry_base_url
+    settings.result_share_web_entry_base_url = "http://127.0.0.1:5174/"
     user = create_user(client, operator_headers, email="invite-disabled@example.com")
     grant = create_self_service_grant(client, operator_headers, user_id=user["id"])
     workspace = create_workspace(
@@ -172,42 +197,50 @@ def test_public_bootstrap_returns_safe_summary_and_invites_disabled_blocks_flows
     invite = create_invite_grant(client, operator_headers, workspace_id=workspace["id"])
     self_service_headers = {"Authorization": f"Bearer {grant['plain_text_token']}"}
 
-    bootstrap = client.get(f"/workspace-invites/{invite['plain_text_token']}/bootstrap")
-    assert bootstrap.status_code == 200
-    payload = bootstrap.json()
-    assert payload["workspace"]["slug"] == workspace["slug"]
-    assert payload["invite"]["role_to_assign"] == GroupWorkspaceInviteRole.VIEWER.value
-    serialized = json.dumps(payload)
-    assert "openid" not in serialized
-    assert "unionid" not in serialized
-    assert "/Users/" not in serialized
+    try:
+        bootstrap = client.get(f"/workspace-invites/{invite['plain_text_token']}/bootstrap")
+        assert bootstrap.status_code == 200
+        payload = bootstrap.json()
+        assert payload["workspace"]["slug"] == workspace["slug"]
+        assert payload["invite"]["role_to_assign"] == GroupWorkspaceInviteRole.VIEWER.value
+        assert_result_collect_handoff_reserve(payload, entry_url="http://127.0.0.1:5174")
+        serialized = json.dumps(payload)
+        assert "openid" not in serialized
+        assert "unionid" not in serialized
+        assert "/Users/" not in serialized
 
-    enable_invites(monkeypatch, enabled=False)
-    disabled_create = client.post(
-        "/admin/group-workspace-invite-grants",
-        headers=operator_headers,
-        json={
-            "workspace_id": workspace["id"],
-            "role_to_assign": GroupWorkspaceInviteRole.VIEWER.value,
-        },
-    )
-    disabled_bootstrap = client.get(f"/workspace-invites/{invite['plain_text_token']}/bootstrap")
-    disabled_preview = client.get(
-        f"/subscription-self-service/workspace-invites/{invite['plain_text_token']}/claim-preview",
-        headers=self_service_headers,
-    )
-    disabled_claim = client.post(
-        f"/subscription-self-service/workspace-invites/{invite['plain_text_token']}/claim",
-        headers=self_service_headers,
-    )
+        enable_invites(monkeypatch, enabled=False)
+        disabled_create = client.post(
+            "/admin/group-workspace-invite-grants",
+            headers=operator_headers,
+            json={
+                "workspace_id": workspace["id"],
+                "role_to_assign": GroupWorkspaceInviteRole.VIEWER.value,
+            },
+        )
+        disabled_bootstrap = client.get(
+            f"/workspace-invites/{invite['plain_text_token']}/bootstrap"
+        )
+        disabled_preview = client.get(
+            f"/subscription-self-service/workspace-invites/{invite['plain_text_token']}/claim-preview",
+            headers=self_service_headers,
+        )
+        disabled_claim = client.post(
+            f"/subscription-self-service/workspace-invites/{invite['plain_text_token']}/claim",
+            headers=self_service_headers,
+        )
 
-    assert disabled_create.status_code == 422
-    assert disabled_bootstrap.status_code == 422
-    assert disabled_preview.status_code == 200
-    assert disabled_preview.json()["reason_codes"] == ["invites_disabled"]
-    assert disabled_claim.status_code == 200
-    assert disabled_claim.json()["action"] == "rejected"
-    assert disabled_claim.json()["invite_claim"] is None
+        assert disabled_create.status_code == 422
+        assert disabled_bootstrap.status_code == 422
+        assert disabled_preview.status_code == 200
+        assert disabled_preview.json()["reason_codes"] == ["invites_disabled"]
+        assert_result_collect_handoff_reserve(disabled_preview.json())
+        assert disabled_claim.status_code == 200
+        assert disabled_claim.json()["action"] == "rejected"
+        assert disabled_claim.json()["invite_claim"] is None
+        assert_result_collect_handoff_reserve(disabled_claim.json())
+    finally:
+        settings.result_share_web_entry_base_url = original_result_share_entry_url
 
 
 def test_claim_preview_reports_already_member_and_self_service_memberships_are_listed(
@@ -254,8 +287,10 @@ def test_claim_preview_reports_already_member_and_self_service_memberships_are_l
     assert preview_payload["can_claim"] is False
     assert preview_payload["reason_codes"] == ["already_member"]
     assert preview_payload["current_membership"]["workspace_summary"]["id"] == workspace["id"]
+    assert_result_collect_handoff_reserve(preview_payload)
     assert memberships.status_code == 200
     assert memberships.json()[0]["workspace_summary"]["slug"] == workspace["slug"]
+    assert_result_collect_handoff_reserve(memberships.json()[0])
 
 
 def test_self_service_claim_creates_membership_and_repeat_claim_returns_already_member(
@@ -298,6 +333,7 @@ def test_self_service_claim_creates_membership_and_repeat_claim_returns_already_
         claimed_payload["invite_claim"]["claim_status"]
         == GroupWorkspaceInviteClaimStatus.CLAIMED.value
     )
+    assert_result_collect_handoff_reserve(claimed_payload)
 
     assert repeated.status_code == 200
     repeated_payload = repeated.json()
@@ -306,6 +342,7 @@ def test_self_service_claim_creates_membership_and_repeat_claim_returns_already_
         repeated_payload["invite_claim"]["claim_status"]
         == GroupWorkspaceInviteClaimStatus.ALREADY_MEMBER.value
     )
+    assert_result_collect_handoff_reserve(repeated_payload)
 
     assert claims.status_code == 200
     assert len(claims.json()) == 1

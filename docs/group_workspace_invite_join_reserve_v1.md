@@ -60,6 +60,10 @@
   - public invite bootstrap stays token-based and read-only
   - self-service token stays separate and is only used for claim preview, claim, and membership reads
   - invite and self-service tokens stay in memory only in the browser shell
+- Invite-facing responses may now also carry a `result_collect_handoff_reserve` block:
+  - it is informational only
+  - it explains that collecting digest or paper shares still requires a separate result-share token
+  - it does not turn invite routes into collect surfaces
 - `workspace_board` share pages may now also surface a manual handoff summary:
   - they can point users toward the separate invite flow
   - they still cannot claim membership directly

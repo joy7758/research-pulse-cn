@@ -357,12 +357,19 @@ Tie-break order is deterministic:
   - accepts an optional self-service token only for self-service routes
   - clears query or fragment invite/self-service tokens from the visible URL after moving them into in-memory state
   - remains read-only except for the explicit self-service claim action
+  - may show a `result_collect_handoff_reserve` summary after membership-facing states, but that summary remains informational only
 - Mini reserve may advertise the next step, but mini auth still cannot claim membership directly.
 - Invite/join payloads exclude source files, local attachments, local notes, provider secrets, and WeChat identity secrets.
 - Result collect remains a parallel self-service reserve:
   - it may use a public share as its read-only source
   - it still does not make result-share routes writable
   - it still does not introduce source-file semantics
+- Invite bootstrap/preview/claim/membership payloads may also carry an informational `result_collect_handoff_reserve` block:
+  - separate result-share token required
+  - result-share bootstrap available
+  - collect supported via self-service in a separate flow
+  - direct collect via invite page remains false
+  - source files remain excluded
 
 ### Derived progress percentage
 - Mini paper views expose a deterministic `progress_percentage` derived from `PaperProfile.type`.
