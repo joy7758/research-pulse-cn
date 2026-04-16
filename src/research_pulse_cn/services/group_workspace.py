@@ -445,6 +445,7 @@ class GroupWorkspaceService:
                 "role_to_assign": stored.role_to_assign,
                 "remaining_claims": self._remaining_claims(stored),
                 "expires_at": stored.expires_at,
+                "result_collect_handoff_reserve": self._result_collect_handoff_reserve_summary(),
                 "notes": [
                     "This invite exposes a safe workspace summary only.",
                     "Joining requires an existing subscription self-service grant.",
@@ -477,6 +478,7 @@ class GroupWorkspaceService:
                 if evaluation["workspace"] is None
                 else self._workspace_safe_summary(evaluation["workspace"])
             ),
+            "result_collect_handoff_reserve": self._result_collect_handoff_reserve_summary(),
         }
 
     def claim_workspace_invite(
@@ -520,6 +522,7 @@ class GroupWorkspaceService:
                 "workspace": (
                     None if workspace is None else self._workspace_safe_summary(workspace)
                 ),
+                "result_collect_handoff_reserve": self._result_collect_handoff_reserve_summary(),
             }
 
         assert invite_grant is not None
@@ -566,6 +569,7 @@ class GroupWorkspaceService:
             ),
             "invite": self._public_invite_summary(self.get_invite_grant(invite_grant.id)),
             "workspace": self._workspace_safe_summary(self.get_workspace(workspace.id)),
+            "result_collect_handoff_reserve": self._result_collect_handoff_reserve_summary(),
         }
 
     def list_result_share_grants(
@@ -1261,6 +1265,7 @@ class GroupWorkspaceService:
             "role": membership.role,
             "joined_at": membership.joined_at,
             "workspace_summary": self._workspace_safe_summary(workspace),
+            "result_collect_handoff_reserve": self._result_collect_handoff_reserve_summary(),
         }
 
     def _public_invite_summary(self, grant: GroupWorkspaceInviteGrant) -> dict[str, Any]:
@@ -1274,6 +1279,29 @@ class GroupWorkspaceService:
             "claim_count": grant.claim_count,
             "expires_at": grant.expires_at,
             "created_at": grant.created_at,
+        }
+
+    def _result_collect_handoff_reserve_summary(self) -> dict[str, Any]:
+        return {
+            "supported": True,
+            "separate_result_share_token_required": True,
+            "result_share_bootstrap_available": True,
+            "collect_supported_via_self_service": True,
+            "direct_collect_via_invite_page": False,
+            "source_files_included": False,
+            "supported_share_kinds": [
+                ResultShareKind.DIGEST_ISSUE.value,
+                ResultShareKind.PAPER_SNAPSHOT.value,
+            ],
+            "result_share_shell_entry_url": self.settings.result_share_web_entry_url,
+            "notes": [
+                "Joining the workspace does not automatically collect digest or paper shares.",
+                (
+                    "Collecting shared results requires a separate result-share token and the "
+                    "existing self-service collect flow."
+                ),
+                "Source files and local attachments are not included.",
+            ],
         }
 
     def _remaining_claims(self, grant: GroupWorkspaceInviteGrant) -> int | None:

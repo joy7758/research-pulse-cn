@@ -28,6 +28,7 @@ Private repository. Proprietary and confidential.
 - A thin internal React/Vite admin shell under `apps/user-workbench-admin-web` for read-only search and drilldown across users, papers, and research watch profiles without introducing end-user login, file sharing, or business write flows
 - A backend-only workspace invite/join reserve that adds opaque invite grants, public invite bootstrap, self-service claim-preview/claim routes, and safe membership summaries without introducing source-file sharing or a generic login system
 - A thin public React/Vite invite shell under `apps/group-workspace-invite-web` for safe workspace-invite bootstrap, self-service claim preview/claim, and membership confirmation without introducing end-user login, browser token persistence, or source-file sharing
+- The same invite shell can now also surface a manual handoff summary toward the separate result-share collect flow after membership is claimed or confirmed, without mixing invite tokens and share tokens or introducing source-file sharing
 - A backend-only result collect reserve that lets self-service users collect structured `digest_issue` and `paper_snapshot` paper objects into eligible group workspaces without exposing source files, local attachments, or local notes
 - Official-account binding handshake reserve sessions that connect callback evidence, existing bindings, and self-service grants, plus real official-account webpage OAuth completion for code/state exchange and safe binding create/reuse without introducing a generic app login system
 - Mini read-only reserve endpoints that now consume structured digests, expose a safe subscription reserve summary, and keep mini grant auth separate from self-service grant auth
@@ -239,6 +240,12 @@ This shell:
 - renders read-only `digest_issue`, `paper_snapshot`, and `workspace_board` views plus an explicit self-service collect flow for collectable share kinds
 - shows a manual invite/join handoff summary on `workspace_board` shares without mixing the share page into invite claim auth
 - does not add login, editing, or source-file sharing
+
+The separate invite shell under `apps/group-workspace-invite-web` now also:
+- keeps invite/self-service tokens in memory only
+- stays focused on membership bootstrap, claim preview, claim, and membership summaries
+- may show a manual result-collect handoff summary after claimed / already_member / membership states
+- still does not perform collect directly
 
 ## Group workspace admin web shell
 The repository now also includes a thin internal browser shell under `apps/group-workspace-admin-web` using:

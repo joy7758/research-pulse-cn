@@ -4,6 +4,7 @@ import "./App.css";
 import { InviteSummaryView } from "./components/InviteSummaryView";
 import { InviteTokenEntryView } from "./components/InviteTokenEntryView";
 import { MembershipListView } from "./components/MembershipListView";
+import { ResultCollectHandoffView } from "./components/ResultCollectHandoffView";
 import {
   createGroupWorkspaceInviteApiClient,
   GroupWorkspaceInviteApiError,
@@ -14,6 +15,7 @@ import {
   buildClaimResultStatusViewModel,
   buildInviteErrorViewModel,
   buildInvitePageViewModel,
+  buildResultCollectHandoffViewModel,
   formatReasonCode,
 } from "./lib/inviteModel";
 import {
@@ -29,6 +31,7 @@ import type {
   GroupWorkspaceMembershipRead,
   InvitePageViewModel,
   MembershipStatusViewModel,
+  ResultCollectHandoffReserveRead,
 } from "./lib/types";
 
 const DEFAULT_API_BASE_URL =
@@ -366,6 +369,15 @@ export function GroupWorkspaceInviteShell({
   const previewViewModel = selfServiceState?.previewViewModel ?? null;
   const claimViewModel = selfServiceState?.claimViewModel ?? null;
   const canSubmitClaim = previewViewModel?.canClaim === true && !claimSubmitting;
+  const resultCollectHandoffReserve: ResultCollectHandoffReserveRead | null =
+    selfServiceState?.claimResponse?.result_collect_handoff_reserve ??
+    selfServiceState?.preview.result_collect_handoff_reserve ??
+    selfServiceState?.memberships.find((membership) => membership.result_collect_handoff_reserve)
+      ?.result_collect_handoff_reserve ??
+    connectedInviteState.bootstrap.result_collect_handoff_reserve;
+  const resultCollectHandoffViewModel = resultCollectHandoffReserve
+    ? buildResultCollectHandoffViewModel(resultCollectHandoffReserve)
+    : null;
 
   return (
     <main className="invite-root">
@@ -458,6 +470,12 @@ export function GroupWorkspaceInviteShell({
         </section>
       ) : null}
 
+      {previewViewModel?.kind === "already_member" &&
+      resultCollectHandoffViewModel &&
+      selfServiceState?.memberships.length === 0 ? (
+        <ResultCollectHandoffView viewModel={resultCollectHandoffViewModel} />
+      ) : null}
+
       {claimViewModel ? (
         <section className="panel-card">
           <div className="section-heading">
@@ -478,10 +496,18 @@ export function GroupWorkspaceInviteShell({
         </section>
       ) : null}
 
+      {claimViewModel &&
+      (claimViewModel.kind === "claimed" || claimViewModel.kind === "already_member") &&
+      resultCollectHandoffViewModel &&
+      selfServiceState?.memberships.length === 0 ? (
+        <ResultCollectHandoffView viewModel={resultCollectHandoffViewModel} />
+      ) : null}
+
       {selfServiceState ? (
         <MembershipListView
           loading={selfServiceLoading}
           memberships={selfServiceState.memberships}
+          resultCollectHandoff={resultCollectHandoffViewModel}
         />
       ) : null}
     </main>

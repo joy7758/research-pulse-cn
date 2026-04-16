@@ -111,6 +111,7 @@ class GroupWorkspaceMembershipSummaryRead(BaseModel):
     role: GroupWorkspaceMemberRole
     joined_at: datetime
     workspace_summary: GroupWorkspaceSafeSummaryRead
+    result_collect_handoff_reserve: ResultCollectHandoffReserveRead | None = None
 
 
 class GroupWorkspacePaperRead(ORMModel):
@@ -246,6 +247,7 @@ class GroupWorkspaceInviteBootstrapRead(BaseModel):
     role_to_assign: GroupWorkspaceInviteRole
     remaining_claims: int | None = None
     expires_at: datetime | None
+    result_collect_handoff_reserve: ResultCollectHandoffReserveRead | None = None
     notes: list[str] = Field(default_factory=list)
 
 
@@ -255,6 +257,7 @@ class GroupWorkspaceInviteClaimPreviewRead(BaseModel):
     current_membership: GroupWorkspaceMembershipSummaryRead | None = None
     invite: GroupWorkspaceInvitePublicSummaryRead | None = None
     workspace: GroupWorkspaceSafeSummaryRead | None = None
+    result_collect_handoff_reserve: ResultCollectHandoffReserveRead | None = None
 
 
 class GroupWorkspaceInviteClaimResponse(BaseModel):
@@ -263,6 +266,7 @@ class GroupWorkspaceInviteClaimResponse(BaseModel):
     invite_claim: GroupWorkspaceInviteClaimRead | None = None
     invite: GroupWorkspaceInvitePublicSummaryRead | None = None
     workspace: GroupWorkspaceSafeSummaryRead | None = None
+    result_collect_handoff_reserve: ResultCollectHandoffReserveRead | None = None
 
 
 class ResultShareGrantIssueResponse(BaseModel):
@@ -297,6 +301,20 @@ class ShareGrantCollectionReserveRead(BaseModel):
     share_kind_collectable: bool
     collect_supported_via_self_service: bool
     source_files_included: bool
+    notes: list[str] = Field(default_factory=list)
+
+
+class ResultCollectHandoffReserveRead(BaseModel):
+    supported: bool
+    separate_result_share_token_required: bool
+    result_share_bootstrap_available: bool
+    collect_supported_via_self_service: bool
+    direct_collect_via_invite_page: bool
+    source_files_included: bool
+    supported_share_kinds: list[Literal["digest_issue", "paper_snapshot"]] = Field(
+        default_factory=list
+    )
+    result_share_shell_entry_url: str | None = None
     notes: list[str] = Field(default_factory=list)
 
 

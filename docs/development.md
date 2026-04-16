@@ -156,6 +156,10 @@ The shell lives under `apps/group-workspace-invite-web` and uses only:
 - `GET /subscription-self-service/workspace-memberships`
 
 The shell is public + self-service-token-assisted, keeps invite/self-service tokens in memory only, and does not introduce end-user login, editing, or source-file sharing.
+After membership is claimed or confirmed, the same shell may also show a manual result-collect handoff summary:
+- joining does not automatically collect digest or paper shares
+- collecting shared results still requires a separate result-share token
+- result collect still stays in the existing self-service collect flow
 
 ## Group workspace and result sharing
 - Admin-managed workspace routes:
@@ -208,6 +212,10 @@ Result collect now also stays inside that same structured-only boundary:
 - it is informational only
 - it may include an invite shell entry URL hint
 - it does not make the share page claim-capable
+Invite-facing responses now may also carry a read-only `result_collect_handoff_reserve` summary:
+- it is informational only
+- it may include a result-share shell entry URL hint
+- it does not make the invite page collect-capable
 The browser shell for that boundary now uses:
 - `/share/<token>` path parsing when practical
 - `?share_token=` and `#share_token=` local-dev fallbacks

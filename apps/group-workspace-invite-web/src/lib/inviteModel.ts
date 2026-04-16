@@ -7,6 +7,8 @@ import type {
   GroupWorkspaceInviteApiErrorShape,
   InvitePageViewModel,
   MembershipStatusViewModel,
+  ResultCollectHandoffReserveRead,
+  ResultCollectHandoffViewModel,
 } from "./types";
 
 function formatCountLabel(
@@ -125,6 +127,27 @@ export function buildClaimResultStatusViewModel(
     reasonCodes: response.invite_claim?.reason_codes ?? [],
     canClaim: false,
     membership: response.membership,
+  };
+}
+
+export function buildResultCollectHandoffViewModel(
+  reserve: ResultCollectHandoffReserveRead,
+): ResultCollectHandoffViewModel {
+  return {
+    title: "Next step: collect shared results",
+    message:
+      "Joining the workspace does not automatically collect digest or paper shares. Use a separate result-share token in the existing self-service collect flow when you are ready.",
+    separateResultShareTokenRequired: reserve.separate_result_share_token_required,
+    resultShareBootstrapAvailable: reserve.result_share_bootstrap_available,
+    collectSupportedViaSelfService: reserve.collect_supported_via_self_service,
+    directCollectViaInvitePage: reserve.direct_collect_via_invite_page,
+    sourceFilesIncluded: reserve.source_files_included,
+    supportedShareKindsText:
+      reserve.supported_share_kinds.length > 0
+        ? reserve.supported_share_kinds.join(", ")
+        : "No collectable share kinds advertised",
+    resultShareShellEntryUrl: reserve.result_share_shell_entry_url,
+    notes: reserve.notes,
   };
 }
 

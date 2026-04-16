@@ -38,6 +38,7 @@
   - claim-preview reason codes
   - current-membership summary
   - current workspace-membership list
+  - informational result-collect handoff summary after claimed / already_member / membership states
 - The shell excludes:
   - token hashes
   - plaintext tokens after initial entry
@@ -49,6 +50,7 @@
   - provider secrets
 
 ## Current Non-Goals
+- direct result collect inside the invite shell
 - source-file or PDF sharing
 - local attachment sharing
 - note-file or note-content sharing
@@ -59,6 +61,7 @@
 
 ## Future Work
 - richer public invite/join UI polish
+- integrated invite-to-collect UX
 - mini handoff into invite claim flow
 - richer membership onboarding
 - later workspace board handoff if justified
