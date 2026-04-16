@@ -276,6 +276,22 @@ class Settings(BaseSettings):
         ),
         validation_alias="APP_USER_WORKBENCH_ADMIN_WEB_ALLOWED_ORIGINS",
     )
+    group_workspace_invites_enabled: bool = Field(
+        default=False,
+        validation_alias="APP_GROUP_WORKSPACE_INVITES_ENABLED",
+    )
+    group_workspace_invite_default_max_claims: int = Field(
+        default=1,
+        validation_alias="APP_GROUP_WORKSPACE_INVITE_DEFAULT_MAX_CLAIMS",
+    )
+    group_workspace_invite_ttl_hours: int = Field(
+        default=72,
+        validation_alias="APP_GROUP_WORKSPACE_INVITE_TTL_HOURS",
+    )
+    group_workspace_invite_public_bootstrap_enabled: bool = Field(
+        default=True,
+        validation_alias="APP_GROUP_WORKSPACE_INVITE_PUBLIC_BOOTSTRAP_ENABLED",
+    )
     subscription_editor_handoff_enabled: bool = Field(
         default=False,
         validation_alias="APP_SUBSCRIPTION_EDITOR_HANDOFF_ENABLED",

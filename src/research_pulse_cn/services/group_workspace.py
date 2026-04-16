@@ -3,18 +3,21 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
 from sqlalchemy.orm import Session
 
 from research_pulse_cn.auth.crypto import generate_refresh_token, hash_token
+from research_pulse_cn.core.config import get_settings
 from research_pulse_cn.core.errors import AuthenticationError, NotFoundError, ValidationFailedError
 from research_pulse_cn.core.metrics import get_metrics
 from research_pulse_cn.core.request_context import bind_log_context
 from research_pulse_cn.db.models import (
     GroupWorkspace,
+    GroupWorkspaceInviteClaim,
+    GroupWorkspaceInviteGrant,
     GroupWorkspaceMember,
     GroupWorkspacePaper,
     PaperProfile,
@@ -23,14 +26,23 @@ from research_pulse_cn.db.models import (
     utcnow,
 )
 from research_pulse_cn.domain.enums import (
+    GroupWorkspaceInviteClaimStatus,
+    GroupWorkspaceInviteGrantStatus,
+    GroupWorkspaceInviteRole,
     GroupWorkspaceMemberRole,
     GroupWorkspaceStatus,
     PulseCardType,
     ResultShareGrantStatus,
     ResultShareKind,
 )
-from research_pulse_cn.domain.group_workspace import IssuedResultShareGrant, ResultShareGrantContext
+from research_pulse_cn.domain.group_workspace import (
+    GroupWorkspaceInviteGrantContext,
+    IssuedGroupWorkspaceInviteGrant,
+    IssuedResultShareGrant,
+    ResultShareGrantContext,
+)
 from research_pulse_cn.domain.progress import derive_progress_percentage
+from research_pulse_cn.domain.subscription_self_service import SubscriptionSelfServiceGrantContext
 from research_pulse_cn.repositories.digest import DigestRepository
 from research_pulse_cn.repositories.group_workspace import GroupWorkspaceRepository
 from research_pulse_cn.repositories.paper import PaperRepository
@@ -59,12 +71,20 @@ SHARED_SECTION_TITLE_BY_KIND = {
     "other_updates": "Other Updates",
 }
 
+INVITE_ROLE_ASSIGNABLE_VALUES = frozenset(
+    {
+        GroupWorkspaceInviteRole.EDITOR,
+        GroupWorkspaceInviteRole.VIEWER,
+    }
+)
+
 
 class GroupWorkspaceService:
     """Create admin-managed group workspaces and resolve public result share grants."""
 
     def __init__(self, session: Session, *, now_provider=None) -> None:
         self.session = session
+        self.settings = get_settings()
         self.now_provider = now_provider or utcnow
         self.repository = GroupWorkspaceRepository(session)
         self.user_repository = UserRepository(session)
@@ -213,6 +233,330 @@ class GroupWorkspaceService:
     ) -> dict[str, Any]:
         workspace = self.get_workspace(workspace_id)
         return self._workspace_board_payload(workspace, expose_admin_fields=expose_admin_fields)
+
+    def list_workspace_memberships_for_user(
+        self,
+        *,
+        user_id: UUID,
+    ) -> list[GroupWorkspaceMember]:
+        memberships = self.repository.list_workspace_memberships_for_user(user_id=user_id)
+        return [membership for membership in memberships if membership.workspace is not None]
+
+    def list_invite_grants(
+        self,
+        *,
+        workspace_id: UUID | None = None,
+        status: GroupWorkspaceInviteGrantStatus | None = None,
+        role_to_assign: GroupWorkspaceInviteRole | None = None,
+    ) -> list[GroupWorkspaceInviteGrant]:
+        grants = self.repository.list_invite_grants(
+            workspace_id=workspace_id,
+            status=status,
+            role_to_assign=role_to_assign,
+        )
+        self._refresh_expired_invite_grants(grants)
+        return grants
+
+    def get_invite_grant(self, grant_id: UUID) -> GroupWorkspaceInviteGrant:
+        grant = self.repository.get_invite_grant(grant_id)
+        if grant is None:
+            raise NotFoundError(f"group workspace invite grant {grant_id} was not found")
+        if self._mark_invite_expired_if_needed(grant):
+            commit_session(self.session)
+        return grant
+
+    def serialize_invite_grant(self, grant: GroupWorkspaceInviteGrant) -> dict[str, Any]:
+        return {
+            "id": grant.id,
+            "workspace_id": grant.workspace_id,
+            "role_to_assign": grant.role_to_assign,
+            "status": grant.status,
+            "display_label": grant.display_label,
+            "max_claims": grant.max_claims,
+            "claim_count": grant.claim_count,
+            "expires_at": grant.expires_at,
+            "last_used_at": grant.last_used_at,
+            "issued_by_admin_id": grant.issued_by_admin_id,
+            "created_at": grant.created_at,
+            "updated_at": grant.updated_at,
+        }
+
+    def serialize_invite_claim(self, claim: GroupWorkspaceInviteClaim) -> dict[str, Any]:
+        return {
+            "id": claim.id,
+            "invite_grant_id": claim.invite_grant_id,
+            "workspace_id": claim.workspace_id,
+            "user_id": claim.user_id,
+            "membership_id": claim.membership_id,
+            "role_assigned": claim.role_assigned,
+            "claim_status": claim.claim_status,
+            "reason_codes": list(claim.reason_codes or []),
+            "created_at": claim.created_at,
+            "updated_at": claim.updated_at,
+            "claimed_at": claim.claimed_at,
+        }
+
+    def create_invite_grant(
+        self,
+        *,
+        workspace_id: UUID,
+        role_to_assign: GroupWorkspaceInviteRole,
+        display_label: str | None,
+        max_claims: int | None,
+        expires_at: datetime | None,
+        issued_by_admin_id: UUID | None,
+    ) -> tuple[GroupWorkspaceInviteGrant, IssuedGroupWorkspaceInviteGrant]:
+        self._ensure_invites_enabled()
+        workspace = self.get_workspace(workspace_id)
+        if workspace.status != GroupWorkspaceStatus.ACTIVE:
+            raise ValidationFailedError(
+                "invite grants require an active workspace",
+                errors=[
+                    {
+                        "field_id": "workspace_id",
+                        "code": "workspace_archived",
+                        "message": "invite grants require an active workspace",
+                    }
+                ],
+            )
+        if role_to_assign not in INVITE_ROLE_ASSIGNABLE_VALUES:
+            raise ValidationFailedError(
+                "invite grants may assign only editor or viewer",
+                errors=[
+                    {
+                        "field_id": "role_to_assign",
+                        "code": "role_not_assignable",
+                        "message": "invite grants may assign only editor or viewer",
+                    }
+                ],
+            )
+        effective_max_claims = (
+            self.settings.group_workspace_invite_default_max_claims
+            if max_claims is None
+            else max_claims
+        )
+        if effective_max_claims is not None and effective_max_claims < 1:
+            raise ValidationFailedError(
+                "max_claims must be at least 1",
+                errors=[
+                    {
+                        "field_id": "max_claims",
+                        "code": "invalid",
+                        "message": "max_claims must be at least 1",
+                    }
+                ],
+            )
+        raw_token = generate_refresh_token()
+        grant = GroupWorkspaceInviteGrant(
+            workspace_id=workspace.id,
+            role_to_assign=role_to_assign,
+            token_hash=hash_token(raw_token),
+            status=GroupWorkspaceInviteGrantStatus.ACTIVE,
+            display_label=display_label,
+            max_claims=effective_max_claims,
+            claim_count=0,
+            expires_at=expires_at or self._default_invite_expires_at(),
+            issued_by_admin_id=issued_by_admin_id,
+        )
+        self.repository.add_invite_grant(grant)
+        commit_session(self.session)
+        persisted = self.get_invite_grant(grant.id)
+        self.metrics.increment("group_workspace_invite_grants_issued_total")
+        return persisted, IssuedGroupWorkspaceInviteGrant(
+            grant_id=persisted.id,
+            plain_text_token=raw_token,
+            expires_at=persisted.expires_at,
+        )
+
+    def revoke_invite_grant(self, grant_id: UUID) -> GroupWorkspaceInviteGrant:
+        grant = self.get_invite_grant(grant_id)
+        if grant.status != GroupWorkspaceInviteGrantStatus.REVOKED:
+            grant.status = GroupWorkspaceInviteGrantStatus.REVOKED
+            commit_session(self.session)
+        return self.get_invite_grant(grant_id)
+
+    def list_invite_claims(
+        self,
+        *,
+        workspace_id: UUID | None = None,
+        user_id: UUID | None = None,
+        claim_status: GroupWorkspaceInviteClaimStatus | None = None,
+    ) -> list[GroupWorkspaceInviteClaim]:
+        return self.repository.list_invite_claims(
+            workspace_id=workspace_id,
+            user_id=user_id,
+            claim_status=claim_status,
+        )
+
+    def authenticate_invite_token(self, raw_token: str) -> GroupWorkspaceInviteGrantContext:
+        self._ensure_invites_enabled()
+        grant = self.repository.get_invite_grant_by_token_hash(hash_token(raw_token))
+        if grant is None:
+            raise AuthenticationError("group workspace invite grant was not found")
+        now = self.now_provider()
+        if grant.status == GroupWorkspaceInviteGrantStatus.REVOKED:
+            raise AuthenticationError("group workspace invite grant has been revoked")
+        if grant.status == GroupWorkspaceInviteGrantStatus.EXPIRED:
+            raise AuthenticationError("group workspace invite grant has expired")
+        if grant.status == GroupWorkspaceInviteGrantStatus.EXHAUSTED:
+            raise AuthenticationError("group workspace invite grant has been exhausted")
+        if self._mark_invite_expired_if_needed(grant, now=now):
+            commit_session(self.session)
+            if grant.status == GroupWorkspaceInviteGrantStatus.EXPIRED:
+                raise AuthenticationError("group workspace invite grant has expired")
+            if grant.status == GroupWorkspaceInviteGrantStatus.EXHAUSTED:
+                raise AuthenticationError("group workspace invite grant has been exhausted")
+        grant.last_used_at = now
+        commit_session(self.session)
+        return GroupWorkspaceInviteGrantContext(
+            grant_id=grant.id,
+            workspace_id=grant.workspace_id,
+            role_to_assign=grant.role_to_assign,
+            status=grant.status,
+            display_label=grant.display_label,
+            max_claims=grant.max_claims,
+            claim_count=grant.claim_count,
+            expires_at=grant.expires_at,
+            last_used_at=grant.last_used_at,
+        )
+
+    def invite_bootstrap(self, grant: GroupWorkspaceInviteGrantContext) -> dict[str, Any]:
+        self._ensure_public_bootstrap_enabled()
+        stored = self.get_invite_grant(grant.grant_id)
+        workspace = stored.workspace or self.get_workspace(stored.workspace_id)
+        self.metrics.increment("group_workspace_invite_bootstrap_requests_total")
+        with bind_log_context(
+            workspace_id=workspace.id,
+            invite_grant_id=stored.id,
+        ):
+            return {
+                "invite": self._public_invite_summary(stored),
+                "workspace": self._workspace_safe_summary(workspace),
+                "role_to_assign": stored.role_to_assign,
+                "remaining_claims": self._remaining_claims(stored),
+                "expires_at": stored.expires_at,
+                "notes": [
+                    "This invite exposes a safe workspace summary only.",
+                    "Joining requires an existing subscription self-service grant.",
+                ],
+            }
+
+    def preview_invite_claim(
+        self,
+        *,
+        raw_token: str,
+        grant: SubscriptionSelfServiceGrantContext,
+    ) -> dict[str, Any]:
+        self.metrics.increment("group_workspace_invite_claim_previews_total")
+        evaluation = self._evaluate_invite_for_user(raw_token=raw_token, user_id=grant.user_id)
+        return {
+            "can_claim": evaluation["can_claim"],
+            "reason_codes": evaluation["reason_codes"],
+            "current_membership": (
+                None
+                if evaluation["membership"] is None
+                else self._workspace_membership_summary(evaluation["membership"])
+            ),
+            "invite": (
+                None
+                if evaluation["invite_grant"] is None
+                else self._public_invite_summary(evaluation["invite_grant"])
+            ),
+            "workspace": (
+                None
+                if evaluation["workspace"] is None
+                else self._workspace_safe_summary(evaluation["workspace"])
+            ),
+        }
+
+    def claim_workspace_invite(
+        self,
+        *,
+        raw_token: str,
+        grant: SubscriptionSelfServiceGrantContext,
+    ) -> dict[str, Any]:
+        self.metrics.increment("group_workspace_invite_claims_total")
+        evaluation = self._evaluate_invite_for_user(raw_token=raw_token, user_id=grant.user_id)
+        invite_grant: GroupWorkspaceInviteGrant | None = evaluation["invite_grant"]
+        workspace: GroupWorkspace | None = evaluation["workspace"]
+        membership: GroupWorkspaceMember | None = evaluation["membership"]
+        reason_codes = list(evaluation["reason_codes"])
+
+        if not evaluation["can_claim"]:
+            invite_claim = self._record_invite_claim_if_applicable(
+                invite_grant=invite_grant,
+                workspace=workspace,
+                user_id=grant.user_id,
+                membership=membership,
+                claim_status=(
+                    GroupWorkspaceInviteClaimStatus.ALREADY_MEMBER
+                    if reason_codes == ["already_member"]
+                    else GroupWorkspaceInviteClaimStatus.REJECTED
+                ),
+                reason_codes=reason_codes,
+                claimed_at=None,
+            )
+            return {
+                "action": "already_member" if reason_codes == ["already_member"] else "rejected",
+                "membership": (
+                    None if membership is None else self._workspace_membership_summary(membership)
+                ),
+                "invite_claim": (
+                    None if invite_claim is None else self.serialize_invite_claim(invite_claim)
+                ),
+                "invite": (
+                    None if invite_grant is None else self._public_invite_summary(invite_grant)
+                ),
+                "workspace": (
+                    None if workspace is None else self._workspace_safe_summary(workspace)
+                ),
+            }
+
+        assert invite_grant is not None
+        assert workspace is not None
+        role = GroupWorkspaceMemberRole(invite_grant.role_to_assign.value)
+        new_membership = GroupWorkspaceMember(
+            workspace_id=workspace.id,
+            user_id=grant.user_id,
+            role=role,
+            joined_at=self.now_provider(),
+        )
+        self.repository.add_workspace_member(new_membership)
+        self.session.flush()
+        invite_grant.claim_count += 1
+        if self._remaining_claims(invite_grant) == 0:
+            invite_grant.status = GroupWorkspaceInviteGrantStatus.EXHAUSTED
+        invite_claim = self._record_invite_claim(
+            invite_grant=invite_grant,
+            workspace=workspace,
+            user_id=grant.user_id,
+            membership=new_membership,
+            claim_status=GroupWorkspaceInviteClaimStatus.CLAIMED,
+            reason_codes=[],
+            claimed_at=self.now_provider(),
+        )
+        commit_session(self.session)
+        persisted_membership = self.repository.get_workspace_member_for_user(
+            workspace_id=workspace.id,
+            user_id=grant.user_id,
+        )
+        persisted_claim = self.repository.get_invite_claim(
+            invite_grant_id=invite_grant.id,
+            user_id=grant.user_id,
+        )
+        return {
+            "action": "claimed",
+            "membership": (
+                None
+                if persisted_membership is None
+                else self._workspace_membership_summary(persisted_membership)
+            ),
+            "invite_claim": (
+                None if persisted_claim is None else self.serialize_invite_claim(persisted_claim)
+            ),
+            "invite": self._public_invite_summary(self.get_invite_grant(invite_grant.id)),
+            "workspace": self._workspace_safe_summary(self.get_workspace(workspace.id)),
+        }
 
     def list_result_share_grants(
         self,
@@ -423,6 +767,215 @@ class GroupWorkspaceService:
                 return self._shared_workspace_board_payload(stored.workspace)
             raise NotFoundError("shared content was not found")
 
+    def self_service_workspace_memberships(
+        self,
+        *,
+        user_id: UUID,
+    ) -> list[dict[str, Any]]:
+        return [
+            self._workspace_membership_summary(membership)
+            for membership in self.list_workspace_memberships_for_user(user_id=user_id)
+        ]
+
+    def mini_workspace_invite_reserve(self) -> dict[str, Any]:
+        return {
+            "supported": True,
+            "editable_via_current_mini_grant": False,
+            "separate_self_service_grant_required": True,
+            "claim_supported_via_self_service": True,
+            "notes": [
+                "Mini remains read-only in this phase.",
+                "Claiming workspace membership requires a separate self-service grant.",
+            ],
+        }
+
+    def _ensure_invites_enabled(self) -> None:
+        if not self.settings.group_workspace_invites_enabled:
+            raise ValidationFailedError(
+                "group workspace invites are not enabled",
+                errors=[
+                    {
+                        "field_id": "invites",
+                        "code": "invites_disabled",
+                        "message": "group workspace invites are not enabled",
+                    }
+                ],
+            )
+
+    def _ensure_public_bootstrap_enabled(self) -> None:
+        self._ensure_invites_enabled()
+        if not self.settings.group_workspace_invite_public_bootstrap_enabled:
+            raise ValidationFailedError(
+                "group workspace invite bootstrap is not enabled",
+                errors=[
+                    {
+                        "field_id": "public_bootstrap",
+                        "code": "disabled",
+                        "message": "group workspace invite bootstrap is not enabled",
+                    }
+                ],
+            )
+
+    def _default_invite_expires_at(self) -> datetime | None:
+        ttl_hours = self.settings.group_workspace_invite_ttl_hours
+        return self.now_provider() + timedelta(hours=ttl_hours) if ttl_hours is not None else None
+
+    def _refresh_expired_invite_grants(self, grants: Sequence[GroupWorkspaceInviteGrant]) -> None:
+        updated = False
+        now = self.now_provider()
+        for grant in grants:
+            updated = self._mark_invite_expired_if_needed(grant, now=now) or updated
+        if updated:
+            commit_session(self.session)
+
+    def _mark_invite_expired_if_needed(
+        self,
+        grant: GroupWorkspaceInviteGrant,
+        *,
+        now: datetime | None = None,
+    ) -> bool:
+        current_time = self._coerce_utc(now or self.now_provider())
+        expires_at = self._coerce_utc(grant.expires_at)
+        if (
+            grant.status == GroupWorkspaceInviteGrantStatus.ACTIVE
+            and expires_at is not None
+            and expires_at <= current_time
+        ):
+            grant.status = GroupWorkspaceInviteGrantStatus.EXPIRED
+            return True
+        if (
+            grant.status == GroupWorkspaceInviteGrantStatus.ACTIVE
+            and grant.max_claims is not None
+            and grant.claim_count >= grant.max_claims
+        ):
+            grant.status = GroupWorkspaceInviteGrantStatus.EXHAUSTED
+            return True
+        return False
+
+    def _evaluate_invite_for_user(
+        self,
+        *,
+        raw_token: str,
+        user_id: UUID,
+    ) -> dict[str, Any]:
+        if not self.settings.group_workspace_invites_enabled:
+            return self._invite_evaluation_result(reason_codes=["invites_disabled"])
+        invite_grant = self.repository.get_invite_grant_by_token_hash(hash_token(raw_token))
+        if invite_grant is None:
+            return self._invite_evaluation_result(reason_codes=["invite_not_found"])
+        now = self.now_provider()
+        self._mark_invite_expired_if_needed(invite_grant, now=now)
+        invite_grant.last_used_at = now
+        commit_session(self.session)
+        workspace = invite_grant.workspace
+        membership = self.repository.get_workspace_member_for_user(
+            workspace_id=invite_grant.workspace_id,
+            user_id=user_id,
+        )
+        if membership is not None:
+            return self._invite_evaluation_result(
+                invite_grant=invite_grant,
+                workspace=workspace,
+                membership=membership,
+                reason_codes=["already_member"],
+            )
+        reason_codes: list[str] = []
+        if invite_grant.status == GroupWorkspaceInviteGrantStatus.REVOKED:
+            reason_codes.append("invite_revoked")
+        elif invite_grant.status == GroupWorkspaceInviteGrantStatus.EXPIRED:
+            reason_codes.append("invite_expired")
+        elif invite_grant.status == GroupWorkspaceInviteGrantStatus.EXHAUSTED:
+            reason_codes.append("invite_exhausted")
+        if workspace is None or workspace.status != GroupWorkspaceStatus.ACTIVE:
+            reason_codes.append("workspace_archived")
+        if invite_grant.role_to_assign not in INVITE_ROLE_ASSIGNABLE_VALUES:
+            reason_codes.append("role_not_assignable")
+        return self._invite_evaluation_result(
+            invite_grant=invite_grant,
+            workspace=workspace,
+            membership=membership,
+            reason_codes=reason_codes,
+        )
+
+    def _invite_evaluation_result(
+        self,
+        *,
+        invite_grant: GroupWorkspaceInviteGrant | None = None,
+        workspace: GroupWorkspace | None = None,
+        membership: GroupWorkspaceMember | None = None,
+        reason_codes: list[str] | None = None,
+    ) -> dict[str, Any]:
+        reasons = list(reason_codes or [])
+        return {
+            "invite_grant": invite_grant,
+            "workspace": workspace,
+            "membership": membership,
+            "reason_codes": reasons,
+            "can_claim": not reasons,
+        }
+
+    def _record_invite_claim_if_applicable(
+        self,
+        *,
+        invite_grant: GroupWorkspaceInviteGrant | None,
+        workspace: GroupWorkspace | None,
+        user_id: UUID,
+        membership: GroupWorkspaceMember | None,
+        claim_status: GroupWorkspaceInviteClaimStatus,
+        reason_codes: list[str],
+        claimed_at: datetime | None,
+    ) -> GroupWorkspaceInviteClaim | None:
+        if invite_grant is None or workspace is None:
+            return None
+        self._record_invite_claim(
+            invite_grant=invite_grant,
+            workspace=workspace,
+            user_id=user_id,
+            membership=membership,
+            claim_status=claim_status,
+            reason_codes=reason_codes,
+            claimed_at=claimed_at,
+        )
+        commit_session(self.session)
+        return self.repository.get_invite_claim(invite_grant_id=invite_grant.id, user_id=user_id)
+
+    def _record_invite_claim(
+        self,
+        *,
+        invite_grant: GroupWorkspaceInviteGrant,
+        workspace: GroupWorkspace,
+        user_id: UUID,
+        membership: GroupWorkspaceMember | None,
+        claim_status: GroupWorkspaceInviteClaimStatus,
+        reason_codes: list[str],
+        claimed_at: datetime | None,
+    ) -> GroupWorkspaceInviteClaim:
+        existing = self.repository.get_invite_claim(
+            invite_grant_id=invite_grant.id,
+            user_id=user_id,
+        )
+        if existing is None:
+            existing = GroupWorkspaceInviteClaim(
+                invite_grant_id=invite_grant.id,
+                workspace_id=workspace.id,
+                user_id=user_id,
+                membership_id=None if membership is None else membership.id,
+                role_assigned=invite_grant.role_to_assign,
+                claim_status=claim_status,
+                reason_codes=list(reason_codes),
+                claimed_at=claimed_at,
+            )
+            self.repository.add_invite_claim(existing)
+            return existing
+        existing.workspace_id = workspace.id
+        existing.membership_id = None if membership is None else membership.id
+        existing.role_assigned = invite_grant.role_to_assign
+        existing.claim_status = claim_status
+        existing.reason_codes = list(reason_codes)
+        if claimed_at is not None:
+            existing.claimed_at = claimed_at
+        return existing
+
     def _refresh_expired_grants(self, grants: Sequence[ResultShareGrant]) -> None:
         updated = False
         now = self.now_provider()
@@ -468,6 +1021,46 @@ class GroupWorkspaceService:
             "created_at": workspace.created_at,
             "updated_at": workspace.updated_at,
         }
+
+    def _workspace_safe_summary(self, workspace: GroupWorkspace) -> dict[str, Any]:
+        return {
+            "id": workspace.id,
+            "slug": workspace.slug,
+            "name": workspace.name,
+            "description": workspace.description,
+            "status": workspace.status,
+        }
+
+    def _workspace_membership_summary(self, membership: GroupWorkspaceMember) -> dict[str, Any]:
+        workspace = membership.workspace
+        if workspace is None:
+            workspace = self.get_workspace(membership.workspace_id)
+        return {
+            "member_id": membership.id,
+            "workspace_id": membership.workspace_id,
+            "user_id": membership.user_id,
+            "role": membership.role,
+            "joined_at": membership.joined_at,
+            "workspace_summary": self._workspace_safe_summary(workspace),
+        }
+
+    def _public_invite_summary(self, grant: GroupWorkspaceInviteGrant) -> dict[str, Any]:
+        return {
+            "id": grant.id,
+            "workspace_id": grant.workspace_id,
+            "role_to_assign": grant.role_to_assign,
+            "status": grant.status,
+            "display_label": grant.display_label,
+            "max_claims": grant.max_claims,
+            "claim_count": grant.claim_count,
+            "expires_at": grant.expires_at,
+            "created_at": grant.created_at,
+        }
+
+    def _remaining_claims(self, grant: GroupWorkspaceInviteGrant) -> int | None:
+        if grant.max_claims is None:
+            return None
+        return max(grant.max_claims - grant.claim_count, 0)
 
     def _workspace_member_summary(
         self,

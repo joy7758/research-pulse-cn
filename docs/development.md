@@ -145,9 +145,21 @@ The shell is internal/admin-only, keeps bearer tokens in memory only, and stays 
   - `GET /admin/result-share-grants`
   - `POST /admin/result-share-grants`
   - `POST /admin/result-share-grants/{grant_id}/revoke`
+- Admin-managed workspace invite routes:
+  - `GET /admin/group-workspace-invite-grants`
+  - `POST /admin/group-workspace-invite-grants`
+  - `GET /admin/group-workspace-invite-grants/{grant_id}`
+  - `POST /admin/group-workspace-invite-grants/{grant_id}/revoke`
+  - `GET /admin/group-workspace-invite-claims`
 - Public read-only share routes:
   - `GET /result-shares/{share_token}/bootstrap`
   - `GET /result-shares/{share_token}/content`
+- Public invite bootstrap route:
+  - `GET /workspace-invites/{invite_token}/bootstrap`
+- Self-service invite routes:
+  - `GET /subscription-self-service/workspace-invites/{invite_token}/claim-preview`
+  - `POST /subscription-self-service/workspace-invites/{invite_token}/claim`
+  - `GET /subscription-self-service/workspace-memberships`
 
 This phase shares structured results only. It explicitly excludes PDFs, source files, local attachment paths, and local note contents.
 The browser shell for that boundary now uses:
@@ -181,6 +193,10 @@ Mini routes stay read-only and require mini-read grant auth only.
 
 These mini endpoints only mint or inspect a short-lived editor handoff token. They do not make mini grants directly writable.
 The new browser/webview-friendly shell in `apps/subscription-editor-web` is the intended local/manual consumer of that handoff token in this phase.
+`/mini/subscription-reserve` now also includes a read-only `workspace_invite_reserve` summary that explains:
+- mini grant still cannot claim workspace membership directly
+- a separate self-service grant is required
+- workspace invite claim remains self-service-only in this phase
 
 ## Pulse scoring knobs
 - Defaults live in application settings and `.env.example`
@@ -395,6 +411,9 @@ The new browser/webview-friendly shell in `apps/subscription-editor-web` is the 
   - `GET /subscription-self-service/editor-bootstrap`
   - `GET /subscription-self-service/editor-contract`
   - `POST /subscription-self-service/settings/preview`
+  - `GET /subscription-self-service/workspace-invites/{invite_token}/claim-preview`
+  - `POST /subscription-self-service/workspace-invites/{invite_token}/claim`
+  - `GET /subscription-self-service/workspace-memberships`
 - Self-service grant tokens are valid only on `/subscription-self-service/*` and cannot access `/admin/*`, `/ops/*`, `/sync/*`, `/mini/*`, or business CRUD routes.
 - Mini grant tokens remain valid only on `/mini/*` and cannot access `/subscription-self-service/*`.
 - Self-service patching preserves unknown existing `SubscriptionPolicy.policy` keys while allowing only the supported safe subset to change.

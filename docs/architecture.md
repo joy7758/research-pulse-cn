@@ -228,6 +228,9 @@ Tie-break order is deterministic:
   - `GET /subscription-self-service/editor-bootstrap`
   - `GET /subscription-self-service/editor-contract`
   - `POST /subscription-self-service/settings/preview`
+  - `GET /subscription-self-service/workspace-invites/{invite_token}/claim-preview`
+  - `POST /subscription-self-service/workspace-invites/{invite_token}/claim`
+  - `GET /subscription-self-service/workspace-memberships`
 - Supported editable fields are intentionally narrow:
   - `enabled`
   - `quiet_hours`
@@ -266,6 +269,12 @@ Tie-break order is deterministic:
   - member summaries
   - safe paper snapshots
   - compact quick stats
+- `GroupWorkspaceInviteGrant` now adds an opaque invite-token boundary for workspace membership growth.
+- `GroupWorkspaceInviteClaim` records deterministic claim outcomes for one user and one invite.
+- Invite roles in v1 are intentionally restricted to:
+  - `editor`
+  - `viewer`
+- `owner` remains admin-managed only.
 
 ### Result share boundary
 - `ResultShareGrant` is a hashed opaque-token read-only grant for:
@@ -291,6 +300,19 @@ Tie-break order is deterministic:
   - clears query or fragment bearer tokens from the visible URL after moving them into in-memory state
   - manages only workspace list/detail, member/paper add-remove, and `workspace_board` share-grant create/revoke flows
   - does not add source-file semantics or public editing
+
+### Invite and join reserve boundary
+- Workspace invites are distinct from result shares:
+  - invite bootstrap is public and read-only
+  - claim stays behind `SubscriptionSelfServiceGrant`
+- Public bootstrap route:
+  - `GET /workspace-invites/{invite_token}/bootstrap`
+- Self-service invite routes:
+  - `GET /subscription-self-service/workspace-invites/{invite_token}/claim-preview`
+  - `POST /subscription-self-service/workspace-invites/{invite_token}/claim`
+  - `GET /subscription-self-service/workspace-memberships`
+- Mini reserve may advertise the next step, but mini auth still cannot claim membership directly.
+- Invite/join payloads exclude source files, local attachments, local notes, provider secrets, and WeChat identity secrets.
 
 ### Derived progress percentage
 - Mini paper views expose a deterministic `progress_percentage` derived from `PaperProfile.type`.

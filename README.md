@@ -26,6 +26,7 @@ Private repository. Proprietary and confidential.
 - A thin public React/Vite result-share shell under `apps/result-share-web` for opening `ResultShareGrant` links in a browser without introducing source-file sharing, browser token persistence, or a generic login system
 - A thin internal React/Vite admin shell under `apps/group-workspace-admin-web` for operator-managed workspace list/detail, member/paper add-remove flows, and `workspace_board` share-grant issuance without introducing end-user login or source-file sharing
 - A thin internal React/Vite admin shell under `apps/user-workbench-admin-web` for read-only search and drilldown across users, papers, and research watch profiles without introducing end-user login, file sharing, or business write flows
+- A backend-only workspace invite/join reserve that adds opaque invite grants, public invite bootstrap, self-service claim-preview/claim routes, and safe membership summaries without introducing source-file sharing or a generic login system
 - Official-account binding handshake reserve sessions that connect callback evidence, existing bindings, and self-service grants, plus real official-account webpage OAuth completion for code/state exchange and safe binding create/reuse without introducing a generic app login system
 - Mini read-only reserve endpoints that now consume structured digests, expose a safe subscription reserve summary, and keep mini grant auth separate from self-service grant auth
 - Tauri 2 desktop shell with Rust-side pull sync, local SQLite cache, mutation outbox, minimal writeback for paper/progress/subscription policy edits, a local paper workspace layer, local markdown notes/templates, and a local review-matrix workflow that generates reviewer-matrix / response-letter drafts
@@ -101,6 +102,11 @@ Group workspace/result sharing in this phase now has two thin browser shells:
 - internal admin/operator management in `apps/group-workspace-admin-web`
 - public read-only share rendering in `apps/result-share-web`
 - PDFs, source files, local attachments, and local note contents are still excluded
+- workspace invite/join now also has a backend reserve:
+  - `GET /workspace-invites/{invite_token}/bootstrap`
+  - `GET /subscription-self-service/workspace-invites/{invite_token}/claim-preview`
+  - `POST /subscription-self-service/workspace-invites/{invite_token}/claim`
+  - `GET /subscription-self-service/workspace-memberships`
 
 Internal support workflows in this phase now also have a separate read-only workbench in `apps/user-workbench-admin-web` for:
 - user lookup
@@ -178,6 +184,10 @@ Mini reserve now also exposes a short-lived editor handoff bridge:
 - `GET /mini/subscription-reserve/editor-handoff-status`
 
 These routes mint or inspect a narrow handoff token for `/subscription-editor/*` only. Mini grants still cannot patch subscription settings directly.
+Mini reserve now also exposes an informational `workspace_invite_reserve` block:
+- mini grant still cannot claim workspace membership directly
+- a separate self-service grant is required
+- invite claim remains self-service-only in this phase
 
 ## Subscription editor web shell
 The repository now also includes a thin browser/WebView-friendly shell under `apps/subscription-editor-web` using:
@@ -370,6 +380,10 @@ Important values:
 - `APP_MINI_PAPERS_DEFAULT_LIMIT`: default compact paper page size for mini reads
 - `APP_MINI_PAPERS_MAX_LIMIT`: max compact paper page size for mini reads
 - `APP_SUBSCRIPTION_EDITOR_WEB_ALLOWED_ORIGINS`: browser origins allowed to call the editor shell APIs during local development
+- `APP_GROUP_WORKSPACE_INVITES_ENABLED`: enable or disable workspace invite issuance and claim flows
+- `APP_GROUP_WORKSPACE_INVITE_DEFAULT_MAX_CLAIMS`: default invite claim capacity when create does not override it
+- `APP_GROUP_WORKSPACE_INVITE_TTL_HOURS`: default invite lifetime
+- `APP_GROUP_WORKSPACE_INVITE_PUBLIC_BOOTSTRAP_ENABLED`: enable or disable public invite bootstrap separately
 - `APP_DIGEST_SIGNAL_UPDATES_MAX_ITEMS`: max `signal_change` cards kept in the `signal_updates` digest section
 - `APP_DIGEST_RELATED_PAPERS_MAX_ITEMS`: max `related_paper` cards kept in the `related_papers` digest section
 - `APP_DIGEST_OTHER_UPDATES_MAX_ITEMS`: max overflow cards kept in the `other_updates` digest section
@@ -397,6 +411,13 @@ Important values:
   - `POST /subscription-self-service/settings/preview`
   - `PATCH /subscription-self-service/settings?include_preview=true`
   - authoritative preview-before-save without persisting draft state
+- group workspace invite/join reserve is exposed through:
+  - `GET /workspace-invites/{invite_token}/bootstrap`
+  - `GET /subscription-self-service/workspace-invites/{invite_token}/claim-preview`
+  - `POST /subscription-self-service/workspace-invites/{invite_token}/claim`
+  - `GET /subscription-self-service/workspace-memberships`
+  - public bootstrap stays read-only
+  - membership claim stays behind self-service grant auth
 - `subscription-self-service` editable fields are limited to:
   - `enabled`
   - `quiet_hours`

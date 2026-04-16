@@ -9,6 +9,9 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 from research_pulse_cn.domain.enums import (
+    GroupWorkspaceInviteClaimStatus,
+    GroupWorkspaceInviteGrantStatus,
+    GroupWorkspaceInviteRole,
     GroupWorkspaceMemberRole,
     GroupWorkspaceStatus,
     PaperType,
@@ -50,6 +53,16 @@ class GroupWorkspacePaperCreateRequest(BaseModel):
     paper_id: UUID
 
 
+class GroupWorkspaceInviteGrantCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    workspace_id: UUID
+    role_to_assign: GroupWorkspaceInviteRole
+    display_label: str | None = Field(default=None, max_length=255)
+    max_claims: int | None = Field(default=None, ge=1)
+    expires_at: datetime | None = None
+
+
 class ResultShareGrantCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -72,6 +85,14 @@ class GroupWorkspaceRead(ORMModel):
     updated_at: datetime
 
 
+class GroupWorkspaceSafeSummaryRead(BaseModel):
+    id: UUID
+    slug: str
+    name: str
+    description: str | None
+    status: GroupWorkspaceStatus
+
+
 class GroupWorkspaceMemberRead(ORMModel):
     id: UUID
     workspace_id: UUID
@@ -80,6 +101,15 @@ class GroupWorkspaceMemberRead(ORMModel):
     joined_at: datetime
     created_at: datetime
     updated_at: datetime
+
+
+class GroupWorkspaceMembershipSummaryRead(BaseModel):
+    member_id: UUID
+    workspace_id: UUID
+    user_id: UUID
+    role: GroupWorkspaceMemberRole
+    joined_at: datetime
+    workspace_summary: GroupWorkspaceSafeSummaryRead
 
 
 class GroupWorkspacePaperRead(ORMModel):
@@ -155,6 +185,83 @@ class ResultShareGrantRead(ORMModel):
     last_used_at: datetime | None
     created_at: datetime
     updated_at: datetime
+
+
+class GroupWorkspaceInviteGrantRead(ORMModel):
+    id: UUID
+    workspace_id: UUID
+    role_to_assign: GroupWorkspaceInviteRole
+    status: GroupWorkspaceInviteGrantStatus
+    display_label: str | None
+    max_claims: int | None
+    claim_count: int
+    expires_at: datetime | None
+    last_used_at: datetime | None
+    issued_by_admin_id: UUID | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class GroupWorkspaceInviteGrantIssueResponse(BaseModel):
+    grant: GroupWorkspaceInviteGrantRead
+    plain_text_token: str
+    expires_at: datetime | None
+
+
+class GroupWorkspaceInviteGrantRevokeResponse(BaseModel):
+    grant: GroupWorkspaceInviteGrantRead
+    revoked_at: datetime
+
+
+class GroupWorkspaceInviteClaimRead(ORMModel):
+    id: UUID
+    invite_grant_id: UUID
+    workspace_id: UUID
+    user_id: UUID
+    membership_id: UUID | None
+    role_assigned: GroupWorkspaceInviteRole
+    claim_status: GroupWorkspaceInviteClaimStatus
+    reason_codes: list[str] = Field(default_factory=list)
+    created_at: datetime
+    updated_at: datetime
+    claimed_at: datetime | None
+
+
+class GroupWorkspaceInvitePublicSummaryRead(BaseModel):
+    id: UUID
+    workspace_id: UUID
+    role_to_assign: GroupWorkspaceInviteRole
+    status: GroupWorkspaceInviteGrantStatus
+    display_label: str | None
+    max_claims: int | None
+    claim_count: int
+    expires_at: datetime | None
+    created_at: datetime
+
+
+class GroupWorkspaceInviteBootstrapRead(BaseModel):
+    invite: GroupWorkspaceInvitePublicSummaryRead
+    workspace: GroupWorkspaceSafeSummaryRead
+    role_to_assign: GroupWorkspaceInviteRole
+    remaining_claims: int | None = None
+    expires_at: datetime | None
+    notes: list[str] = Field(default_factory=list)
+
+
+class GroupWorkspaceInviteClaimPreviewRead(BaseModel):
+    can_claim: bool
+    reason_codes: list[str] = Field(default_factory=list)
+    current_membership: GroupWorkspaceMembershipSummaryRead | None = None
+    invite: GroupWorkspaceInvitePublicSummaryRead | None = None
+    workspace: GroupWorkspaceSafeSummaryRead | None = None
+
+
+class GroupWorkspaceInviteClaimResponse(BaseModel):
+    action: Literal["claimed", "already_member", "rejected"]
+    membership: GroupWorkspaceMembershipSummaryRead | None = None
+    invite_claim: GroupWorkspaceInviteClaimRead | None = None
+    invite: GroupWorkspaceInvitePublicSummaryRead | None = None
+    workspace: GroupWorkspaceSafeSummaryRead | None = None
 
 
 class ResultShareGrantIssueResponse(BaseModel):

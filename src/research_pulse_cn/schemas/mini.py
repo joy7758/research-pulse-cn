@@ -269,6 +269,14 @@ class MiniEditorHandoffReserveRead(BaseModel):
     notes: list[str] = Field(default_factory=list)
 
 
+class MiniWorkspaceInviteReserveRead(BaseModel):
+    supported: bool
+    editable_via_current_mini_grant: bool
+    separate_self_service_grant_required: bool
+    claim_supported_via_self_service: bool
+    notes: list[str] = Field(default_factory=list)
+
+
 class MiniSubscriptionReserveSummaryRead(BaseModel):
     has_official_account_binding: bool
     has_official_account_subscription_settings: bool
@@ -289,6 +297,7 @@ class MiniSubscriptionReserveRead(BaseModel):
     self_service_entry: MiniSelfServiceReserveRead | None = None
     binding_handoff_reserve: MiniBindingHandoffReserveRead
     editor_handoff_reserve: MiniEditorHandoffReserveRead
+    workspace_invite_reserve: MiniWorkspaceInviteReserveRead
 
 
 class MiniBootstrapResponse(BaseModel):

@@ -9,6 +9,8 @@ from sqlalchemy.orm import Session, selectinload
 
 from research_pulse_cn.db.models import (
     GroupWorkspace,
+    GroupWorkspaceInviteClaim,
+    GroupWorkspaceInviteGrant,
     GroupWorkspaceMember,
     GroupWorkspacePaper,
     PaperProfile,
@@ -17,6 +19,9 @@ from research_pulse_cn.db.models import (
     ResultShareGrant,
 )
 from research_pulse_cn.domain.enums import (
+    GroupWorkspaceInviteClaimStatus,
+    GroupWorkspaceInviteGrantStatus,
+    GroupWorkspaceInviteRole,
     GroupWorkspaceStatus,
     ResultShareGrantStatus,
     ResultShareKind,
@@ -65,6 +70,22 @@ class GroupWorkspaceRepository:
             selectinload(ResultShareGrant.paper).selectinload(PaperProfile.signal_snapshots),
             selectinload(ResultShareGrant.paper).selectinload(PaperProfile.progress_events),
             selectinload(ResultShareGrant.issued_by_admin),
+        )
+
+    def _invite_grant_load_options(self):
+        return (
+            selectinload(GroupWorkspaceInviteGrant.workspace),
+            selectinload(GroupWorkspaceInviteGrant.issued_by_admin),
+        )
+
+    def _invite_claim_load_options(self):
+        return (
+            selectinload(GroupWorkspaceInviteClaim.invite_grant).options(
+                *self._invite_grant_load_options()
+            ),
+            selectinload(GroupWorkspaceInviteClaim.workspace),
+            selectinload(GroupWorkspaceInviteClaim.user),
+            selectinload(GroupWorkspaceInviteClaim.membership),
         )
 
     def list_workspaces(
@@ -118,6 +139,35 @@ class GroupWorkspaceRepository:
             .limit(1)
         )
         return self.session.scalar(statement)
+
+    def get_workspace_member_for_user(
+        self,
+        *,
+        workspace_id: UUID,
+        user_id: UUID,
+    ) -> GroupWorkspaceMember | None:
+        statement = (
+            select(GroupWorkspaceMember)
+            .options(
+                selectinload(GroupWorkspaceMember.user),
+                selectinload(GroupWorkspaceMember.workspace),
+            )
+            .where(
+                GroupWorkspaceMember.workspace_id == workspace_id,
+                GroupWorkspaceMember.user_id == user_id,
+            )
+            .limit(1)
+        )
+        return self.session.scalar(statement)
+
+    def list_workspace_memberships_for_user(self, *, user_id: UUID) -> list[GroupWorkspaceMember]:
+        statement = (
+            select(GroupWorkspaceMember)
+            .options(selectinload(GroupWorkspaceMember.workspace))
+            .where(GroupWorkspaceMember.user_id == user_id)
+            .order_by(GroupWorkspaceMember.joined_at.desc(), GroupWorkspaceMember.id.desc())
+        )
+        return list(self.session.scalars(statement))
 
     def add_workspace_member(self, member: GroupWorkspaceMember) -> GroupWorkspaceMember:
         self.session.add(member)
@@ -195,3 +245,92 @@ class GroupWorkspaceRepository:
     def add_result_share_grant(self, grant: ResultShareGrant) -> ResultShareGrant:
         self.session.add(grant)
         return grant
+
+    def list_invite_grants(
+        self,
+        *,
+        workspace_id: UUID | None = None,
+        status: GroupWorkspaceInviteGrantStatus | None = None,
+        role_to_assign: GroupWorkspaceInviteRole | None = None,
+    ) -> list[GroupWorkspaceInviteGrant]:
+        statement = (
+            select(GroupWorkspaceInviteGrant)
+            .options(*self._invite_grant_load_options())
+            .order_by(
+                GroupWorkspaceInviteGrant.created_at.desc(),
+                GroupWorkspaceInviteGrant.id.desc(),
+            )
+        )
+        if workspace_id is not None:
+            statement = statement.where(GroupWorkspaceInviteGrant.workspace_id == workspace_id)
+        if status is not None:
+            statement = statement.where(GroupWorkspaceInviteGrant.status == status)
+        if role_to_assign is not None:
+            statement = statement.where(GroupWorkspaceInviteGrant.role_to_assign == role_to_assign)
+        return list(self.session.scalars(statement))
+
+    def get_invite_grant(self, grant_id: UUID) -> GroupWorkspaceInviteGrant | None:
+        statement = (
+            select(GroupWorkspaceInviteGrant)
+            .options(*self._invite_grant_load_options())
+            .where(GroupWorkspaceInviteGrant.id == grant_id)
+            .limit(1)
+        )
+        return self.session.scalar(statement)
+
+    def get_invite_grant_by_token_hash(self, token_hash: str) -> GroupWorkspaceInviteGrant | None:
+        statement = (
+            select(GroupWorkspaceInviteGrant)
+            .options(*self._invite_grant_load_options())
+            .where(GroupWorkspaceInviteGrant.token_hash == token_hash)
+            .limit(1)
+        )
+        return self.session.scalar(statement)
+
+    def add_invite_grant(self, grant: GroupWorkspaceInviteGrant) -> GroupWorkspaceInviteGrant:
+        self.session.add(grant)
+        return grant
+
+    def list_invite_claims(
+        self,
+        *,
+        workspace_id: UUID | None = None,
+        user_id: UUID | None = None,
+        claim_status: GroupWorkspaceInviteClaimStatus | None = None,
+    ) -> list[GroupWorkspaceInviteClaim]:
+        statement = (
+            select(GroupWorkspaceInviteClaim)
+            .options(*self._invite_claim_load_options())
+            .order_by(
+                GroupWorkspaceInviteClaim.created_at.desc(),
+                GroupWorkspaceInviteClaim.id.desc(),
+            )
+        )
+        if workspace_id is not None:
+            statement = statement.where(GroupWorkspaceInviteClaim.workspace_id == workspace_id)
+        if user_id is not None:
+            statement = statement.where(GroupWorkspaceInviteClaim.user_id == user_id)
+        if claim_status is not None:
+            statement = statement.where(GroupWorkspaceInviteClaim.claim_status == claim_status)
+        return list(self.session.scalars(statement))
+
+    def get_invite_claim(
+        self,
+        *,
+        invite_grant_id: UUID,
+        user_id: UUID,
+    ) -> GroupWorkspaceInviteClaim | None:
+        statement = (
+            select(GroupWorkspaceInviteClaim)
+            .options(*self._invite_claim_load_options())
+            .where(
+                GroupWorkspaceInviteClaim.invite_grant_id == invite_grant_id,
+                GroupWorkspaceInviteClaim.user_id == user_id,
+            )
+            .limit(1)
+        )
+        return self.session.scalar(statement)
+
+    def add_invite_claim(self, claim: GroupWorkspaceInviteClaim) -> GroupWorkspaceInviteClaim:
+        self.session.add(claim)
+        return claim

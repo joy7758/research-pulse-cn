@@ -323,6 +323,24 @@ class GroupWorkspaceMemberRole(StrEnum):
     VIEWER = "viewer"
 
 
+class GroupWorkspaceInviteRole(StrEnum):
+    EDITOR = "editor"
+    VIEWER = "viewer"
+
+
+class GroupWorkspaceInviteGrantStatus(StrEnum):
+    ACTIVE = "active"
+    REVOKED = "revoked"
+    EXPIRED = "expired"
+    EXHAUSTED = "exhausted"
+
+
+class GroupWorkspaceInviteClaimStatus(StrEnum):
+    CLAIMED = "claimed"
+    ALREADY_MEMBER = "already_member"
+    REJECTED = "rejected"
+
+
 class ResultShareKind(StrEnum):
     DIGEST_ISSUE = "digest_issue"
     PAPER_SNAPSHOT = "paper_snapshot"

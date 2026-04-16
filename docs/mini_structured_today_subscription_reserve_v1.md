@@ -43,6 +43,7 @@
   - `self_service_entry` handoff block for future editor clients
   - `binding_handoff_reserve` informational block
   - `editor_handoff_reserve` informational block for future editor-token minting
+  - `workspace_invite_reserve` informational block for future invite-join handoff
 - Safe binding summary excludes:
   - `openid`
   - `unionid`
@@ -66,6 +67,10 @@
   - mini grant still cannot call editor endpoints directly
   - a short-lived handoff grant is required
   - future mini or WebView clients can mint that token through mini reserve without replacing self-service grant auth
+- `workspace_invite_reserve` now makes the membership-join bridge explicit:
+  - mini grant still cannot claim workspace membership directly
+  - a separate self-service grant is required
+  - invite claim remains self-service-only in this phase
 
 ## Current Non-Goals
 - real WeChat OAuth or mini session exchange

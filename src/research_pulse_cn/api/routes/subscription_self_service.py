@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, Query, Request
 
 from research_pulse_cn.api.dependencies import (
     get_audit_service,
+    get_group_workspace_service,
     get_official_account_binding_handshake_service,
     get_official_account_oauth_service,
     get_subscription_self_service_service,
@@ -19,6 +20,11 @@ from research_pulse_cn.domain.auth import ActorContext
 from research_pulse_cn.domain.enums import AuditActorType
 from research_pulse_cn.domain.subscription_self_service import (
     SubscriptionSelfServiceGrantContext,
+)
+from research_pulse_cn.schemas.group_workspace import (
+    GroupWorkspaceInviteClaimPreviewRead,
+    GroupWorkspaceInviteClaimResponse,
+    GroupWorkspaceMembershipSummaryRead,
 )
 from research_pulse_cn.schemas.subscription_self_service import (
     SubscriptionSelfServiceBootstrapResponse,
@@ -38,6 +44,7 @@ from research_pulse_cn.schemas.subscription_self_service import (
     SubscriptionSettingsSaveResultRead,
 )
 from research_pulse_cn.services.audit import AuditService
+from research_pulse_cn.services.group_workspace import GroupWorkspaceService
 from research_pulse_cn.services.official_account_binding_handshake import (
     OfficialAccountBindingHandshakeService,
 )
@@ -63,6 +70,10 @@ AuditServiceDep = Annotated[AuditService, Depends(get_audit_service)]
 OAuthDep = Annotated[
     OfficialAccountOAuthService,
     Depends(get_official_account_oauth_service),
+]
+WorkspaceServiceDep = Annotated[
+    GroupWorkspaceService,
+    Depends(get_group_workspace_service),
 ]
 
 
@@ -354,3 +365,87 @@ def get_subscription_self_service_wechat_binding_oauth_status(
             user_id=grant.user_id,
         )
     )
+
+
+@router.get(
+    "/workspace-invites/{invite_token}/claim-preview",
+    response_model=GroupWorkspaceInviteClaimPreviewRead,
+)
+def preview_subscription_self_service_workspace_invite_claim(
+    invite_token: str,
+    request: Request,
+    grant: GrantDep,
+    service: WorkspaceServiceDep,
+    audit_service: AuditServiceDep,
+) -> GroupWorkspaceInviteClaimPreviewRead:
+    payload = service.preview_invite_claim(raw_token=invite_token, grant=grant)
+    audit_service.safe_record(
+        actor=_self_service_actor(grant),
+        action="subscription_self_service.workspace_invite_claim_preview",
+        resource_type="group_workspace_invite_grant",
+        resource_id=None if payload["invite"] is None else str(payload["invite"]["id"]),
+        request_id=getattr(request.state, "request_id", None),
+        route=request.url.path,
+        method=request.method,
+        status_code=200,
+        metadata={
+            "grant_id": str(grant.grant_id),
+            "user_id": str(grant.user_id),
+            "workspace_id": (
+                None if payload["workspace"] is None else str(payload["workspace"]["id"])
+            ),
+            "reason_codes": payload["reason_codes"],
+            "can_claim": payload["can_claim"],
+        },
+    )
+    return GroupWorkspaceInviteClaimPreviewRead(**payload)
+
+
+@router.post(
+    "/workspace-invites/{invite_token}/claim",
+    response_model=GroupWorkspaceInviteClaimResponse,
+)
+def claim_subscription_self_service_workspace_invite(
+    invite_token: str,
+    request: Request,
+    grant: GrantDep,
+    service: WorkspaceServiceDep,
+    audit_service: AuditServiceDep,
+) -> GroupWorkspaceInviteClaimResponse:
+    payload = service.claim_workspace_invite(raw_token=invite_token, grant=grant)
+    audit_service.safe_record(
+        actor=_self_service_actor(grant),
+        action="subscription_self_service.workspace_invite_claim",
+        resource_type="group_workspace_invite_grant",
+        resource_id=None if payload["invite"] is None else str(payload["invite"]["id"]),
+        request_id=getattr(request.state, "request_id", None),
+        route=request.url.path,
+        method=request.method,
+        status_code=200,
+        metadata={
+            "grant_id": str(grant.grant_id),
+            "user_id": str(grant.user_id),
+            "workspace_id": (
+                None if payload["workspace"] is None else str(payload["workspace"]["id"])
+            ),
+            "action": payload["action"],
+            "invite_claim_id": (
+                None if payload["invite_claim"] is None else str(payload["invite_claim"]["id"])
+            ),
+        },
+    )
+    return GroupWorkspaceInviteClaimResponse(**payload)
+
+
+@router.get(
+    "/workspace-memberships",
+    response_model=list[GroupWorkspaceMembershipSummaryRead],
+)
+def list_subscription_self_service_workspace_memberships(
+    grant: GrantDep,
+    service: WorkspaceServiceDep,
+) -> list[GroupWorkspaceMembershipSummaryRead]:
+    return [
+        GroupWorkspaceMembershipSummaryRead(**membership)
+        for membership in service.self_service_workspace_memberships(user_id=grant.user_id)
+    ]
