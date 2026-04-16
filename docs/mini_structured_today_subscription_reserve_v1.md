@@ -71,6 +71,10 @@
   - mini grant still cannot claim workspace membership directly
   - a separate self-service grant is required
   - invite claim remains self-service-only in this phase
+- `workspace_collect_reserve` now makes the share-to-workspace collect bridge explicit:
+  - mini grant still cannot collect shared results into a workspace directly
+  - a separate self-service grant is required
+  - collect remains limited to `digest_issue` and `paper_snapshot`
 
 ## Current Non-Goals
 - real WeChat OAuth or mini session exchange

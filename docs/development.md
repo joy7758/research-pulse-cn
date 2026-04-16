@@ -174,6 +174,10 @@ The shell is public + self-service-token-assisted, keeps invite/self-service tok
 - Public read-only share routes:
   - `GET /result-shares/{share_token}/bootstrap`
   - `GET /result-shares/{share_token}/content`
+- Self-service result collect routes:
+  - `GET /subscription-self-service/result-shares/{share_token}/collect-preview`
+  - `POST /subscription-self-service/result-shares/{share_token}/collect`
+  - `GET /subscription-self-service/workspace-result-collections`
 - Public invite bootstrap route:
   - `GET /workspace-invites/{invite_token}/bootstrap`
 - Self-service invite routes:
@@ -188,6 +192,11 @@ The browser shell for that invite/join boundary now also supports:
 - in-memory token handling only
 
 This phase shares structured results only. It explicitly excludes PDFs, source files, local attachment paths, and local note contents.
+Result collect now also stays inside that same structured-only boundary:
+- only `digest_issue` and `paper_snapshot` are collectable
+- collection adds `PaperProfile` objects to eligible workspaces only
+- `workspace_board` remains non-collectable in v1
+- source files, PDFs, local attachments, and local notes are still excluded
 The browser shell for that boundary now uses:
 - `/share/<token>` path parsing when practical
 - `?share_token=` and `#share_token=` local-dev fallbacks
@@ -223,6 +232,10 @@ The new browser/webview-friendly shell in `apps/subscription-editor-web` is the 
 - mini grant still cannot claim workspace membership directly
 - a separate self-service grant is required
 - workspace invite claim remains self-service-only in this phase
+`/mini/subscription-reserve` now also includes a read-only `workspace_collect_reserve` summary that explains:
+- mini grant still cannot collect shared results into a workspace directly
+- a separate self-service grant is required
+- collect remains limited to `digest_issue` and `paper_snapshot` in this phase
 
 ## Pulse scoring knobs
 - Defaults live in application settings and `.env.example`

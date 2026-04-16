@@ -13,6 +13,7 @@ from research_pulse_cn.domain.enums import (
     GroupWorkspaceInviteGrantStatus,
     GroupWorkspaceInviteRole,
     GroupWorkspaceMemberRole,
+    GroupWorkspaceResultCollectStatus,
     GroupWorkspaceStatus,
     PaperType,
     PulseDigestIssueStatus,
@@ -291,10 +292,114 @@ class ShareGrantTargetSummaryRead(BaseModel):
     title: str | None = None
 
 
+class ShareGrantCollectionReserveRead(BaseModel):
+    supported: bool
+    share_kind_collectable: bool
+    collect_supported_via_self_service: bool
+    source_files_included: bool
+    notes: list[str] = Field(default_factory=list)
+
+
 class ShareGrantBootstrapRead(BaseModel):
     grant: ShareGrantPublicSummaryRead
     target: ShareGrantTargetSummaryRead
+    collection_reserve: ShareGrantCollectionReserveRead | None = None
     notes: list[str] = Field(default_factory=list)
+
+
+class ResultShareCollectablePaperRead(BaseModel):
+    paper_id: UUID
+    title: str
+    type: PaperType
+    stage: str
+    venue: str | None = None
+    priority: int
+    next_action: str | None = None
+    blocker: str | None = None
+    progress_percentage: int
+    source_card_type: str | None = None
+    source_pulse_card_id: UUID | None = None
+    source_section_kind: str | None = None
+    notes: list[str] | None = None
+
+
+class ResultShareCollectEligibleWorkspaceRead(BaseModel):
+    workspace: GroupWorkspaceSafeSummaryRead
+    membership_role: GroupWorkspaceMemberRole
+
+
+class ResultShareCollectShareSummaryRead(BaseModel):
+    id: UUID
+    share_kind: ResultShareKind
+    status: ResultShareGrantStatus
+    display_label: str | None = None
+    expires_at: datetime | None = None
+    target: ShareGrantTargetSummaryRead
+
+
+class ResultShareCollectPreviewRead(BaseModel):
+    share: ResultShareCollectShareSummaryRead | None = None
+    collectable_items: list[ResultShareCollectablePaperRead] = Field(default_factory=list)
+    eligible_workspaces: list[ResultShareCollectEligibleWorkspaceRead] = Field(default_factory=list)
+    can_collect: bool
+    reason_codes: list[str] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
+
+
+class ResultShareCollectRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    workspace_id: UUID
+    paper_ids: list[UUID] | None = None
+
+
+class ResultShareCollectedPaperSummaryRead(BaseModel):
+    paper_id: UUID
+    title: str
+    type: PaperType
+    stage: str
+    venue: str | None = None
+    priority: int
+    next_action: str | None = None
+    blocker: str | None = None
+    progress_percentage: int
+
+
+class GroupWorkspaceResultCollectRecordRead(ORMModel):
+    id: UUID
+    workspace_id: UUID
+    user_id: UUID
+    result_share_grant_id: UUID | None = None
+    share_kind: ResultShareKind
+    digest_issue_id: UUID | None = None
+    source_pulse_card_id: UUID | None = None
+    source_paper_id: UUID | None = None
+    collected_paper_id: UUID
+    status: GroupWorkspaceResultCollectStatus
+    reason_codes: list[str] = Field(default_factory=list)
+    created_at: datetime
+    updated_at: datetime
+
+
+class ResultShareCollectItemResultRead(BaseModel):
+    paper_id: UUID
+    status: GroupWorkspaceResultCollectStatus
+    reason_codes: list[str] = Field(default_factory=list)
+    collect_record: GroupWorkspaceResultCollectRecordRead | None = None
+    paper: ResultShareCollectedPaperSummaryRead
+
+
+class ResultShareCollectResponse(BaseModel):
+    action: Literal["collected", "already_present", "rejected"]
+    workspace: GroupWorkspaceSafeSummaryRead | None = None
+    collected_results: list[ResultShareCollectItemResultRead] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
+
+
+class GroupWorkspaceResultCollectionRead(BaseModel):
+    record: GroupWorkspaceResultCollectRecordRead
+    workspace: GroupWorkspaceSafeSummaryRead
+    paper: ResultShareCollectedPaperSummaryRead
 
 
 class SharedDigestItemRead(BaseModel):

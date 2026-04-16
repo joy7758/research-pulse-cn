@@ -277,6 +277,14 @@ class MiniWorkspaceInviteReserveRead(BaseModel):
     notes: list[str] = Field(default_factory=list)
 
 
+class MiniWorkspaceCollectReserveRead(BaseModel):
+    supported: bool
+    editable_via_current_mini_grant: bool
+    separate_self_service_grant_required: bool
+    supported_share_kinds: list[str] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
+
+
 class MiniSubscriptionReserveSummaryRead(BaseModel):
     has_official_account_binding: bool
     has_official_account_subscription_settings: bool
@@ -298,6 +306,7 @@ class MiniSubscriptionReserveRead(BaseModel):
     binding_handoff_reserve: MiniBindingHandoffReserveRead
     editor_handoff_reserve: MiniEditorHandoffReserveRead
     workspace_invite_reserve: MiniWorkspaceInviteReserveRead
+    workspace_collect_reserve: MiniWorkspaceCollectReserveRead
 
 
 class MiniBootstrapResponse(BaseModel):

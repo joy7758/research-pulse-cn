@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request
 
@@ -17,7 +18,7 @@ from research_pulse_cn.api.subscription_self_service_security import (
     get_current_subscription_self_service_grant,
 )
 from research_pulse_cn.domain.auth import ActorContext
-from research_pulse_cn.domain.enums import AuditActorType
+from research_pulse_cn.domain.enums import AuditActorType, GroupWorkspaceResultCollectStatus
 from research_pulse_cn.domain.subscription_self_service import (
     SubscriptionSelfServiceGrantContext,
 )
@@ -25,6 +26,10 @@ from research_pulse_cn.schemas.group_workspace import (
     GroupWorkspaceInviteClaimPreviewRead,
     GroupWorkspaceInviteClaimResponse,
     GroupWorkspaceMembershipSummaryRead,
+    GroupWorkspaceResultCollectionRead,
+    ResultShareCollectPreviewRead,
+    ResultShareCollectRequest,
+    ResultShareCollectResponse,
 )
 from research_pulse_cn.schemas.subscription_self_service import (
     SubscriptionSelfServiceBootstrapResponse,
@@ -448,4 +453,105 @@ def list_subscription_self_service_workspace_memberships(
     return [
         GroupWorkspaceMembershipSummaryRead(**membership)
         for membership in service.self_service_workspace_memberships(user_id=grant.user_id)
+    ]
+
+
+@router.get(
+    "/result-shares/{share_token}/collect-preview",
+    response_model=ResultShareCollectPreviewRead,
+)
+def preview_subscription_self_service_result_share_collect(
+    share_token: str,
+    request: Request,
+    grant: GrantDep,
+    service: WorkspaceServiceDep,
+    audit_service: AuditServiceDep,
+) -> ResultShareCollectPreviewRead:
+    payload = service.preview_result_share_collect(raw_token=share_token, grant=grant)
+    audit_service.safe_record(
+        actor=_self_service_actor(grant),
+        action="subscription_self_service.result_share_collect_preview",
+        resource_type="result_share_grant",
+        resource_id=None if payload["share"] is None else str(payload["share"]["id"]),
+        request_id=getattr(request.state, "request_id", None),
+        route=request.url.path,
+        method=request.method,
+        status_code=200,
+        metadata={
+            "grant_id": str(grant.grant_id),
+            "user_id": str(grant.user_id),
+            "reason_codes": payload["reason_codes"],
+            "can_collect": payload["can_collect"],
+        },
+    )
+    return ResultShareCollectPreviewRead(**payload)
+
+
+@router.post(
+    "/result-shares/{share_token}/collect",
+    response_model=ResultShareCollectResponse,
+)
+def collect_subscription_self_service_result_share(
+    share_token: str,
+    payload: ResultShareCollectRequest,
+    request: Request,
+    grant: GrantDep,
+    service: WorkspaceServiceDep,
+    audit_service: AuditServiceDep,
+) -> ResultShareCollectResponse:
+    response_payload = service.collect_result_share(
+        raw_token=share_token,
+        grant=grant,
+        workspace_id=payload.workspace_id,
+        paper_ids=payload.paper_ids,
+    )
+    audit_service.safe_record(
+        actor=_self_service_actor(grant),
+        action="subscription_self_service.result_share_collect",
+        resource_type="result_share_grant",
+        resource_id=(
+            None
+            if not response_payload["collected_results"]
+            else str(
+                response_payload["collected_results"][0]["collect_record"]["result_share_grant_id"]
+            )
+            if response_payload["collected_results"][0]["collect_record"] is not None
+            else None
+        ),
+        request_id=getattr(request.state, "request_id", None),
+        route=request.url.path,
+        method=request.method,
+        status_code=200,
+        metadata={
+            "grant_id": str(grant.grant_id),
+            "user_id": str(grant.user_id),
+            "workspace_id": (
+                None
+                if response_payload["workspace"] is None
+                else str(response_payload["workspace"]["id"])
+            ),
+            "action": response_payload["action"],
+            "result_count": len(response_payload["collected_results"]),
+        },
+    )
+    return ResultShareCollectResponse(**response_payload)
+
+
+@router.get(
+    "/workspace-result-collections",
+    response_model=list[GroupWorkspaceResultCollectionRead],
+)
+def list_subscription_self_service_workspace_result_collections(
+    grant: GrantDep,
+    service: WorkspaceServiceDep,
+    workspace_id: Annotated[UUID | None, Query()] = None,
+    status: Annotated[GroupWorkspaceResultCollectStatus | None, Query()] = None,
+) -> list[GroupWorkspaceResultCollectionRead]:
+    return [
+        GroupWorkspaceResultCollectionRead(**item)
+        for item in service.self_service_workspace_result_collections(
+            user_id=grant.user_id,
+            workspace_id=workspace_id,
+            status=status,
+        )
     ]

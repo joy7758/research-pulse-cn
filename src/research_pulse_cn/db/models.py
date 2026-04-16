@@ -45,6 +45,7 @@ from research_pulse_cn.domain.enums import (
     GroupWorkspaceInviteGrantStatus,
     GroupWorkspaceInviteRole,
     GroupWorkspaceMemberRole,
+    GroupWorkspaceResultCollectStatus,
     GroupWorkspaceStatus,
     MiniReadGrantStatus,
     MiniReadGrantType,
@@ -210,6 +211,13 @@ class UserProfile(TimestampMixin, Base):
         cascade="all, delete-orphan",
         order_by="GroupWorkspaceInviteClaim.created_at.desc()",
     )
+    group_workspace_result_collect_records: Mapped[list[GroupWorkspaceResultCollectRecord]] = (
+        relationship(
+            back_populates="user",
+            cascade="all, delete-orphan",
+            order_by="GroupWorkspaceResultCollectRecord.created_at.desc()",
+        )
+    )
     work_activity_events: Mapped[list[WorkActivityEvent]] = relationship(
         back_populates="user",
         cascade="all, delete-orphan",
@@ -298,6 +306,21 @@ class PaperProfile(TimestampMixin, Base):
     result_share_grants: Mapped[list[ResultShareGrant]] = relationship(
         back_populates="paper",
         order_by="ResultShareGrant.created_at.desc()",
+    )
+    collected_group_workspace_results: Mapped[list[GroupWorkspaceResultCollectRecord]] = (
+        relationship(
+            back_populates="collected_paper",
+            cascade="all, delete-orphan",
+            foreign_keys="GroupWorkspaceResultCollectRecord.collected_paper_id",
+            order_by="GroupWorkspaceResultCollectRecord.created_at.desc()",
+        )
+    )
+    source_group_workspace_result_collect_records: Mapped[
+        list[GroupWorkspaceResultCollectRecord]
+    ] = relationship(
+        back_populates="source_paper",
+        foreign_keys="GroupWorkspaceResultCollectRecord.source_paper_id",
+        order_by="GroupWorkspaceResultCollectRecord.created_at.desc()",
     )
 
 
@@ -839,6 +862,11 @@ class GroupWorkspace(TimestampMixin, Base):
         back_populates="workspace",
         order_by="GroupWorkspaceInviteClaim.created_at.desc()",
     )
+    result_collect_records: Mapped[list[GroupWorkspaceResultCollectRecord]] = relationship(
+        back_populates="workspace",
+        cascade="all, delete-orphan",
+        order_by="GroupWorkspaceResultCollectRecord.created_at.desc()",
+    )
 
 
 class GroupWorkspaceMember(TimestampMixin, Base):
@@ -984,6 +1012,68 @@ class GroupWorkspaceInviteClaim(TimestampMixin, Base):
     membership: Mapped[GroupWorkspaceMember | None] = relationship(back_populates="invite_claims")
 
 
+class GroupWorkspaceResultCollectRecord(TimestampMixin, Base):
+    __tablename__ = "group_workspace_result_collect_records"
+    __table_args__ = (
+        Index(
+            "ix_group_workspace_result_collect_records_workspace_status_created_at",
+            "workspace_id",
+            "status",
+            "created_at",
+        ),
+        UniqueConstraint("idempotency_key", name="uq_group_workspace_result_collect_idempotency"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    workspace_id: Mapped[UUID] = mapped_column(
+        ForeignKey("group_workspaces.id", ondelete="CASCADE")
+    )
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("user_profiles.id", ondelete="CASCADE"))
+    result_share_grant_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("result_share_grants.id", ondelete="SET NULL")
+    )
+    share_kind: Mapped[ResultShareKind] = mapped_column(
+        Enum(ResultShareKind, native_enum=False),
+        nullable=False,
+    )
+    digest_issue_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("pulse_digest_issues.id", ondelete="SET NULL")
+    )
+    source_pulse_card_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("pulse_cards.id", ondelete="SET NULL")
+    )
+    source_paper_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("paper_profiles.id", ondelete="SET NULL")
+    )
+    collected_paper_id: Mapped[UUID] = mapped_column(
+        ForeignKey("paper_profiles.id", ondelete="CASCADE")
+    )
+    idempotency_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[GroupWorkspaceResultCollectStatus] = mapped_column(
+        Enum(GroupWorkspaceResultCollectStatus, native_enum=False),
+        nullable=False,
+    )
+    reason_codes: Mapped[list[str]] = mapped_column(JSON_VARIANT, default=list, nullable=False)
+
+    workspace: Mapped[GroupWorkspace] = relationship(back_populates="result_collect_records")
+    user: Mapped[UserProfile] = relationship(
+        back_populates="group_workspace_result_collect_records"
+    )
+    result_share_grant: Mapped[ResultShareGrant | None] = relationship(
+        back_populates="result_collect_records"
+    )
+    digest_issue: Mapped[PulseDigestIssue | None] = relationship()
+    source_pulse_card: Mapped[PulseCard | None] = relationship()
+    source_paper: Mapped[PaperProfile | None] = relationship(
+        back_populates="source_group_workspace_result_collect_records",
+        foreign_keys=[source_paper_id],
+    )
+    collected_paper: Mapped[PaperProfile] = relationship(
+        back_populates="collected_group_workspace_results",
+        foreign_keys=[collected_paper_id],
+    )
+
+
 class ResultShareGrant(TimestampMixin, Base):
     __tablename__ = "result_share_grants"
     __table_args__ = (
@@ -1034,6 +1124,10 @@ class ResultShareGrant(TimestampMixin, Base):
     paper: Mapped[PaperProfile | None] = relationship(back_populates="result_share_grants")
     issued_by_admin: Mapped[AdminAccount | None] = relationship(
         back_populates="issued_result_share_grants"
+    )
+    result_collect_records: Mapped[list[GroupWorkspaceResultCollectRecord]] = relationship(
+        back_populates="result_share_grant",
+        order_by="GroupWorkspaceResultCollectRecord.created_at.desc()",
     )
 
 

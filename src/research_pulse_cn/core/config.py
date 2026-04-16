@@ -8,9 +8,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from research_pulse_cn.domain.enums import (
     ExternalRetrievalMode,
     ExternalRetrievalSourceKind,
+    GroupWorkspaceMemberRole,
     OfficialAccountOAuthScope,
     OfficialAccountProviderMode,
     OfficialAccountTransportKind,
+    ResultShareKind,
 )
 
 
@@ -298,6 +300,22 @@ class Settings(BaseSettings):
     group_workspace_invite_public_bootstrap_enabled: bool = Field(
         default=True,
         validation_alias="APP_GROUP_WORKSPACE_INVITE_PUBLIC_BOOTSTRAP_ENABLED",
+    )
+    group_workspace_result_collect_enabled: bool = Field(
+        default=False,
+        validation_alias="APP_GROUP_WORKSPACE_RESULT_COLLECT_ENABLED",
+    )
+    group_workspace_result_collect_allowed_share_kinds: str = Field(
+        default="digest_issue,paper_snapshot",
+        validation_alias="APP_GROUP_WORKSPACE_RESULT_COLLECT_ALLOWED_SHARE_KINDS",
+    )
+    group_workspace_result_collect_allowed_roles: str = Field(
+        default="owner,editor",
+        validation_alias="APP_GROUP_WORKSPACE_RESULT_COLLECT_ALLOWED_ROLES",
+    )
+    group_workspace_result_collect_max_papers_per_digest: int = Field(
+        default=10,
+        validation_alias="APP_GROUP_WORKSPACE_RESULT_COLLECT_MAX_PAPERS_PER_DIGEST",
     )
     subscription_editor_handoff_enabled: bool = Field(
         default=False,
@@ -594,6 +612,52 @@ class Settings(BaseSettings):
                 continue
             seen.add(cleaned)
             values.append(cleaned)
+        return values
+
+    @property
+    def group_workspace_result_collect_allowed_share_kind_list(self) -> list[ResultShareKind]:
+        """Return collectable share kinds parsed from configuration."""
+        values: list[ResultShareKind] = []
+        seen: set[ResultShareKind] = set()
+        raw_values = (
+            str(self.group_workspace_result_collect_allowed_share_kinds)
+            .replace(";", ",")
+            .split(",")
+        )
+        for raw_value in raw_values:
+            cleaned = raw_value.strip().lower()
+            if not cleaned:
+                continue
+            try:
+                share_kind = ResultShareKind(cleaned)
+            except ValueError:
+                continue
+            if share_kind in seen:
+                continue
+            seen.add(share_kind)
+            values.append(share_kind)
+        return values
+
+    @property
+    def group_workspace_result_collect_allowed_role_list(self) -> list[GroupWorkspaceMemberRole]:
+        """Return workspace member roles allowed to collect shared results."""
+        values: list[GroupWorkspaceMemberRole] = []
+        seen: set[GroupWorkspaceMemberRole] = set()
+        raw_values = (
+            str(self.group_workspace_result_collect_allowed_roles).replace(";", ",").split(",")
+        )
+        for raw_value in raw_values:
+            cleaned = raw_value.strip().lower()
+            if not cleaned:
+                continue
+            try:
+                role = GroupWorkspaceMemberRole(cleaned)
+            except ValueError:
+                continue
+            if role in seen:
+                continue
+            seen.add(role)
+            values.append(role)
         return values
 
     @property
