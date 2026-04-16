@@ -1,12 +1,13 @@
 import type {
   ApiValidationErrorRead,
+  SubscriptionEditorTransport,
   SubscriptionEditorApiErrorShape,
   SubscriptionEditorBootstrapRead,
   SubscriptionEditorSettingsPatchInput,
   SubscriptionSelfServiceEditorContractRead,
   SubscriptionSettingsPreviewRead,
   SubscriptionSettingsSaveResultRead,
-} from "./types";
+} from "@research-pulse/subscription-editor-core";
 
 export type SubscriptionEditorApiClientConfig = {
   apiBaseUrl: string;
@@ -28,9 +29,7 @@ export class SubscriptionEditorApiError extends Error {
   }
 }
 
-export type SubscriptionEditorApiClient = ReturnType<
-  typeof createSubscriptionEditorApiClient
->;
+export type SubscriptionEditorApiClient = SubscriptionEditorTransport;
 
 function normalizeApiBaseUrl(rawApiBaseUrl: string): string {
   const trimmed = rawApiBaseUrl.trim();
@@ -68,7 +67,7 @@ function toApiError(response: Response, body: unknown): SubscriptionEditorApiErr
 
 export function createSubscriptionEditorApiClient(
   config: SubscriptionEditorApiClientConfig,
-) {
+): SubscriptionEditorTransport {
   const fetchImpl = config.fetchImpl ?? fetch;
 
   async function request<T>(

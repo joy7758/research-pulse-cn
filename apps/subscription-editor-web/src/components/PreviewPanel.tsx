@@ -1,11 +1,11 @@
 import {
   buildPreviewDisplayModel,
   buildSaveDisplayModel,
-} from "../lib/editorModel";
+} from "@research-pulse/subscription-editor-core";
 import type {
   SubscriptionSettingsPreviewRead,
   SubscriptionSettingsSaveResultRead,
-} from "../lib/types";
+} from "@research-pulse/subscription-editor-core";
 
 type PreviewPanelProps = {
   preview: SubscriptionSettingsPreviewRead | null;

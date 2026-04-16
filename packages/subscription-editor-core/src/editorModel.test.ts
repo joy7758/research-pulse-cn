@@ -1,17 +1,19 @@
+import {
+  buildContractFieldMap,
+  buildFormStateFromBootstrap,
+  buildPreviewDisplayModel,
+  buildRuntimeMetadataFromLaunchInput,
+  buildSaveDisplayModel,
+  buildSettingsPatchPayload,
+  buildSupportedRuntimeRead,
+  normalizeWeekdaySelection,
+} from "./index";
 import type {
   SubscriptionEditorBootstrapRead,
   SubscriptionSelfServiceEditorContractRead,
   SubscriptionSettingsPreviewRead,
   SubscriptionSettingsSaveResultRead,
-} from "./types";
-import {
-  buildContractFieldMap,
-  buildFormStateFromBootstrap,
-  buildPreviewDisplayModel,
-  buildSaveDisplayModel,
-  buildSettingsPatchPayload,
-  normalizeWeekdaySelection,
-} from "./editorModel";
+} from "./index";
 
 function bootstrapFixture(): SubscriptionEditorBootstrapRead {
   return {
@@ -102,7 +104,7 @@ function bootstrapFixture(): SubscriptionEditorBootstrapRead {
   };
 }
 
-describe("subscription editor model helpers", () => {
+describe("subscription editor core", () => {
   it("shapes bootstrap data into deterministic local form state", () => {
     expect(buildFormStateFromBootstrap(bootstrapFixture())).toEqual({
       enabled: true,
@@ -206,6 +208,30 @@ describe("subscription editor model helpers", () => {
     expect(buildSaveDisplayModel(saveResult)).toMatchObject({
       summary: "Saved 1 field(s) to the authoritative subscription policy.",
       changedFields: ["timezone"],
+    });
+  });
+
+  it("builds host-agnostic runtime metadata for future mini migration", () => {
+    expect(
+      buildRuntimeMetadataFromLaunchInput({
+        runtime_kind: "mini_webview_reserve",
+        api_base_url: "https://api.example.com",
+        handoff_token: "opaque-token",
+        token_delivery_kind: "host_injected",
+      }),
+    ).toEqual({
+      runtime_kind: "mini_webview_reserve",
+      api_base_url: "https://api.example.com",
+      token_delivery_kind: "host_injected",
+      editor_entry_mode: "handoff_token",
+      notes: [],
+    });
+
+    expect(buildSupportedRuntimeRead()).toEqual({
+      default_runtime: "web_shell",
+      supported_runtimes: ["web_shell", "mini_webview_reserve"],
+      token_delivery_kinds: ["manual_entry", "url_fragment", "host_injected"],
+      notes: [],
     });
   });
 });

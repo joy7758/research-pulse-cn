@@ -120,7 +120,7 @@
 
 ## Future Work
 - real mini editing UI on top of the current handoff contract
-- tighter handoff into the current `apps/subscription-editor-web` shell
+- tighter handoff into the current `apps/subscription-editor-web` shell and the shared `packages/subscription-editor-core`
 - richer mobile self-service UX
 - optional direct OAuth-backed editor handoff
 - unified user self-service surface if it is ever justified

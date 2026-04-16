@@ -59,3 +59,7 @@ apps/group-workspace-invite-web/node_modules/
 apps/group-workspace-invite-web/dist/
 apps/research-pulse-web/node_modules/
 apps/research-pulse-web/dist/
+
+# Subscription editor core
+packages/subscription-editor-core/node_modules/
+packages/subscription-editor-core/dist/

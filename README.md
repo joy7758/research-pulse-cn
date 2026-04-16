@@ -195,6 +195,7 @@ Private repository. Proprietary and confidential.
 - Self-service editor reserve endpoints that add machine-readable field/section contracts, preview-before-save semantics, and future mobile/web handoff metadata on top of the same self-service grant boundary
 - Mini editor handoff reserve that adds a short-lived `SubscriptionEditorHandoffGrant` bridge from mini read-only reserve to `/subscription-editor/*` without making mini grants directly writable
 - A thin React/Vite subscription editor web shell under `apps/subscription-editor-web` for manually exercising handoff-grant-protected `/subscription-editor/*` flows in a browser or future WebView shell
+- A shared pure TypeScript editor core under `packages/subscription-editor-core` that keeps contract/bootstrap/preview/save shaping reusable across the current web shell and future mini/native hosts
 - Admin-managed group workspaces with structured workspace boards plus opaque read-only result share grants for `digest_issue`, `paper_snapshot`, and `workspace_board` without exposing source files, local attachment paths, or local note contents
 - A thin public React/Vite result-share shell under `apps/result-share-web` for opening `ResultShareGrant` links in a browser, optionally connecting an in-memory self-service token for collect-preview/collect flows, and surfacing manual invite/join plus result-collect handoff summaries on `workspace_board` shares without introducing source-file sharing, browser token persistence, or a generic login system
 - The same result-sharing boundary now also supports admin-issued opaque `ResultShareAlias` links so public browser entry can use aliases without exposing the underlying raw share token
@@ -264,9 +265,11 @@ The code keeps pulse generation behind stable interfaces such as `FactCollector`
    `make desktop-install`
 12. Run the desktop shell:
    `make desktop-dev`
-13. Install the subscription editor web shell if you want to test handoff-grant editing flows:
+13. Install the shared subscription editor core if you are changing the reusable editor logic:
+   `make subscription-editor-core-install`
+14. Install the subscription editor web shell if you want to test handoff-grant editing flows:
    `make subscription-editor-install`
-14. Run the subscription editor web shell:
+15. Run the subscription editor web shell:
    `make subscription-editor-dev`
 15. Install the result share shell if you want to demo public share links:
    `make result-share-install`
@@ -399,6 +402,8 @@ The repository now also includes a thin browser/WebView-friendly shell under `ap
 - React
 - TypeScript
 - Vite
+
+The reusable host-agnostic editor logic now lives under `packages/subscription-editor-core` and is shared by the web shell as the first reference host for future mini/native migration.
 
 This shell:
 - accepts a short-lived handoff token from manual paste or `#handoff_token=...`
@@ -644,6 +649,10 @@ Today-suggestion behavior in this phase:
 - `make user-workbench-test`: run user-workbench shell tests
 - `make user-workbench-build`: build the user-workbench shell
 - `make subscription-editor-install`: install web-shell dependencies under `apps/subscription-editor-web`
+- `make subscription-editor-core-install`: install shared editor-core dependencies under `packages/subscription-editor-core`
+- `make subscription-editor-core-lint`: run editor-core lint and typecheck
+- `make subscription-editor-core-test`: run editor-core tests
+- `make subscription-editor-core-build`: build the editor-core package
 - `make subscription-editor-dev`: run the subscription editor web shell
 - `make subscription-editor-lint`: run editor web lint and typecheck
 - `make subscription-editor-test`: run editor web tests

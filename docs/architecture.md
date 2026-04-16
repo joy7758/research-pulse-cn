@@ -140,7 +140,7 @@ Core flow:
 8. Official-account callback events, binding handshake reserve sessions, explicit admin claim flow, and real webpage OAuth completion now provide a future-safe bridge from provider callback evidence to `WeChatIdentityBinding` without turning OAuth into a generic app login system.
 9. Mini read grants expose compact mobile-friendly read models for future mini-program landing without opening write access, now including structured Today digest rendering, a read-only subscription reserve summary, a read-only binding-handoff reserve summary, and a read-only editor-handoff reserve summary.
 10. Subscription self-service grants expose a narrow user-side settings boundary for future official-account or mini entry without reusing admin or mini auth, and now also expose a separate handshake-reserve sub-boundary plus an explicit editor contract and preview-before-save surface.
-11. `SubscriptionEditorHandoffGrant` derives a short-lived `/subscription-editor/*` token from mini reserve plus an existing self-service grant without turning mini auth into a write boundary, and a thin web shell under `apps/subscription-editor-web` consumes that token without creating a generic login surface.
+11. `SubscriptionEditorHandoffGrant` derives a short-lived `/subscription-editor/*` token from mini reserve plus an existing self-service grant without turning mini auth into a write boundary, while a shared pure frontend core under `packages/subscription-editor-core` and a thin web shell under `apps/subscription-editor-web` consume that token without creating a generic login surface.
 12. Admin-managed `GroupWorkspace` containers now group selected users and papers into compact shared boards, while `ResultShareGrant` exposes opaque public read-only links for structured digest issues, paper snapshots, and workspace boards without turning sharing into file sync.
 13. A thin public browser shell under `apps/result-share-web` now consumes those token-based share endpoints directly, optionally connects an in-memory self-service token, renders safe read-only structured outputs, exposes explicit collect-preview/collect actions for supported share kinds, and shows a manual invite/join handoff summary for `workspace_board` shares.
 14. A thin public browser shell under `apps/group-workspace-invite-web` now consumes the public invite bootstrap plus self-service claim routes, keeps invite/self-service tokens in memory only, and does not introduce a generic login surface or source-file sharing.
@@ -373,6 +373,8 @@ Tie-break order is deterministic:
 - Mini read-only reserve also exposes a `self_service_entry` handoff summary so future UI clients know editor contract and preview endpoints exist without turning mini into a write surface yet.
 - Mini read-only reserve now also exposes an `editor_handoff_reserve` summary so future mobile/WebView clients know a short-lived bridge to `/subscription-editor/*` exists without making mini grant auth directly writable.
 - The current browser/webview-friendly editor shell consumes that bridge directly and stays thin:
+  - shared pure editor core under `packages/subscription-editor-core`
+  - host/runtime adapter split so future mini/native hosts can reuse the same contract/bootstrap/preview/save shaping
   - in-memory handoff token only
   - contract/bootstrap/preview/save over existing `/subscription-editor/*`
   - no browser-side policy engine or new auth layer

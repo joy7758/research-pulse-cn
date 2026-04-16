@@ -229,3 +229,51 @@ export type SubscriptionEditorApiErrorShape = {
   fieldErrors: SubscriptionSettingsValidationIssueRead[];
   body: unknown;
 };
+
+export type TokenDeliveryKind = "manual_entry" | "url_fragment" | "host_injected";
+
+export type SubscriptionEditorHostRuntimeKind =
+  | "web_shell"
+  | "mini_webview_reserve";
+
+export type MiniEditorLaunchInputRead = {
+  runtime_kind: SubscriptionEditorHostRuntimeKind;
+  api_base_url: string;
+  handoff_token: string | null;
+  token_delivery_kind: TokenDeliveryKind;
+};
+
+export type EditorHostRuntimeMetadataRead = {
+  runtime_kind: SubscriptionEditorHostRuntimeKind;
+  api_base_url: string;
+  token_delivery_kind: TokenDeliveryKind;
+  editor_entry_mode: "handoff_token";
+  notes: string[];
+};
+
+export type SubscriptionEditorSupportedRuntimeRead = {
+  default_runtime: SubscriptionEditorHostRuntimeKind;
+  supported_runtimes: SubscriptionEditorHostRuntimeKind[];
+  token_delivery_kinds: TokenDeliveryKind[];
+  notes: string[];
+};
+
+export interface SubscriptionEditorHostAdapter {
+  readonly runtimeKind: SubscriptionEditorHostRuntimeKind;
+  getInitialTokenInput(): string | null | Promise<string | null>;
+  getApiBaseUrl(): string | Promise<string>;
+  getRuntimeMetadata(): EditorHostRuntimeMetadataRead;
+  clearVisibleTokenHint?(): void | Promise<void>;
+}
+
+export interface SubscriptionEditorTransport {
+  getBootstrap(): Promise<SubscriptionEditorBootstrapRead>;
+  getContract(): Promise<SubscriptionSelfServiceEditorContractRead>;
+  previewSettings(
+    payload: SubscriptionEditorSettingsPatchInput,
+  ): Promise<SubscriptionSettingsPreviewRead>;
+  saveSettings(
+    payload: SubscriptionEditorSettingsPatchInput,
+    options: { includePreview: boolean },
+  ): Promise<SubscriptionSettingsSaveResultRead>;
+}

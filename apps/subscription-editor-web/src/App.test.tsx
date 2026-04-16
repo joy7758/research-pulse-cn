@@ -1,13 +1,13 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-
-import { SubscriptionEditorShell } from "./App";
 import type {
   SubscriptionEditorBootstrapRead,
   SubscriptionSelfServiceEditorContractRead,
   SubscriptionSettingsPreviewRead,
   SubscriptionSettingsSaveResultRead,
-} from "./lib/types";
+} from "@research-pulse/subscription-editor-core";
+
+import { SubscriptionEditorShell } from "./App";
 
 function bootstrapFixture(): SubscriptionEditorBootstrapRead {
   return {

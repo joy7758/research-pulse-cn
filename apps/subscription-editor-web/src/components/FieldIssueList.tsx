@@ -1,4 +1,4 @@
-import type { SubscriptionSettingsValidationIssueRead } from "../lib/types";
+import type { SubscriptionSettingsValidationIssueRead } from "@research-pulse/subscription-editor-core";
 
 type FieldIssueListProps = {
   issues: SubscriptionSettingsValidationIssueRead[];
