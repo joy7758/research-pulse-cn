@@ -62,6 +62,7 @@ from research_pulse_cn.domain.enums import (
     ResearchWatchProfileSourceMode,
     ResultShareAliasStatus,
     ResultShareGrantStatus,
+    ResultShareHandoffTargetKind,
     ResultShareKind,
     ResultShareViewAccessMode,
     ResultShareViewEventType,
@@ -1230,6 +1231,9 @@ class ResultShareViewEvent(Base):
     outcome: Mapped[ResultShareViewOutcome] = mapped_column(
         Enum(ResultShareViewOutcome, native_enum=False),
         nullable=False,
+    )
+    handoff_target_kind: Mapped[ResultShareHandoffTargetKind | None] = mapped_column(
+        Enum(ResultShareHandoffTargetKind, native_enum=False),
     )
     request_fingerprint_hash: Mapped[str | None] = mapped_column(String(255))
     referrer_host: Mapped[str | None] = mapped_column(String(255))

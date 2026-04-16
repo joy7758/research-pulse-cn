@@ -18,6 +18,7 @@
 - Query and fragment invite hints are moved into in-memory state and immediately cleared from the visible URL.
 - The shell then calls:
   - `GET /workspace-invites/{invite_token}/bootstrap`
+- Public `workspace_board` shares may now also redirect into this entry shell through a separate backend handoff boundary, but that bridge still does not carry an invite token.
 
 ## Self-Service Token-Assisted Claim Flow
 - The shell optionally accepts an existing self-service token from:
@@ -62,6 +63,7 @@
 ## Future Work
 - richer public invite/join UI polish
 - integrated invite-to-collect UX
+- integrated share-to-invite UX
 - mini handoff into invite claim flow
 - richer membership onboarding
 - later workspace board handoff if justified

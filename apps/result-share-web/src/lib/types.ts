@@ -47,8 +47,10 @@ export type WorkspaceInviteHandoffReserveRead = {
   invite_bootstrap_available: boolean;
   self_service_claim_supported: boolean;
   direct_claim_via_share_page: boolean;
+  handoff_redirect_supported: boolean;
   source_files_included: boolean;
   invite_shell_entry_url: string | null;
+  invite_handoff_url: string | null;
   notes: string[];
 };
 
@@ -326,8 +328,10 @@ export type WorkspaceInviteHandoffViewModel = {
   inviteBootstrapAvailable: boolean;
   selfServiceClaimSupported: boolean;
   directClaimViaSharePage: boolean;
+  handoffRedirectSupported: boolean;
   sourceFilesIncluded: boolean;
   inviteShellEntryUrl: string | null;
+  inviteHandoffUrl: string | null;
   notes: string[];
 };
 

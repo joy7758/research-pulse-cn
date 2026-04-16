@@ -27,9 +27,12 @@
   - `bootstrap_view`
   - `content_view`
   - `redirect`
+  - `invite_handoff_redirect`
 - Supported outcomes in v1:
   - `resolved`
   - `rejected`
+- Optional handoff target in v1:
+  - `group_workspace_invite_entry`
 
 ## Privacy-Aware Capture Rules
 - No raw IP storage.
@@ -48,9 +51,11 @@
   - `bootstrap_view_count`
   - `content_view_count`
   - `redirect_count`
+  - `invite_handoff_redirect_count`
   - `distinct_fingerprint_count`
   - `by_share_kind`
   - `by_access_mode`
+  - `by_handoff_target`
   - `last_event_at`
 - Default lookback may be applied when no explicit date range is passed.
 

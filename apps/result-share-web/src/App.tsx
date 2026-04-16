@@ -276,7 +276,7 @@ export function ResultShareShell({
           client,
           bootstrap,
           content,
-          viewModel: buildResultShareViewModel(bootstrap, content),
+          viewModel: buildResultShareViewModel(bootstrap, content, trimmedApiBaseUrl),
         };
         setConnectedState(nextConnectedState);
         setShareValueInput("");

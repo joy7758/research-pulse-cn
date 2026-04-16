@@ -48,8 +48,10 @@ function bootstrapFixture(kind: ShareGrantBootstrapRead["grant"]["share_kind"]):
             invite_bootstrap_available: true,
             self_service_claim_supported: true,
             direct_claim_via_share_page: false,
+            handoff_redirect_supported: true,
             source_files_included: false,
             invite_shell_entry_url: "http://127.0.0.1:5177",
+            invite_handoff_url: "/result-shares/workspace-token/invite-handoff",
             notes: ["Joining requires a separate invite token."],
           }
         : null,
@@ -275,10 +277,15 @@ describe("result share view shaping", () => {
     const workspaceViewModel = buildWorkspaceBoardViewModel(
       bootstrapFixture("workspace_board"),
       workspace,
+      "http://127.0.0.1:8000",
     );
     expect(workspaceViewModel.memberCount).toBe(1);
     expect(workspaceViewModel.workspaceInviteHandoff?.inviteShellEntryUrl).toBe(
       "http://127.0.0.1:5177",
+    );
+    expect(workspaceViewModel.workspaceInviteHandoff?.handoffRedirectSupported).toBe(true);
+    expect(workspaceViewModel.workspaceInviteHandoff?.inviteHandoffUrl).toBe(
+      "http://127.0.0.1:8000/result-shares/workspace-token/invite-handoff",
     );
     expect(workspaceViewModel.workspaceInviteHandoff?.directClaimViaSharePage).toBe(false);
     expect(workspaceViewModel.resultCollectHandoff?.resultShareShellEntryUrl).toBe(

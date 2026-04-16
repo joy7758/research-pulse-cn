@@ -127,6 +127,7 @@
   - `access_mode`
   - `event_type`
   - `outcome`
+  - optional `handoff_target_kind`
   - `request_fingerprint_hash`
   - `referrer_host`
   - `user_agent_family`
@@ -154,9 +155,11 @@
 - Public/token routes in v1:
   - `GET /result-shares/{share_token}/bootstrap`
   - `GET /result-shares/{share_token}/content`
+  - `GET /result-shares/{share_token}/invite-handoff` for allowed `workspace_board` shares only
 - Public alias routes in v1:
   - `GET /share-aliases/{alias}/bootstrap`
   - `GET /share-aliases/{alias}/content`
+  - `GET /share-aliases/{alias}/invite-handoff` for allowed `workspace_board` shares only
   - optional `GET /s/{alias}` redirect boundary
 - Admin routes in v1:
   - `GET /admin/group-workspaces`
@@ -194,6 +197,7 @@
 - `workspace_board` share bootstrap now may also carry a `workspace_invite_handoff_reserve` block:
   - it is informational only
   - it explains that a separate invite token is required
+  - it may expose a redirect-backed `invite_handoff_url`
   - it does not turn share pages into claim surfaces
 - Result collect now also remains a separate reserve boundary:
   - public share routes stay read-only
@@ -202,7 +206,7 @@
   - source files are still excluded
 - Backend-only analytics reserve now also remains separate from public share semantics:
   - public share responses are unchanged
-  - `bootstrap_view`, `content_view`, and `redirect` are recorded internally only
+  - `bootstrap_view`, `content_view`, `redirect`, and `invite_handoff_redirect` are recorded internally only
   - raw `share_token`, `alias`, and `alias_redirect` access modes stay additive over the same grants
 
 ## Current Non-Goals

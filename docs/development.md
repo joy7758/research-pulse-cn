@@ -90,11 +90,13 @@ Backend-only analytics reserve may now also observe those public share routes fo
 - `bootstrap_view`
 - `content_view`
 - `redirect`
+- `invite_handoff_redirect`
 No browser tracker or third-party analytics script is added in this phase.
 `workspace_board` share pages now also render a manual invite/join handoff summary:
 - the page stays read-only
 - joining still requires a separate invite token
 - claim still stays in the separate invite/self-service flow
+- when invite handoff redirect support is configured, the shell may show an `Open invite entry` CTA that points to a backend redirect boundary instead of the raw invite entry URL
 `workspace_board` share pages may now also render a separate result-collect handoff summary:
 - the page still cannot collect directly
 - collecting papers still requires a separate digest or paper share token
@@ -202,8 +204,10 @@ After membership is claimed or confirmed, the same shell may also show a manual 
 - Public read-only share routes:
   - `GET /result-shares/{share_token}/bootstrap`
   - `GET /result-shares/{share_token}/content`
+  - `GET /result-shares/{share_token}/invite-handoff`
   - `GET /share-aliases/{alias}/bootstrap`
   - `GET /share-aliases/{alias}/content`
+  - `GET /share-aliases/{alias}/invite-handoff`
   - optional `GET /s/{alias}` redirect boundary
 - Self-service result collect routes:
   - `GET /subscription-self-service/result-shares/{share_token}/collect-preview`
@@ -233,6 +237,7 @@ Result collect now also stays inside that same structured-only boundary:
 `workspace_board` shares now also carry a read-only `workspace_invite_handoff_reserve` summary:
 - it is informational only
 - it may include an invite shell entry URL hint
+- it may include a redirect-backed `invite_handoff_url`
 - it does not make the share page claim-capable
 `workspace_board` shares may now also carry a read-only `result_collect_handoff_reserve` summary:
 - it is informational only

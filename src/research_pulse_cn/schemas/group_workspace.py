@@ -19,6 +19,7 @@ from research_pulse_cn.domain.enums import (
     PulseDigestIssueStatus,
     ResultShareAliasStatus,
     ResultShareGrantStatus,
+    ResultShareHandoffTargetKind,
     ResultShareKind,
     ResultShareViewAccessMode,
     ResultShareViewEventType,
@@ -323,9 +324,11 @@ class ResultShareAnalyticsSummaryRead(BaseModel):
     bootstrap_view_count: int
     content_view_count: int
     redirect_count: int
+    invite_handoff_redirect_count: int
     distinct_fingerprint_count: int | None = None
     by_share_kind: dict[str, int] = Field(default_factory=dict)
     by_access_mode: dict[str, int] = Field(default_factory=dict)
+    by_handoff_target: dict[str, int] = Field(default_factory=dict)
     last_event_at: datetime | None = None
 
 
@@ -337,6 +340,7 @@ class ResultShareViewEventRead(ORMModel):
     access_mode: ResultShareViewAccessMode
     event_type: ResultShareViewEventType
     outcome: ResultShareViewOutcome
+    handoff_target_kind: ResultShareHandoffTargetKind | None = None
     referrer_host: str | None = None
     user_agent_family: str | None = None
     occurred_at: datetime
@@ -388,8 +392,10 @@ class ShareGrantWorkspaceInviteHandoffReserveRead(BaseModel):
     invite_bootstrap_available: bool
     self_service_claim_supported: bool
     direct_claim_via_share_page: bool
+    handoff_redirect_supported: bool
     source_files_included: bool
     invite_shell_entry_url: str | None = None
+    invite_handoff_url: str | None = None
     notes: list[str] = Field(default_factory=list)
 
 

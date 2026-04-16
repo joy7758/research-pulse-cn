@@ -369,11 +369,16 @@ class ResultShareViewEventType(StrEnum):
     BOOTSTRAP_VIEW = "bootstrap_view"
     CONTENT_VIEW = "content_view"
     REDIRECT = "redirect"
+    INVITE_HANDOFF_REDIRECT = "invite_handoff_redirect"
 
 
 class ResultShareViewOutcome(StrEnum):
     RESOLVED = "resolved"
     REJECTED = "rejected"
+
+
+class ResultShareHandoffTargetKind(StrEnum):
+    GROUP_WORKSPACE_INVITE_ENTRY = "group_workspace_invite_entry"
 
 
 class GroupWorkspaceResultCollectStatus(StrEnum):

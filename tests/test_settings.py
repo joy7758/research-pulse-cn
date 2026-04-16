@@ -1,4 +1,5 @@
 from research_pulse_cn.core.config import get_settings
+from research_pulse_cn.domain.enums import ResultShareKind
 
 
 def test_settings_builds_runtime_urls(monkeypatch) -> None:
@@ -109,6 +110,11 @@ def test_settings_parse_result_share_analytics_boundary(monkeypatch) -> None:
     monkeypatch.setenv("APP_RESULT_SHARE_ANALYTICS_ENABLE_FINGERPRINT", "true")
     monkeypatch.setenv("APP_RESULT_SHARE_ANALYTICS_FINGERPRINT_SALT", "analytics-salt")
     monkeypatch.setenv("APP_RESULT_SHARE_ANALYTICS_DEFAULT_LOOKBACK_DAYS", "14")
+    monkeypatch.setenv("APP_RESULT_SHARE_INVITE_HANDOFF_ENABLED", "true")
+    monkeypatch.setenv(
+        "APP_RESULT_SHARE_INVITE_HANDOFF_ALLOWED_SHARE_KINDS",
+        "workspace_board,digest_issue",
+    )
     get_settings.cache_clear()
 
     settings = get_settings()
@@ -119,6 +125,11 @@ def test_settings_parse_result_share_analytics_boundary(monkeypatch) -> None:
     assert settings.result_share_analytics_enable_fingerprint is True
     assert settings.result_share_analytics_fingerprint_salt == "analytics-salt"
     assert settings.result_share_analytics_default_lookback_days == 14
+    assert settings.result_share_invite_handoff_enabled is True
+    assert settings.result_share_invite_handoff_allowed_share_kind_list == [
+        ResultShareKind.WORKSPACE_BOARD,
+        ResultShareKind.DIGEST_ISSUE,
+    ]
 
 
 def test_settings_parse_group_workspace_result_collect_lists(monkeypatch) -> None:

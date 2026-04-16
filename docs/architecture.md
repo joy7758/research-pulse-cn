@@ -289,12 +289,14 @@ Tie-break order is deterministic:
 - Public share routes resolve:
   - `GET /result-shares/{share_token}/bootstrap`
   - `GET /result-shares/{share_token}/content`
+  - `GET /result-shares/{share_token}/invite-handoff`
   - `GET /share-aliases/{alias}/bootstrap`
   - `GET /share-aliases/{alias}/content`
+  - `GET /share-aliases/{alias}/invite-handoff`
   - optional `GET /s/{alias}` redirect
 - Backend-only analytics reserve may observe those public routes and classify traffic by:
   - access mode: `share_token`, `alias`, `alias_redirect`
-  - event type: `bootstrap_view`, `content_view`, `redirect`
+  - event type: `bootstrap_view`, `content_view`, `redirect`, `invite_handoff_redirect`
   - outcome: `resolved`, `rejected`
 - Analytics capture stays privacy-aware:
   - no raw IP storage
@@ -361,8 +363,10 @@ Tie-break order is deterministic:
   - invite bootstrap available
   - self-service claim supported in a separate flow
   - direct claim via share page remains false
+  - handoff redirect may be supported through a separate backend redirect boundary
   - source files remain excluded
 - An optional invite shell entry URL hint may be configured, but it never carries a token.
+- An optional `invite_handoff_url` may point to a backend redirect boundary and may carry only non-sensitive context flags.
 
 ### Workspace-board result collect handoff reserve
 - `workspace_board` share pages remain read-only and still cannot collect papers directly.

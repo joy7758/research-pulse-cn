@@ -84,6 +84,10 @@ export function WorkspaceBoardView({ viewModel }: WorkspaceBoardViewProps) {
               </dd>
             </div>
             <div>
+              <dt>Invite handoff redirect supported</dt>
+              <dd>{viewModel.workspaceInviteHandoff.handoffRedirectSupported ? "Yes" : "No"}</dd>
+            </div>
+            <div>
               <dt>Source files included</dt>
               <dd>{viewModel.workspaceInviteHandoff.sourceFilesIncluded ? "Yes" : "No"}</dd>
             </div>
@@ -94,6 +98,18 @@ export function WorkspaceBoardView({ viewModel }: WorkspaceBoardViewProps) {
               <li key={`${index}:${note}`}>{note}</li>
             ))}
           </ul>
+          {viewModel.workspaceInviteHandoff.inviteHandoffUrl ? (
+            <p className="action-row">
+              <a
+                className="button-link"
+                href={viewModel.workspaceInviteHandoff.inviteHandoffUrl}
+                rel="noreferrer"
+                target="_blank"
+              >
+                Open invite entry
+              </a>
+            </p>
+          ) : null}
           {viewModel.workspaceInviteHandoff.inviteShellEntryUrl ? (
             <p className="soft-copy">
               Invite shell entry:{" "}

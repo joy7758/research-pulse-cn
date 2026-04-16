@@ -44,6 +44,7 @@
 - Public alias routes:
   - `GET /share-aliases/{alias}/bootstrap`
   - `GET /share-aliases/{alias}/content`
+  - `GET /share-aliases/{alias}/invite-handoff` for allowed `workspace_board` shares only
 - Alias resolution returns the same safe read-only bootstrap/content models as the underlying `ResultShareGrant`.
 - Alias resolution fails cleanly when:
   - the alias is revoked

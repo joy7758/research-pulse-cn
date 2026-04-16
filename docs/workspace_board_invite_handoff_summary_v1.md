@@ -28,6 +28,8 @@
 - `direct_claim_via_share_page`
 - `source_files_included`
 - `invite_shell_entry_url`
+- `handoff_redirect_supported`
+- `invite_handoff_url`
 - `notes`
 
 ## Optional Invite Entry URL Hint
@@ -35,6 +37,9 @@
 - This value points only to the invite shell entry page.
 - It never includes an invite token or a self-service token.
 - If not configured, it remains `null`.
+- The handoff summary may also include an `invite_handoff_url`.
+- This value points to a backend redirect boundary, not directly to membership claim.
+- The redirect may carry only a non-sensitive context flag and never carries share, alias, self-service, or invite tokens forward.
 
 ## Current Non-Goals
 - direct join from `workspace_board` share pages
@@ -46,6 +51,7 @@
 ## Future Work
 - integrated invite token handoff into share pages
 - self-service guided join flow from `workspace_board`
+- observable board-to-invite redirect bridge over the same read-only share page
 - aligned board-to-collect handoff messaging that still keeps collect in a separate share-token flow
 - later workspace onboarding UX
 - still no source-file sharing by default

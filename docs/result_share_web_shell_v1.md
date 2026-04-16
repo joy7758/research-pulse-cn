@@ -39,6 +39,7 @@
   - `bootstrap_view`
   - `content_view`
   - `redirect`
+  - `invite_handoff_redirect`
   without adding browser trackers or changing the shell contract.
 
 ## Read-Only Result Types
@@ -75,6 +76,7 @@
   - joining requires a separate invite token
   - self-service claim stays in the separate invite flow
   - source files remain excluded
+- When configured, the shell may also show an `Open invite entry` CTA that points to a backend redirect boundary instead of linking directly to the invite shell entry URL.
 - When configured, the shell may show an invite entry URL hint that points only to the invite shell entry page and never carries a token.
 
 ## Workspace-Board Result Collect Handoff Summary

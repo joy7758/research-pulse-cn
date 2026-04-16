@@ -26,6 +26,7 @@ Private repository. Proprietary and confidential.
 - A thin public React/Vite result-share shell under `apps/result-share-web` for opening `ResultShareGrant` links in a browser, optionally connecting an in-memory self-service token for collect-preview/collect flows, and surfacing manual invite/join plus result-collect handoff summaries on `workspace_board` shares without introducing source-file sharing, browser token persistence, or a generic login system
 - The same result-sharing boundary now also supports admin-issued opaque `ResultShareAlias` links so public browser entry can use aliases without exposing the underlying raw share token
 - A backend-only result-share analytics reserve that records privacy-aware bootstrap/content/redirect view events for raw share-token, alias, and alias-redirect access without adding browser trackers or exposing raw request identity data
+- The same analytics reserve now also observes a read-only `workspace_board -> invite` redirect bridge so admin users can aggregate invite-handoff conversion without mixing share, invite, or self-service tokens
 - A thin internal React/Vite admin shell under `apps/group-workspace-admin-web` for operator-managed workspace list/detail, member/paper add-remove flows, and `workspace_board` share-grant issuance without introducing end-user login or source-file sharing
 - A thin internal React/Vite admin shell under `apps/user-workbench-admin-web` for read-only search and drilldown across users, papers, and research watch profiles without introducing end-user login, file sharing, or business write flows
 - A backend-only workspace invite/join reserve that adds opaque invite grants, public invite bootstrap, self-service claim-preview/claim routes, and safe membership summaries without introducing source-file sharing or a generic login system
@@ -115,6 +116,9 @@ Group workspace/result sharing in this phase now has two thin browser shells:
   - `GET /share-aliases/{alias}/bootstrap`
   - `GET /share-aliases/{alias}/content`
   - optional `GET /s/{alias}` redirect boundary
+- public workspace-board invite handoff redirect for the same result-share shell:
+  - `GET /result-shares/{share_token}/invite-handoff`
+  - `GET /share-aliases/{alias}/invite-handoff`
 - self-service result collect reserve for:
   - `GET /subscription-self-service/result-shares/{share_token}/collect-preview`
   - `POST /subscription-self-service/result-shares/{share_token}/collect`

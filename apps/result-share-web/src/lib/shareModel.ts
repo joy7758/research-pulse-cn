@@ -81,6 +81,20 @@ function buildGrantSummary(
   };
 }
 
+function resolvePublicUrl(apiBaseUrl: string | undefined, value: string | null): string | null {
+  if (!value) {
+    return null;
+  }
+  if (/^https?:\/\//i.test(value)) {
+    return value;
+  }
+  const trimmedBaseUrl = apiBaseUrl?.trim().replace(/\/+$/, "");
+  if (!trimmedBaseUrl) {
+    return value;
+  }
+  return `${trimmedBaseUrl}${value.startsWith("/") ? value : `/${value}`}`;
+}
+
 function orderSectionKinds(sectionKinds: SharedTodaySectionKind[]): SharedTodaySectionKind[] {
   const unique = [...new Set(sectionKinds)];
   const known = stableSectionOrder.filter((kind) => unique.includes(kind));
@@ -197,6 +211,7 @@ export function buildPaperSnapshotViewModel(
 export function buildWorkspaceBoardViewModel(
   bootstrap: ShareGrantBootstrapRead,
   content: SharedWorkspaceBoardRead,
+  apiBaseUrl?: string,
 ): WorkspaceBoardViewModel {
   const grantSummary = buildGrantSummary(bootstrap);
   return {
@@ -221,10 +236,16 @@ export function buildWorkspaceBoardViewModel(
             grantSummary.workspaceInviteHandoffReserve.self_service_claim_supported,
           directClaimViaSharePage:
             grantSummary.workspaceInviteHandoffReserve.direct_claim_via_share_page,
+          handoffRedirectSupported:
+            grantSummary.workspaceInviteHandoffReserve.handoff_redirect_supported,
           sourceFilesIncluded:
             grantSummary.workspaceInviteHandoffReserve.source_files_included,
           inviteShellEntryUrl:
             grantSummary.workspaceInviteHandoffReserve.invite_shell_entry_url,
+          inviteHandoffUrl: resolvePublicUrl(
+            apiBaseUrl,
+            grantSummary.workspaceInviteHandoffReserve.invite_handoff_url,
+          ),
           notes: grantSummary.workspaceInviteHandoffReserve.notes,
         }
       : null,
@@ -254,6 +275,7 @@ export function buildWorkspaceBoardViewModel(
 export function buildResultShareViewModel(
   bootstrap: ShareGrantBootstrapRead,
   content: SharedResultContentRead,
+  apiBaseUrl?: string,
 ): ResultShareViewModel {
   switch (content.share_kind) {
     case "digest_issue":
@@ -261,9 +283,9 @@ export function buildResultShareViewModel(
     case "paper_snapshot":
       return buildPaperSnapshotViewModel(bootstrap, content);
     case "workspace_board":
-      return buildWorkspaceBoardViewModel(bootstrap, content);
+      return buildWorkspaceBoardViewModel(bootstrap, content, apiBaseUrl);
     default:
-      return buildWorkspaceBoardViewModel(bootstrap, content as SharedWorkspaceBoardRead);
+      return buildWorkspaceBoardViewModel(bootstrap, content as SharedWorkspaceBoardRead, apiBaseUrl);
   }
 }
 
