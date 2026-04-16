@@ -98,6 +98,7 @@ COUNTER_NAMES = (
     "result_share_bootstrap_views_total",
     "result_share_content_views_total",
     "result_share_redirect_views_total",
+    "result_share_invite_handoff_redirects_total",
 )
 
 

@@ -56,8 +56,10 @@ function bootstrapFixture(
             invite_bootstrap_available: true,
             self_service_claim_supported: true,
             direct_claim_via_share_page: false,
+            handoff_redirect_supported: true,
             source_files_included: false,
             invite_shell_entry_url: "http://127.0.0.1:5177",
+            invite_handoff_url: "/result-shares/workspace-token/invite-handoff",
             notes: [
               "Joining requires a separate invite token and the existing self-service claim flow.",
             ],
@@ -687,6 +689,10 @@ describe("result share shell", () => {
     expect(screen.getByText("Invite and join stay in a separate flow")).toBeVisible();
     expect(screen.getByText(/separate invite token required/i)).toBeVisible();
     expect(screen.getByText("http://127.0.0.1:5177")).toBeVisible();
+    expect(screen.getByRole("link", { name: /open invite entry/i })).toHaveAttribute(
+      "href",
+      "http://127.0.0.1:8000/result-shares/workspace-token/invite-handoff",
+    );
     expect(screen.getByText("Next step: collect papers into this workspace")).toBeVisible();
     expect(screen.getByText(/separate result share token required/i)).toBeVisible();
     expect(screen.getByText("http://127.0.0.1:5174")).toBeVisible();
@@ -716,6 +722,7 @@ describe("result share shell", () => {
     expect(screen.getByText("Next step: collect papers into this workspace")).toBeVisible();
     expect(screen.getByText("http://127.0.0.1:5177")).toBeVisible();
     expect(screen.getByText("http://127.0.0.1:5174")).toBeVisible();
+    expect(screen.getByRole("link", { name: /open invite entry/i })).toBeVisible();
   });
 
   it("keeps workspace_board rendering stable when the handoff reserve is omitted", async () => {
@@ -740,6 +747,30 @@ describe("result share shell", () => {
     expect(
       screen.queryByText("Next step: collect papers into this workspace"),
     ).not.toBeInTheDocument();
+  });
+
+  it("does not show the invite handoff CTA when the backend omits the redirect URL", async () => {
+    const apiClientFactory = createApiClientFactory({
+      getShareBootstrap: vi.fn().mockResolvedValue({
+        ...bootstrapFixture("workspace_board"),
+        workspace_invite_handoff_reserve: {
+          ...bootstrapFixture("workspace_board").workspace_invite_handoff_reserve!,
+          handoff_redirect_supported: false,
+          invite_handoff_url: null,
+        },
+      }),
+      getShareContent: vi.fn().mockResolvedValue(workspaceFixture()),
+    });
+
+    render(
+      <ResultShareShell
+        apiClientFactory={apiClientFactory}
+        locationLike={{ pathname: "/share/workspace-no-cta", search: "", hash: "" }}
+      />,
+    );
+
+    expect(await screen.findByText("Workspace description")).toBeVisible();
+    expect(screen.queryByRole("link", { name: /open invite entry/i })).not.toBeInTheDocument();
   });
 
   it("shows a clear invalid token state when the share token is revoked or invalid", async () => {

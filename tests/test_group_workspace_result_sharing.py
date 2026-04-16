@@ -371,8 +371,12 @@ def test_result_share_grants_resolve_digest_paper_and_workspace_safely(
             "invite_bootstrap_available": True,
             "self_service_claim_supported": True,
             "direct_claim_via_share_page": False,
+            "handoff_redirect_supported": True,
             "source_files_included": False,
             "invite_shell_entry_url": "http://127.0.0.1:5177",
+            "invite_handoff_url": (
+                f"/result-shares/{workspace_share['plain_text_token']}/invite-handoff"
+            ),
             "notes": [
                 "This workspace-board share is read-only and cannot claim membership directly.",
                 (
@@ -754,6 +758,7 @@ def test_result_share_analytics_record_views_and_admin_can_read_aggregates(
         assert summary_payload["bootstrap_view_count"] == 2
         assert summary_payload["content_view_count"] == 2
         assert summary_payload["redirect_count"] == 1
+        assert summary_payload["invite_handoff_redirect_count"] == 0
         assert summary_payload["distinct_fingerprint_count"] == 1
         assert summary_payload["by_share_kind"] == {"paper_snapshot": 5}
         assert summary_payload["by_access_mode"] == {
@@ -761,6 +766,7 @@ def test_result_share_analytics_record_views_and_admin_can_read_aggregates(
             "alias": 2,
             "alias_redirect": 1,
         }
+        assert summary_payload["by_handoff_target"] == {}
         assert summary_payload["last_event_at"] is not None
 
         events = client.get(
@@ -870,6 +876,7 @@ def test_result_share_analytics_records_rejected_outcomes_and_skips_when_disable
         assert summary_payload["bootstrap_view_count"] == 1
         assert summary_payload["content_view_count"] == 1
         assert summary_payload["redirect_count"] == 0
+        assert summary_payload["invite_handoff_redirect_count"] == 0
         assert summary_payload["by_access_mode"] == {"alias": 1, "share_token": 1}
 
         settings.result_share_analytics_enabled = False
@@ -888,4 +895,309 @@ def test_result_share_analytics_records_rejected_outcomes_and_skips_when_disable
         settings.result_share_alias_enabled = original_alias_enabled
         settings.result_share_redirect_enabled = original_redirect_enabled
         settings.result_share_analytics_enabled = original_analytics_enabled
+        settings.result_share_analytics_default_lookback_days = original_lookback_days
+
+
+def test_result_share_invite_handoff_redirect_records_workspace_board_conversion_events(
+    client,
+    operator_headers,
+) -> None:
+    settings = get_settings()
+    original_alias_enabled = settings.result_share_alias_enabled
+    original_analytics_enabled = settings.result_share_analytics_enabled
+    original_invite_handoff_enabled = settings.result_share_invite_handoff_enabled
+    original_invite_handoff_allowed_share_kinds = (
+        settings.result_share_invite_handoff_allowed_share_kinds
+    )
+    original_invite_entry_url = settings.group_workspace_invite_web_entry_base_url
+    original_lookback_days = settings.result_share_analytics_default_lookback_days
+    settings.result_share_alias_enabled = True
+    settings.result_share_analytics_enabled = True
+    settings.result_share_invite_handoff_enabled = True
+    settings.result_share_invite_handoff_allowed_share_kinds = ResultShareKind.WORKSPACE_BOARD.value
+    settings.group_workspace_invite_web_entry_base_url = "http://127.0.0.1:5177/"
+    settings.result_share_analytics_default_lookback_days = 30
+    owner = create_user(
+        client,
+        operator_headers,
+        email="share-handoff-owner@example.com",
+        name="Share Handoff Owner",
+    )
+    workspace = client.post(
+        "/admin/group-workspaces",
+        headers=operator_headers,
+        json={"slug": "materials-group", "name": "Materials Group"},
+    )
+    assert workspace.status_code == 201
+    add_member = client.post(
+        f"/admin/group-workspaces/{workspace.json()['id']}/members",
+        headers=operator_headers,
+        json={"user_id": owner["id"], "role": GroupWorkspaceMemberRole.OWNER.value},
+    )
+    assert add_member.status_code == 201
+    workspace_share = create_result_share_grant(
+        client,
+        operator_headers,
+        share_kind=ResultShareKind.WORKSPACE_BOARD,
+        workspace_id=workspace.json()["id"],
+    )
+    headers = {
+        "referer": "https://example.com/board-share",
+        "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/124.0 Safari/537.36",
+    }
+    try:
+        alias = create_result_share_alias(
+            client,
+            operator_headers,
+            result_share_grant_id=workspace_share["grant"]["id"],
+        )
+
+        raw_bootstrap = client.get(
+            f"/result-shares/{workspace_share['plain_text_token']}/bootstrap",
+        )
+        alias_bootstrap = client.get(
+            f"/share-aliases/{alias['plain_text_alias']}/bootstrap",
+        )
+        raw_redirect = client.get(
+            f"/result-shares/{workspace_share['plain_text_token']}/invite-handoff",
+            headers=headers,
+            follow_redirects=False,
+        )
+        alias_redirect = client.get(
+            f"/share-aliases/{alias['plain_text_alias']}/invite-handoff",
+            headers=headers,
+            follow_redirects=False,
+        )
+
+        assert raw_bootstrap.status_code == 200
+        assert (
+            raw_bootstrap.json()["workspace_invite_handoff_reserve"]["handoff_redirect_supported"]
+            is True
+        )
+        assert raw_bootstrap.json()["workspace_invite_handoff_reserve"]["invite_handoff_url"] == (
+            f"/result-shares/{workspace_share['plain_text_token']}/invite-handoff"
+        )
+        assert alias_bootstrap.status_code == 200
+        assert alias_bootstrap.json()["workspace_invite_handoff_reserve"]["invite_handoff_url"] == (
+            f"/share-aliases/{alias['plain_text_alias']}/invite-handoff"
+        )
+        assert raw_redirect.status_code == 307
+        assert (
+            raw_redirect.headers["location"] == "http://127.0.0.1:5177?from=workspace_board_share"
+        )
+        assert alias_redirect.status_code == 307
+        assert (
+            alias_redirect.headers["location"] == "http://127.0.0.1:5177?from=workspace_board_share"
+        )
+
+        summary = client.get(
+            "/admin/result-share-analytics/summary",
+            headers=operator_headers,
+            params={
+                "result_share_grant_id": workspace_share["grant"]["id"],
+                "event_type": "invite_handoff_redirect",
+            },
+        )
+        assert summary.status_code == 200
+        summary_payload = summary.json()
+        assert summary_payload["total_events"] == 2
+        assert summary_payload["resolved_events"] == 2
+        assert summary_payload["rejected_events"] == 0
+        assert summary_payload["bootstrap_view_count"] == 0
+        assert summary_payload["content_view_count"] == 0
+        assert summary_payload["redirect_count"] == 0
+        assert summary_payload["invite_handoff_redirect_count"] == 2
+        assert summary_payload["by_share_kind"] == {"workspace_board": 2}
+        assert summary_payload["by_access_mode"] == {"share_token": 1, "alias": 1}
+        assert summary_payload["by_handoff_target"] == {"group_workspace_invite_entry": 2}
+
+        events = client.get(
+            "/admin/result-share-analytics/events",
+            headers=operator_headers,
+            params={
+                "result_share_grant_id": workspace_share["grant"]["id"],
+                "event_type": "invite_handoff_redirect",
+            },
+        )
+        assert events.status_code == 200
+        events_payload = events.json()
+        assert len(events_payload) == 2
+        assert {item["access_mode"] for item in events_payload} == {"share_token", "alias"}
+        assert all(
+            item["handoff_target_kind"] == "group_workspace_invite_entry" for item in events_payload
+        )
+        assert all(item["event_type"] == "invite_handoff_redirect" for item in events_payload)
+    finally:
+        settings.result_share_alias_enabled = original_alias_enabled
+        settings.result_share_analytics_enabled = original_analytics_enabled
+        settings.result_share_invite_handoff_enabled = original_invite_handoff_enabled
+        settings.result_share_invite_handoff_allowed_share_kinds = (
+            original_invite_handoff_allowed_share_kinds
+        )
+        settings.group_workspace_invite_web_entry_base_url = original_invite_entry_url
+        settings.result_share_analytics_default_lookback_days = original_lookback_days
+
+
+def test_result_share_invite_handoff_rejects_non_workspace_share_kinds(
+    client,
+    operator_headers,
+) -> None:
+    settings = get_settings()
+    original_analytics_enabled = settings.result_share_analytics_enabled
+    original_invite_handoff_enabled = settings.result_share_invite_handoff_enabled
+    original_invite_handoff_allowed_share_kinds = (
+        settings.result_share_invite_handoff_allowed_share_kinds
+    )
+    original_invite_entry_url = settings.group_workspace_invite_web_entry_base_url
+    original_lookback_days = settings.result_share_analytics_default_lookback_days
+    settings.result_share_analytics_enabled = True
+    settings.result_share_invite_handoff_enabled = True
+    settings.result_share_invite_handoff_allowed_share_kinds = ResultShareKind.WORKSPACE_BOARD.value
+    settings.group_workspace_invite_web_entry_base_url = "http://127.0.0.1:5177/"
+    settings.result_share_analytics_default_lookback_days = 30
+    owner = create_user(
+        client,
+        operator_headers,
+        email="share-handoff-rejected@example.com",
+        name="Share Handoff Rejected",
+    )
+    paper = create_paper(client, operator_headers, user_id=owner["id"], title="Rejected Handoff")
+    add_signal_pair(client, operator_headers, paper_id=paper["id"])
+    digest_issue = create_digest_issue(
+        client,
+        operator_headers,
+        user_id=owner["id"],
+        title="Rejected Digest",
+    )
+    paper_share = create_result_share_grant(
+        client,
+        operator_headers,
+        share_kind=ResultShareKind.PAPER_SNAPSHOT,
+        paper_id=paper["id"],
+    )
+    digest_share = create_result_share_grant(
+        client,
+        operator_headers,
+        share_kind=ResultShareKind.DIGEST_ISSUE,
+        digest_issue_id=digest_issue["id"],
+    )
+    try:
+        paper_response = client.get(
+            f"/result-shares/{paper_share['plain_text_token']}/invite-handoff",
+            follow_redirects=False,
+        )
+        digest_response = client.get(
+            f"/result-shares/{digest_share['plain_text_token']}/invite-handoff",
+            follow_redirects=False,
+        )
+        assert paper_response.status_code == 422
+        assert digest_response.status_code == 422
+
+        summary = client.get(
+            "/admin/result-share-analytics/summary",
+            headers=operator_headers,
+            params={"event_type": "invite_handoff_redirect"},
+        )
+        assert summary.status_code == 200
+        summary_payload = summary.json()
+        assert summary_payload["total_events"] == 2
+        assert summary_payload["resolved_events"] == 0
+        assert summary_payload["rejected_events"] == 2
+        assert summary_payload["invite_handoff_redirect_count"] == 2
+        assert summary_payload["by_share_kind"] == {
+            "paper_snapshot": 1,
+            "digest_issue": 1,
+        }
+        assert summary_payload["by_access_mode"] == {"share_token": 2}
+        assert summary_payload["by_handoff_target"] == {"group_workspace_invite_entry": 2}
+    finally:
+        settings.result_share_analytics_enabled = original_analytics_enabled
+        settings.result_share_invite_handoff_enabled = original_invite_handoff_enabled
+        settings.result_share_invite_handoff_allowed_share_kinds = (
+            original_invite_handoff_allowed_share_kinds
+        )
+        settings.group_workspace_invite_web_entry_base_url = original_invite_entry_url
+        settings.result_share_analytics_default_lookback_days = original_lookback_days
+
+
+def test_result_share_invite_handoff_omits_bootstrap_url_when_redirect_unavailable(
+    client,
+    operator_headers,
+) -> None:
+    settings = get_settings()
+    original_analytics_enabled = settings.result_share_analytics_enabled
+    original_invite_handoff_enabled = settings.result_share_invite_handoff_enabled
+    original_invite_handoff_allowed_share_kinds = (
+        settings.result_share_invite_handoff_allowed_share_kinds
+    )
+    original_invite_entry_url = settings.group_workspace_invite_web_entry_base_url
+    original_lookback_days = settings.result_share_analytics_default_lookback_days
+    settings.result_share_analytics_enabled = True
+    settings.result_share_invite_handoff_enabled = True
+    settings.result_share_invite_handoff_allowed_share_kinds = ResultShareKind.WORKSPACE_BOARD.value
+    settings.group_workspace_invite_web_entry_base_url = None
+    settings.result_share_analytics_default_lookback_days = 30
+    workspace = client.post(
+        "/admin/group-workspaces",
+        headers=operator_headers,
+        json={"slug": "materials-group-handoff", "name": "Materials Group Handoff"},
+    )
+    assert workspace.status_code == 201
+    workspace_share = create_result_share_grant(
+        client,
+        operator_headers,
+        share_kind=ResultShareKind.WORKSPACE_BOARD,
+        workspace_id=workspace.json()["id"],
+    )
+    try:
+        bootstrap = client.get(f"/result-shares/{workspace_share['plain_text_token']}/bootstrap")
+        assert bootstrap.status_code == 200
+        reserve = bootstrap.json()["workspace_invite_handoff_reserve"]
+        assert reserve["handoff_redirect_supported"] is False
+        assert reserve["invite_handoff_url"] is None
+
+        missing_entry_redirect = client.get(
+            f"/result-shares/{workspace_share['plain_text_token']}/invite-handoff",
+            follow_redirects=False,
+        )
+        assert missing_entry_redirect.status_code == 422
+
+        settings.result_share_invite_handoff_enabled = False
+        disabled_bootstrap = client.get(
+            f"/result-shares/{workspace_share['plain_text_token']}/bootstrap"
+        )
+        assert disabled_bootstrap.status_code == 200
+        disabled_reserve = disabled_bootstrap.json()["workspace_invite_handoff_reserve"]
+        assert disabled_reserve["handoff_redirect_supported"] is False
+        assert disabled_reserve["invite_handoff_url"] is None
+
+        disabled_redirect = client.get(
+            f"/result-shares/{workspace_share['plain_text_token']}/invite-handoff",
+            follow_redirects=False,
+        )
+        assert disabled_redirect.status_code == 422
+
+        summary = client.get(
+            "/admin/result-share-analytics/summary",
+            headers=operator_headers,
+            params={
+                "result_share_grant_id": workspace_share["grant"]["id"],
+                "event_type": "invite_handoff_redirect",
+            },
+        )
+        assert summary.status_code == 200
+        summary_payload = summary.json()
+        assert summary_payload["total_events"] == 2
+        assert summary_payload["resolved_events"] == 0
+        assert summary_payload["rejected_events"] == 2
+        assert summary_payload["invite_handoff_redirect_count"] == 2
+        assert summary_payload["by_access_mode"] == {"share_token": 2}
+        assert summary_payload["by_handoff_target"] == {"group_workspace_invite_entry": 2}
+    finally:
+        settings.result_share_analytics_enabled = original_analytics_enabled
+        settings.result_share_invite_handoff_enabled = original_invite_handoff_enabled
+        settings.result_share_invite_handoff_allowed_share_kinds = (
+            original_invite_handoff_allowed_share_kinds
+        )
+        settings.group_workspace_invite_web_entry_base_url = original_invite_entry_url
         settings.result_share_analytics_default_lookback_days = original_lookback_days

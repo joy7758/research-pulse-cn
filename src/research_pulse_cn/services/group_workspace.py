@@ -9,7 +9,7 @@ import string
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import parse_qsl, quote, urlencode, urlparse, urlsplit, urlunsplit
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -43,6 +43,7 @@ from research_pulse_cn.domain.enums import (
     PulseCardType,
     ResultShareAliasStatus,
     ResultShareGrantStatus,
+    ResultShareHandoffTargetKind,
     ResultShareKind,
     ResultShareViewAccessMode,
     ResultShareViewEventType,
@@ -737,6 +738,7 @@ class GroupWorkspaceService:
         )
         by_share_kind: dict[str, int] = {}
         by_access_mode: dict[str, int] = {}
+        by_handoff_target: dict[str, int] = {}
         distinct_fingerprints: set[str] = set()
         last_event_at: datetime | None = None
         for event in events:
@@ -744,6 +746,10 @@ class GroupWorkspaceService:
             by_access_mode[event.access_mode.value] = (
                 by_access_mode.get(event.access_mode.value, 0) + 1
             )
+            if event.handoff_target_kind is not None:
+                by_handoff_target[event.handoff_target_kind.value] = (
+                    by_handoff_target.get(event.handoff_target_kind.value, 0) + 1
+                )
             if event.request_fingerprint_hash:
                 distinct_fingerprints.add(event.request_fingerprint_hash)
             if last_event_at is None or event.occurred_at > last_event_at:
@@ -765,6 +771,11 @@ class GroupWorkspaceService:
             "redirect_count": sum(
                 1 for event in events if event.event_type == ResultShareViewEventType.REDIRECT
             ),
+            "invite_handoff_redirect_count": sum(
+                1
+                for event in events
+                if event.event_type == ResultShareViewEventType.INVITE_HANDOFF_REDIRECT
+            ),
             "distinct_fingerprint_count": (
                 len(distinct_fingerprints)
                 if self.settings.result_share_analytics_enable_fingerprint
@@ -772,6 +783,7 @@ class GroupWorkspaceService:
             ),
             "by_share_kind": by_share_kind,
             "by_access_mode": by_access_mode,
+            "by_handoff_target": by_handoff_target,
             "last_event_at": last_event_at,
         }
 
@@ -784,6 +796,7 @@ class GroupWorkspaceService:
             "access_mode": event.access_mode,
             "event_type": event.event_type,
             "outcome": event.outcome,
+            "handoff_target_kind": event.handoff_target_kind,
             "referrer_host": event.referrer_host,
             "user_agent_family": event.user_agent_family,
             "occurred_at": event.occurred_at,
@@ -1016,6 +1029,7 @@ class GroupWorkspaceService:
         access_mode: ResultShareViewAccessMode,
         event_type: ResultShareViewEventType,
         outcome: ResultShareViewOutcome,
+        handoff_target_kind: ResultShareHandoffTargetKind | None = None,
         referrer: str | None = None,
         user_agent: str | None = None,
         client_host: str | None = None,
@@ -1032,6 +1046,7 @@ class GroupWorkspaceService:
                 access_mode=access_mode,
                 event_type=event_type,
                 outcome=outcome,
+                handoff_target_kind=handoff_target_kind,
                 referrer=referrer,
                 user_agent=user_agent,
                 client_host=client_host,
@@ -1057,6 +1072,9 @@ class GroupWorkspaceService:
                     "result_share_alias_id": (
                         None if alias_context is None else str(alias_context.alias_id)
                     ),
+                    "handoff_target_kind": (
+                        None if handoff_target_kind is None else handoff_target_kind.value
+                    ),
                 },
             )
 
@@ -1070,12 +1088,31 @@ class GroupWorkspaceService:
         self.metrics.increment("result_share_alias_redirects_total")
         return f"{entry_url}/share-alias/{raw_alias}"
 
+    def build_result_share_invite_handoff_redirect_url(
+        self,
+        *,
+        share_kind: ResultShareKind,
+    ) -> str:
+        self._ensure_result_share_invite_handoff_enabled()
+        if share_kind not in self.settings.result_share_invite_handoff_allowed_share_kind_list:
+            raise ValidationFailedError(
+                "result share invite handoff is not supported for this share"
+            )
+        entry_url = self.settings.group_workspace_invite_web_entry_url
+        if not entry_url:
+            raise ValidationFailedError("group workspace invite web entry URL is not configured")
+        return self._append_public_query_params(
+            entry_url,
+            {"from": "workspace_board_share"},
+        )
+
     def _record_result_share_view_event(
         self,
         *,
         access_mode: ResultShareViewAccessMode,
         event_type: ResultShareViewEventType,
         outcome: ResultShareViewOutcome,
+        handoff_target_kind: ResultShareHandoffTargetKind | None = None,
         referrer: str | None = None,
         user_agent: str | None = None,
         client_host: str | None = None,
@@ -1108,6 +1145,7 @@ class GroupWorkspaceService:
             access_mode=access_mode,
             event_type=event_type,
             outcome=outcome,
+            handoff_target_kind=handoff_target_kind,
             request_fingerprint_hash=fingerprint,
             referrer_host=referrer_host,
             user_agent_family=user_agent_family,
@@ -1122,6 +1160,8 @@ class GroupWorkspaceService:
             self.metrics.increment("result_share_content_views_total")
         elif event_type == ResultShareViewEventType.REDIRECT:
             self.metrics.increment("result_share_redirect_views_total")
+        elif event_type == ResultShareViewEventType.INVITE_HANDOFF_REDIRECT:
+            self.metrics.increment("result_share_invite_handoff_redirects_total")
 
     def _resolve_result_share_view_event_subject(
         self,
@@ -1239,7 +1279,57 @@ class GroupWorkspaceService:
             )
         return normalized_from, date_to
 
-    def share_bootstrap(self, grant: ResultShareGrantContext) -> dict[str, Any]:
+    def _ensure_result_share_invite_handoff_enabled(self) -> None:
+        if not self.settings.result_share_invite_handoff_enabled:
+            raise ValidationFailedError("result share invite handoff is disabled")
+
+    def _share_invite_handoff_redirect_supported(self, share_kind: ResultShareKind) -> bool:
+        if not self.settings.result_share_invite_handoff_enabled:
+            return False
+        if self.settings.group_workspace_invite_web_entry_url is None:
+            return False
+        return share_kind in self.settings.result_share_invite_handoff_allowed_share_kind_list
+
+    def _build_share_invite_handoff_public_url(
+        self,
+        *,
+        share_kind: ResultShareKind,
+        access_mode: ResultShareViewAccessMode | None,
+        access_value: str | None,
+    ) -> str | None:
+        if access_mode not in {
+            ResultShareViewAccessMode.SHARE_TOKEN,
+            ResultShareViewAccessMode.ALIAS,
+        }:
+            return None
+        if not access_value or not self._share_invite_handoff_redirect_supported(share_kind):
+            return None
+        encoded_value = quote(access_value, safe="")
+        if access_mode == ResultShareViewAccessMode.SHARE_TOKEN:
+            return f"/result-shares/{encoded_value}/invite-handoff"
+        return f"/share-aliases/{encoded_value}/invite-handoff"
+
+    def _append_public_query_params(self, base_url: str, params: dict[str, str]) -> str:
+        split = urlsplit(base_url)
+        query_items = dict(parse_qsl(split.query, keep_blank_values=True))
+        query_items.update(params)
+        return urlunsplit(
+            (
+                split.scheme,
+                split.netloc,
+                split.path,
+                urlencode(query_items),
+                split.fragment,
+            )
+        )
+
+    def share_bootstrap(
+        self,
+        grant: ResultShareGrantContext,
+        *,
+        access_mode: ResultShareViewAccessMode | None = None,
+        access_value: str | None = None,
+    ) -> dict[str, Any]:
         stored = self.get_result_share_grant(grant.grant_id)
         with bind_log_context(
             result_share_grant_id=stored.id,
@@ -1258,7 +1348,9 @@ class GroupWorkspaceService:
                 "target": self._share_target_summary(stored),
                 "collection_reserve": self._share_collection_reserve_summary(stored),
                 "workspace_invite_handoff_reserve": self._share_workspace_invite_handoff_summary(
-                    stored
+                    stored,
+                    access_mode=access_mode,
+                    access_value=access_value,
                 ),
                 "result_collect_handoff_reserve": self._share_result_collect_handoff_summary(
                     stored
@@ -2041,10 +2133,15 @@ class GroupWorkspaceService:
         }
 
     def _share_workspace_invite_handoff_summary(
-        self, grant: ResultShareGrant
+        self,
+        grant: ResultShareGrant,
+        *,
+        access_mode: ResultShareViewAccessMode | None = None,
+        access_value: str | None = None,
     ) -> dict[str, Any] | None:
         if grant.share_kind != ResultShareKind.WORKSPACE_BOARD:
             return None
+        handoff_redirect_supported = self._share_invite_handoff_redirect_supported(grant.share_kind)
         return {
             "supported": True,
             "share_kind": ResultShareKind.WORKSPACE_BOARD.value,
@@ -2052,8 +2149,14 @@ class GroupWorkspaceService:
             "invite_bootstrap_available": True,
             "self_service_claim_supported": True,
             "direct_claim_via_share_page": False,
+            "handoff_redirect_supported": handoff_redirect_supported,
             "source_files_included": False,
             "invite_shell_entry_url": self.settings.group_workspace_invite_web_entry_url,
+            "invite_handoff_url": self._build_share_invite_handoff_public_url(
+                share_kind=grant.share_kind,
+                access_mode=access_mode,
+                access_value=access_value,
+            ),
             "notes": [
                 "This workspace-board share is read-only and cannot claim membership directly.",
                 (
