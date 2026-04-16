@@ -370,6 +370,7 @@ class ResultShareViewEventType(StrEnum):
     CONTENT_VIEW = "content_view"
     REDIRECT = "redirect"
     INVITE_HANDOFF_REDIRECT = "invite_handoff_redirect"
+    COLLECT_HANDOFF_REDIRECT = "collect_handoff_redirect"
 
 
 class ResultShareViewOutcome(StrEnum):
@@ -379,6 +380,7 @@ class ResultShareViewOutcome(StrEnum):
 
 class ResultShareHandoffTargetKind(StrEnum):
     GROUP_WORKSPACE_INVITE_ENTRY = "group_workspace_invite_entry"
+    RESULT_SHARE_COLLECT_ENTRY = "result_share_collect_entry"
 
 
 class GroupWorkspaceResultCollectStatus(StrEnum):

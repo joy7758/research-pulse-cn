@@ -40,6 +40,7 @@
   - `content_view`
   - `redirect`
   - `invite_handoff_redirect`
+  - `collect_handoff_redirect`
   without adding browser trackers or changing the shell contract.
 
 ## Read-Only Result Types
@@ -86,6 +87,7 @@
   - collecting papers requires a separate `digest_issue` or `paper_snapshot` share token
   - collect stays in the separate result-share plus self-service flow
   - source files remain excluded
+- When configured, the shell may show an `Open result collect entry` CTA that points to a backend redirect boundary instead of linking directly to the raw result-share shell entry URL.
 - When configured, the shell may show a result-share entry URL hint that points only to the existing result-share shell entry page and never carries a token.
 
 ## Structured Digest Rendering Vs Fallback Behavior

@@ -162,6 +162,10 @@ export function WorkspaceBoardView({ viewModel }: WorkspaceBoardViewProps) {
               </dd>
             </div>
             <div>
+              <dt>Collect handoff redirect supported</dt>
+              <dd>{viewModel.resultCollectHandoff.handoffRedirectSupported ? "Yes" : "No"}</dd>
+            </div>
+            <div>
               <dt>Supported share kinds</dt>
               <dd>{viewModel.resultCollectHandoff.supportedShareKinds.join(", ")}</dd>
             </div>
@@ -176,6 +180,18 @@ export function WorkspaceBoardView({ viewModel }: WorkspaceBoardViewProps) {
               <li key={`${index}:${note}`}>{note}</li>
             ))}
           </ul>
+          {viewModel.resultCollectHandoff.collectHandoffUrl ? (
+            <p className="action-row">
+              <a
+                className="button-link"
+                href={viewModel.resultCollectHandoff.collectHandoffUrl}
+                rel="noreferrer"
+                target="_blank"
+              >
+                Open result collect entry
+              </a>
+            </p>
+          ) : null}
           {viewModel.resultCollectHandoff.resultShareShellEntryUrl ? (
             <p className="soft-copy">
               Result-share shell entry:{" "}

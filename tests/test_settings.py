@@ -115,6 +115,11 @@ def test_settings_parse_result_share_analytics_boundary(monkeypatch) -> None:
         "APP_RESULT_SHARE_INVITE_HANDOFF_ALLOWED_SHARE_KINDS",
         "workspace_board,digest_issue",
     )
+    monkeypatch.setenv("APP_RESULT_SHARE_COLLECT_HANDOFF_ENABLED", "true")
+    monkeypatch.setenv(
+        "APP_RESULT_SHARE_COLLECT_HANDOFF_ALLOWED_SHARE_KINDS",
+        "workspace_board,paper_snapshot",
+    )
     get_settings.cache_clear()
 
     settings = get_settings()
@@ -129,6 +134,11 @@ def test_settings_parse_result_share_analytics_boundary(monkeypatch) -> None:
     assert settings.result_share_invite_handoff_allowed_share_kind_list == [
         ResultShareKind.WORKSPACE_BOARD,
         ResultShareKind.DIGEST_ISSUE,
+    ]
+    assert settings.result_share_collect_handoff_enabled is True
+    assert settings.result_share_collect_handoff_allowed_share_kind_list == [
+        ResultShareKind.WORKSPACE_BOARD,
+        ResultShareKind.PAPER_SNAPSHOT,
     ]
 
 

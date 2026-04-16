@@ -203,10 +203,11 @@
   - public share routes stay read-only
   - collect stays behind `/subscription-self-service/*`
   - only structured paper objects are collectable
+  - `workspace_board` bootstrap may expose a redirect-backed `collect_handoff_url`
   - source files are still excluded
 - Backend-only analytics reserve now also remains separate from public share semantics:
   - public share responses are unchanged
-  - `bootstrap_view`, `content_view`, `redirect`, and `invite_handoff_redirect` are recorded internally only
+  - `bootstrap_view`, `content_view`, `redirect`, `invite_handoff_redirect`, and `collect_handoff_redirect` are recorded internally only
   - raw `share_token`, `alias`, and `alias_redirect` access modes stay additive over the same grants
 
 ## Current Non-Goals

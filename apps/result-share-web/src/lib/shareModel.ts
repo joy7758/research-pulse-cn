@@ -260,12 +260,18 @@ export function buildWorkspaceBoardViewModel(
             grantSummary.resultCollectHandoffReserve.collect_supported_via_self_service,
           directCollectViaCurrentShare:
             grantSummary.resultCollectHandoffReserve.direct_collect_via_current_share,
+          handoffRedirectSupported:
+            grantSummary.resultCollectHandoffReserve.handoff_redirect_supported,
           sourceFilesIncluded:
             grantSummary.resultCollectHandoffReserve.source_files_included,
           supportedShareKinds:
             grantSummary.resultCollectHandoffReserve.supported_share_kinds,
           resultShareShellEntryUrl:
             grantSummary.resultCollectHandoffReserve.result_share_shell_entry_url,
+          collectHandoffUrl: resolvePublicUrl(
+            apiBaseUrl,
+            grantSummary.resultCollectHandoffReserve.collect_handoff_url,
+          ),
           notes: grantSummary.resultCollectHandoffReserve.notes,
         }
       : null,

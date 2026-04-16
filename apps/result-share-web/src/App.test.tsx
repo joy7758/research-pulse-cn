@@ -74,9 +74,11 @@ function bootstrapFixture(
             result_share_bootstrap_available: true,
             collect_supported_via_self_service: true,
             direct_collect_via_current_share: false,
+            handoff_redirect_supported: true,
             source_files_included: false,
             supported_share_kinds: ["digest_issue", "paper_snapshot"],
             result_share_shell_entry_url: "http://127.0.0.1:5174",
+            collect_handoff_url: "/result-shares/workspace-token/collect-handoff",
             notes: [
               "Collecting papers into the workspace requires a separate digest or paper share token and the existing self-service collect flow.",
             ],
@@ -696,6 +698,10 @@ describe("result share shell", () => {
     expect(screen.getByText("Next step: collect papers into this workspace")).toBeVisible();
     expect(screen.getByText(/separate result share token required/i)).toBeVisible();
     expect(screen.getByText("http://127.0.0.1:5174")).toBeVisible();
+    expect(screen.getByRole("link", { name: /open result collect entry/i })).toHaveAttribute(
+      "href",
+      "http://127.0.0.1:8000/result-shares/workspace-token/collect-handoff",
+    );
 
     await user.type(screen.getByLabelText(/self-service token/i), "self-service-token");
     await user.click(screen.getByRole("button", { name: /connect self-service token/i }));
@@ -723,6 +729,7 @@ describe("result share shell", () => {
     expect(screen.getByText("http://127.0.0.1:5177")).toBeVisible();
     expect(screen.getByText("http://127.0.0.1:5174")).toBeVisible();
     expect(screen.getByRole("link", { name: /open invite entry/i })).toBeVisible();
+    expect(screen.getByRole("link", { name: /open result collect entry/i })).toBeVisible();
   });
 
   it("keeps workspace_board rendering stable when the handoff reserve is omitted", async () => {
@@ -771,6 +778,32 @@ describe("result share shell", () => {
 
     expect(await screen.findByText("Workspace description")).toBeVisible();
     expect(screen.queryByRole("link", { name: /open invite entry/i })).not.toBeInTheDocument();
+  });
+
+  it("does not show the collect handoff CTA when the backend omits the redirect URL", async () => {
+    const apiClientFactory = createApiClientFactory({
+      getShareBootstrap: vi.fn().mockResolvedValue({
+        ...bootstrapFixture("workspace_board"),
+        result_collect_handoff_reserve: {
+          ...bootstrapFixture("workspace_board").result_collect_handoff_reserve!,
+          handoff_redirect_supported: false,
+          collect_handoff_url: null,
+        },
+      }),
+      getShareContent: vi.fn().mockResolvedValue(workspaceFixture()),
+    });
+
+    render(
+      <ResultShareShell
+        apiClientFactory={apiClientFactory}
+        locationLike={{ pathname: "/share/workspace-no-collect-cta", search: "", hash: "" }}
+      />,
+    );
+
+    expect(await screen.findByText("Workspace description")).toBeVisible();
+    expect(
+      screen.queryByRole("link", { name: /open result collect entry/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("shows a clear invalid token state when the share token is revoked or invalid", async () => {

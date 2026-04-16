@@ -325,6 +325,7 @@ class ResultShareAnalyticsSummaryRead(BaseModel):
     content_view_count: int
     redirect_count: int
     invite_handoff_redirect_count: int
+    collect_handoff_redirect_count: int
     distinct_fingerprint_count: int | None = None
     by_share_kind: dict[str, int] = Field(default_factory=dict)
     by_access_mode: dict[str, int] = Field(default_factory=dict)
@@ -406,11 +407,13 @@ class ShareGrantResultCollectHandoffReserveRead(BaseModel):
     result_share_bootstrap_available: bool
     collect_supported_via_self_service: bool
     direct_collect_via_current_share: bool
+    handoff_redirect_supported: bool
     source_files_included: bool
     supported_share_kinds: list[Literal["digest_issue", "paper_snapshot"]] = Field(
         default_factory=list
     )
     result_share_shell_entry_url: str | None = None
+    collect_handoff_url: str | None = None
     notes: list[str] = Field(default_factory=list)
 
 

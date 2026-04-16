@@ -776,6 +776,11 @@ class GroupWorkspaceService:
                 for event in events
                 if event.event_type == ResultShareViewEventType.INVITE_HANDOFF_REDIRECT
             ),
+            "collect_handoff_redirect_count": sum(
+                1
+                for event in events
+                if event.event_type == ResultShareViewEventType.COLLECT_HANDOFF_REDIRECT
+            ),
             "distinct_fingerprint_count": (
                 len(distinct_fingerprints)
                 if self.settings.result_share_analytics_enable_fingerprint
@@ -1106,6 +1111,24 @@ class GroupWorkspaceService:
             {"from": "workspace_board_share"},
         )
 
+    def build_result_share_collect_handoff_redirect_url(
+        self,
+        *,
+        share_kind: ResultShareKind,
+    ) -> str:
+        self._ensure_result_share_collect_handoff_enabled()
+        if share_kind not in self.settings.result_share_collect_handoff_allowed_share_kind_list:
+            raise ValidationFailedError(
+                "result share collect handoff is not supported for this share"
+            )
+        entry_url = self.settings.result_share_web_entry_url
+        if not entry_url:
+            raise ValidationFailedError("result share web entry URL is not configured")
+        return self._append_public_query_params(
+            entry_url,
+            {"from": "workspace_board_collect_handoff"},
+        )
+
     def _record_result_share_view_event(
         self,
         *,
@@ -1162,6 +1185,8 @@ class GroupWorkspaceService:
             self.metrics.increment("result_share_redirect_views_total")
         elif event_type == ResultShareViewEventType.INVITE_HANDOFF_REDIRECT:
             self.metrics.increment("result_share_invite_handoff_redirects_total")
+        elif event_type == ResultShareViewEventType.COLLECT_HANDOFF_REDIRECT:
+            self.metrics.increment("result_share_collect_handoff_redirects_total")
 
     def _resolve_result_share_view_event_subject(
         self,
@@ -1290,6 +1315,17 @@ class GroupWorkspaceService:
             return False
         return share_kind in self.settings.result_share_invite_handoff_allowed_share_kind_list
 
+    def _ensure_result_share_collect_handoff_enabled(self) -> None:
+        if not self.settings.result_share_collect_handoff_enabled:
+            raise ValidationFailedError("result share collect handoff is disabled")
+
+    def _share_result_collect_handoff_redirect_supported(self, share_kind: ResultShareKind) -> bool:
+        if not self.settings.result_share_collect_handoff_enabled:
+            return False
+        if self.settings.result_share_web_entry_url is None:
+            return False
+        return share_kind in self.settings.result_share_collect_handoff_allowed_share_kind_list
+
     def _build_share_invite_handoff_public_url(
         self,
         *,
@@ -1308,6 +1344,27 @@ class GroupWorkspaceService:
         if access_mode == ResultShareViewAccessMode.SHARE_TOKEN:
             return f"/result-shares/{encoded_value}/invite-handoff"
         return f"/share-aliases/{encoded_value}/invite-handoff"
+
+    def _build_share_result_collect_handoff_public_url(
+        self,
+        *,
+        share_kind: ResultShareKind,
+        access_mode: ResultShareViewAccessMode | None,
+        access_value: str | None,
+    ) -> str | None:
+        if access_mode not in {
+            ResultShareViewAccessMode.SHARE_TOKEN,
+            ResultShareViewAccessMode.ALIAS,
+        }:
+            return None
+        if not access_value or not self._share_result_collect_handoff_redirect_supported(
+            share_kind
+        ):
+            return None
+        encoded_value = quote(access_value, safe="")
+        if access_mode == ResultShareViewAccessMode.SHARE_TOKEN:
+            return f"/result-shares/{encoded_value}/collect-handoff"
+        return f"/share-aliases/{encoded_value}/collect-handoff"
 
     def _append_public_query_params(self, base_url: str, params: dict[str, str]) -> str:
         split = urlsplit(base_url)
@@ -1353,7 +1410,9 @@ class GroupWorkspaceService:
                     access_value=access_value,
                 ),
                 "result_collect_handoff_reserve": self._share_result_collect_handoff_summary(
-                    stored
+                    stored,
+                    access_mode=access_mode,
+                    access_value=access_value,
                 ),
                 "notes": [
                     "This share link exposes structured read-only results only.",
@@ -2168,10 +2227,17 @@ class GroupWorkspaceService:
         }
 
     def _share_result_collect_handoff_summary(
-        self, grant: ResultShareGrant
+        self,
+        grant: ResultShareGrant,
+        *,
+        access_mode: ResultShareViewAccessMode | None = None,
+        access_value: str | None = None,
     ) -> dict[str, Any] | None:
         if grant.share_kind != ResultShareKind.WORKSPACE_BOARD:
             return None
+        handoff_redirect_supported = self._share_result_collect_handoff_redirect_supported(
+            grant.share_kind
+        )
         return {
             "supported": True,
             "share_kind": ResultShareKind.WORKSPACE_BOARD.value,
@@ -2179,12 +2245,18 @@ class GroupWorkspaceService:
             "result_share_bootstrap_available": True,
             "collect_supported_via_self_service": True,
             "direct_collect_via_current_share": False,
+            "handoff_redirect_supported": handoff_redirect_supported,
             "source_files_included": False,
             "supported_share_kinds": [
                 ResultShareKind.DIGEST_ISSUE.value,
                 ResultShareKind.PAPER_SNAPSHOT.value,
             ],
             "result_share_shell_entry_url": self.settings.result_share_web_entry_url,
+            "collect_handoff_url": self._build_share_result_collect_handoff_public_url(
+                share_kind=grant.share_kind,
+                access_mode=access_mode,
+                access_value=access_value,
+            ),
             "notes": [
                 "This workspace-board share is read-only and cannot collect papers directly.",
                 (

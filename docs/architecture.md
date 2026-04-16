@@ -296,7 +296,7 @@ Tie-break order is deterministic:
   - optional `GET /s/{alias}` redirect
 - Backend-only analytics reserve may observe those public routes and classify traffic by:
   - access mode: `share_token`, `alias`, `alias_redirect`
-  - event type: `bootstrap_view`, `content_view`, `redirect`, `invite_handoff_redirect`
+  - event type: `bootstrap_view`, `content_view`, `redirect`, `invite_handoff_redirect`, `collect_handoff_redirect`
   - outcome: `resolved`, `rejected`
 - Analytics capture stays privacy-aware:
   - no raw IP storage
@@ -375,6 +375,7 @@ Tie-break order is deterministic:
   - result-share bootstrap available in a separate flow
   - collect supported via self-service in a separate flow
   - direct collect via current share remains false
+  - optional `collect_handoff_url` may point to a backend redirect boundary
   - source files remain excluded
 - An optional result-share shell entry URL hint may be configured, but it never carries a token.
 

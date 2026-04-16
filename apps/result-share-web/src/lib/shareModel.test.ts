@@ -64,9 +64,11 @@ function bootstrapFixture(kind: ShareGrantBootstrapRead["grant"]["share_kind"]):
             result_share_bootstrap_available: true,
             collect_supported_via_self_service: true,
             direct_collect_via_current_share: false,
+            handoff_redirect_supported: true,
             source_files_included: false,
             supported_share_kinds: ["digest_issue", "paper_snapshot"],
             result_share_shell_entry_url: "http://127.0.0.1:5174",
+            collect_handoff_url: "/result-shares/workspace-token/collect-handoff",
             notes: ["Collecting papers requires a separate digest or paper share token."],
           }
         : null,
@@ -290,6 +292,10 @@ describe("result share view shaping", () => {
     expect(workspaceViewModel.workspaceInviteHandoff?.directClaimViaSharePage).toBe(false);
     expect(workspaceViewModel.resultCollectHandoff?.resultShareShellEntryUrl).toBe(
       "http://127.0.0.1:5174",
+    );
+    expect(workspaceViewModel.resultCollectHandoff?.handoffRedirectSupported).toBe(true);
+    expect(workspaceViewModel.resultCollectHandoff?.collectHandoffUrl).toBe(
+      "http://127.0.0.1:8000/result-shares/workspace-token/collect-handoff",
     );
     expect(workspaceViewModel.resultCollectHandoff?.directCollectViaCurrentShare).toBe(false);
   });

@@ -91,6 +91,7 @@ Backend-only analytics reserve may now also observe those public share routes fo
 - `content_view`
 - `redirect`
 - `invite_handoff_redirect`
+- `collect_handoff_redirect`
 No browser tracker or third-party analytics script is added in this phase.
 `workspace_board` share pages now also render a manual invite/join handoff summary:
 - the page stays read-only
@@ -242,6 +243,7 @@ Result collect now also stays inside that same structured-only boundary:
 `workspace_board` shares may now also carry a read-only `result_collect_handoff_reserve` summary:
 - it is informational only
 - it may include a result-share shell entry URL hint
+- it may include a redirect-backed `collect_handoff_url`
 - it does not make the current board share collect-capable
 Invite-facing responses now may also carry a read-only `result_collect_handoff_reserve` summary:
 - it is informational only
@@ -257,6 +259,7 @@ The browser shell for that boundary now uses:
 - backend-only analytics reserve admin reads through:
   - `GET /admin/result-share-analytics/summary`
   - `GET /admin/result-share-analytics/events`
+- `workspace_board` browser pages may now also show an `Open result collect entry` CTA that targets a backend redirect boundary instead of the raw result-share shell entry URL
 
 Desktop sync in this phase uses:
 - `GET /sync/me`

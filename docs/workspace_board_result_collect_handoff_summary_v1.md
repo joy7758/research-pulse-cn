@@ -26,9 +26,11 @@
 - `result_share_bootstrap_available`
 - `collect_supported_via_self_service`
 - `direct_collect_via_current_share`
+- `handoff_redirect_supported`
 - `source_files_included`
 - `supported_share_kinds`
 - `result_share_shell_entry_url`
+- `collect_handoff_url`
 - `notes`
 
 ## Optional Result-Share Shell Entry URL Hint
@@ -36,6 +38,8 @@
 - This value points only to the existing result-share shell entry page.
 - It never includes a share token or a self-service token.
 - If not configured, it remains `null`.
+- When redirect support is enabled, the same summary may also include a backend `collect_handoff_url`.
+- That URL points to a redirect boundary and still never carries a raw share token or alias into the redirect target.
 
 ## Current Non-Goals
 - direct collect from `workspace_board` share pages

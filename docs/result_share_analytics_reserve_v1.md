@@ -28,11 +28,13 @@
   - `content_view`
   - `redirect`
   - `invite_handoff_redirect`
+  - `collect_handoff_redirect`
 - Supported outcomes in v1:
   - `resolved`
   - `rejected`
 - Optional handoff target in v1:
   - `group_workspace_invite_entry`
+  - `result_share_collect_entry`
 
 ## Privacy-Aware Capture Rules
 - No raw IP storage.
@@ -52,6 +54,7 @@
   - `content_view_count`
   - `redirect_count`
   - `invite_handoff_redirect_count`
+  - `collect_handoff_redirect_count`
   - `distinct_fingerprint_count`
   - `by_share_kind`
   - `by_access_mode`

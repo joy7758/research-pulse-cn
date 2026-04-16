@@ -27,6 +27,7 @@ Private repository. Proprietary and confidential.
 - The same result-sharing boundary now also supports admin-issued opaque `ResultShareAlias` links so public browser entry can use aliases without exposing the underlying raw share token
 - A backend-only result-share analytics reserve that records privacy-aware bootstrap/content/redirect view events for raw share-token, alias, and alias-redirect access without adding browser trackers or exposing raw request identity data
 - The same analytics reserve now also observes a read-only `workspace_board -> invite` redirect bridge so admin users can aggregate invite-handoff conversion without mixing share, invite, or self-service tokens
+- The same analytics reserve now also observes a read-only `workspace_board -> result collect` redirect bridge so admin users can aggregate collect-handoff conversion without mixing board-share tokens with digest/paper share tokens or self-service tokens
 - A thin internal React/Vite admin shell under `apps/group-workspace-admin-web` for operator-managed workspace list/detail, member/paper add-remove flows, and `workspace_board` share-grant issuance without introducing end-user login or source-file sharing
 - A thin internal React/Vite admin shell under `apps/user-workbench-admin-web` for read-only search and drilldown across users, papers, and research watch profiles without introducing end-user login, file sharing, or business write flows
 - A backend-only workspace invite/join reserve that adds opaque invite grants, public invite bootstrap, self-service claim-preview/claim routes, and safe membership summaries without introducing source-file sharing or a generic login system
@@ -258,9 +259,12 @@ This shell:
   - `bootstrap_view`
   - `content_view`
   - `redirect`
+  - `invite_handoff_redirect`
+  - `collect_handoff_redirect`
 - renders read-only `digest_issue`, `paper_snapshot`, and `workspace_board` views plus an explicit self-service collect flow for collectable share kinds
 - shows a manual invite/join handoff summary on `workspace_board` shares without mixing the share page into invite claim auth
 - shows a separate manual result-collect handoff summary on `workspace_board` shares without turning the board share itself into a collect source
+- may show `Open invite entry` and `Open result collect entry` CTAs on `workspace_board` shares when backend redirect boundaries are configured
 - keeps raw token mode and opaque alias mode additive over the same underlying `ResultShareGrant` semantics
 
 Admin-only analytics reserve now also exists behind the same share boundary:

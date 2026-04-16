@@ -394,12 +394,16 @@ def test_result_share_grants_resolve_digest_paper_and_workspace_safely(
             "result_share_bootstrap_available": True,
             "collect_supported_via_self_service": True,
             "direct_collect_via_current_share": False,
+            "handoff_redirect_supported": True,
             "source_files_included": False,
             "supported_share_kinds": [
                 ResultShareKind.DIGEST_ISSUE.value,
                 ResultShareKind.PAPER_SNAPSHOT.value,
             ],
             "result_share_shell_entry_url": "http://127.0.0.1:5174",
+            "collect_handoff_url": (
+                f"/result-shares/{workspace_share['plain_text_token']}/collect-handoff"
+            ),
             "notes": [
                 "This workspace-board share is read-only and cannot collect papers directly.",
                 (
@@ -759,6 +763,7 @@ def test_result_share_analytics_record_views_and_admin_can_read_aggregates(
         assert summary_payload["content_view_count"] == 2
         assert summary_payload["redirect_count"] == 1
         assert summary_payload["invite_handoff_redirect_count"] == 0
+        assert summary_payload["collect_handoff_redirect_count"] == 0
         assert summary_payload["distinct_fingerprint_count"] == 1
         assert summary_payload["by_share_kind"] == {"paper_snapshot": 5}
         assert summary_payload["by_access_mode"] == {
@@ -877,6 +882,7 @@ def test_result_share_analytics_records_rejected_outcomes_and_skips_when_disable
         assert summary_payload["content_view_count"] == 1
         assert summary_payload["redirect_count"] == 0
         assert summary_payload["invite_handoff_redirect_count"] == 0
+        assert summary_payload["collect_handoff_redirect_count"] == 0
         assert summary_payload["by_access_mode"] == {"alias": 1, "share_token": 1}
 
         settings.result_share_analytics_enabled = False
@@ -1200,4 +1206,322 @@ def test_result_share_invite_handoff_omits_bootstrap_url_when_redirect_unavailab
             original_invite_handoff_allowed_share_kinds
         )
         settings.group_workspace_invite_web_entry_base_url = original_invite_entry_url
+        settings.result_share_analytics_default_lookback_days = original_lookback_days
+
+
+def test_result_share_collect_handoff_redirect_records_workspace_board_conversion_events(
+    client,
+    operator_headers,
+) -> None:
+    settings = get_settings()
+    original_alias_enabled = settings.result_share_alias_enabled
+    original_analytics_enabled = settings.result_share_analytics_enabled
+    original_collect_handoff_enabled = settings.result_share_collect_handoff_enabled
+    original_collect_handoff_allowed_share_kinds = (
+        settings.result_share_collect_handoff_allowed_share_kinds
+    )
+    original_result_share_entry_url = settings.result_share_web_entry_base_url
+    original_lookback_days = settings.result_share_analytics_default_lookback_days
+    settings.result_share_alias_enabled = True
+    settings.result_share_analytics_enabled = True
+    settings.result_share_collect_handoff_enabled = True
+    settings.result_share_collect_handoff_allowed_share_kinds = (
+        ResultShareKind.WORKSPACE_BOARD.value
+    )
+    settings.result_share_web_entry_base_url = "http://127.0.0.1:5174/"
+    settings.result_share_analytics_default_lookback_days = 30
+    owner = create_user(
+        client,
+        operator_headers,
+        email="share-collect-handoff-owner@example.com",
+        name="Share Collect Handoff Owner",
+    )
+    workspace = client.post(
+        "/admin/group-workspaces",
+        headers=operator_headers,
+        json={"slug": "materials-group-collect", "name": "Materials Group Collect"},
+    )
+    assert workspace.status_code == 201
+    add_member = client.post(
+        f"/admin/group-workspaces/{workspace.json()['id']}/members",
+        headers=operator_headers,
+        json={"user_id": owner["id"], "role": GroupWorkspaceMemberRole.OWNER.value},
+    )
+    assert add_member.status_code == 201
+    workspace_share = create_result_share_grant(
+        client,
+        operator_headers,
+        share_kind=ResultShareKind.WORKSPACE_BOARD,
+        workspace_id=workspace.json()["id"],
+    )
+    headers = {
+        "referer": "https://example.com/board-share-collect",
+        "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/124.0 Safari/537.36",
+    }
+    try:
+        alias = create_result_share_alias(
+            client,
+            operator_headers,
+            result_share_grant_id=workspace_share["grant"]["id"],
+        )
+
+        raw_bootstrap = client.get(
+            f"/result-shares/{workspace_share['plain_text_token']}/bootstrap",
+        )
+        alias_bootstrap = client.get(
+            f"/share-aliases/{alias['plain_text_alias']}/bootstrap",
+        )
+        raw_redirect = client.get(
+            f"/result-shares/{workspace_share['plain_text_token']}/collect-handoff",
+            headers=headers,
+            follow_redirects=False,
+        )
+        alias_redirect = client.get(
+            f"/share-aliases/{alias['plain_text_alias']}/collect-handoff",
+            headers=headers,
+            follow_redirects=False,
+        )
+
+        assert raw_bootstrap.status_code == 200
+        assert (
+            raw_bootstrap.json()["result_collect_handoff_reserve"]["handoff_redirect_supported"]
+            is True
+        )
+        assert raw_bootstrap.json()["result_collect_handoff_reserve"]["collect_handoff_url"] == (
+            f"/result-shares/{workspace_share['plain_text_token']}/collect-handoff"
+        )
+        assert alias_bootstrap.status_code == 200
+        assert alias_bootstrap.json()["result_collect_handoff_reserve"]["collect_handoff_url"] == (
+            f"/share-aliases/{alias['plain_text_alias']}/collect-handoff"
+        )
+        assert raw_redirect.status_code == 307
+        assert (
+            raw_redirect.headers["location"]
+            == "http://127.0.0.1:5174?from=workspace_board_collect_handoff"
+        )
+        assert alias_redirect.status_code == 307
+        assert (
+            alias_redirect.headers["location"]
+            == "http://127.0.0.1:5174?from=workspace_board_collect_handoff"
+        )
+
+        summary = client.get(
+            "/admin/result-share-analytics/summary",
+            headers=operator_headers,
+            params={
+                "result_share_grant_id": workspace_share["grant"]["id"],
+                "event_type": "collect_handoff_redirect",
+            },
+        )
+        assert summary.status_code == 200
+        summary_payload = summary.json()
+        assert summary_payload["total_events"] == 2
+        assert summary_payload["resolved_events"] == 2
+        assert summary_payload["rejected_events"] == 0
+        assert summary_payload["bootstrap_view_count"] == 0
+        assert summary_payload["content_view_count"] == 0
+        assert summary_payload["redirect_count"] == 0
+        assert summary_payload["invite_handoff_redirect_count"] == 0
+        assert summary_payload["collect_handoff_redirect_count"] == 2
+        assert summary_payload["by_share_kind"] == {"workspace_board": 2}
+        assert summary_payload["by_access_mode"] == {"share_token": 1, "alias": 1}
+        assert summary_payload["by_handoff_target"] == {"result_share_collect_entry": 2}
+
+        events = client.get(
+            "/admin/result-share-analytics/events",
+            headers=operator_headers,
+            params={
+                "result_share_grant_id": workspace_share["grant"]["id"],
+                "event_type": "collect_handoff_redirect",
+            },
+        )
+        assert events.status_code == 200
+        events_payload = events.json()
+        assert len(events_payload) == 2
+        assert {item["access_mode"] for item in events_payload} == {"share_token", "alias"}
+        assert all(
+            item["handoff_target_kind"] == "result_share_collect_entry" for item in events_payload
+        )
+        assert all(item["event_type"] == "collect_handoff_redirect" for item in events_payload)
+    finally:
+        settings.result_share_alias_enabled = original_alias_enabled
+        settings.result_share_analytics_enabled = original_analytics_enabled
+        settings.result_share_collect_handoff_enabled = original_collect_handoff_enabled
+        settings.result_share_collect_handoff_allowed_share_kinds = (
+            original_collect_handoff_allowed_share_kinds
+        )
+        settings.result_share_web_entry_base_url = original_result_share_entry_url
+        settings.result_share_analytics_default_lookback_days = original_lookback_days
+
+
+def test_result_share_collect_handoff_rejects_non_workspace_share_kinds(
+    client,
+    operator_headers,
+) -> None:
+    settings = get_settings()
+    original_analytics_enabled = settings.result_share_analytics_enabled
+    original_collect_handoff_enabled = settings.result_share_collect_handoff_enabled
+    original_collect_handoff_allowed_share_kinds = (
+        settings.result_share_collect_handoff_allowed_share_kinds
+    )
+    original_result_share_entry_url = settings.result_share_web_entry_base_url
+    original_lookback_days = settings.result_share_analytics_default_lookback_days
+    settings.result_share_analytics_enabled = True
+    settings.result_share_collect_handoff_enabled = True
+    settings.result_share_collect_handoff_allowed_share_kinds = (
+        ResultShareKind.WORKSPACE_BOARD.value
+    )
+    settings.result_share_web_entry_base_url = "http://127.0.0.1:5174/"
+    settings.result_share_analytics_default_lookback_days = 30
+    owner = create_user(
+        client,
+        operator_headers,
+        email="share-collect-handoff-rejected@example.com",
+        name="Share Collect Handoff Rejected",
+    )
+    paper = create_paper(
+        client,
+        operator_headers,
+        user_id=owner["id"],
+        title="Rejected Collect Handoff",
+    )
+    add_signal_pair(client, operator_headers, paper_id=paper["id"])
+    digest_issue = create_digest_issue(
+        client,
+        operator_headers,
+        user_id=owner["id"],
+        title="Rejected Collect Digest",
+    )
+    paper_share = create_result_share_grant(
+        client,
+        operator_headers,
+        share_kind=ResultShareKind.PAPER_SNAPSHOT,
+        paper_id=paper["id"],
+    )
+    digest_share = create_result_share_grant(
+        client,
+        operator_headers,
+        share_kind=ResultShareKind.DIGEST_ISSUE,
+        digest_issue_id=digest_issue["id"],
+    )
+    try:
+        paper_response = client.get(
+            f"/result-shares/{paper_share['plain_text_token']}/collect-handoff",
+            follow_redirects=False,
+        )
+        digest_response = client.get(
+            f"/result-shares/{digest_share['plain_text_token']}/collect-handoff",
+            follow_redirects=False,
+        )
+        assert paper_response.status_code == 422
+        assert digest_response.status_code == 422
+
+        summary = client.get(
+            "/admin/result-share-analytics/summary",
+            headers=operator_headers,
+            params={"event_type": "collect_handoff_redirect"},
+        )
+        assert summary.status_code == 200
+        summary_payload = summary.json()
+        assert summary_payload["total_events"] == 2
+        assert summary_payload["resolved_events"] == 0
+        assert summary_payload["rejected_events"] == 2
+        assert summary_payload["collect_handoff_redirect_count"] == 2
+        assert summary_payload["by_share_kind"] == {
+            "paper_snapshot": 1,
+            "digest_issue": 1,
+        }
+        assert summary_payload["by_handoff_target"] == {"result_share_collect_entry": 2}
+    finally:
+        settings.result_share_analytics_enabled = original_analytics_enabled
+        settings.result_share_collect_handoff_enabled = original_collect_handoff_enabled
+        settings.result_share_collect_handoff_allowed_share_kinds = (
+            original_collect_handoff_allowed_share_kinds
+        )
+        settings.result_share_web_entry_base_url = original_result_share_entry_url
+        settings.result_share_analytics_default_lookback_days = original_lookback_days
+
+
+def test_result_share_collect_handoff_omits_bootstrap_url_when_redirect_unavailable(
+    client,
+    operator_headers,
+) -> None:
+    settings = get_settings()
+    original_analytics_enabled = settings.result_share_analytics_enabled
+    original_collect_handoff_enabled = settings.result_share_collect_handoff_enabled
+    original_collect_handoff_allowed_share_kinds = (
+        settings.result_share_collect_handoff_allowed_share_kinds
+    )
+    original_result_share_entry_url = settings.result_share_web_entry_base_url
+    original_lookback_days = settings.result_share_analytics_default_lookback_days
+    settings.result_share_analytics_enabled = True
+    settings.result_share_collect_handoff_enabled = True
+    settings.result_share_collect_handoff_allowed_share_kinds = (
+        ResultShareKind.WORKSPACE_BOARD.value
+    )
+    settings.result_share_web_entry_base_url = None
+    settings.result_share_analytics_default_lookback_days = 30
+    workspace = client.post(
+        "/admin/group-workspaces",
+        headers=operator_headers,
+        json={"slug": "materials-group-collect-handoff", "name": "Materials Group Collect Handoff"},
+    )
+    assert workspace.status_code == 201
+    workspace_share = create_result_share_grant(
+        client,
+        operator_headers,
+        share_kind=ResultShareKind.WORKSPACE_BOARD,
+        workspace_id=workspace.json()["id"],
+    )
+    try:
+        bootstrap = client.get(f"/result-shares/{workspace_share['plain_text_token']}/bootstrap")
+        assert bootstrap.status_code == 200
+        reserve = bootstrap.json()["result_collect_handoff_reserve"]
+        assert reserve["handoff_redirect_supported"] is False
+        assert reserve["collect_handoff_url"] is None
+
+        missing_entry_redirect = client.get(
+            f"/result-shares/{workspace_share['plain_text_token']}/collect-handoff",
+            follow_redirects=False,
+        )
+        assert missing_entry_redirect.status_code == 422
+
+        settings.result_share_collect_handoff_enabled = False
+        disabled_bootstrap = client.get(
+            f"/result-shares/{workspace_share['plain_text_token']}/bootstrap"
+        )
+        assert disabled_bootstrap.status_code == 200
+        disabled_reserve = disabled_bootstrap.json()["result_collect_handoff_reserve"]
+        assert disabled_reserve["handoff_redirect_supported"] is False
+        assert disabled_reserve["collect_handoff_url"] is None
+
+        disabled_redirect = client.get(
+            f"/result-shares/{workspace_share['plain_text_token']}/collect-handoff",
+            follow_redirects=False,
+        )
+        assert disabled_redirect.status_code == 422
+
+        summary = client.get(
+            "/admin/result-share-analytics/summary",
+            headers=operator_headers,
+            params={
+                "result_share_grant_id": workspace_share["grant"]["id"],
+                "event_type": "collect_handoff_redirect",
+            },
+        )
+        assert summary.status_code == 200
+        summary_payload = summary.json()
+        assert summary_payload["total_events"] == 2
+        assert summary_payload["resolved_events"] == 0
+        assert summary_payload["rejected_events"] == 2
+        assert summary_payload["collect_handoff_redirect_count"] == 2
+        assert summary_payload["by_access_mode"] == {"share_token": 2}
+        assert summary_payload["by_handoff_target"] == {"result_share_collect_entry": 2}
+    finally:
+        settings.result_share_analytics_enabled = original_analytics_enabled
+        settings.result_share_collect_handoff_enabled = original_collect_handoff_enabled
+        settings.result_share_collect_handoff_allowed_share_kinds = (
+            original_collect_handoff_allowed_share_kinds
+        )
+        settings.result_share_web_entry_base_url = original_result_share_entry_url
         settings.result_share_analytics_default_lookback_days = original_lookback_days

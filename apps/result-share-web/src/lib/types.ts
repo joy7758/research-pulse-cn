@@ -61,9 +61,11 @@ export type ResultCollectHandoffReserveRead = {
   result_share_bootstrap_available: boolean;
   collect_supported_via_self_service: boolean;
   direct_collect_via_current_share: boolean;
+  handoff_redirect_supported: boolean;
   source_files_included: boolean;
   supported_share_kinds: Array<"digest_issue" | "paper_snapshot">;
   result_share_shell_entry_url: string | null;
+  collect_handoff_url: string | null;
   notes: string[];
 };
 
@@ -341,9 +343,11 @@ export type ResultCollectHandoffViewModel = {
   resultShareBootstrapAvailable: boolean;
   collectSupportedViaSelfService: boolean;
   directCollectViaCurrentShare: boolean;
+  handoffRedirectSupported: boolean;
   sourceFilesIncluded: boolean;
   supportedShareKinds: Array<"digest_issue" | "paper_snapshot">;
   resultShareShellEntryUrl: string | null;
+  collectHandoffUrl: string | null;
   notes: string[];
 };
 

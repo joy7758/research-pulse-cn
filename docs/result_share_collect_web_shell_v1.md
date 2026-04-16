@@ -26,6 +26,7 @@
   - is shown as an informational state only
   - may also show a separate invite/join handoff summary
   - may also show a separate result-collect handoff summary that points back to the existing digest/paper share shell entry
+  - when redirect support is configured, may also show an `Open result collect entry` CTA that points to a backend redirect boundary instead of the raw shell entry URL
 
 ## Multiple-Paper Digest Handling
 - The shell shows all collectable digest papers in stable preview order.

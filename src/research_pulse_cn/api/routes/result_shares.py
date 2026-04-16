@@ -264,6 +264,91 @@ def redirect_result_share_alias_invite_handoff(
     return RedirectResponse(url=redirect_url, status_code=307)
 
 
+@router.get("/result-shares/{share_token}/collect-handoff", response_class=RedirectResponse)
+def redirect_result_share_collect_handoff(
+    share_token: str,
+    request: Request,
+    service: WorkspaceServiceDep,
+) -> RedirectResponse:
+    grant_context = None
+    try:
+        grant_context = service.authenticate_share_token(share_token)
+        redirect_url = service.build_result_share_collect_handoff_redirect_url(
+            share_kind=grant_context.share_kind
+        )
+    except (AuthenticationError, ValidationFailedError):
+        service.safe_record_result_share_view_event(
+            access_mode=ResultShareViewAccessMode.SHARE_TOKEN,
+            event_type=ResultShareViewEventType.COLLECT_HANDOFF_REDIRECT,
+            outcome=ResultShareViewOutcome.REJECTED,
+            handoff_target_kind=ResultShareHandoffTargetKind.RESULT_SHARE_COLLECT_ENTRY,
+            referrer=request.headers.get("referer"),
+            user_agent=request.headers.get("user-agent"),
+            client_host=None if request.client is None else request.client.host,
+            accept_language=request.headers.get("accept-language"),
+            grant_context=grant_context,
+            raw_share_token=share_token,
+        )
+        raise
+    service.safe_record_result_share_view_event(
+        access_mode=ResultShareViewAccessMode.SHARE_TOKEN,
+        event_type=ResultShareViewEventType.COLLECT_HANDOFF_REDIRECT,
+        outcome=ResultShareViewOutcome.RESOLVED,
+        handoff_target_kind=ResultShareHandoffTargetKind.RESULT_SHARE_COLLECT_ENTRY,
+        referrer=request.headers.get("referer"),
+        user_agent=request.headers.get("user-agent"),
+        client_host=None if request.client is None else request.client.host,
+        accept_language=request.headers.get("accept-language"),
+        grant_context=grant_context,
+    )
+    return RedirectResponse(url=redirect_url, status_code=307)
+
+
+@router.get("/share-aliases/{alias}/collect-handoff", response_class=RedirectResponse)
+def redirect_result_share_alias_collect_handoff(
+    alias: str,
+    request: Request,
+    service: WorkspaceServiceDep,
+) -> RedirectResponse:
+    alias_context = None
+    grant_context = None
+    try:
+        alias_context = service.authenticate_share_alias(alias)
+        grant = service.get_result_share_grant(alias_context.grant_id)
+        grant_context = service._result_share_grant_context(grant)
+        redirect_url = service.build_result_share_collect_handoff_redirect_url(
+            share_kind=grant_context.share_kind
+        )
+    except (AuthenticationError, ValidationFailedError):
+        service.safe_record_result_share_view_event(
+            access_mode=ResultShareViewAccessMode.ALIAS,
+            event_type=ResultShareViewEventType.COLLECT_HANDOFF_REDIRECT,
+            outcome=ResultShareViewOutcome.REJECTED,
+            handoff_target_kind=ResultShareHandoffTargetKind.RESULT_SHARE_COLLECT_ENTRY,
+            referrer=request.headers.get("referer"),
+            user_agent=request.headers.get("user-agent"),
+            client_host=None if request.client is None else request.client.host,
+            accept_language=request.headers.get("accept-language"),
+            grant_context=grant_context,
+            alias_context=alias_context,
+            raw_alias=alias,
+        )
+        raise
+    service.safe_record_result_share_view_event(
+        access_mode=ResultShareViewAccessMode.ALIAS,
+        event_type=ResultShareViewEventType.COLLECT_HANDOFF_REDIRECT,
+        outcome=ResultShareViewOutcome.RESOLVED,
+        handoff_target_kind=ResultShareHandoffTargetKind.RESULT_SHARE_COLLECT_ENTRY,
+        referrer=request.headers.get("referer"),
+        user_agent=request.headers.get("user-agent"),
+        client_host=None if request.client is None else request.client.host,
+        accept_language=request.headers.get("accept-language"),
+        grant_context=grant_context,
+        alias_context=alias_context,
+    )
+    return RedirectResponse(url=redirect_url, status_code=307)
+
+
 @router.get("/s/{alias}", response_class=RedirectResponse)
 def redirect_result_share_alias(
     alias: str,

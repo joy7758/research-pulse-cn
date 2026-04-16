@@ -341,6 +341,14 @@ class Settings(BaseSettings):
         default="workspace_board",
         validation_alias="APP_RESULT_SHARE_INVITE_HANDOFF_ALLOWED_SHARE_KINDS",
     )
+    result_share_collect_handoff_enabled: bool = Field(
+        default=True,
+        validation_alias="APP_RESULT_SHARE_COLLECT_HANDOFF_ENABLED",
+    )
+    result_share_collect_handoff_allowed_share_kinds: str = Field(
+        default="workspace_board",
+        validation_alias="APP_RESULT_SHARE_COLLECT_HANDOFF_ALLOWED_SHARE_KINDS",
+    )
     group_workspace_invites_enabled: bool = Field(
         default=False,
         validation_alias="APP_GROUP_WORKSPACE_INVITES_ENABLED",
@@ -695,6 +703,28 @@ class Settings(BaseSettings):
         seen: set[ResultShareKind] = set()
         raw_values = (
             str(self.result_share_invite_handoff_allowed_share_kinds).replace(";", ",").split(",")
+        )
+        for raw_value in raw_values:
+            cleaned = raw_value.strip().lower()
+            if not cleaned:
+                continue
+            try:
+                share_kind = ResultShareKind(cleaned)
+            except ValueError:
+                continue
+            if share_kind in seen:
+                continue
+            seen.add(share_kind)
+            values.append(share_kind)
+        return values
+
+    @property
+    def result_share_collect_handoff_allowed_share_kind_list(self) -> list[ResultShareKind]:
+        """Return collect-handoff eligible share kinds parsed from configuration."""
+        values: list[ResultShareKind] = []
+        seen: set[ResultShareKind] = set()
+        raw_values = (
+            str(self.result_share_collect_handoff_allowed_share_kinds).replace(";", ",").split(",")
         )
         for raw_value in raw_values:
             cleaned = raw_value.strip().lower()
