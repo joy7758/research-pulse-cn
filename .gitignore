@@ -46,3 +46,7 @@ apps/result-share-web/dist/
 # Group workspace admin web shell
 apps/group-workspace-admin-web/node_modules/
 apps/group-workspace-admin-web/dist/
+
+# User workbench admin web shell
+apps/user-workbench-admin-web/node_modules/
+apps/user-workbench-admin-web/dist/

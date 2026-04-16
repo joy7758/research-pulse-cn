@@ -154,3 +154,16 @@
   - related-news pulse cards
   - AI rewriting or ranking
   - generic crawler behavior
+
+## Relationship To User Workbench Admin Shell
+- A separate internal shell under `apps/user-workbench-admin-web` now consumes safe read-only admin summaries derived from:
+  - `UserProfile`
+  - `PaperProfile`
+  - `ResearchWatchProfile`
+  - latest digest issue summaries
+- That shell is intentionally read-only in v1.
+- It does not expose:
+  - local file paths
+  - local note contents
+  - local attachment paths
+  - source-file contents

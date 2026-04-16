@@ -21,6 +21,7 @@ Core flow:
 15. Sync devices consume incremental `SyncEvent` feeds and push idempotent mutations back through the same service layer.
 16. A Tauri desktop shell consumes the same sync feed, keeps a local SQLite outbox, performs limited writeback through `/sync/push`, manages a local-only paper workspace, stores local markdown notes/templates, keeps local review-matrix / response-letter workflows, exposes synced `SubscriptionPolicy` quiet-control fields in Settings with non-authoritative local hints, and renders sectioned daily digests on the Today page when the synced cache includes structured digest payloads.
 17. A pulse input layer now records lightweight work activity and research watch profiles so future retrieval can start from explicit inputs instead of implicit guesses.
+18. A thin internal browser shell under `apps/user-workbench-admin-web` now consumes read-only `/admin/user-workbench/*` aggregation routes so support workflows can traverse users, papers, and watch profiles without introducing writes or file sharing.
 18. An external retrieval boundary now converts those inputs into persisted source-specific plans, executes official-source fetches behind provider adapters, stores normalized scholarly results, and lets the pulse pipeline consume those persisted records for deterministic `related_paper` cards without executing retrieval inline.
 
 ## Module boundaries
@@ -70,6 +71,11 @@ Future communication surfaces are intentionally outside the active delivery laye
   - subscription-policy changes
   - desktop attachment/note/review actions emitted through sync
 - `ResearchWatchProfile` stores compact user watch interests that can later drive retrieval.
+- A separate internal user workbench shell now consumes safe read-only summaries over those user/paper/watch-profile objects:
+  - user -> papers
+  - user -> watch profiles
+  - paper -> watch profiles
+  - no file-level data is exposed through this shell
 - `ExternalRetrievalPlan` stores deterministic source-specific planning records for later retrieval execution.
 - `ExternalRetrievalRun` stores one execution attempt per persisted plan.
 - `ExternalRetrievedRecord` stores normalized scholarly records fetched from official source APIs.

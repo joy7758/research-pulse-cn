@@ -5,9 +5,10 @@ DESKTOP_DIR = apps/desktop
 SUBSCRIPTION_EDITOR_WEB_DIR = apps/subscription-editor-web
 RESULT_SHARE_WEB_DIR = apps/result-share-web
 GROUP_WORKSPACE_ADMIN_WEB_DIR = apps/group-workspace-admin-web
+USER_WORKBENCH_ADMIN_WEB_DIR = apps/user-workbench-admin-web
 export PATH := $(HOME)/.cargo/bin:$(PATH)
 
-.PHONY: install run run-api migrate seed worker run-worker run-scheduler scheduler-tick bootstrap-admin lint format test check docker-up docker-down desktop-install desktop-dev desktop-lint desktop-test desktop-build-web subscription-editor-install subscription-editor-dev subscription-editor-lint subscription-editor-test subscription-editor-build result-share-install result-share-dev result-share-lint result-share-test result-share-build workspace-admin-install workspace-admin-dev workspace-admin-lint workspace-admin-test workspace-admin-build
+.PHONY: install run run-api migrate seed worker run-worker run-scheduler scheduler-tick bootstrap-admin lint format test check docker-up docker-down desktop-install desktop-dev desktop-lint desktop-test desktop-build-web subscription-editor-install subscription-editor-dev subscription-editor-lint subscription-editor-test subscription-editor-build result-share-install result-share-dev result-share-lint result-share-test result-share-build workspace-admin-install workspace-admin-dev workspace-admin-lint workspace-admin-test workspace-admin-build user-workbench-install user-workbench-dev user-workbench-lint user-workbench-test user-workbench-build
 
 install:
 	$(PYTHON) -m pip install --upgrade pip
@@ -122,3 +123,19 @@ workspace-admin-test:
 
 workspace-admin-build:
 	cd $(GROUP_WORKSPACE_ADMIN_WEB_DIR) && $(NPM) run build
+
+user-workbench-install:
+	cd $(USER_WORKBENCH_ADMIN_WEB_DIR) && $(NPM) install
+
+user-workbench-dev:
+	cd $(USER_WORKBENCH_ADMIN_WEB_DIR) && $(NPM) run dev
+
+user-workbench-lint:
+	cd $(USER_WORKBENCH_ADMIN_WEB_DIR) && $(NPM) run lint
+	cd $(USER_WORKBENCH_ADMIN_WEB_DIR) && $(NPM) run typecheck
+
+user-workbench-test:
+	cd $(USER_WORKBENCH_ADMIN_WEB_DIR) && $(NPM) run test
+
+user-workbench-build:
+	cd $(USER_WORKBENCH_ADMIN_WEB_DIR) && $(NPM) run build

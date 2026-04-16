@@ -33,6 +33,7 @@ from research_pulse_cn.services.subscription_self_service import (
 )
 from research_pulse_cn.services.sync import SyncService
 from research_pulse_cn.services.user import UserService
+from research_pulse_cn.services.user_workbench import UserWorkbenchService
 from research_pulse_cn.services.work_activity import WorkActivityService
 
 
@@ -131,3 +132,7 @@ def get_audit_service(session: SessionDep) -> AuditService:
 
 def get_sync_service(session: SessionDep) -> SyncService:
     return SyncService(session)
+
+
+def get_user_workbench_service(session: SessionDep) -> UserWorkbenchService:
+    return UserWorkbenchService(session)

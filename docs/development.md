@@ -109,6 +109,27 @@ The shell lives under `apps/group-workspace-admin-web` and uses:
 
 The shell is internal/admin-only, keeps bearer tokens in memory only, and does not introduce end-user login or source-file sharing.
 
+## User workbench admin web shell
+- Install user-workbench dependencies:
+  - `make user-workbench-install`
+- Run the user-workbench shell:
+  - `make user-workbench-dev`
+- Run user-workbench lint + typecheck:
+  - `make user-workbench-lint`
+- Run user-workbench tests:
+  - `make user-workbench-test`
+- Build the user-workbench shell:
+  - `make user-workbench-build`
+
+The shell lives under `apps/user-workbench-admin-web` and uses:
+- `GET /admin/user-workbench/users`
+- `GET /admin/user-workbench/users/{user_id}`
+- `GET /admin/user-workbench/papers`
+- `GET /admin/user-workbench/papers/{paper_id}`
+- `GET /admin/user-workbench/watch-profiles`
+
+The shell is internal/admin-only, keeps bearer tokens in memory only, and stays strictly read-only.
+
 ## Group workspace and result sharing
 - Admin-managed workspace routes:
   - `GET /admin/group-workspaces`

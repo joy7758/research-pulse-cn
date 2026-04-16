@@ -152,3 +152,34 @@ jobs:
 
       - name: Workspace admin build
         run: npm run build
+
+  user-workbench-admin-web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/user-workbench-admin-web
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: apps/user-workbench-admin-web/package-lock.json
+
+      - name: Install user workbench dependencies
+        run: npm ci
+
+      - name: User workbench lint
+        run: npm run lint
+
+      - name: User workbench typecheck
+        run: npm run typecheck
+
+      - name: User workbench tests
+        run: npm run test
+
+      - name: User workbench build
+        run: npm run build

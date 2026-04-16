@@ -25,6 +25,7 @@ Private repository. Proprietary and confidential.
 - Admin-managed group workspaces with structured workspace boards plus opaque read-only result share grants for `digest_issue`, `paper_snapshot`, and `workspace_board` without exposing source files, local attachment paths, or local note contents
 - A thin public React/Vite result-share shell under `apps/result-share-web` for opening `ResultShareGrant` links in a browser without introducing source-file sharing, browser token persistence, or a generic login system
 - A thin internal React/Vite admin shell under `apps/group-workspace-admin-web` for operator-managed workspace list/detail, member/paper add-remove flows, and `workspace_board` share-grant issuance without introducing end-user login or source-file sharing
+- A thin internal React/Vite admin shell under `apps/user-workbench-admin-web` for read-only search and drilldown across users, papers, and research watch profiles without introducing end-user login, file sharing, or business write flows
 - Official-account binding handshake reserve sessions that connect callback evidence, existing bindings, and self-service grants, plus real official-account webpage OAuth completion for code/state exchange and safe binding create/reuse without introducing a generic app login system
 - Mini read-only reserve endpoints that now consume structured digests, expose a safe subscription reserve summary, and keep mini grant auth separate from self-service grant auth
 - Tauri 2 desktop shell with Rust-side pull sync, local SQLite cache, mutation outbox, minimal writeback for paper/progress/subscription policy edits, a local paper workspace layer, local markdown notes/templates, and a local review-matrix workflow that generates reviewer-matrix / response-letter drafts
@@ -91,11 +92,21 @@ The code keeps pulse generation behind stable interfaces such as `FactCollector`
    `make workspace-admin-install`
 18. Run the internal workspace admin shell:
    `make workspace-admin-dev`
+19. Install the internal user workbench shell if you want read-only search across users, papers, and watch profiles:
+   `make user-workbench-install`
+20. Run the internal user workbench shell:
+   `make user-workbench-dev`
 
 Group workspace/result sharing in this phase now has two thin browser shells:
 - internal admin/operator management in `apps/group-workspace-admin-web`
 - public read-only share rendering in `apps/result-share-web`
 - PDFs, source files, local attachments, and local note contents are still excluded
+
+Internal support workflows in this phase now also have a separate read-only workbench in `apps/user-workbench-admin-web` for:
+- user lookup
+- paper lookup
+- watch-profile lookup
+- safe drilldown across those structured objects only
 
 Open API docs at `http://127.0.0.1:8000/docs`.
 
@@ -216,6 +227,27 @@ This shell:
 - reuses existing `GET /users` and `GET /papers` reads as internal lookup sources
 - does not add end-user login, public editing, or source-file sharing
 
+## User workbench admin web shell
+The repository now also includes a thin internal browser shell under `apps/user-workbench-admin-web` using:
+- React
+- TypeScript
+- Vite
+
+This shell:
+- accepts a viewer/operator/super_admin bearer token from manual paste or query/fragment fallback
+- keeps the token in memory only
+- reads only:
+  - `GET /admin/user-workbench/users`
+  - `GET /admin/user-workbench/users/{user_id}`
+  - `GET /admin/user-workbench/papers`
+  - `GET /admin/user-workbench/papers/{paper_id}`
+  - `GET /admin/user-workbench/watch-profiles`
+- supports drilldown:
+  - user -> papers
+  - user -> watch profiles
+  - paper -> watch profiles
+- does not add end-user login, business writes, or source-file sharing
+
 Official-account binding reserve now also adds:
 - admin-created handshake sessions with one-time state tokens
 - admin reconciliation candidate listing over unmatched subscribe callback events
@@ -299,6 +331,11 @@ Today-suggestion behavior in this phase:
 - `make workspace-admin-lint`: run workspace-admin shell lint and typecheck
 - `make workspace-admin-test`: run workspace-admin shell tests
 - `make workspace-admin-build`: build the workspace-admin shell
+- `make user-workbench-install`: install user-workbench shell dependencies under `apps/user-workbench-admin-web`
+- `make user-workbench-dev`: run the user-workbench shell in development mode
+- `make user-workbench-lint`: run user-workbench shell lint and typecheck
+- `make user-workbench-test`: run user-workbench shell tests
+- `make user-workbench-build`: build the user-workbench shell
 - `make subscription-editor-install`: install web-shell dependencies under `apps/subscription-editor-web`
 - `make subscription-editor-dev`: run the subscription editor web shell
 - `make subscription-editor-lint`: run editor web lint and typecheck
