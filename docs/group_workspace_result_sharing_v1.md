@@ -117,6 +117,27 @@
 - Plaintext aliases are returned only once at issuance time.
 - Raw aliases are not stored at rest.
 
+## ResultShareViewEvent Model
+- `ResultShareViewEvent` is an internal analytics reserve model over public share access.
+- Fields:
+  - `id`
+  - `result_share_grant_id`
+  - `result_share_alias_id`
+  - `share_kind`
+  - `access_mode`
+  - `event_type`
+  - `outcome`
+  - `request_fingerprint_hash`
+  - `referrer_host`
+  - `user_agent_family`
+  - `occurred_at`
+  - `created_at`
+- Privacy rules:
+  - no raw IP storage
+  - no full referrer URL storage
+  - no raw full user-agent storage
+  - analytics write failures must not break public share resolution
+
 ## Supported Share Kinds
 - `digest_issue`
   - resolves a safe structured digest issue view
@@ -150,6 +171,8 @@
   - `GET /admin/result-share-grants`
   - `POST /admin/result-share-grants`
   - `POST /admin/result-share-grants/{grant_id}/revoke`
+  - `GET /admin/result-share-analytics/summary`
+  - `GET /admin/result-share-analytics/events`
 - In this phase, workspace and share management are restricted to `operator` and `super_admin`.
 - Share links are sensitive because the token is embedded in the path; treat them as bearer secrets.
 - A thin browser shell under `apps/result-share-web` now consumes those public endpoints directly for demo and forwarding use cases while staying strictly read-only.
@@ -177,6 +200,10 @@
   - collect stays behind `/subscription-self-service/*`
   - only structured paper objects are collectable
   - source files are still excluded
+- Backend-only analytics reserve now also remains separate from public share semantics:
+  - public share responses are unchanged
+  - `bootstrap_view`, `content_view`, and `redirect` are recorded internally only
+  - raw `share_token`, `alias`, and `alias_redirect` access modes stay additive over the same grants
 
 ## Current Non-Goals
 - source-file or PDF sharing
@@ -197,15 +224,25 @@
 - Collect routes in v1:
   - `GET /subscription-self-service/result-shares/{share_token}/collect-preview`
   - `POST /subscription-self-service/result-shares/{share_token}/collect`
-  - `GET /subscription-self-service/workspace-result-collections`
+- `GET /subscription-self-service/workspace-result-collections`
 - Result collect still excludes:
   - source files
   - local attachments
   - local note contents
   - workspace-board import
 
+## Analytics Reserve Relationship
+- Public share routes may now also emit internal-only `ResultShareViewEvent` records.
+- Aggregate admin outputs include:
+  - total/resolved/rejected counts
+  - bootstrap/content/redirect counts
+  - by-share-kind counts
+  - by-access-mode counts
+  - optional distinct fingerprint counts
+- Analytics reserve still does not add browser trackers, SDKs, or third-party scripts.
+
 ## Future Work
 - user-managed workspace membership
 - source-file sharing as explicit opt-in
-- richer workspace analytics
+- richer share conversion analytics
 - later collaboration features if justified

@@ -57,6 +57,7 @@
 - When enabled, the redirect points browsers to the existing `apps/result-share-web` shell using the alias only.
 - The redirect never includes the raw share token.
 - When redirect support is disabled or the result-share shell entry URL is not configured, the route fails cleanly.
+- Backend-only analytics reserve may also observe alias bootstrap/content/redirect traffic without changing the public alias contract.
 
 ## Alias Mode In Result-Share-Web
 - The existing `apps/result-share-web` shell now accepts aliases from:
@@ -79,6 +80,6 @@
 
 ## Future Work
 - signed short links
-- richer share analytics
+- richer alias-vs-token analytics views
 - later custom share slugs if ever justified
 - still no source-file sharing by default

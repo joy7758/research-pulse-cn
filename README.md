@@ -25,6 +25,7 @@ Private repository. Proprietary and confidential.
 - Admin-managed group workspaces with structured workspace boards plus opaque read-only result share grants for `digest_issue`, `paper_snapshot`, and `workspace_board` without exposing source files, local attachment paths, or local note contents
 - A thin public React/Vite result-share shell under `apps/result-share-web` for opening `ResultShareGrant` links in a browser, optionally connecting an in-memory self-service token for collect-preview/collect flows, and surfacing manual invite/join plus result-collect handoff summaries on `workspace_board` shares without introducing source-file sharing, browser token persistence, or a generic login system
 - The same result-sharing boundary now also supports admin-issued opaque `ResultShareAlias` links so public browser entry can use aliases without exposing the underlying raw share token
+- A backend-only result-share analytics reserve that records privacy-aware bootstrap/content/redirect view events for raw share-token, alias, and alias-redirect access without adding browser trackers or exposing raw request identity data
 - A thin internal React/Vite admin shell under `apps/group-workspace-admin-web` for operator-managed workspace list/detail, member/paper add-remove flows, and `workspace_board` share-grant issuance without introducing end-user login or source-file sharing
 - A thin internal React/Vite admin shell under `apps/user-workbench-admin-web` for read-only search and drilldown across users, papers, and research watch profiles without introducing end-user login, file sharing, or business write flows
 - A backend-only workspace invite/join reserve that adds opaque invite grants, public invite bootstrap, self-service claim-preview/claim routes, and safe membership summaries without introducing source-file sharing or a generic login system
@@ -249,10 +250,19 @@ This shell:
   - `GET /subscription-self-service/share-aliases/{alias}/collect-preview`
   - `POST /subscription-self-service/share-aliases/{alias}/collect`
   - `GET /subscription-self-service/workspace-result-collections`
+- keeps public share rendering read-only while the backend may record privacy-aware internal analytics events for:
+  - `bootstrap_view`
+  - `content_view`
+  - `redirect`
 - renders read-only `digest_issue`, `paper_snapshot`, and `workspace_board` views plus an explicit self-service collect flow for collectable share kinds
 - shows a manual invite/join handoff summary on `workspace_board` shares without mixing the share page into invite claim auth
 - shows a separate manual result-collect handoff summary on `workspace_board` shares without turning the board share itself into a collect source
 - keeps raw token mode and opaque alias mode additive over the same underlying `ResultShareGrant` semantics
+
+Admin-only analytics reserve now also exists behind the same share boundary:
+- `GET /admin/result-share-analytics/summary`
+- `GET /admin/result-share-analytics/events`
+- event capture is backend-only and does not add browser trackers or expose raw IPs, full referrer URLs, or raw user agents
 - does not add login, editing, or source-file sharing
 
 The separate invite shell under `apps/group-workspace-invite-web` now also:

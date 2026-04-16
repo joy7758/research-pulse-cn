@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
@@ -18,6 +19,9 @@ from research_pulse_cn.domain.enums import (
     ResultShareAliasStatus,
     ResultShareGrantStatus,
     ResultShareKind,
+    ResultShareViewAccessMode,
+    ResultShareViewEventType,
+    ResultShareViewOutcome,
 )
 from research_pulse_cn.schemas.group_workspace import (
     GroupWorkspaceBoardRead,
@@ -33,10 +37,12 @@ from research_pulse_cn.schemas.group_workspace import (
     ResultShareAliasIssueResponse,
     ResultShareAliasRead,
     ResultShareAliasRevokeResponse,
+    ResultShareAnalyticsSummaryRead,
     ResultShareGrantCreateRequest,
     ResultShareGrantIssueResponse,
     ResultShareGrantRead,
     ResultShareGrantRevokeResponse,
+    ResultShareViewEventRead,
 )
 from research_pulse_cn.services.audit import AuditService
 from research_pulse_cn.services.group_workspace import GroupWorkspaceService
@@ -451,6 +457,67 @@ def revoke_result_share_alias(
         alias=ResultShareAliasRead(**service.serialize_result_share_alias(alias)),
         revoked_at=alias.updated_at,
     )
+
+
+@router.get(
+    "/result-share-analytics/summary",
+    response_model=ResultShareAnalyticsSummaryRead,
+)
+def get_result_share_analytics_summary(
+    _actor: ViewerDep,
+    service: WorkspaceServiceDep,
+    result_share_grant_id: Annotated[UUID | None, Query()] = None,
+    result_share_alias_id: Annotated[UUID | None, Query()] = None,
+    share_kind: Annotated[ResultShareKind | None, Query()] = None,
+    access_mode: Annotated[ResultShareViewAccessMode | None, Query()] = None,
+    event_type: Annotated[ResultShareViewEventType | None, Query()] = None,
+    outcome: Annotated[ResultShareViewOutcome | None, Query()] = None,
+    date_from: Annotated[datetime | None, Query()] = None,
+    date_to: Annotated[datetime | None, Query()] = None,
+) -> ResultShareAnalyticsSummaryRead:
+    return ResultShareAnalyticsSummaryRead(
+        **service.summarize_result_share_view_events(
+            result_share_grant_id=result_share_grant_id,
+            result_share_alias_id=result_share_alias_id,
+            share_kind=share_kind,
+            access_mode=access_mode,
+            event_type=event_type,
+            outcome=outcome,
+            date_from=date_from,
+            date_to=date_to,
+        )
+    )
+
+
+@router.get(
+    "/result-share-analytics/events",
+    response_model=list[ResultShareViewEventRead],
+)
+def list_result_share_analytics_events(
+    _actor: ViewerDep,
+    service: WorkspaceServiceDep,
+    result_share_grant_id: Annotated[UUID | None, Query()] = None,
+    result_share_alias_id: Annotated[UUID | None, Query()] = None,
+    share_kind: Annotated[ResultShareKind | None, Query()] = None,
+    access_mode: Annotated[ResultShareViewAccessMode | None, Query()] = None,
+    event_type: Annotated[ResultShareViewEventType | None, Query()] = None,
+    outcome: Annotated[ResultShareViewOutcome | None, Query()] = None,
+    date_from: Annotated[datetime | None, Query()] = None,
+    date_to: Annotated[datetime | None, Query()] = None,
+) -> list[ResultShareViewEventRead]:
+    return [
+        ResultShareViewEventRead(**service.serialize_result_share_view_event(event))
+        for event in service.list_result_share_view_events(
+            result_share_grant_id=result_share_grant_id,
+            result_share_alias_id=result_share_alias_id,
+            share_kind=share_kind,
+            access_mode=access_mode,
+            event_type=event_type,
+            outcome=outcome,
+            date_from=date_from,
+            date_to=date_to,
+        )
+    ]
 
 
 @router.get(

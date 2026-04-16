@@ -35,6 +35,11 @@
   - `GET /subscription-self-service/share-aliases/{alias}/collect-preview`
   - `POST /subscription-self-service/share-aliases/{alias}/collect`
   - `GET /subscription-self-service/workspace-result-collections`
+- The backend may also record internal-only analytics events for:
+  - `bootstrap_view`
+  - `content_view`
+  - `redirect`
+  without adding browser trackers or changing the shell contract.
 
 ## Read-Only Result Types
 - Supported share kinds in v1:
@@ -61,6 +66,7 @@
   - may also surface invite/join and result-collect handoff summaries
 - Alias mode stays additive over the same underlying `ResultShareGrant` semantics and never reveals the raw share token.
 - The shell keeps the current share view intact while collect actions run in parallel panels.
+- Any analytics reserve remains backend-only and does not change shell state handling or token storage rules.
 
 ## Workspace-Board Invite Handoff Summary
 - `workspace_board` share pages now also surface a manual invite/join handoff summary.

@@ -63,6 +63,9 @@ from research_pulse_cn.domain.enums import (
     ResultShareAliasStatus,
     ResultShareGrantStatus,
     ResultShareKind,
+    ResultShareViewAccessMode,
+    ResultShareViewEventType,
+    ResultShareViewOutcome,
     SignalSource,
     SubscriptionEditorHandoffGrantStatus,
     SubscriptionEditorHandoffIssuedBy,
@@ -1133,6 +1136,10 @@ class ResultShareGrant(TimestampMixin, Base):
         back_populates="result_share_grant",
         order_by="ResultShareAlias.created_at.desc()",
     )
+    view_events: Mapped[list[ResultShareViewEvent]] = relationship(
+        back_populates="result_share_grant",
+        order_by="ResultShareViewEvent.occurred_at.desc()",
+    )
     result_collect_records: Mapped[list[GroupWorkspaceResultCollectRecord]] = relationship(
         back_populates="result_share_grant",
         order_by="GroupWorkspaceResultCollectRecord.created_at.desc()",
@@ -1176,6 +1183,62 @@ class ResultShareAlias(TimestampMixin, Base):
     issued_by_admin: Mapped[AdminAccount | None] = relationship(
         back_populates="issued_result_share_aliases"
     )
+    view_events: Mapped[list[ResultShareViewEvent]] = relationship(
+        back_populates="result_share_alias",
+        order_by="ResultShareViewEvent.occurred_at.desc()",
+    )
+
+
+class ResultShareViewEvent(Base):
+    __tablename__ = "result_share_view_events"
+    __table_args__ = (
+        Index(
+            "ix_result_share_view_events_occurred_at",
+            "occurred_at",
+        ),
+        Index(
+            "ix_result_share_view_events_result_share_grant_occurred_at",
+            "result_share_grant_id",
+            "occurred_at",
+        ),
+        Index(
+            "ix_result_share_view_events_result_share_alias_occurred_at",
+            "result_share_alias_id",
+            "occurred_at",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    result_share_grant_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("result_share_grants.id", ondelete="SET NULL")
+    )
+    result_share_alias_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("result_share_aliases.id", ondelete="SET NULL")
+    )
+    share_kind: Mapped[ResultShareKind] = mapped_column(
+        Enum(ResultShareKind, native_enum=False),
+        nullable=False,
+    )
+    access_mode: Mapped[ResultShareViewAccessMode] = mapped_column(
+        Enum(ResultShareViewAccessMode, native_enum=False),
+        nullable=False,
+    )
+    event_type: Mapped[ResultShareViewEventType] = mapped_column(
+        Enum(ResultShareViewEventType, native_enum=False),
+        nullable=False,
+    )
+    outcome: Mapped[ResultShareViewOutcome] = mapped_column(
+        Enum(ResultShareViewOutcome, native_enum=False),
+        nullable=False,
+    )
+    request_fingerprint_hash: Mapped[str | None] = mapped_column(String(255))
+    referrer_host: Mapped[str | None] = mapped_column(String(255))
+    user_agent_family: Mapped[str | None] = mapped_column(String(128))
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    result_share_grant: Mapped[ResultShareGrant | None] = relationship(back_populates="view_events")
+    result_share_alias: Mapped[ResultShareAlias | None] = relationship(back_populates="view_events")
 
 
 class PulseDigestItem(Base):

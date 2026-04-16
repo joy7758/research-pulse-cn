@@ -94,6 +94,10 @@ COUNTER_NAMES = (
     "result_share_aliases_issued_total",
     "result_share_alias_resolutions_total",
     "result_share_alias_redirects_total",
+    "result_share_view_events_recorded_total",
+    "result_share_bootstrap_views_total",
+    "result_share_content_views_total",
+    "result_share_redirect_views_total",
 )
 
 

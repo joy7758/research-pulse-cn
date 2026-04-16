@@ -662,3 +662,230 @@ def test_revoked_expired_and_underlying_grant_failures_block_result_share_aliase
     finally:
         settings.result_share_alias_enabled = original_alias_enabled
         settings.result_share_redirect_enabled = original_redirect_enabled
+
+
+def test_result_share_analytics_record_views_and_admin_can_read_aggregates(
+    client,
+    operator_headers,
+) -> None:
+    settings = get_settings()
+    original_alias_enabled = settings.result_share_alias_enabled
+    original_redirect_enabled = settings.result_share_redirect_enabled
+    original_entry_url = settings.result_share_web_entry_base_url
+    original_analytics_enabled = settings.result_share_analytics_enabled
+    original_capture_referrer = settings.result_share_analytics_capture_referrer_host
+    original_capture_user_agent = settings.result_share_analytics_capture_user_agent_family
+    original_enable_fingerprint = settings.result_share_analytics_enable_fingerprint
+    original_fingerprint_salt = settings.result_share_analytics_fingerprint_salt
+    original_lookback_days = settings.result_share_analytics_default_lookback_days
+    settings.result_share_alias_enabled = True
+    settings.result_share_redirect_enabled = True
+    settings.result_share_web_entry_base_url = "http://127.0.0.1:5174/"
+    settings.result_share_analytics_enabled = True
+    settings.result_share_analytics_capture_referrer_host = True
+    settings.result_share_analytics_capture_user_agent_family = True
+    settings.result_share_analytics_enable_fingerprint = True
+    settings.result_share_analytics_fingerprint_salt = "analytics-salt"
+    settings.result_share_analytics_default_lookback_days = 30
+    owner = create_user(
+        client,
+        operator_headers,
+        email="share-analytics@example.com",
+        name="Analytics Owner",
+    )
+    paper = create_paper(client, operator_headers, user_id=owner["id"], title="Analytics Paper")
+    add_signal_pair(client, operator_headers, paper_id=paper["id"])
+    share = create_result_share_grant(
+        client,
+        operator_headers,
+        share_kind=ResultShareKind.PAPER_SNAPSHOT,
+        paper_id=paper["id"],
+    )
+    headers = {
+        "referer": "https://example.com/campaign/landing?utm_id=share-alias",
+        "user-agent": (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+        ),
+        "accept-language": "zh-CN,zh;q=0.9",
+    }
+    try:
+        alias = create_result_share_alias(
+            client,
+            operator_headers,
+            result_share_grant_id=share["grant"]["id"],
+        )
+
+        bootstrap = client.get(
+            f"/result-shares/{share['plain_text_token']}/bootstrap",
+            headers=headers,
+        )
+        content = client.get(f"/result-shares/{share['plain_text_token']}/content", headers=headers)
+        alias_bootstrap = client.get(
+            f"/share-aliases/{alias['plain_text_alias']}/bootstrap",
+            headers=headers,
+        )
+        alias_content = client.get(
+            f"/share-aliases/{alias['plain_text_alias']}/content",
+            headers=headers,
+        )
+        redirect = client.get(
+            f"/s/{alias['plain_text_alias']}",
+            headers=headers,
+            follow_redirects=False,
+        )
+
+        assert bootstrap.status_code == 200
+        assert content.status_code == 200
+        assert alias_bootstrap.status_code == 200
+        assert alias_content.status_code == 200
+        assert redirect.status_code == 307
+
+        summary = client.get(
+            "/admin/result-share-analytics/summary",
+            headers=operator_headers,
+            params={"result_share_grant_id": share["grant"]["id"]},
+        )
+        assert summary.status_code == 200
+        summary_payload = summary.json()
+        assert summary_payload["total_events"] == 5
+        assert summary_payload["resolved_events"] == 5
+        assert summary_payload["rejected_events"] == 0
+        assert summary_payload["bootstrap_view_count"] == 2
+        assert summary_payload["content_view_count"] == 2
+        assert summary_payload["redirect_count"] == 1
+        assert summary_payload["distinct_fingerprint_count"] == 1
+        assert summary_payload["by_share_kind"] == {"paper_snapshot": 5}
+        assert summary_payload["by_access_mode"] == {
+            "share_token": 2,
+            "alias": 2,
+            "alias_redirect": 1,
+        }
+        assert summary_payload["last_event_at"] is not None
+
+        events = client.get(
+            "/admin/result-share-analytics/events",
+            headers=operator_headers,
+            params={"result_share_grant_id": share["grant"]["id"]},
+        )
+        assert events.status_code == 200
+        events_payload = events.json()
+        assert len(events_payload) == 5
+        assert {item["event_type"] for item in events_payload} == {
+            "bootstrap_view",
+            "content_view",
+            "redirect",
+        }
+        assert {item["access_mode"] for item in events_payload} == {
+            "share_token",
+            "alias",
+            "alias_redirect",
+        }
+        assert all(item["referrer_host"] == "example.com" for item in events_payload)
+        assert all(item["user_agent_family"] == "chrome" for item in events_payload)
+        body = json.dumps(events_payload)
+        assert share["plain_text_token"] not in body
+        assert alias["plain_text_alias"] not in body
+        assert "https://example.com/campaign/landing?utm_id=share-alias" not in body
+        assert "Mozilla/5.0" not in body
+    finally:
+        settings.result_share_alias_enabled = original_alias_enabled
+        settings.result_share_redirect_enabled = original_redirect_enabled
+        settings.result_share_web_entry_base_url = original_entry_url
+        settings.result_share_analytics_enabled = original_analytics_enabled
+        settings.result_share_analytics_capture_referrer_host = original_capture_referrer
+        settings.result_share_analytics_capture_user_agent_family = original_capture_user_agent
+        settings.result_share_analytics_enable_fingerprint = original_enable_fingerprint
+        settings.result_share_analytics_fingerprint_salt = original_fingerprint_salt
+        settings.result_share_analytics_default_lookback_days = original_lookback_days
+
+
+def test_result_share_analytics_records_rejected_outcomes_and_skips_when_disabled(
+    client,
+    operator_headers,
+) -> None:
+    settings = get_settings()
+    original_alias_enabled = settings.result_share_alias_enabled
+    original_redirect_enabled = settings.result_share_redirect_enabled
+    original_analytics_enabled = settings.result_share_analytics_enabled
+    original_lookback_days = settings.result_share_analytics_default_lookback_days
+    settings.result_share_alias_enabled = True
+    settings.result_share_redirect_enabled = False
+    settings.result_share_analytics_enabled = True
+    settings.result_share_analytics_default_lookback_days = 30
+    owner = create_user(
+        client,
+        operator_headers,
+        email="share-analytics-rejected@example.com",
+        name="Analytics Rejected",
+    )
+    paper = create_paper(
+        client,
+        operator_headers,
+        user_id=owner["id"],
+        title="Rejected Analytics Paper",
+    )
+    add_signal_pair(client, operator_headers, paper_id=paper["id"])
+    revoked_share = create_result_share_grant(
+        client,
+        operator_headers,
+        share_kind=ResultShareKind.PAPER_SNAPSHOT,
+        paper_id=paper["id"],
+    )
+    active_share = create_result_share_grant(
+        client,
+        operator_headers,
+        share_kind=ResultShareKind.PAPER_SNAPSHOT,
+        paper_id=paper["id"],
+    )
+    try:
+        active_alias = create_result_share_alias(
+            client,
+            operator_headers,
+            result_share_grant_id=active_share["grant"]["id"],
+        )
+        revoked_alias = client.post(
+            f"/admin/result-share-aliases/{active_alias['alias']['id']}/revoke",
+            headers=operator_headers,
+        )
+        assert revoked_alias.status_code == 200
+
+        revoked_grant = client.post(
+            f"/admin/result-share-grants/{revoked_share['grant']['id']}/revoke",
+            headers=operator_headers,
+        )
+        assert revoked_grant.status_code == 200
+
+        alias_bootstrap = client.get(f"/share-aliases/{active_alias['plain_text_alias']}/bootstrap")
+        token_content = client.get(f"/result-shares/{revoked_share['plain_text_token']}/content")
+        assert alias_bootstrap.status_code == 401
+        assert token_content.status_code == 401
+
+        summary = client.get("/admin/result-share-analytics/summary", headers=operator_headers)
+        assert summary.status_code == 200
+        summary_payload = summary.json()
+        assert summary_payload["total_events"] == 2
+        assert summary_payload["resolved_events"] == 0
+        assert summary_payload["rejected_events"] == 2
+        assert summary_payload["bootstrap_view_count"] == 1
+        assert summary_payload["content_view_count"] == 1
+        assert summary_payload["redirect_count"] == 0
+        assert summary_payload["by_access_mode"] == {"alias": 1, "share_token": 1}
+
+        settings.result_share_analytics_enabled = False
+        disabled_response = client.get(
+            f"/result-shares/{active_share['plain_text_token']}/bootstrap"
+        )
+        assert disabled_response.status_code == 200
+
+        disabled_summary = client.get(
+            "/admin/result-share-analytics/summary",
+            headers=operator_headers,
+        )
+        assert disabled_summary.status_code == 200
+        assert disabled_summary.json()["total_events"] == 2
+    finally:
+        settings.result_share_alias_enabled = original_alias_enabled
+        settings.result_share_redirect_enabled = original_redirect_enabled
+        settings.result_share_analytics_enabled = original_analytics_enabled
+        settings.result_share_analytics_default_lookback_days = original_lookback_days

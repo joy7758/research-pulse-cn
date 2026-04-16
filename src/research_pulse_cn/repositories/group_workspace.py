@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import select
@@ -19,6 +20,7 @@ from research_pulse_cn.db.models import (
     PulseDigestItem,
     ResultShareAlias,
     ResultShareGrant,
+    ResultShareViewEvent,
 )
 from research_pulse_cn.domain.enums import (
     GroupWorkspaceInviteClaimStatus,
@@ -29,6 +31,9 @@ from research_pulse_cn.domain.enums import (
     ResultShareAliasStatus,
     ResultShareGrantStatus,
     ResultShareKind,
+    ResultShareViewAccessMode,
+    ResultShareViewEventType,
+    ResultShareViewOutcome,
 )
 
 
@@ -120,6 +125,12 @@ class GroupWorkspaceRepository:
             selectinload(GroupWorkspaceResultCollectRecord.collected_paper).selectinload(
                 PaperProfile.progress_events
             ),
+        )
+
+    def _result_share_view_event_load_options(self):
+        return (
+            selectinload(ResultShareViewEvent.result_share_grant),
+            selectinload(ResultShareViewEvent.result_share_alias),
         )
 
     def list_workspaces(
@@ -325,6 +336,49 @@ class GroupWorkspaceRepository:
     def add_result_share_alias(self, alias: ResultShareAlias) -> ResultShareAlias:
         self.session.add(alias)
         return alias
+
+    def list_result_share_view_events(
+        self,
+        *,
+        result_share_grant_id: UUID | None = None,
+        result_share_alias_id: UUID | None = None,
+        share_kind: ResultShareKind | None = None,
+        access_mode: ResultShareViewAccessMode | None = None,
+        event_type: ResultShareViewEventType | None = None,
+        outcome: ResultShareViewOutcome | None = None,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
+    ) -> list[ResultShareViewEvent]:
+        statement = (
+            select(ResultShareViewEvent)
+            .options(*self._result_share_view_event_load_options())
+            .order_by(ResultShareViewEvent.occurred_at.desc(), ResultShareViewEvent.id.desc())
+        )
+        if result_share_grant_id is not None:
+            statement = statement.where(
+                ResultShareViewEvent.result_share_grant_id == result_share_grant_id
+            )
+        if result_share_alias_id is not None:
+            statement = statement.where(
+                ResultShareViewEvent.result_share_alias_id == result_share_alias_id
+            )
+        if share_kind is not None:
+            statement = statement.where(ResultShareViewEvent.share_kind == share_kind)
+        if access_mode is not None:
+            statement = statement.where(ResultShareViewEvent.access_mode == access_mode)
+        if event_type is not None:
+            statement = statement.where(ResultShareViewEvent.event_type == event_type)
+        if outcome is not None:
+            statement = statement.where(ResultShareViewEvent.outcome == outcome)
+        if date_from is not None:
+            statement = statement.where(ResultShareViewEvent.occurred_at >= date_from)
+        if date_to is not None:
+            statement = statement.where(ResultShareViewEvent.occurred_at <= date_to)
+        return list(self.session.scalars(statement))
+
+    def add_result_share_view_event(self, event: ResultShareViewEvent) -> ResultShareViewEvent:
+        self.session.add(event)
+        return event
 
     def list_invite_grants(
         self,

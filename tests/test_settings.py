@@ -100,6 +100,27 @@ def test_settings_parse_result_share_alias_boundary(monkeypatch) -> None:
     assert settings.result_share_redirect_enabled is True
 
 
+def test_settings_parse_result_share_analytics_boundary(monkeypatch) -> None:
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("APP_DATABASE_URL", "sqlite+pysqlite:///tmp/research-pulse-cn-test.db")
+    monkeypatch.setenv("APP_RESULT_SHARE_ANALYTICS_ENABLED", "true")
+    monkeypatch.setenv("APP_RESULT_SHARE_ANALYTICS_CAPTURE_REFERRER_HOST", "true")
+    monkeypatch.setenv("APP_RESULT_SHARE_ANALYTICS_CAPTURE_USER_AGENT_FAMILY", "true")
+    monkeypatch.setenv("APP_RESULT_SHARE_ANALYTICS_ENABLE_FINGERPRINT", "true")
+    monkeypatch.setenv("APP_RESULT_SHARE_ANALYTICS_FINGERPRINT_SALT", "analytics-salt")
+    monkeypatch.setenv("APP_RESULT_SHARE_ANALYTICS_DEFAULT_LOOKBACK_DAYS", "14")
+    get_settings.cache_clear()
+
+    settings = get_settings()
+
+    assert settings.result_share_analytics_enabled is True
+    assert settings.result_share_analytics_capture_referrer_host is True
+    assert settings.result_share_analytics_capture_user_agent_family is True
+    assert settings.result_share_analytics_enable_fingerprint is True
+    assert settings.result_share_analytics_fingerprint_salt == "analytics-salt"
+    assert settings.result_share_analytics_default_lookback_days == 14
+
+
 def test_settings_parse_group_workspace_result_collect_lists(monkeypatch) -> None:
     monkeypatch.setenv("APP_ENV", "test")
     monkeypatch.setenv("APP_DATABASE_URL", "sqlite+pysqlite:///tmp/research-pulse-cn-test.db")

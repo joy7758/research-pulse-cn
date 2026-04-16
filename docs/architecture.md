@@ -292,6 +292,15 @@ Tie-break order is deterministic:
   - `GET /share-aliases/{alias}/bootstrap`
   - `GET /share-aliases/{alias}/content`
   - optional `GET /s/{alias}` redirect
+- Backend-only analytics reserve may observe those public routes and classify traffic by:
+  - access mode: `share_token`, `alias`, `alias_redirect`
+  - event type: `bootstrap_view`, `content_view`, `redirect`
+  - outcome: `resolved`, `rejected`
+- Analytics capture stays privacy-aware:
+  - no raw IP storage
+  - no full referrer URL storage
+  - no raw full user-agent storage
+  - analytics write failures do not block share resolution
 - Share content excludes:
   - source files
   - local attachment paths
@@ -315,6 +324,9 @@ Tie-break order is deterministic:
   - clears query or fragment bearer tokens from the visible URL after moving them into in-memory state
   - manages only workspace list/detail, member/paper add-remove, and `workspace_board` share-grant create/revoke flows
   - does not add source-file semantics or public editing
+- Admin analytics reads stay inside the admin boundary:
+  - `GET /admin/result-share-analytics/summary`
+  - `GET /admin/result-share-analytics/events`
 
 ### Result collect reserve boundary
 - `GroupWorkspaceResultCollectRecord` records one audit-friendly collect outcome per:
