@@ -9,6 +9,7 @@ from uuid import UUID
 from research_pulse_cn.domain.enums import (
     GroupWorkspaceInviteGrantStatus,
     GroupWorkspaceInviteRole,
+    ResultShareAliasStatus,
     ResultShareGrantStatus,
     ResultShareKind,
 )
@@ -49,6 +50,27 @@ class ResultShareGrantContext:
     digest_issue_id: UUID | None
     paper_id: UUID | None
     status: ResultShareGrantStatus
+    display_label: str | None = None
+    expires_at: datetime | None = None
+    last_used_at: datetime | None = None
+
+
+@dataclass(slots=True)
+class IssuedResultShareAlias:
+    alias_id: UUID
+    plain_text_alias: str
+    expires_at: datetime | None
+
+
+@dataclass(slots=True)
+class ResultShareAliasContext:
+    alias_id: UUID
+    grant_id: UUID
+    share_kind: ResultShareKind
+    workspace_id: UUID | None
+    digest_issue_id: UUID | None
+    paper_id: UUID | None
+    status: ResultShareAliasStatus
     display_label: str | None = None
     expires_at: datetime | None = None
     last_used_at: datetime | None = None

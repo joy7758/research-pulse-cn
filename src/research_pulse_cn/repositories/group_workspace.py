@@ -17,6 +17,7 @@ from research_pulse_cn.db.models import (
     PaperProfile,
     PulseDigestIssue,
     PulseDigestItem,
+    ResultShareAlias,
     ResultShareGrant,
 )
 from research_pulse_cn.domain.enums import (
@@ -25,6 +26,7 @@ from research_pulse_cn.domain.enums import (
     GroupWorkspaceInviteRole,
     GroupWorkspaceResultCollectStatus,
     GroupWorkspaceStatus,
+    ResultShareAliasStatus,
     ResultShareGrantStatus,
     ResultShareKind,
 )
@@ -72,6 +74,14 @@ class GroupWorkspaceRepository:
             selectinload(ResultShareGrant.paper).selectinload(PaperProfile.signal_snapshots),
             selectinload(ResultShareGrant.paper).selectinload(PaperProfile.progress_events),
             selectinload(ResultShareGrant.issued_by_admin),
+        )
+
+    def _result_share_alias_load_options(self):
+        return (
+            selectinload(ResultShareAlias.result_share_grant).options(
+                *self._result_share_load_options()
+            ),
+            selectinload(ResultShareAlias.issued_by_admin),
         )
 
     def _invite_grant_load_options(self):
@@ -269,6 +279,52 @@ class GroupWorkspaceRepository:
     def add_result_share_grant(self, grant: ResultShareGrant) -> ResultShareGrant:
         self.session.add(grant)
         return grant
+
+    def list_result_share_aliases(
+        self,
+        *,
+        result_share_grant_id: UUID | None = None,
+        share_kind: ResultShareKind | None = None,
+        status: ResultShareAliasStatus | None = None,
+    ) -> list[ResultShareAlias]:
+        statement = (
+            select(ResultShareAlias)
+            .options(*self._result_share_alias_load_options())
+            .order_by(ResultShareAlias.created_at.desc(), ResultShareAlias.id.desc())
+        )
+        if result_share_grant_id is not None:
+            statement = statement.where(
+                ResultShareAlias.result_share_grant_id == result_share_grant_id
+            )
+        if share_kind is not None:
+            statement = statement.join(ResultShareAlias.result_share_grant).where(
+                ResultShareGrant.share_kind == share_kind
+            )
+        if status is not None:
+            statement = statement.where(ResultShareAlias.status == status)
+        return list(self.session.scalars(statement))
+
+    def get_result_share_alias(self, alias_id: UUID) -> ResultShareAlias | None:
+        statement = (
+            select(ResultShareAlias)
+            .options(*self._result_share_alias_load_options())
+            .where(ResultShareAlias.id == alias_id)
+            .limit(1)
+        )
+        return self.session.scalar(statement)
+
+    def get_result_share_alias_by_hash(self, alias_hash: str) -> ResultShareAlias | None:
+        statement = (
+            select(ResultShareAlias)
+            .options(*self._result_share_alias_load_options())
+            .where(ResultShareAlias.alias_hash == alias_hash)
+            .limit(1)
+        )
+        return self.session.scalar(statement)
+
+    def add_result_share_alias(self, alias: ResultShareAlias) -> ResultShareAlias:
+        self.session.add(alias)
+        return alias
 
     def list_invite_grants(
         self,

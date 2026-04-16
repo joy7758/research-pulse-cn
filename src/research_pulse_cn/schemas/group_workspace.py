@@ -17,6 +17,7 @@ from research_pulse_cn.domain.enums import (
     GroupWorkspaceStatus,
     PaperType,
     PulseDigestIssueStatus,
+    ResultShareAliasStatus,
     ResultShareGrantStatus,
     ResultShareKind,
     SignalSource,
@@ -71,6 +72,14 @@ class ResultShareGrantCreateRequest(BaseModel):
     workspace_id: UUID | None = None
     digest_issue_id: UUID | None = None
     paper_id: UUID | None = None
+    display_label: str | None = Field(default=None, max_length=255)
+    expires_at: datetime | None = None
+
+
+class ResultShareAliasCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    result_share_grant_id: UUID
     display_label: str | None = Field(default=None, max_length=255)
     expires_at: datetime | None = None
 
@@ -189,6 +198,19 @@ class ResultShareGrantRead(ORMModel):
     updated_at: datetime
 
 
+class ResultShareAliasRead(ORMModel):
+    id: UUID
+    result_share_grant_id: UUID
+    share_kind: ResultShareKind
+    status: ResultShareAliasStatus
+    display_label: str | None
+    alias_prefix: str | None
+    expires_at: datetime | None
+    last_used_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+
 class GroupWorkspaceInviteGrantRead(ORMModel):
     id: UUID
     workspace_id: UUID
@@ -275,8 +297,19 @@ class ResultShareGrantIssueResponse(BaseModel):
     expires_at: datetime | None
 
 
+class ResultShareAliasIssueResponse(BaseModel):
+    alias: ResultShareAliasRead
+    plain_text_alias: str
+    expires_at: datetime | None
+
+
 class ResultShareGrantRevokeResponse(BaseModel):
     grant: ResultShareGrantRead
+    revoked_at: datetime
+
+
+class ResultShareAliasRevokeResponse(BaseModel):
+    alias: ResultShareAliasRead
     revoked_at: datetime
 
 

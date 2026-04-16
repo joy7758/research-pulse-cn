@@ -15,6 +15,7 @@ from research_pulse_cn.domain.enums import (
     AdminRole,
     GroupWorkspaceResultCollectStatus,
     GroupWorkspaceStatus,
+    ResultShareAliasStatus,
     ResultShareGrantStatus,
     ResultShareKind,
 )
@@ -28,6 +29,10 @@ from research_pulse_cn.schemas.group_workspace import (
     GroupWorkspaceRead,
     GroupWorkspaceResultCollectionRead,
     GroupWorkspaceUpdateRequest,
+    ResultShareAliasCreateRequest,
+    ResultShareAliasIssueResponse,
+    ResultShareAliasRead,
+    ResultShareAliasRevokeResponse,
     ResultShareGrantCreateRequest,
     ResultShareGrantIssueResponse,
     ResultShareGrantRead,
@@ -347,6 +352,104 @@ def revoke_result_share_grant(
     return ResultShareGrantRevokeResponse(
         grant=ResultShareGrantRead(**service.serialize_result_share_grant(grant)),
         revoked_at=grant.updated_at,
+    )
+
+
+@router.get("/result-share-aliases", response_model=list[ResultShareAliasRead])
+def list_result_share_aliases(
+    _actor: OperatorDep,
+    service: WorkspaceServiceDep,
+    result_share_grant_id: Annotated[UUID | None, Query()] = None,
+    share_kind: Annotated[ResultShareKind | None, Query()] = None,
+    status_value: Annotated[ResultShareAliasStatus | None, Query(alias="status")] = None,
+) -> list[ResultShareAliasRead]:
+    return [
+        ResultShareAliasRead(**service.serialize_result_share_alias(alias))
+        for alias in service.list_result_share_aliases(
+            result_share_grant_id=result_share_grant_id,
+            share_kind=share_kind,
+            status=status_value,
+        )
+    ]
+
+
+@router.get("/result-share-aliases/{alias_id}", response_model=ResultShareAliasRead)
+def get_result_share_alias(
+    alias_id: UUID,
+    _actor: OperatorDep,
+    service: WorkspaceServiceDep,
+) -> ResultShareAliasRead:
+    return ResultShareAliasRead(
+        **service.serialize_result_share_alias(service.get_result_share_alias(alias_id))
+    )
+
+
+@router.post(
+    "/result-share-aliases",
+    response_model=ResultShareAliasIssueResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_result_share_alias(
+    payload: ResultShareAliasCreateRequest,
+    request: Request,
+    actor: OperatorDep,
+    service: WorkspaceServiceDep,
+    audit_service: AuditServiceDep,
+) -> ResultShareAliasIssueResponse:
+    alias, issued = service.create_result_share_alias(
+        result_share_grant_id=payload.result_share_grant_id,
+        display_label=payload.display_label,
+        issued_by_admin_id=actor.actor_id,
+        expires_at=payload.expires_at,
+    )
+    audit_request_action(
+        audit_service=audit_service,
+        request=request,
+        actor=actor,
+        action="result_share_alias.create",
+        resource_type="result_share_alias",
+        resource_id=str(alias.id),
+        status_code=201,
+        metadata={
+            "result_share_grant_id": str(alias.result_share_grant_id),
+            "share_kind": service.serialize_result_share_alias(alias)["share_kind"].value,
+        },
+    )
+    return ResultShareAliasIssueResponse(
+        alias=ResultShareAliasRead(**service.serialize_result_share_alias(alias)),
+        plain_text_alias=issued.plain_text_alias,
+        expires_at=issued.expires_at,
+    )
+
+
+@router.post(
+    "/result-share-aliases/{alias_id}/revoke",
+    response_model=ResultShareAliasRevokeResponse,
+)
+def revoke_result_share_alias(
+    alias_id: UUID,
+    request: Request,
+    actor: OperatorDep,
+    service: WorkspaceServiceDep,
+    audit_service: AuditServiceDep,
+) -> ResultShareAliasRevokeResponse:
+    alias = service.revoke_result_share_alias(alias_id)
+    audit_request_action(
+        audit_service=audit_service,
+        request=request,
+        actor=actor,
+        action="result_share_alias.revoke",
+        resource_type="result_share_alias",
+        resource_id=str(alias.id),
+        status_code=200,
+        metadata={
+            "result_share_grant_id": str(alias.result_share_grant_id),
+            "share_kind": service.serialize_result_share_alias(alias)["share_kind"].value,
+        },
+    )
+    return ResultShareAliasRevokeResponse(
+        alias=ResultShareAliasRead(**service.serialize_result_share_alias(alias)),
+        revoked_at=alias.updated_at,
     )
 
 

@@ -100,6 +100,23 @@
   - `revoked`
   - `expired`
 
+## ResultShareAlias Model
+- `ResultShareAlias` is an additive opaque alias boundary over `ResultShareGrant`.
+- Fields:
+  - `id`
+  - `result_share_grant_id`
+  - `alias_hash`
+  - `alias_prefix`
+  - `status`
+  - `display_label`
+  - `issued_by_admin_id`
+  - `expires_at`
+  - `last_used_at`
+  - `created_at`
+  - `updated_at`
+- Plaintext aliases are returned only once at issuance time.
+- Raw aliases are not stored at rest.
+
 ## Supported Share Kinds
 - `digest_issue`
   - resolves a safe structured digest issue view
@@ -116,6 +133,10 @@
 - Public/token routes in v1:
   - `GET /result-shares/{share_token}/bootstrap`
   - `GET /result-shares/{share_token}/content`
+- Public alias routes in v1:
+  - `GET /share-aliases/{alias}/bootstrap`
+  - `GET /share-aliases/{alias}/content`
+  - optional `GET /s/{alias}` redirect boundary
 - Admin routes in v1:
   - `GET /admin/group-workspaces`
   - `POST /admin/group-workspaces`
@@ -132,6 +153,11 @@
 - In this phase, workspace and share management are restricted to `operator` and `super_admin`.
 - Share links are sensitive because the token is embedded in the path; treat them as bearer secrets.
 - A thin browser shell under `apps/result-share-web` now consumes those public endpoints directly for demo and forwarding use cases while staying strictly read-only.
+- The same shell now also supports alias-mode bootstrap from:
+  - `/share-alias/<alias>`
+  - `?share_alias=...`
+  - `#share_alias=...`
+  - manual alias paste
 - A separate internal browser shell under `apps/group-workspace-admin-web` now consumes the admin-managed workspace routes for operator workflows:
   - workspace list/detail
   - member add/remove

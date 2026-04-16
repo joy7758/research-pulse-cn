@@ -353,6 +353,12 @@ class ResultShareGrantStatus(StrEnum):
     EXPIRED = "expired"
 
 
+class ResultShareAliasStatus(StrEnum):
+    ACTIVE = "active"
+    REVOKED = "revoked"
+    EXPIRED = "expired"
+
+
 class GroupWorkspaceResultCollectStatus(StrEnum):
     COLLECTED = "collected"
     ALREADY_PRESENT = "already_present"

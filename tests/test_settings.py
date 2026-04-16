@@ -83,6 +83,23 @@ def test_settings_normalize_result_share_entry_url(monkeypatch) -> None:
     assert settings.result_share_web_entry_url == "http://127.0.0.1:5174"
 
 
+def test_settings_parse_result_share_alias_boundary(monkeypatch) -> None:
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("APP_DATABASE_URL", "sqlite+pysqlite:///tmp/research-pulse-cn-test.db")
+    monkeypatch.setenv("APP_RESULT_SHARE_ALIAS_ENABLED", "true")
+    monkeypatch.setenv("APP_RESULT_SHARE_ALIAS_LENGTH", "20")
+    monkeypatch.setenv("APP_RESULT_SHARE_ALIAS_TTL_HOURS", "240")
+    monkeypatch.setenv("APP_RESULT_SHARE_REDIRECT_ENABLED", "true")
+    get_settings.cache_clear()
+
+    settings = get_settings()
+
+    assert settings.result_share_alias_enabled is True
+    assert settings.result_share_alias_length == 20
+    assert settings.result_share_alias_ttl_hours == 240
+    assert settings.result_share_redirect_enabled is True
+
+
 def test_settings_parse_group_workspace_result_collect_lists(monkeypatch) -> None:
     monkeypatch.setenv("APP_ENV", "test")
     monkeypatch.setenv("APP_DATABASE_URL", "sqlite+pysqlite:///tmp/research-pulse-cn-test.db")

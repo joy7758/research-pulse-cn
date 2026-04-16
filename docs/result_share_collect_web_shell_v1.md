@@ -7,9 +7,10 @@
 
 ## Public Bootstrap Vs Self-Service Collect Boundary
 - Public share bootstrap and share content remain token-based and read-only.
+- The same shell may reach those read-only models through an additive alias layer when a raw share token should not be exposed in the browser URL.
 - Collect-preview, collect, and workspace-result-collection history require a separate self-service grant token.
-- Both the share token and the self-service token stay in memory only.
-- Query and fragment token hints are moved into memory and cleared from the visible URL immediately.
+- Both the raw share token or alias and the self-service token stay in memory only.
+- Query and fragment token or alias hints are moved into memory and cleared from the visible URL immediately.
 
 ## Supported Collectable Share Kinds
 - `paper_snapshot`

@@ -282,9 +282,16 @@ Tie-break order is deterministic:
   - `digest_issue`
   - `paper_snapshot`
   - `workspace_board`
+- `ResultShareAlias` is an additive opaque alias layer over `ResultShareGrant`:
+  - alias resolution stays revocable and deterministic
+  - raw share tokens remain the source of truth
+  - aliases never expose the underlying raw share token
 - Public share routes resolve:
   - `GET /result-shares/{share_token}/bootstrap`
   - `GET /result-shares/{share_token}/content`
+  - `GET /share-aliases/{alias}/bootstrap`
+  - `GET /share-aliases/{alias}/content`
+  - optional `GET /s/{alias}` redirect
 - Share content excludes:
   - source files
   - local attachment paths
@@ -295,10 +302,13 @@ Tie-break order is deterministic:
 - A thin browser shell under `apps/result-share-web` stays outside the backend auth system:
   - reads only `/result-shares/{share_token}/bootstrap`
   - reads only `/result-shares/{share_token}/content`
+  - may read `/share-aliases/{alias}/bootstrap`
+  - may read `/share-aliases/{alias}/content`
   - reads `/subscription-self-service/result-shares/{share_token}/collect-preview` only after a separate self-service token is connected
   - posts `/subscription-self-service/result-shares/{share_token}/collect` only after a separate self-service token is connected
+  - may use `/subscription-self-service/share-aliases/{alias}/collect-preview` and `/subscription-self-service/share-aliases/{alias}/collect` when opened through alias mode
   - reads `/subscription-self-service/workspace-result-collections` only after a separate self-service token is connected
-  - clears query or fragment share/self-service tokens from the visible URL after moving them into in-memory state
+  - clears query or fragment share token, share alias, and self-service token hints from the visible URL after moving them into in-memory state
   - shows `workspace_invite_handoff_reserve` and `result_collect_handoff_reserve` for `workspace_board` shares as information only
 - A separate internal admin shell under `apps/group-workspace-admin-web` stays inside the admin boundary:
   - accepts admin/operator bearer tokens from manual paste or query/fragment fallback
