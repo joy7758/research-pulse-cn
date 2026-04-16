@@ -77,8 +77,11 @@ The shell is not a mini-program build and does not introduce new auth. It consum
 The shell lives under `apps/result-share-web` and uses only:
 - `GET /result-shares/{share_token}/bootstrap`
 - `GET /result-shares/{share_token}/content`
+- `GET /subscription-self-service/result-shares/{share_token}/collect-preview`
+- `POST /subscription-self-service/result-shares/{share_token}/collect`
+- `GET /subscription-self-service/workspace-result-collections`
 
-The shell is public/token-based and read-only. It does not introduce login, editing, or source-file sharing.
+The shell is public/token-based for share rendering and self-service-token-assisted for collect-preview/collect. It keeps both tokens in memory only and does not introduce login, editing, or source-file sharing.
 
 ## Group workspace admin web shell
 - Install workspace-admin dependencies:
@@ -200,6 +203,7 @@ Result collect now also stays inside that same structured-only boundary:
 The browser shell for that boundary now uses:
 - `/share/<token>` path parsing when practical
 - `?share_token=` and `#share_token=` local-dev fallbacks
+- optional `?self_service_token=` and `#self_service_token=` local-dev fallbacks
 - in-memory token handling only
 
 Desktop sync in this phase uses:

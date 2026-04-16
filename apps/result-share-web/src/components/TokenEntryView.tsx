@@ -36,7 +36,8 @@ export function TokenEntryView({
         <p className="lede">
           Paste a share token or open the shell with a <code>/share/&lt;token&gt;</code> URL.
           This shell only consumes public read-only share endpoints and never stores tokens in
-          browser storage.
+          browser storage. After bootstrap loads, you can optionally connect a self-service token
+          in memory to preview or perform collect actions.
         </p>
 
         {noticeMessage ? <div className="inline-banner info">{noticeMessage}</div> : null}

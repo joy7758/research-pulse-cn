@@ -15,10 +15,17 @@
   - `?share_token=...` query fallback
   - `#share_token=...` fragment fallback
   - manual paste
+- It also accepts an optional self-service token from:
+  - manual paste
+  - local-dev `?self_service_token=...` query fallback
+  - local-dev `#self_service_token=...` fragment fallback
 - Query and fragment tokens are moved into in-memory state and immediately cleared from the visible URL.
 - The shell then calls:
   - `GET /result-shares/{share_token}/bootstrap`
   - `GET /result-shares/{share_token}/content`
+  - `GET /subscription-self-service/result-shares/{share_token}/collect-preview`
+  - `POST /subscription-self-service/result-shares/{share_token}/collect`
+  - `GET /subscription-self-service/workspace-result-collections`
 
 ## Read-Only Result Types
 - Supported share kinds in v1:
@@ -27,6 +34,22 @@
   - `workspace_board`
 - The shell renders only structured read models already exposed by the backend.
 - The shell does not derive new business logic or reconstruct hidden data.
+
+## Collect Flow Overlay
+- Public share rendering remains read-only and token-based.
+- A separate self-service token may be connected in memory only for:
+  - collect-preview
+  - explicit manual collect
+  - current workspace-result-collection history
+- `paper_snapshot`
+  - exposes one collectable paper summary
+  - can collect without paper selection
+- `digest_issue`
+  - may expose multiple collectable paper summaries
+  - requires explicit paper selection when more than one collectable paper is present
+- `workspace_board`
+  - remains non-collectable in v1
+- The shell keeps the current share view intact while collect actions run in parallel panels.
 
 ## Structured Digest Rendering Vs Fallback Behavior
 - `digest_issue` share pages prefer:
@@ -64,10 +87,10 @@
 - generic user login/session system
 
 ## Future Work
-- richer public share UX
-- optional signed short links
-- later source-file sharing as explicit opt-in
-- potential workspace invite or handoff flows if justified
+- mini handoff into collect flow
+- richer workspace selection UX
+- later explicit source-file opt-in flows
+- workspace curation improvements
 
 The internal admin/operator shell for creating and revoking `workspace_board` shares now lives separately under `apps/group-workspace-admin-web`, so this public shell stays strictly read-only.
 Workspace invite bootstrap and self-service claim now also have their own separate thin shell under `apps/group-workspace-invite-web`, so result sharing and membership growth remain distinct browser surfaces.

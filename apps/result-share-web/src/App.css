@@ -43,7 +43,8 @@ button:disabled {
 }
 
 input,
-textarea {
+textarea,
+select {
   width: 100%;
   margin-top: 0.45rem;
   border: 1px solid rgba(28, 45, 72, 0.12);
@@ -251,6 +252,11 @@ code {
   background: rgba(247, 250, 253, 0.86);
 }
 
+.list-card-selected {
+  border-color: rgba(24, 95, 138, 0.35);
+  background: rgba(232, 244, 255, 0.9);
+}
+
 .list-card h4,
 .hero-card h2,
 .panel-card h3,
@@ -276,6 +282,32 @@ code {
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
+}
+
+.collect-layout {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+.collect-column {
+  display: grid;
+  gap: 1rem;
+}
+
+.checkbox-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.5rem 0.8rem;
+  border-radius: 999px;
+  background: #eef4fb;
+  color: #17304d;
+}
+
+.checkbox-chip input {
+  width: auto;
+  margin: 0;
 }
 
 .button-secondary {

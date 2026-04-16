@@ -23,7 +23,7 @@ Private repository. Proprietary and confidential.
 - Mini editor handoff reserve that adds a short-lived `SubscriptionEditorHandoffGrant` bridge from mini read-only reserve to `/subscription-editor/*` without making mini grants directly writable
 - A thin React/Vite subscription editor web shell under `apps/subscription-editor-web` for manually exercising handoff-grant-protected `/subscription-editor/*` flows in a browser or future WebView shell
 - Admin-managed group workspaces with structured workspace boards plus opaque read-only result share grants for `digest_issue`, `paper_snapshot`, and `workspace_board` without exposing source files, local attachment paths, or local note contents
-- A thin public React/Vite result-share shell under `apps/result-share-web` for opening `ResultShareGrant` links in a browser without introducing source-file sharing, browser token persistence, or a generic login system
+- A thin public React/Vite result-share shell under `apps/result-share-web` for opening `ResultShareGrant` links in a browser, optionally connecting an in-memory self-service token for collect-preview/collect flows, and avoiding source-file sharing, browser token persistence, or a generic login system
 - A thin internal React/Vite admin shell under `apps/group-workspace-admin-web` for operator-managed workspace list/detail, member/paper add-remove flows, and `workspace_board` share-grant issuance without introducing end-user login or source-file sharing
 - A thin internal React/Vite admin shell under `apps/user-workbench-admin-web` for read-only search and drilldown across users, papers, and research watch profiles without introducing end-user login, file sharing, or business write flows
 - A backend-only workspace invite/join reserve that adds opaque invite grants, public invite bootstrap, self-service claim-preview/claim routes, and safe membership summaries without introducing source-file sharing or a generic login system
@@ -228,11 +228,15 @@ The repository now also includes a thin public browser shell under `apps/result-
 
 This shell:
 - accepts a share token from `/share/<token>`, query/fragment fallback, or manual paste
-- keeps query/fragment tokens in memory only after clearing them from the visible URL
+- accepts an optional self-service token from manual paste or local-dev query/fragment fallback
+- keeps query/fragment token hints in memory only after clearing them from the visible URL
 - calls only:
   - `GET /result-shares/{share_token}/bootstrap`
   - `GET /result-shares/{share_token}/content`
-- renders only read-only `digest_issue`, `paper_snapshot`, and `workspace_board` views
+  - `GET /subscription-self-service/result-shares/{share_token}/collect-preview`
+  - `POST /subscription-self-service/result-shares/{share_token}/collect`
+  - `GET /subscription-self-service/workspace-result-collections`
+- renders read-only `digest_issue`, `paper_snapshot`, and `workspace_board` views plus an explicit self-service collect flow for collectable share kinds
 - does not add login, editing, or source-file sharing
 
 ## Group workspace admin web shell
