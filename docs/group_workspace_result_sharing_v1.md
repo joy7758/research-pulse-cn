@@ -137,6 +137,10 @@
   - member add/remove
   - paper add/remove
   - `workspace_board` share grant create/revoke
+- Invite and join now remain a separate reserve boundary:
+  - public invite bootstrap is read-only
+  - membership claim stays behind `/subscription-self-service/*`
+  - invites are not interchangeable with result share grants
 
 ## Current Non-Goals
 - source-file or PDF sharing

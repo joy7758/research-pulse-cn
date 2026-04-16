@@ -13,6 +13,9 @@ from research_pulse_cn.api.routes.external_retrieval import (
 from research_pulse_cn.api.routes.group_workspace_admin import (
     router as group_workspace_admin_router,
 )
+from research_pulse_cn.api.routes.group_workspace_invite_admin import (
+    router as group_workspace_invite_admin_router,
+)
 from research_pulse_cn.api.routes.health import router as health_router
 from research_pulse_cn.api.routes.mini import router as mini_router
 from research_pulse_cn.api.routes.mini_admin import router as mini_admin_router
@@ -50,6 +53,7 @@ from research_pulse_cn.api.routes.user_workbench_admin import (
 )
 from research_pulse_cn.api.routes.users import router as users_router
 from research_pulse_cn.api.routes.work_activity import router as work_activity_router
+from research_pulse_cn.api.routes.workspace_invites import router as workspace_invites_router
 
 api_router = APIRouter()
 api_router.include_router(health_router, tags=["health"])
@@ -59,6 +63,7 @@ api_router.include_router(client_devices_router)
 api_router.include_router(digest_admin_router)
 api_router.include_router(mini_admin_router)
 api_router.include_router(group_workspace_admin_router)
+api_router.include_router(group_workspace_invite_admin_router)
 api_router.include_router(user_workbench_admin_router)
 api_router.include_router(subscription_self_service_admin_router)
 api_router.include_router(subscription_editor_handoff_admin_router)
@@ -68,6 +73,7 @@ api_router.include_router(subscription_self_service_router)
 api_router.include_router(subscription_editor_router)
 api_router.include_router(official_account_integration_router)
 api_router.include_router(result_shares_router)
+api_router.include_router(workspace_invites_router)
 api_router.include_router(users_router)
 api_router.include_router(papers_router)
 api_router.include_router(subscription_policies_router)

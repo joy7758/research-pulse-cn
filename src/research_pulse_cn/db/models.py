@@ -41,6 +41,9 @@ from research_pulse_cn.domain.enums import (
     ExternalRetrievalRunStatus,
     ExternalRetrievalScope,
     ExternalRetrievalSourceKind,
+    GroupWorkspaceInviteClaimStatus,
+    GroupWorkspaceInviteGrantStatus,
+    GroupWorkspaceInviteRole,
     GroupWorkspaceMemberRole,
     GroupWorkspaceStatus,
     MiniReadGrantStatus,
@@ -135,6 +138,9 @@ class AdminAccount(TimestampMixin, Base):
     issued_result_share_grants: Mapped[list[ResultShareGrant]] = relationship(
         back_populates="issued_by_admin",
     )
+    issued_group_workspace_invite_grants: Mapped[list[GroupWorkspaceInviteGrant]] = relationship(
+        back_populates="issued_by_admin",
+    )
 
 
 class UserProfile(TimestampMixin, Base):
@@ -198,6 +204,11 @@ class UserProfile(TimestampMixin, Base):
         back_populates="user",
         cascade="all, delete-orphan",
         order_by="GroupWorkspaceMember.created_at.desc()",
+    )
+    group_workspace_invite_claims: Mapped[list[GroupWorkspaceInviteClaim]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+        order_by="GroupWorkspaceInviteClaim.created_at.desc()",
     )
     work_activity_events: Mapped[list[WorkActivityEvent]] = relationship(
         back_populates="user",
@@ -820,6 +831,14 @@ class GroupWorkspace(TimestampMixin, Base):
         back_populates="workspace",
         order_by="ResultShareGrant.created_at.desc()",
     )
+    invite_grants: Mapped[list[GroupWorkspaceInviteGrant]] = relationship(
+        back_populates="workspace",
+        order_by="GroupWorkspaceInviteGrant.created_at.desc()",
+    )
+    invite_claims: Mapped[list[GroupWorkspaceInviteClaim]] = relationship(
+        back_populates="workspace",
+        order_by="GroupWorkspaceInviteClaim.created_at.desc()",
+    )
 
 
 class GroupWorkspaceMember(TimestampMixin, Base):
@@ -846,6 +865,10 @@ class GroupWorkspaceMember(TimestampMixin, Base):
 
     workspace: Mapped[GroupWorkspace] = relationship(back_populates="members")
     user: Mapped[UserProfile] = relationship(back_populates="group_workspace_memberships")
+    invite_claims: Mapped[list[GroupWorkspaceInviteClaim]] = relationship(
+        back_populates="membership",
+        order_by="GroupWorkspaceInviteClaim.created_at.desc()",
+    )
 
 
 class GroupWorkspacePaper(TimestampMixin, Base):
@@ -872,6 +895,93 @@ class GroupWorkspacePaper(TimestampMixin, Base):
     added_by_admin: Mapped[AdminAccount | None] = relationship(
         back_populates="added_group_workspace_papers"
     )
+
+
+class GroupWorkspaceInviteGrant(TimestampMixin, Base):
+    __tablename__ = "group_workspace_invite_grants"
+    __table_args__ = (
+        Index(
+            "ix_group_workspace_invite_grants_workspace_status_created_at",
+            "workspace_id",
+            "status",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    workspace_id: Mapped[UUID] = mapped_column(
+        ForeignKey("group_workspaces.id", ondelete="CASCADE")
+    )
+    role_to_assign: Mapped[GroupWorkspaceInviteRole] = mapped_column(
+        Enum(GroupWorkspaceInviteRole, native_enum=False),
+        nullable=False,
+    )
+    token_hash: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    status: Mapped[GroupWorkspaceInviteGrantStatus] = mapped_column(
+        Enum(GroupWorkspaceInviteGrantStatus, native_enum=False),
+        nullable=False,
+        default=GroupWorkspaceInviteGrantStatus.ACTIVE,
+    )
+    display_label: Mapped[str | None] = mapped_column(String(255))
+    max_claims: Mapped[int | None] = mapped_column(Integer)
+    claim_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    issued_by_admin_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("admin_accounts.id", ondelete="SET NULL")
+    )
+
+    workspace: Mapped[GroupWorkspace] = relationship(back_populates="invite_grants")
+    issued_by_admin: Mapped[AdminAccount | None] = relationship(
+        back_populates="issued_group_workspace_invite_grants"
+    )
+    claims: Mapped[list[GroupWorkspaceInviteClaim]] = relationship(
+        back_populates="invite_grant",
+        order_by="GroupWorkspaceInviteClaim.created_at.desc()",
+    )
+
+
+class GroupWorkspaceInviteClaim(TimestampMixin, Base):
+    __tablename__ = "group_workspace_invite_claims"
+    __table_args__ = (
+        UniqueConstraint(
+            "invite_grant_id",
+            "user_id",
+            name="uq_group_workspace_invite_claims_grant_user",
+        ),
+        Index(
+            "ix_group_workspace_invite_claims_workspace_created_at",
+            "workspace_id",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    invite_grant_id: Mapped[UUID] = mapped_column(
+        ForeignKey("group_workspace_invite_grants.id", ondelete="CASCADE")
+    )
+    workspace_id: Mapped[UUID] = mapped_column(
+        ForeignKey("group_workspaces.id", ondelete="CASCADE")
+    )
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("user_profiles.id", ondelete="CASCADE"))
+    membership_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("group_workspace_members.id", ondelete="SET NULL")
+    )
+    role_assigned: Mapped[GroupWorkspaceInviteRole] = mapped_column(
+        Enum(GroupWorkspaceInviteRole, native_enum=False),
+        nullable=False,
+    )
+    claim_status: Mapped[GroupWorkspaceInviteClaimStatus] = mapped_column(
+        Enum(GroupWorkspaceInviteClaimStatus, native_enum=False),
+        nullable=False,
+    )
+    reason_codes: Mapped[list[str]] = mapped_column(JSON_VARIANT, default=list, nullable=False)
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    invite_grant: Mapped[GroupWorkspaceInviteGrant] = relationship(back_populates="claims")
+    workspace: Mapped[GroupWorkspace] = relationship(back_populates="invite_claims")
+    user: Mapped[UserProfile] = relationship(back_populates="group_workspace_invite_claims")
+    membership: Mapped[GroupWorkspaceMember | None] = relationship(back_populates="invite_claims")
 
 
 class ResultShareGrant(TimestampMixin, Base):

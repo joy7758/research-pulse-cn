@@ -846,6 +846,16 @@ class MiniService:
                 mini_grant_id=grant.id,
                 user_id=grant.user_id,
             ),
+            "workspace_invite_reserve": {
+                "supported": True,
+                "editable_via_current_mini_grant": False,
+                "separate_self_service_grant_required": True,
+                "claim_supported_via_self_service": True,
+                "notes": [
+                    "Mini remains read-only in this phase.",
+                    "Workspace invite claims require a separate self-service grant.",
+                ],
+            },
         }
 
     def _official_account_binding(self, user_id: UUID):

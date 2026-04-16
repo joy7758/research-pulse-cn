@@ -45,6 +45,9 @@
   - `POST /subscription-self-service/wechat-binding-reserve/session/cancel`
   - `POST /subscription-self-service/wechat-binding-reserve/oauth-start`
   - `GET /subscription-self-service/wechat-binding-reserve/oauth-status`
+  - `GET /subscription-self-service/workspace-invites/{invite_token}/claim-preview`
+  - `POST /subscription-self-service/workspace-invites/{invite_token}/claim`
+  - `GET /subscription-self-service/workspace-memberships`
 - Tokens are rejected on:
   - `/admin/*`
   - `/ops/*`
@@ -89,6 +92,9 @@
   - `POST /subscription-self-service/wechat-binding-reserve/session/cancel`
   - `POST /subscription-self-service/wechat-binding-reserve/oauth-start`
   - `GET /subscription-self-service/wechat-binding-reserve/oauth-status`
+  - `GET /subscription-self-service/workspace-invites/{invite_token}/claim-preview`
+  - `POST /subscription-self-service/workspace-invites/{invite_token}/claim`
+  - `GET /subscription-self-service/workspace-memberships`
 - `bootstrap` returns:
   - safe grant summary
   - safe user summary
@@ -116,6 +122,10 @@
   - self-service OAuth start/status can drive real webpage authorization completion
   - mini only gets an informational handoff summary
   - mini still does not implement real OAuth completion itself
+- Workspace invite join also stays separate:
+  - public invite bootstrap is read-only and token-based
+  - claim requires an existing self-service grant
+  - mini only gets an informational reserve summary in this phase
 - The authoritative preview does not create `DigestDeliveryDecision` rows in this phase.
 
 ## Current Non-Goals
