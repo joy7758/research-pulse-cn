@@ -312,6 +312,29 @@ class OfficialAccountBindingHandshakeSessionStatus(StrEnum):
     CONFLICTED = "conflicted"
 
 
+class GroupWorkspaceStatus(StrEnum):
+    ACTIVE = "active"
+    ARCHIVED = "archived"
+
+
+class GroupWorkspaceMemberRole(StrEnum):
+    OWNER = "owner"
+    EDITOR = "editor"
+    VIEWER = "viewer"
+
+
+class ResultShareKind(StrEnum):
+    DIGEST_ISSUE = "digest_issue"
+    PAPER_SNAPSHOT = "paper_snapshot"
+    WORKSPACE_BOARD = "workspace_board"
+
+
+class ResultShareGrantStatus(StrEnum):
+    ACTIVE = "active"
+    REVOKED = "revoked"
+    EXPIRED = "expired"
+
+
 ACTIVE_DELIVERY_CHANNELS = frozenset(
     {
         ChannelType.IN_APP,

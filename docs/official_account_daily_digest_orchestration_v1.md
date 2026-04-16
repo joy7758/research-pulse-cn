@@ -110,3 +110,8 @@
 - digest feedback loops on section usefulness
 - optional section personalization
 - later news integration only if justified by the product boundary
+
+## Result Sharing Compatibility
+- Structured digest issues are now also compatible with read-only `ResultShareGrant` links.
+- `digest_issue` result sharing reuses the same sectioned payload when present and falls back to legacy highlights/items when older digest rows lack structured sections.
+- Share views stay read-only and exclude provider secrets, openid/unionid, local file paths, and local note contents.

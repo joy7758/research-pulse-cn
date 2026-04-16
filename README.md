@@ -22,6 +22,7 @@ Private repository. Proprietary and confidential.
 - Self-service editor reserve endpoints that add machine-readable field/section contracts, preview-before-save semantics, and future mobile/web handoff metadata on top of the same self-service grant boundary
 - Mini editor handoff reserve that adds a short-lived `SubscriptionEditorHandoffGrant` bridge from mini read-only reserve to `/subscription-editor/*` without making mini grants directly writable
 - A thin React/Vite subscription editor web shell under `apps/subscription-editor-web` for manually exercising handoff-grant-protected `/subscription-editor/*` flows in a browser or future WebView shell
+- Admin-managed group workspaces with structured workspace boards plus opaque read-only result share grants for `digest_issue`, `paper_snapshot`, and `workspace_board` without exposing source files, local attachment paths, or local note contents
 - Official-account binding handshake reserve sessions that connect callback evidence, existing bindings, and self-service grants, plus real official-account webpage OAuth completion for code/state exchange and safe binding create/reuse without introducing a generic app login system
 - Mini read-only reserve endpoints that now consume structured digests, expose a safe subscription reserve summary, and keep mini grant auth separate from self-service grant auth
 - Tauri 2 desktop shell with Rust-side pull sync, local SQLite cache, mutation outbox, minimal writeback for paper/progress/subscription policy edits, a local paper workspace layer, local markdown notes/templates, and a local review-matrix workflow that generates reviewer-matrix / response-letter drafts
@@ -80,6 +81,11 @@ The code keeps pulse generation behind stable interfaces such as `FactCollector`
    `make subscription-editor-install`
 14. Run the subscription editor web shell:
    `make subscription-editor-dev`
+
+Group workspace/result sharing in this phase is backend-only:
+- admin manages workspaces and result share grants
+- public share links resolve structured read-only content only
+- PDFs, source files, local attachments, and local note contents are excluded
 
 Open API docs at `http://127.0.0.1:8000/docs`.
 

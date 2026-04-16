@@ -95,3 +95,10 @@
 - richer ranking over normalized scholarly results
 - user feedback loops for related-paper relevance
 - broader consumption of normalized external records beyond pulse cards
+
+## Workspace Board Compatibility
+- Group workspace boards can now include safe structured paper snapshots derived from papers that also feed `related_paper` cards.
+- These workspace snapshots stay narrower than paper CRUD/detail APIs:
+  - no local file paths
+  - no local note contents
+  - no attachment metadata

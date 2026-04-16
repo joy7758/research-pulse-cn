@@ -41,6 +41,8 @@ from research_pulse_cn.domain.enums import (
     ExternalRetrievalRunStatus,
     ExternalRetrievalScope,
     ExternalRetrievalSourceKind,
+    GroupWorkspaceMemberRole,
+    GroupWorkspaceStatus,
     MiniReadGrantStatus,
     MiniReadGrantType,
     OfficialAccountBindingHandshakeSessionStatus,
@@ -54,6 +56,8 @@ from research_pulse_cn.domain.enums import (
     PulseJobScheduledReason,
     PulseJobStatus,
     ResearchWatchProfileSourceMode,
+    ResultShareGrantStatus,
+    ResultShareKind,
     SignalSource,
     SubscriptionEditorHandoffGrantStatus,
     SubscriptionEditorHandoffIssuedBy,
@@ -122,6 +126,15 @@ class AdminAccount(TimestampMixin, Base):
     ] = relationship(
         back_populates="issued_by_admin",
     )
+    created_group_workspaces: Mapped[list[GroupWorkspace]] = relationship(
+        back_populates="created_by_admin",
+    )
+    added_group_workspace_papers: Mapped[list[GroupWorkspacePaper]] = relationship(
+        back_populates="added_by_admin",
+    )
+    issued_result_share_grants: Mapped[list[ResultShareGrant]] = relationship(
+        back_populates="issued_by_admin",
+    )
 
 
 class UserProfile(TimestampMixin, Base):
@@ -180,6 +193,11 @@ class UserProfile(TimestampMixin, Base):
         back_populates="user",
         cascade="all, delete-orphan",
         order_by="OfficialAccountBindingHandshakeSession.created_at.desc()",
+    )
+    group_workspace_memberships: Mapped[list[GroupWorkspaceMember]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+        order_by="GroupWorkspaceMember.created_at.desc()",
     )
     work_activity_events: Mapped[list[WorkActivityEvent]] = relationship(
         back_populates="user",
@@ -260,6 +278,15 @@ class PaperProfile(TimestampMixin, Base):
     )
     external_retrieval_plans: Mapped[list[ExternalRetrievalPlan]] = relationship(
         back_populates="paper",
+    )
+    group_workspace_entries: Mapped[list[GroupWorkspacePaper]] = relationship(
+        back_populates="paper",
+        cascade="all, delete-orphan",
+        order_by="GroupWorkspacePaper.created_at.desc()",
+    )
+    result_share_grants: Mapped[list[ResultShareGrant]] = relationship(
+        back_populates="paper",
+        order_by="ResultShareGrant.created_at.desc()",
     )
 
 
@@ -519,6 +546,10 @@ class PulseDigestIssue(TimestampMixin, Base):
     mini_read_grants: Mapped[list[MiniReadGrant]] = relationship(
         back_populates="digest_issue",
     )
+    result_share_grants: Mapped[list[ResultShareGrant]] = relationship(
+        back_populates="digest_issue",
+        order_by="ResultShareGrant.created_at.desc()",
+    )
 
 
 class MiniReadGrant(TimestampMixin, Base):
@@ -753,6 +784,146 @@ class OfficialAccountBindingHandshakeSession(TimestampMixin, Base):
     )
     claimed_binding: Mapped[WeChatIdentityBinding | None] = relationship(
         back_populates="claimed_official_account_binding_handshake_sessions"
+    )
+
+
+class GroupWorkspace(TimestampMixin, Base):
+    __tablename__ = "group_workspaces"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    slug: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[GroupWorkspaceStatus] = mapped_column(
+        Enum(GroupWorkspaceStatus, native_enum=False),
+        nullable=False,
+        default=GroupWorkspaceStatus.ACTIVE,
+    )
+    created_by_admin_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("admin_accounts.id", ondelete="SET NULL")
+    )
+
+    created_by_admin: Mapped[AdminAccount | None] = relationship(
+        back_populates="created_group_workspaces"
+    )
+    members: Mapped[list[GroupWorkspaceMember]] = relationship(
+        back_populates="workspace",
+        cascade="all, delete-orphan",
+        order_by="GroupWorkspaceMember.joined_at.asc()",
+    )
+    papers: Mapped[list[GroupWorkspacePaper]] = relationship(
+        back_populates="workspace",
+        cascade="all, delete-orphan",
+        order_by="GroupWorkspacePaper.created_at.desc()",
+    )
+    result_share_grants: Mapped[list[ResultShareGrant]] = relationship(
+        back_populates="workspace",
+        order_by="ResultShareGrant.created_at.desc()",
+    )
+
+
+class GroupWorkspaceMember(TimestampMixin, Base):
+    __tablename__ = "group_workspace_members"
+    __table_args__ = (
+        UniqueConstraint(
+            "workspace_id",
+            "user_id",
+            name="uq_group_workspace_members_workspace_user",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    workspace_id: Mapped[UUID] = mapped_column(
+        ForeignKey("group_workspaces.id", ondelete="CASCADE")
+    )
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("user_profiles.id", ondelete="CASCADE"))
+    role: Mapped[GroupWorkspaceMemberRole] = mapped_column(
+        Enum(GroupWorkspaceMemberRole, native_enum=False),
+        nullable=False,
+        default=GroupWorkspaceMemberRole.VIEWER,
+    )
+    joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    workspace: Mapped[GroupWorkspace] = relationship(back_populates="members")
+    user: Mapped[UserProfile] = relationship(back_populates="group_workspace_memberships")
+
+
+class GroupWorkspacePaper(TimestampMixin, Base):
+    __tablename__ = "group_workspace_papers"
+    __table_args__ = (
+        UniqueConstraint(
+            "workspace_id",
+            "paper_id",
+            name="uq_group_workspace_papers_workspace_paper",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    workspace_id: Mapped[UUID] = mapped_column(
+        ForeignKey("group_workspaces.id", ondelete="CASCADE")
+    )
+    paper_id: Mapped[UUID] = mapped_column(ForeignKey("paper_profiles.id", ondelete="CASCADE"))
+    added_by_admin_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("admin_accounts.id", ondelete="SET NULL")
+    )
+
+    workspace: Mapped[GroupWorkspace] = relationship(back_populates="papers")
+    paper: Mapped[PaperProfile] = relationship(back_populates="group_workspace_entries")
+    added_by_admin: Mapped[AdminAccount | None] = relationship(
+        back_populates="added_group_workspace_papers"
+    )
+
+
+class ResultShareGrant(TimestampMixin, Base):
+    __tablename__ = "result_share_grants"
+    __table_args__ = (
+        Index(
+            "ix_result_share_grants_kind_status_created_at",
+            "share_kind",
+            "status",
+            "created_at",
+        ),
+        Index(
+            "ix_result_share_grants_workspace_created_at",
+            "workspace_id",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    share_kind: Mapped[ResultShareKind] = mapped_column(
+        Enum(ResultShareKind, native_enum=False),
+        nullable=False,
+    )
+    workspace_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("group_workspaces.id", ondelete="SET NULL")
+    )
+    digest_issue_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("pulse_digest_issues.id", ondelete="SET NULL")
+    )
+    paper_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("paper_profiles.id", ondelete="SET NULL")
+    )
+    token_hash: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    status: Mapped[ResultShareGrantStatus] = mapped_column(
+        Enum(ResultShareGrantStatus, native_enum=False),
+        nullable=False,
+        default=ResultShareGrantStatus.ACTIVE,
+    )
+    display_label: Mapped[str | None] = mapped_column(String(255))
+    issued_by_admin_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("admin_accounts.id", ondelete="SET NULL")
+    )
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    workspace: Mapped[GroupWorkspace | None] = relationship(back_populates="result_share_grants")
+    digest_issue: Mapped[PulseDigestIssue | None] = relationship(
+        back_populates="result_share_grants"
+    )
+    paper: Mapped[PaperProfile | None] = relationship(back_populates="result_share_grants")
+    issued_by_admin: Mapped[AdminAccount | None] = relationship(
+        back_populates="issued_result_share_grants"
     )
 
 
