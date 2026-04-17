@@ -1,17 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import "./App.css";
+import { ConversionDrilldownPanel } from "./components/ConversionDrilldownPanel";
 import { ConversionOverviewPanel } from "./components/ConversionOverviewPanel";
 import { TokenEntryView } from "./components/TokenEntryView";
 import { WorkspaceDetailView } from "./components/WorkspaceDetailView";
 import { WorkspaceListPanel } from "./components/WorkspaceListPanel";
 import {
   buildApiErrorViewModel,
+  buildGlobalConversionDrilldownViewModel,
   buildGlobalConversionOverviewViewModel,
   buildPaperLookupOptions,
   buildShareGrantIssueViewModel,
   buildUserLookupOptions,
   buildWorkspaceBoardViewModel,
+  buildWorkspaceConversionDrilldownViewModel,
   buildWorkspaceConversionOverviewViewModel,
   buildWorkspaceListItems,
 } from "./lib/adminModel";
@@ -27,8 +30,10 @@ import {
 import type {
   ApiErrorViewModel,
   GroupWorkspaceBoardRead,
+  GroupWorkspaceConversionDrilldownRead,
   GroupWorkspaceConversionOverviewRead,
   GroupWorkspaceRead,
+  GroupWorkspaceWorkspaceConversionDrilldownRead,
   GroupWorkspaceWorkspaceConversionOverviewRead,
   PaperProfileRead,
   ResultShareGrantRead,
@@ -84,18 +89,29 @@ export function GroupWorkspaceAdminShell({
   const [selectedShareGrants, setSelectedShareGrants] = useState<ResultShareGrantRead[]>([]);
   const [globalConversionOverview, setGlobalConversionOverview] =
     useState<GroupWorkspaceConversionOverviewRead | null>(null);
+  const [globalConversionDrilldown, setGlobalConversionDrilldown] =
+    useState<GroupWorkspaceConversionDrilldownRead | null>(null);
   const [workspaceConversionOverview, setWorkspaceConversionOverview] =
     useState<GroupWorkspaceWorkspaceConversionOverviewRead | null>(null);
+  const [workspaceConversionDrilldown, setWorkspaceConversionDrilldown] =
+    useState<GroupWorkspaceWorkspaceConversionDrilldownRead | null>(null);
   const [boardCache, setBoardCache] = useState<Record<string, GroupWorkspaceBoardRead | undefined>>(
     {},
   );
   const [loadingMessage, setLoadingMessage] = useState<string | null>(null);
   const [globalConversionLoading, setGlobalConversionLoading] = useState(false);
+  const [globalConversionDrilldownLoading, setGlobalConversionDrilldownLoading] = useState(false);
   const [workspaceConversionLoading, setWorkspaceConversionLoading] = useState(false);
+  const [workspaceConversionDrilldownLoading, setWorkspaceConversionDrilldownLoading] =
+    useState(false);
   const [connectError, setConnectError] = useState<ApiErrorViewModel | null>(null);
   const [actionError, setActionError] = useState<ApiErrorViewModel | null>(null);
   const [globalConversionError, setGlobalConversionError] = useState<ApiErrorViewModel | null>(null);
+  const [globalConversionDrilldownError, setGlobalConversionDrilldownError] =
+    useState<ApiErrorViewModel | null>(null);
   const [workspaceConversionError, setWorkspaceConversionError] =
+    useState<ApiErrorViewModel | null>(null);
+  const [workspaceConversionDrilldownError, setWorkspaceConversionDrilldownError] =
     useState<ApiErrorViewModel | null>(null);
   const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
   const [oneTimeGrant, setOneTimeGrant] = useState<ShareGrantOneTimeDisplayModel | null>(null);
@@ -132,10 +148,14 @@ export function GroupWorkspaceAdminShell({
     setSelectedBoard(null);
     setSelectedShareGrants([]);
     setGlobalConversionOverview(null);
+    setGlobalConversionDrilldown(null);
     setWorkspaceConversionOverview(null);
+    setWorkspaceConversionDrilldown(null);
     setBoardCache({});
     setGlobalConversionError(null);
+    setGlobalConversionDrilldownError(null);
     setWorkspaceConversionError(null);
+    setWorkspaceConversionDrilldownError(null);
     setOneTimeGrant(null);
   }, []);
 
@@ -161,9 +181,11 @@ export function GroupWorkspaceAdminShell({
       setLoadingMessage("Loading workspace detail and board...");
       setActionError(null);
       setWorkspaceConversionLoading(true);
+      setWorkspaceConversionDrilldownLoading(true);
       setWorkspaceConversionError(null);
+      setWorkspaceConversionDrilldownError(null);
       try {
-        const [workspace, board, shareGrants, conversionResult] = await Promise.all([
+        const [workspace, board, shareGrants, conversionResult, drilldownResult] = await Promise.all([
           client.getWorkspace(workspaceId),
           client.getWorkspaceBoard(workspaceId),
           client.listResultShareGrants({
@@ -177,6 +199,13 @@ export function GroupWorkspaceAdminShell({
               conversion: null,
               error: toApiErrorViewModel(error),
             })),
+          client
+            .getWorkspaceConversionDrilldown(workspaceId)
+            .then((drilldown) => ({ drilldown, error: null }))
+            .catch((error: unknown) => ({
+              drilldown: null,
+              error: toApiErrorViewModel(error),
+            })),
         ]);
         setSelectedWorkspaceId(workspaceId);
         setSelectedWorkspace(workspace);
@@ -184,6 +213,8 @@ export function GroupWorkspaceAdminShell({
         setSelectedShareGrants(shareGrants);
         setWorkspaceConversionOverview(conversionResult.conversion);
         setWorkspaceConversionError(conversionResult.error);
+        setWorkspaceConversionDrilldown(drilldownResult.drilldown);
+        setWorkspaceConversionDrilldownError(drilldownResult.error);
         setUpdateInput({
           name: workspace.name,
           description: workspace.description ?? "",
@@ -197,6 +228,7 @@ export function GroupWorkspaceAdminShell({
         handleError(error, setActionError);
       } finally {
         setWorkspaceConversionLoading(false);
+        setWorkspaceConversionDrilldownLoading(false);
         setLoadingMessage(null);
       }
     },
@@ -234,9 +266,11 @@ export function GroupWorkspaceAdminShell({
 
       setLoadingMessage("Connecting admin shell...");
       setGlobalConversionLoading(true);
+      setGlobalConversionDrilldownLoading(true);
       setConnectError(null);
       setActionError(null);
       setGlobalConversionError(null);
+      setGlobalConversionDrilldownError(null);
       setNoticeMessage(
         source === "query" || source === "fragment"
           ? "Admin bearer token was moved from the URL into in-memory state."
@@ -249,7 +283,8 @@ export function GroupWorkspaceAdminShell({
       });
 
       try {
-        const [workspaceList, userList, paperList, globalConversion] = await Promise.all([
+        const [workspaceList, userList, paperList, globalConversion, globalDrilldown] =
+          await Promise.all([
           client.listWorkspaces(),
           client.listUsers(),
           client.listPapers(),
@@ -260,7 +295,14 @@ export function GroupWorkspaceAdminShell({
               overview: null,
               error: toApiErrorViewModel(error),
             })),
-        ]);
+            client
+              .getConversionDrilldown()
+              .then((drilldown) => ({ drilldown, error: null }))
+              .catch((error: unknown) => ({
+                drilldown: null,
+                error: toApiErrorViewModel(error),
+              })),
+          ]);
         setSession({
           apiBaseUrl: trimmedApiBaseUrl,
           adminToken: trimmedToken,
@@ -271,6 +313,8 @@ export function GroupWorkspaceAdminShell({
         setPapers(paperList);
         setGlobalConversionOverview(globalConversion.overview);
         setGlobalConversionError(globalConversion.error);
+        setGlobalConversionDrilldown(globalDrilldown.drilldown);
+        setGlobalConversionDrilldownError(globalDrilldown.error);
         setAdminTokenInput("");
 
         const initialWorkspaceId = workspaceList[0]?.id ?? null;
@@ -281,6 +325,8 @@ export function GroupWorkspaceAdminShell({
           setSelectedWorkspace(null);
           setSelectedBoard(null);
           setSelectedShareGrants([]);
+          setWorkspaceConversionOverview(null);
+          setWorkspaceConversionDrilldown(null);
         }
       } catch (error) {
         resetConnectedState();
@@ -288,6 +334,7 @@ export function GroupWorkspaceAdminShell({
         setAdminTokenInput(source === "manual" ? trimmedToken : "");
       } finally {
         setGlobalConversionLoading(false);
+        setGlobalConversionDrilldownLoading(false);
         setLoadingMessage(null);
       }
     },
@@ -360,12 +407,26 @@ export function GroupWorkspaceAdminShell({
         : null,
     [globalConversionOverview],
   );
+  const globalConversionDrilldownViewModel = useMemo(
+    () =>
+      globalConversionDrilldown
+        ? buildGlobalConversionDrilldownViewModel(globalConversionDrilldown)
+        : null,
+    [globalConversionDrilldown],
+  );
   const workspaceConversionViewModel = useMemo(
     () =>
       workspaceConversionOverview
         ? buildWorkspaceConversionOverviewViewModel(workspaceConversionOverview)
         : null,
     [workspaceConversionOverview],
+  );
+  const workspaceConversionDrilldownViewModel = useMemo(
+    () =>
+      workspaceConversionDrilldown
+        ? buildWorkspaceConversionDrilldownViewModel(workspaceConversionDrilldown)
+        : null,
+    [workspaceConversionDrilldown],
   );
 
   const handleOpenShell = useCallback(() => {
@@ -578,6 +639,28 @@ export function GroupWorkspaceAdminShell({
         emptyMessage="No share, invite, or collect activity has been recorded in this analytics window."
       />
 
+      <ConversionDrilldownPanel
+        eyebrow="Conversion drilldown"
+        title="Global conversion drilldown"
+        description="Read-only daily buckets, recent activity, top workspaces, and top result-share grants across the existing admin-safe drilldown reserve."
+        summaryMetrics={globalConversionDrilldownViewModel?.summaryMetrics ?? []}
+        windowStart={globalConversionDrilldownViewModel?.windowStart ?? null}
+        windowEnd={globalConversionDrilldownViewModel?.windowEnd ?? null}
+        lastActivityAt={globalConversionDrilldownViewModel?.lastActivityAt ?? null}
+        dailyBuckets={globalConversionDrilldownViewModel?.dailyBuckets ?? []}
+        topWorkspaces={globalConversionDrilldownViewModel?.topWorkspaces ?? []}
+        topResultShareGrants={globalConversionDrilldownViewModel?.topResultShareGrants ?? []}
+        recentShareEvents={globalConversionDrilldownViewModel?.recentShareEvents ?? []}
+        recentInviteClaims={globalConversionDrilldownViewModel?.recentInviteClaims ?? []}
+        recentCollectRecords={globalConversionDrilldownViewModel?.recentCollectRecords ?? []}
+        attributionScope={globalConversionDrilldownViewModel?.attributionScope ?? null}
+        notes={globalConversionDrilldownViewModel?.notes ?? []}
+        loading={globalConversionDrilldownLoading}
+        error={globalConversionDrilldownError}
+        empty={globalConversionDrilldownViewModel?.empty ?? !globalConversionDrilldownLoading}
+        emptyMessage="No global drilldown activity has been recorded in this analytics window."
+      />
+
       <section className="admin-shell-grid">
         <WorkspaceListPanel
           items={workspaceListItems}
@@ -612,6 +695,9 @@ export function GroupWorkspaceAdminShell({
           conversionOverview={workspaceConversionViewModel}
           conversionError={workspaceConversionError}
           conversionLoading={workspaceConversionLoading}
+          conversionDrilldown={workspaceConversionDrilldownViewModel}
+          conversionDrilldownError={workspaceConversionDrilldownError}
+          conversionDrilldownLoading={workspaceConversionDrilldownLoading}
           actionLoading={loadingMessage !== null}
           oneTimeGrant={oneTimeGrant}
           onUpdateInputChange={(patch) =>

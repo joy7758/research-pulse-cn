@@ -1,17 +1,21 @@
 import {
   buildApiErrorViewModel,
+  buildGlobalConversionDrilldownViewModel,
   buildGlobalConversionOverviewViewModel,
   buildPaperLookupOptions,
   buildShareGrantIssueViewModel,
   buildUserLookupOptions,
   buildWorkspaceBoardViewModel,
+  buildWorkspaceConversionDrilldownViewModel,
   buildWorkspaceConversionOverviewViewModel,
   buildWorkspaceListItems,
 } from "./adminModel";
 import type {
   GroupWorkspaceBoardRead,
+  GroupWorkspaceConversionDrilldownRead,
   GroupWorkspaceConversionOverviewRead,
   GroupWorkspaceRead,
+  GroupWorkspaceWorkspaceConversionDrilldownRead,
   GroupWorkspaceWorkspaceConversionOverviewRead,
   PaperProfileRead,
   UserProfileRead,
@@ -127,6 +131,136 @@ const workspaceConversionOverview: GroupWorkspaceWorkspaceConversionOverviewRead
     workspace_level_aggregate_metrics: ["invite_claimed_count"],
     notes: ["Collect metrics are directly linked when result_share_grant_id is present."],
   },
+};
+
+const globalConversionDrilldown: GroupWorkspaceConversionDrilldownRead = {
+  window_start: "2026-03-18T00:00:00Z",
+  window_end: null,
+  daily_buckets: [
+    {
+      day: "2026-04-16",
+      share_view_count: 3,
+      invite_handoff_redirect_count: 1,
+      collect_handoff_redirect_count: 1,
+      invite_claimed_count: 1,
+      invite_already_member_count: 0,
+      collect_collected_count: 1,
+      collect_already_present_count: 0,
+    },
+    {
+      day: "2026-04-17",
+      share_view_count: 1,
+      invite_handoff_redirect_count: 0,
+      collect_handoff_redirect_count: 1,
+      invite_claimed_count: 0,
+      invite_already_member_count: 1,
+      collect_collected_count: 1,
+      collect_already_present_count: 1,
+    },
+  ],
+  top_workspaces: [
+    {
+      workspace: {
+        id: workspace.id,
+        slug: workspace.slug,
+        name: workspace.name,
+        description: workspace.description,
+        status: workspace.status,
+      },
+      workspace_board_view_count: 3,
+      invite_handoff_redirect_count: 1,
+      collect_handoff_redirect_count: 2,
+      invite_claimed_count: 1,
+      collect_collected_count: 2,
+      last_activity_at: "2026-04-17T08:00:00Z",
+    },
+  ],
+  top_result_share_grants: [
+    {
+      result_share_grant_id: "grant-1",
+      share_kind: "workspace_board",
+      bootstrap_view_count: 1,
+      content_view_count: 2,
+      invite_handoff_redirect_count: 1,
+      collect_handoff_redirect_count: 1,
+      collect_collected_count: 1,
+      last_activity_at: "2026-04-17T07:00:00Z",
+    },
+  ],
+  recent_share_events: [
+    {
+      id: "share-event-1",
+      result_share_grant_id: "grant-1",
+      result_share_alias_id: null,
+      share_kind: "workspace_board",
+      access_mode: "alias_redirect",
+      event_type: "content_view",
+      outcome: "resolved",
+      handoff_target_kind: "result_share_collect_entry",
+      occurred_at: "2026-04-17T07:00:00Z",
+    },
+  ],
+  recent_invite_claims: [
+    {
+      id: "invite-claim-1",
+      invite_grant_id: "invite-grant-1",
+      workspace_id: workspace.id,
+      user_id: "user-1",
+      claim_status: "claimed",
+      role_assigned: "viewer",
+      claimed_at: "2026-04-17T06:30:00Z",
+      reason_codes: [],
+    },
+  ],
+  recent_collect_records: [
+    {
+      id: "collect-record-1",
+      workspace_id: workspace.id,
+      user_id: "user-1",
+      result_share_grant_id: "grant-1",
+      share_kind: "paper_snapshot",
+      collected_paper_id: "paper-1",
+      status: "collected",
+      reason_codes: [],
+      created_at: "2026-04-17T06:45:00Z",
+    },
+  ],
+  attribution_scope: {
+    direct_attribution_metrics: ["share_view_count", "collect_collected_count"],
+    workspace_level_aggregate_metrics: ["invite_claimed_count"],
+    notes: ["Invite claims remain workspace-level aggregate-only signals in v1."],
+  },
+  notes: ["Result-share grant rankings are read-only operator summaries."],
+};
+
+const workspaceConversionDrilldown: GroupWorkspaceWorkspaceConversionDrilldownRead = {
+  window_start: "2026-03-18T00:00:00Z",
+  window_end: null,
+  workspace: {
+    id: workspace.id,
+    slug: workspace.slug,
+    name: workspace.name,
+    description: workspace.description,
+    status: workspace.status,
+  },
+  daily_buckets: globalConversionDrilldown.daily_buckets,
+  recent_share_events: globalConversionDrilldown.recent_share_events,
+  recent_invite_claims: globalConversionDrilldown.recent_invite_claims,
+  recent_collect_records: globalConversionDrilldown.recent_collect_records,
+  active_share_grant_snapshot: {
+    active_workspace_board_share_grant_count: 1,
+    active_digest_issue_share_grant_count: 1,
+    active_paper_snapshot_share_grant_count: 2,
+  },
+  active_invite_grant_snapshot: {
+    active_invite_grant_count: 1,
+  },
+  attribution_scope: {
+    direct_attribution_metrics: ["share_view_count", "collect_collected_count"],
+    workspace_level_aggregate_metrics: ["invite_claimed_count"],
+    notes: ["Invite claims stay explicitly separate from direct per-share attribution."],
+  },
+  notes: ["Active share-grant inventory is a snapshot, not a time-series count."],
 };
 
 describe("group workspace admin model helpers", () => {
@@ -267,6 +401,65 @@ describe("group workspace admin model helpers", () => {
     });
   });
 
+  it("shapes global conversion drilldowns for dashboard rendering", () => {
+    expect(buildGlobalConversionDrilldownViewModel(globalConversionDrilldown)).toMatchObject({
+      empty: false,
+      summaryMetrics: expect.arrayContaining([
+        expect.objectContaining({ label: "Share views", value: 4 }),
+        expect.objectContaining({ label: "Collect collected", value: 2 }),
+      ]),
+      dailyBuckets: expect.arrayContaining([
+        expect.objectContaining({
+          day: "2026-04-16",
+          metrics: expect.arrayContaining([
+            expect.objectContaining({ label: "Share views", count: 3 }),
+          ]),
+        }),
+      ]),
+      topWorkspaces: expect.arrayContaining([
+        expect.objectContaining({
+          workspaceId: "workspace-1",
+          metrics: expect.arrayContaining([
+            expect.objectContaining({ label: "Workspace-board views", count: 3 }),
+          ]),
+        }),
+      ]),
+      recentShareEvents: expect.arrayContaining([
+        expect.objectContaining({
+          title: "Content View · Workspace Board",
+          subtitle: "Alias Redirect · Resolved",
+        }),
+      ]),
+      attributionScope: expect.objectContaining({
+        directMetrics: expect.arrayContaining(["Share View count", "Collect Collected count"]),
+      }),
+      notes: ["Result-share grant rankings are read-only operator summaries."],
+    });
+  });
+
+  it("shapes workspace conversion drilldowns for dashboard rendering", () => {
+    expect(buildWorkspaceConversionDrilldownViewModel(workspaceConversionDrilldown)).toMatchObject({
+      empty: false,
+      workspace: expect.objectContaining({ id: "workspace-1" }),
+      summaryMetrics: expect.arrayContaining([
+        expect.objectContaining({ label: "Active share grants", value: 4 }),
+        expect.objectContaining({ label: "Recent activity rows", value: 3 }),
+      ]),
+      activeShareGrantSnapshotRows: expect.arrayContaining([
+        expect.objectContaining({ label: "Workspace-board shares", count: 1 }),
+        expect.objectContaining({ label: "Paper-snapshot shares", count: 2 }),
+      ]),
+      recentInviteClaims: expect.arrayContaining([
+        expect.objectContaining({
+          title: "Claimed invite claim",
+          detailRows: expect.arrayContaining([
+            expect.objectContaining({ label: "Role assigned", value: "Viewer" }),
+          ]),
+        }),
+      ]),
+    });
+  });
+
   it("marks zeroed global overviews as empty", () => {
     expect(
       buildGlobalConversionOverviewViewModel({
@@ -285,6 +478,37 @@ describe("group workspace admin model helpers", () => {
         by_share_kind: {},
         by_access_mode: {},
         by_handoff_target: {},
+      }).empty,
+    ).toBe(true);
+  });
+
+  it("marks zeroed workspace drilldowns as empty", () => {
+    expect(
+      buildWorkspaceConversionDrilldownViewModel({
+        ...workspaceConversionDrilldown,
+        daily_buckets: [
+          {
+            day: "2026-04-17",
+            share_view_count: 0,
+            invite_handoff_redirect_count: 0,
+            collect_handoff_redirect_count: 0,
+            invite_claimed_count: 0,
+            invite_already_member_count: 0,
+            collect_collected_count: 0,
+            collect_already_present_count: 0,
+          },
+        ],
+        recent_share_events: [],
+        recent_invite_claims: [],
+        recent_collect_records: [],
+        active_share_grant_snapshot: {
+          active_workspace_board_share_grant_count: 0,
+          active_digest_issue_share_grant_count: 0,
+          active_paper_snapshot_share_grant_count: 0,
+        },
+        active_invite_grant_snapshot: {
+          active_invite_grant_count: 0,
+        },
       }).empty,
     ).toBe(true);
   });

@@ -427,6 +427,12 @@ button {
   margin: 0;
 }
 
+.section-subtle-copy {
+  margin: 6px 0 0;
+  color: #5d6c8c;
+  font-size: 0.9rem;
+}
+
 .metric-kv-list {
   display: grid;
   gap: 10px;
@@ -469,6 +475,103 @@ button {
   margin-top: 6px;
 }
 
+.drilldown-table-wrap {
+  overflow-x: auto;
+}
+
+.drilldown-table {
+  width: 100%;
+  min-width: 780px;
+  border-collapse: separate;
+  border-spacing: 0 10px;
+}
+
+.drilldown-table thead th {
+  padding: 0 12px 6px;
+  text-align: left;
+  color: #5d6c8c;
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.drilldown-table tbody th,
+.drilldown-table tbody td {
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.84);
+  border-top: 1px solid rgba(23, 32, 51, 0.08);
+  border-bottom: 1px solid rgba(23, 32, 51, 0.08);
+}
+
+.drilldown-table tbody th {
+  border-left: 1px solid rgba(23, 32, 51, 0.08);
+  border-radius: 14px 0 0 14px;
+  color: #20345e;
+  white-space: nowrap;
+}
+
+.drilldown-table tbody td:last-child {
+  border-right: 1px solid rgba(23, 32, 51, 0.08);
+  border-radius: 0 14px 14px 0;
+}
+
+.ranked-list,
+.activity-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.ranked-item,
+.activity-card {
+  padding: 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.84);
+  border: 1px solid rgba(23, 32, 51, 0.08);
+}
+
+.ranked-item-header,
+.activity-card-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.ranked-item-header p,
+.activity-card-header p {
+  margin: 4px 0 0;
+  color: #4e5f81;
+}
+
+.ranked-item-time {
+  min-width: 160px;
+  text-align: right;
+}
+
+.ranked-item-time span {
+  display: block;
+  color: #5d6c8c;
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.ranked-item-time strong {
+  display: block;
+  margin-top: 4px;
+  word-break: break-word;
+}
+
+.detail-row-grid {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+
 @media (max-width: 1100px) {
   .admin-shell-grid,
   .split-grid,
@@ -481,5 +584,15 @@ button {
 
   .hero-card {
     flex-direction: column;
+  }
+
+  .ranked-item-header,
+  .activity-card-header {
+    flex-direction: column;
+  }
+
+  .ranked-item-time {
+    min-width: 0;
+    text-align: left;
   }
 }

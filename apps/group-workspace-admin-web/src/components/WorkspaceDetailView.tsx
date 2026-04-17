@@ -1,3 +1,4 @@
+import { ConversionDrilldownPanel } from "./ConversionDrilldownPanel";
 import { ConversionOverviewPanel } from "./ConversionOverviewPanel";
 import type {
   ApiErrorViewModel,
@@ -7,6 +8,7 @@ import type {
   LookupOption,
   ResultShareGrantRead,
   ShareGrantOneTimeDisplayModel,
+  WorkspaceConversionDrilldownViewModel,
   WorkspaceConversionOverviewViewModel,
   WorkspaceBoardShareCreateInput,
   WorkspaceBoardViewModel,
@@ -28,6 +30,9 @@ type WorkspaceDetailViewProps = {
   conversionOverview: WorkspaceConversionOverviewViewModel | null;
   conversionError: ApiErrorViewModel | null;
   conversionLoading: boolean;
+  conversionDrilldown: WorkspaceConversionDrilldownViewModel | null;
+  conversionDrilldownError: ApiErrorViewModel | null;
+  conversionDrilldownLoading: boolean;
   actionLoading: boolean;
   oneTimeGrant: ShareGrantOneTimeDisplayModel | null;
   onUpdateInputChange: (patch: Partial<WorkspaceUpdateInput>) => void;
@@ -60,6 +65,9 @@ export function WorkspaceDetailView({
   conversionOverview,
   conversionError,
   conversionLoading,
+  conversionDrilldown,
+  conversionDrilldownError,
+  conversionDrilldownLoading,
   actionLoading,
   oneTimeGrant,
   onUpdateInputChange,
@@ -165,6 +173,28 @@ export function WorkspaceDetailView({
         error={conversionError}
         empty={conversionOverview?.empty ?? !conversionLoading}
         emptyMessage="No workspace conversion activity has been recorded in this window."
+      />
+
+      <ConversionDrilldownPanel
+        eyebrow="Workspace drilldown"
+        title="Workspace conversion drilldown"
+        description="Read-only daily buckets, recent share and collect activity, plus active share and invite snapshots for this workspace."
+        summaryMetrics={conversionDrilldown?.summaryMetrics ?? []}
+        windowStart={conversionDrilldown?.windowStart ?? null}
+        windowEnd={conversionDrilldown?.windowEnd ?? null}
+        lastActivityAt={conversionDrilldown?.lastActivityAt ?? null}
+        dailyBuckets={conversionDrilldown?.dailyBuckets ?? []}
+        recentShareEvents={conversionDrilldown?.recentShareEvents ?? []}
+        recentInviteClaims={conversionDrilldown?.recentInviteClaims ?? []}
+        recentCollectRecords={conversionDrilldown?.recentCollectRecords ?? []}
+        activeShareGrantSnapshotRows={conversionDrilldown?.activeShareGrantSnapshotRows}
+        activeInviteGrantSnapshotRows={conversionDrilldown?.activeInviteGrantSnapshotRows}
+        attributionScope={conversionDrilldown?.attributionScope ?? null}
+        notes={conversionDrilldown?.notes ?? []}
+        loading={conversionDrilldownLoading}
+        error={conversionDrilldownError}
+        empty={conversionDrilldown?.empty ?? !conversionDrilldownLoading}
+        emptyMessage="No workspace drilldown activity has been recorded in this window."
       />
 
       <section className="split-grid">

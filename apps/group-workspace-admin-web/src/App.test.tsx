@@ -5,8 +5,10 @@ import { GroupWorkspaceAdminShell } from "./App";
 import { GroupWorkspaceAdminApiError } from "./lib/apiClient";
 import type {
   GroupWorkspaceBoardRead,
+  GroupWorkspaceConversionDrilldownRead,
   GroupWorkspaceConversionOverviewRead,
   GroupWorkspaceRead,
+  GroupWorkspaceWorkspaceConversionDrilldownRead,
   GroupWorkspaceWorkspaceConversionOverviewRead,
   PaperProfileRead,
   ResultShareGrantIssueResponse,
@@ -262,6 +264,140 @@ function workspaceConversionFixture(): GroupWorkspaceWorkspaceConversionOverview
   };
 }
 
+function globalConversionDrilldownFixture(): GroupWorkspaceConversionDrilldownRead {
+  return {
+    window_start: "2026-03-18T00:00:00Z",
+    window_end: null,
+    daily_buckets: [
+      {
+        day: "2026-04-16",
+        share_view_count: 3,
+        invite_handoff_redirect_count: 1,
+        collect_handoff_redirect_count: 1,
+        invite_claimed_count: 1,
+        invite_already_member_count: 0,
+        collect_collected_count: 1,
+        collect_already_present_count: 0,
+      },
+      {
+        day: "2026-04-17",
+        share_view_count: 1,
+        invite_handoff_redirect_count: 0,
+        collect_handoff_redirect_count: 1,
+        invite_claimed_count: 0,
+        invite_already_member_count: 1,
+        collect_collected_count: 1,
+        collect_already_present_count: 1,
+      },
+    ],
+    top_workspaces: [
+      {
+        workspace: {
+          id: "workspace-1",
+          slug: "materials-group",
+          name: "Materials Group",
+          description: "Workspace description",
+          status: "active",
+        },
+        workspace_board_view_count: 3,
+        invite_handoff_redirect_count: 1,
+        collect_handoff_redirect_count: 2,
+        invite_claimed_count: 1,
+        collect_collected_count: 2,
+        last_activity_at: "2026-04-17T08:00:00Z",
+      },
+    ],
+    top_result_share_grants: [
+      {
+        result_share_grant_id: "grant-1",
+        share_kind: "workspace_board",
+        bootstrap_view_count: 1,
+        content_view_count: 2,
+        invite_handoff_redirect_count: 1,
+        collect_handoff_redirect_count: 1,
+        collect_collected_count: 1,
+        last_activity_at: "2026-04-17T07:00:00Z",
+      },
+    ],
+    recent_share_events: [
+      {
+        id: "share-event-1",
+        result_share_grant_id: "grant-1",
+        result_share_alias_id: null,
+        share_kind: "workspace_board",
+        access_mode: "alias_redirect",
+        event_type: "content_view",
+        outcome: "resolved",
+        handoff_target_kind: "result_share_collect_entry",
+        occurred_at: "2026-04-17T07:00:00Z",
+      },
+    ],
+    recent_invite_claims: [
+      {
+        id: "invite-claim-1",
+        invite_grant_id: "invite-grant-1",
+        workspace_id: "workspace-1",
+        user_id: "user-1",
+        claim_status: "claimed",
+        role_assigned: "viewer",
+        claimed_at: "2026-04-17T06:30:00Z",
+        reason_codes: [],
+      },
+    ],
+    recent_collect_records: [
+      {
+        id: "collect-record-1",
+        workspace_id: "workspace-1",
+        user_id: "user-1",
+        result_share_grant_id: "grant-1",
+        share_kind: "paper_snapshot",
+        collected_paper_id: "paper-1",
+        status: "collected",
+        reason_codes: [],
+        created_at: "2026-04-17T06:45:00Z",
+      },
+    ],
+    attribution_scope: {
+      direct_attribution_metrics: ["share_view_count", "collect_collected_count"],
+      workspace_level_aggregate_metrics: ["invite_claimed_count"],
+      notes: ["Invite claims remain workspace-level aggregate-only signals in v1."],
+    },
+    notes: ["Result-share grant rankings are read-only operator summaries."],
+  };
+}
+
+function workspaceConversionDrilldownFixture(): GroupWorkspaceWorkspaceConversionDrilldownRead {
+  return {
+    window_start: "2026-03-18T00:00:00Z",
+    window_end: null,
+    workspace: {
+      id: "workspace-1",
+      slug: "materials-group",
+      name: "Materials Group",
+      description: "Workspace description",
+      status: "active",
+    },
+    daily_buckets: globalConversionDrilldownFixture().daily_buckets,
+    recent_share_events: globalConversionDrilldownFixture().recent_share_events,
+    recent_invite_claims: globalConversionDrilldownFixture().recent_invite_claims,
+    recent_collect_records: globalConversionDrilldownFixture().recent_collect_records,
+    active_share_grant_snapshot: {
+      active_workspace_board_share_grant_count: 1,
+      active_digest_issue_share_grant_count: 1,
+      active_paper_snapshot_share_grant_count: 2,
+    },
+    active_invite_grant_snapshot: {
+      active_invite_grant_count: 1,
+    },
+    attribution_scope: {
+      direct_attribution_metrics: ["share_view_count", "collect_collected_count"],
+      workspace_level_aggregate_metrics: ["invite_claimed_count"],
+      notes: ["Invite claims stay explicitly separate from direct per-share attribution."],
+    },
+    notes: ["Active share-grant inventory is a snapshot, not a time-series count."],
+  };
+}
+
 function buildApiClient() {
   return {
     listWorkspaces: vi.fn().mockResolvedValue([workspaceFixture()]),
@@ -270,7 +406,9 @@ function buildApiClient() {
     updateWorkspace: vi.fn().mockResolvedValue(workspaceFixture()),
     getWorkspaceBoard: vi.fn().mockResolvedValue(boardFixture()),
     getConversionOverview: vi.fn().mockResolvedValue(globalConversionFixture()),
+    getConversionDrilldown: vi.fn().mockResolvedValue(globalConversionDrilldownFixture()),
     getWorkspaceConversionOverview: vi.fn().mockResolvedValue(workspaceConversionFixture()),
+    getWorkspaceConversionDrilldown: vi.fn().mockResolvedValue(workspaceConversionDrilldownFixture()),
     addWorkspaceMember: vi.fn().mockResolvedValue(undefined),
     removeWorkspaceMember: vi.fn().mockResolvedValue(undefined),
     addWorkspacePaper: vi.fn().mockResolvedValue(undefined),
@@ -322,9 +460,13 @@ describe("group workspace admin shell", () => {
     expect(await screen.findByText("Shared Paper")).toBeVisible();
     expect(screen.getByText("Workspace members")).toBeVisible();
     expect(screen.getByRole("heading", { name: "Global conversion overview" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Global conversion drilldown" })).toBeVisible();
     expect(screen.getByRole("heading", { name: "Workspace conversion overview" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Workspace conversion drilldown" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Top workspaces" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Active share-grant snapshot" })).toBeVisible();
     expect(screen.getAllByText("Invite handoffs").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Attribution scope")).toHaveLength(2);
+    expect(screen.getAllByText("Attribution scope")).toHaveLength(4);
   });
 
   it("shows the one-time share token after workspace_board grant creation", async () => {
@@ -360,6 +502,7 @@ describe("group workspace admin shell", () => {
         }),
       ),
       getConversionOverview: vi.fn().mockResolvedValue(globalConversionFixture()),
+      getConversionDrilldown: vi.fn().mockResolvedValue(globalConversionDrilldownFixture()),
       listUsers: vi.fn(),
       listPapers: vi.fn(),
     };
@@ -404,6 +547,49 @@ describe("group workspace admin shell", () => {
       await screen.findByText(
         "No share, invite, or collect activity has been recorded in this analytics window.",
       ),
+    ).toBeVisible();
+  });
+
+  it("renders graceful empty drilldown states when reserve rows are absent", async () => {
+    const client = buildApiClient();
+    client.getConversionDrilldown.mockResolvedValue({
+      ...globalConversionDrilldownFixture(),
+      daily_buckets: [],
+      top_workspaces: [],
+      top_result_share_grants: [],
+      recent_share_events: [],
+      recent_invite_claims: [],
+      recent_collect_records: [],
+    });
+    client.getWorkspaceConversionDrilldown.mockResolvedValue({
+      ...workspaceConversionDrilldownFixture(),
+      daily_buckets: [],
+      recent_share_events: [],
+      recent_invite_claims: [],
+      recent_collect_records: [],
+      active_share_grant_snapshot: {
+        active_workspace_board_share_grant_count: 0,
+        active_digest_issue_share_grant_count: 0,
+        active_paper_snapshot_share_grant_count: 0,
+      },
+      active_invite_grant_snapshot: {
+        active_invite_grant_count: 0,
+      },
+    });
+    const user = userEvent.setup();
+
+    render(<GroupWorkspaceAdminShell apiClientFactory={() => client} />);
+
+    await user.type(screen.getByLabelText(/admin bearer token/i), "manual-token");
+    await user.click(screen.getByRole("button", { name: /open workspace shell/i }));
+
+    expect(
+      await screen.findByText(
+        "No global drilldown activity has been recorded in this analytics window.",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText("No workspace drilldown activity has been recorded in this window."),
     ).toBeVisible();
   });
 });

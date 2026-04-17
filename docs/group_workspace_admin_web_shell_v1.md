@@ -82,12 +82,18 @@ It does not add:
 - source-file semantics
 
 The same backend reserve now also exposes deeper read-only drilldown APIs for a later shell phase:
-
 - `GET /admin/group-workspace-conversion-drilldown`
 - `GET /admin/group-workspaces/{workspace_id}/conversion-drilldown`
 - daily buckets
 - recent share / invite / collect rows
 - top workspaces and top result-share grants
+
+The shell now also includes a minimal read-only drilldown consumer on top of those existing reserve endpoints:
+
+- global drilldown under the main dashboard area
+- workspace drilldown inside workspace detail
+- explicit direct-attribution vs workspace-level aggregate-only notes
+- no new write paths, auth surfaces, or source-file semantics
 
 ## Safety Exclusions
 
@@ -120,4 +126,5 @@ This phase does not add:
 - richer internal admin UX for search, filtering, and validation
 - user-managed workspace membership and invitation flows
 - digest-issue and paper-snapshot share management UI
+- richer drilldown filtering and time-series charting if operator demand justifies it
 - later invite/handoff flows if justified

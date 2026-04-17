@@ -1,15 +1,32 @@
 import type {
   ApiErrorViewModel,
-  ConversionAttributionScopeViewModel,
+  ConversionDailyBucketRead,
+  ConversionDailyBucketViewModel,
+  ConversionDetailRowViewModel,
   ConversionMetricBucketViewModel,
+  ConversionRecentCollectRecordRead,
+  ConversionRecentCollectRecordViewModel,
+  ConversionRecentInviteClaimRead,
+  ConversionRecentInviteClaimViewModel,
+  ConversionRecentShareEventRead,
+  ConversionRecentShareEventViewModel,
+  ConversionTopResultShareGrantRead,
+  ConversionTopResultShareGrantViewModel,
+  ConversionTopWorkspaceRead,
+  ConversionTopWorkspaceViewModel,
+  ConversionAttributionScopeViewModel,
   ConversionMetricSectionViewModel,
   ConversionSummaryMetricViewModel,
+  DrilldownAttributionScopeViewModel,
   GroupWorkspaceAdminApiErrorShape,
   GroupWorkspaceBoardRead,
+  GroupWorkspaceConversionDrilldownRead,
   GroupWorkspaceConversionAttributionRead,
   GroupWorkspaceConversionOverviewRead,
   GroupWorkspaceRead,
+  GroupWorkspaceWorkspaceConversionDrilldownRead,
   GroupWorkspaceWorkspaceConversionOverviewRead,
+  GlobalConversionDrilldownViewModel,
   GlobalConversionOverviewViewModel,
   LookupOption,
   PaperProfileRead,
@@ -17,6 +34,7 @@ import type {
   UserProfileRead,
   WorkspaceConversionOverviewViewModel,
   WorkspaceListItemViewModel,
+  WorkspaceConversionDrilldownViewModel,
   WorkspaceBoardViewModel,
   ShareGrantOneTimeDisplayModel,
 } from "./types";
@@ -106,11 +124,40 @@ function humanizeMetricKey(value: string): string {
     .join(" ");
 }
 
+const countMetricLabels: Record<string, string> = {
+  share_view_count: "Share views",
+  bootstrap_view_count: "Bootstrap views",
+  content_view_count: "Content views",
+  invite_handoff_redirect_count: "Invite handoffs",
+  collect_handoff_redirect_count: "Collect handoffs",
+  invite_claimed_count: "Invite claimed",
+  invite_already_member_count: "Invite already member",
+  collect_collected_count: "Collect collected",
+  collect_already_present_count: "Collect already present",
+  workspace_board_view_count: "Workspace-board views",
+  active_workspace_board_share_grant_count: "Workspace-board shares",
+  active_digest_issue_share_grant_count: "Digest-issue shares",
+  active_paper_snapshot_share_grant_count: "Paper-snapshot shares",
+  active_invite_grant_count: "Invite grants",
+};
+
 function humanizeAttributionMetric(metric: string): string {
   if (metric.endsWith("_count")) {
     return `${humanizeMetricKey(metric.slice(0, -6))} count`;
   }
   return humanizeMetricKey(metric);
+}
+
+function humanizeLabel(value: string): string {
+  return value
+    .split(/[_-]/g)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function labelCountMetric(key: string): string {
+  return countMetricLabels[key] ?? humanizeLabel(key.replace(/_count$/, ""));
 }
 
 function buildMetricBuckets(bucketMap: Record<string, number>): ConversionMetricBucketViewModel[] {
@@ -161,6 +208,164 @@ export function buildConversionAttributionScopeViewModel(
       humanizeAttributionMetric,
     ),
     notes: scope.notes,
+  };
+}
+
+export function buildDrilldownAttributionScopeViewModel(
+  scope: GroupWorkspaceConversionAttributionRead,
+): DrilldownAttributionScopeViewModel {
+  return {
+    directMetrics: scope.direct_attribution_metrics.map(humanizeAttributionMetric),
+    workspaceLevelAggregateMetrics: scope.workspace_level_aggregate_metrics.map(
+      humanizeAttributionMetric,
+    ),
+    notes: scope.notes,
+  };
+}
+
+function buildCountBucketRow(key: string, count: number): ConversionMetricBucketViewModel {
+  return {
+    key,
+    label: labelCountMetric(key),
+    count,
+  };
+}
+
+function buildDetailRow(label: string, value: string): ConversionDetailRowViewModel {
+  return { label, value };
+}
+
+function formatReasonCodes(reasonCodes: string[]): string {
+  if (reasonCodes.length === 0) {
+    return "None";
+  }
+  return reasonCodes.map(humanizeLabel).join(", ");
+}
+
+function getLatestTimestamp(timestamps: Array<string | null | undefined>): string | null {
+  const present = timestamps.filter((value): value is string => Boolean(value));
+  if (present.length === 0) {
+    return null;
+  }
+  return present.sort((left, right) => left.localeCompare(right)).at(-1) ?? null;
+}
+
+function sumBucketMetric(
+  buckets: ConversionDailyBucketRead[],
+  key: Exclude<keyof ConversionDailyBucketRead, "day">,
+): number {
+  return buckets.reduce((total, bucket) => total + bucket[key], 0);
+}
+
+function hasNonZeroMetrics(rows: ConversionMetricBucketViewModel[]): boolean {
+  return rows.some((row) => row.count > 0);
+}
+
+function buildConversionDailyBucketViewModel(
+  bucket: ConversionDailyBucketRead,
+): ConversionDailyBucketViewModel {
+  return {
+    day: bucket.day,
+    metrics: [
+      buildCountBucketRow("share_view_count", bucket.share_view_count),
+      buildCountBucketRow("invite_handoff_redirect_count", bucket.invite_handoff_redirect_count),
+      buildCountBucketRow(
+        "collect_handoff_redirect_count",
+        bucket.collect_handoff_redirect_count,
+      ),
+      buildCountBucketRow("invite_claimed_count", bucket.invite_claimed_count),
+      buildCountBucketRow("invite_already_member_count", bucket.invite_already_member_count),
+      buildCountBucketRow("collect_collected_count", bucket.collect_collected_count),
+      buildCountBucketRow("collect_already_present_count", bucket.collect_already_present_count),
+    ],
+  };
+}
+
+function buildConversionTopWorkspaceViewModel(
+  row: ConversionTopWorkspaceRead,
+): ConversionTopWorkspaceViewModel {
+  return {
+    workspaceId: row.workspace.id,
+    title: row.workspace.name,
+    subtitle: [row.workspace.slug, row.workspace.status].join(" · "),
+    lastActivityAt: row.last_activity_at,
+    metrics: [
+      buildCountBucketRow("workspace_board_view_count", row.workspace_board_view_count),
+      buildCountBucketRow("invite_handoff_redirect_count", row.invite_handoff_redirect_count),
+      buildCountBucketRow("collect_handoff_redirect_count", row.collect_handoff_redirect_count),
+      buildCountBucketRow("invite_claimed_count", row.invite_claimed_count),
+      buildCountBucketRow("collect_collected_count", row.collect_collected_count),
+    ],
+  };
+}
+
+function buildConversionTopResultShareGrantViewModel(
+  row: ConversionTopResultShareGrantRead,
+): ConversionTopResultShareGrantViewModel {
+  return {
+    resultShareGrantId: row.result_share_grant_id,
+    title: `${humanizeLabel(row.share_kind)} grant`,
+    subtitle: `Grant ${row.result_share_grant_id}`,
+    lastActivityAt: row.last_activity_at,
+    metrics: [
+      buildCountBucketRow("bootstrap_view_count", row.bootstrap_view_count),
+      buildCountBucketRow("content_view_count", row.content_view_count),
+      buildCountBucketRow("invite_handoff_redirect_count", row.invite_handoff_redirect_count),
+      buildCountBucketRow("collect_handoff_redirect_count", row.collect_handoff_redirect_count),
+      buildCountBucketRow("collect_collected_count", row.collect_collected_count),
+    ],
+  };
+}
+
+function buildConversionRecentShareEventViewModel(
+  row: ConversionRecentShareEventRead,
+): ConversionRecentShareEventViewModel {
+  return {
+    id: row.id,
+    title: `${humanizeLabel(row.event_type)} · ${humanizeLabel(row.share_kind)}`,
+    subtitle: `${humanizeLabel(row.access_mode)} · ${humanizeLabel(row.outcome)}`,
+    occurredAt: row.occurred_at,
+    detailRows: [
+      buildDetailRow("Grant", row.result_share_grant_id ?? "Unlinked"),
+      buildDetailRow("Alias", row.result_share_alias_id ?? "Not used"),
+      buildDetailRow(
+        "Handoff target",
+        row.handoff_target_kind ? humanizeLabel(row.handoff_target_kind) : "None",
+      ),
+    ],
+  };
+}
+
+function buildConversionRecentInviteClaimViewModel(
+  row: ConversionRecentInviteClaimRead,
+): ConversionRecentInviteClaimViewModel {
+  return {
+    id: row.id,
+    title: `${humanizeLabel(row.claim_status)} invite claim`,
+    subtitle: `Workspace ${row.workspace_id} · User ${row.user_id}`,
+    occurredAt: row.claimed_at,
+    detailRows: [
+      buildDetailRow("Invite grant", row.invite_grant_id),
+      buildDetailRow("Role assigned", row.role_assigned ? humanizeLabel(row.role_assigned) : "None"),
+      buildDetailRow("Reason codes", formatReasonCodes(row.reason_codes)),
+    ],
+  };
+}
+
+function buildConversionRecentCollectRecordViewModel(
+  row: ConversionRecentCollectRecordRead,
+): ConversionRecentCollectRecordViewModel {
+  return {
+    id: row.id,
+    title: `${humanizeLabel(row.status)} collect record`,
+    subtitle: `${humanizeLabel(row.share_kind)} · Paper ${row.collected_paper_id}`,
+    occurredAt: row.created_at,
+    detailRows: [
+      buildDetailRow("Workspace", row.workspace_id),
+      buildDetailRow("User", row.user_id),
+      buildDetailRow("Grant", row.result_share_grant_id ?? "Aggregate-only record"),
+      buildDetailRow("Reason codes", formatReasonCodes(row.reason_codes)),
+    ],
   };
 }
 
@@ -244,6 +449,82 @@ export function buildGlobalConversionOverviewViewModel(
     windowEnd: overview.window_end,
     lastActivityAt: overview.last_activity_at,
     attributionScope: buildConversionAttributionScopeViewModel(overview.attribution_scope),
+    empty,
+  };
+}
+
+export function buildGlobalConversionDrilldownViewModel(
+  drilldown: GroupWorkspaceConversionDrilldownRead,
+): GlobalConversionDrilldownViewModel {
+  const dailyBuckets = drilldown.daily_buckets.map(buildConversionDailyBucketViewModel);
+  const topWorkspaces = drilldown.top_workspaces.map(buildConversionTopWorkspaceViewModel);
+  const topResultShareGrants = drilldown.top_result_share_grants.map(
+    buildConversionTopResultShareGrantViewModel,
+  );
+  const recentShareEvents = drilldown.recent_share_events.map(
+    buildConversionRecentShareEventViewModel,
+  );
+  const recentInviteClaims = drilldown.recent_invite_claims.map(
+    buildConversionRecentInviteClaimViewModel,
+  );
+  const recentCollectRecords = drilldown.recent_collect_records.map(
+    buildConversionRecentCollectRecordViewModel,
+  );
+  const shareViewCount = sumBucketMetric(drilldown.daily_buckets, "share_view_count");
+  const inviteHandoffCount = sumBucketMetric(
+    drilldown.daily_buckets,
+    "invite_handoff_redirect_count",
+  );
+  const collectHandoffCount = sumBucketMetric(
+    drilldown.daily_buckets,
+    "collect_handoff_redirect_count",
+  );
+  const inviteClaimedCount = sumBucketMetric(drilldown.daily_buckets, "invite_claimed_count");
+  const collectCollectedCount = sumBucketMetric(
+    drilldown.daily_buckets,
+    "collect_collected_count",
+  );
+  const lastActivityAt = getLatestTimestamp([
+    ...drilldown.top_workspaces.map((row) => row.last_activity_at),
+    ...drilldown.top_result_share_grants.map((row) => row.last_activity_at),
+    ...drilldown.recent_share_events.map((row) => row.occurred_at),
+    ...drilldown.recent_invite_claims.map((row) => row.claimed_at),
+    ...drilldown.recent_collect_records.map((row) => row.created_at),
+  ]);
+  const empty =
+    shareViewCount === 0 &&
+    inviteHandoffCount === 0 &&
+    collectHandoffCount === 0 &&
+    inviteClaimedCount === 0 &&
+    collectCollectedCount === 0 &&
+    drilldown.top_workspaces.length === 0 &&
+    drilldown.top_result_share_grants.length === 0 &&
+    drilldown.recent_share_events.length === 0 &&
+    drilldown.recent_invite_claims.length === 0 &&
+    drilldown.recent_collect_records.length === 0;
+
+  return {
+    summaryMetrics: [
+      buildSummaryMetric("Share views", shareViewCount),
+      buildSummaryMetric("Invite handoffs", inviteHandoffCount),
+      buildSummaryMetric("Collect handoffs", collectHandoffCount),
+      buildSummaryMetric("Invite claimed", inviteClaimedCount),
+      buildSummaryMetric("Collect collected", collectCollectedCount),
+      buildSummaryMetric("Daily buckets", drilldown.daily_buckets.length),
+      buildSummaryMetric("Top workspaces", drilldown.top_workspaces.length),
+      buildSummaryMetric("Top share grants", drilldown.top_result_share_grants.length),
+    ],
+    windowStart: drilldown.window_start,
+    windowEnd: drilldown.window_end,
+    lastActivityAt,
+    dailyBuckets,
+    topWorkspaces,
+    topResultShareGrants,
+    recentShareEvents,
+    recentInviteClaims,
+    recentCollectRecords,
+    attributionScope: buildDrilldownAttributionScopeViewModel(drilldown.attribution_scope),
+    notes: drilldown.notes,
     empty,
   };
 }
@@ -336,6 +617,108 @@ export function buildWorkspaceConversionOverviewViewModel(
     windowEnd: overview.window_end,
     lastActivityAt: overview.last_activity_at,
     attributionScope: buildConversionAttributionScopeViewModel(overview.attribution_scope),
+    empty,
+  };
+}
+
+export function buildWorkspaceConversionDrilldownViewModel(
+  drilldown: GroupWorkspaceWorkspaceConversionDrilldownRead,
+): WorkspaceConversionDrilldownViewModel {
+  const dailyBuckets = drilldown.daily_buckets.map(buildConversionDailyBucketViewModel);
+  const recentShareEvents = drilldown.recent_share_events.map(
+    buildConversionRecentShareEventViewModel,
+  );
+  const recentInviteClaims = drilldown.recent_invite_claims.map(
+    buildConversionRecentInviteClaimViewModel,
+  );
+  const recentCollectRecords = drilldown.recent_collect_records.map(
+    buildConversionRecentCollectRecordViewModel,
+  );
+  const activeShareGrantSnapshotRows = [
+    buildCountBucketRow(
+      "active_workspace_board_share_grant_count",
+      drilldown.active_share_grant_snapshot.active_workspace_board_share_grant_count,
+    ),
+    buildCountBucketRow(
+      "active_digest_issue_share_grant_count",
+      drilldown.active_share_grant_snapshot.active_digest_issue_share_grant_count,
+    ),
+    buildCountBucketRow(
+      "active_paper_snapshot_share_grant_count",
+      drilldown.active_share_grant_snapshot.active_paper_snapshot_share_grant_count,
+    ),
+  ];
+  const activeInviteGrantSnapshotRows = [
+    buildCountBucketRow(
+      "active_invite_grant_count",
+      drilldown.active_invite_grant_snapshot.active_invite_grant_count,
+    ),
+  ];
+  const shareViewCount = sumBucketMetric(drilldown.daily_buckets, "share_view_count");
+  const inviteHandoffCount = sumBucketMetric(
+    drilldown.daily_buckets,
+    "invite_handoff_redirect_count",
+  );
+  const collectHandoffCount = sumBucketMetric(
+    drilldown.daily_buckets,
+    "collect_handoff_redirect_count",
+  );
+  const inviteClaimedCount = sumBucketMetric(drilldown.daily_buckets, "invite_claimed_count");
+  const collectCollectedCount = sumBucketMetric(
+    drilldown.daily_buckets,
+    "collect_collected_count",
+  );
+  const activeShareGrantCount = activeShareGrantSnapshotRows.reduce(
+    (total, row) => total + row.count,
+    0,
+  );
+  const recentActivityCount =
+    drilldown.recent_share_events.length +
+    drilldown.recent_invite_claims.length +
+    drilldown.recent_collect_records.length;
+  const lastActivityAt = getLatestTimestamp([
+    ...drilldown.recent_share_events.map((row) => row.occurred_at),
+    ...drilldown.recent_invite_claims.map((row) => row.claimed_at),
+    ...drilldown.recent_collect_records.map((row) => row.created_at),
+  ]);
+  const empty =
+    shareViewCount === 0 &&
+    inviteHandoffCount === 0 &&
+    collectHandoffCount === 0 &&
+    inviteClaimedCount === 0 &&
+    collectCollectedCount === 0 &&
+    drilldown.recent_share_events.length === 0 &&
+    drilldown.recent_invite_claims.length === 0 &&
+    drilldown.recent_collect_records.length === 0 &&
+    !hasNonZeroMetrics(activeShareGrantSnapshotRows) &&
+    !hasNonZeroMetrics(activeInviteGrantSnapshotRows);
+
+  return {
+    workspace: drilldown.workspace,
+    summaryMetrics: [
+      buildSummaryMetric("Share views", shareViewCount),
+      buildSummaryMetric("Invite handoffs", inviteHandoffCount),
+      buildSummaryMetric("Collect handoffs", collectHandoffCount),
+      buildSummaryMetric("Invite claimed", inviteClaimedCount),
+      buildSummaryMetric("Collect collected", collectCollectedCount),
+      buildSummaryMetric("Active share grants", activeShareGrantCount),
+      buildSummaryMetric(
+        "Invite grants",
+        drilldown.active_invite_grant_snapshot.active_invite_grant_count,
+      ),
+      buildSummaryMetric("Recent activity rows", recentActivityCount),
+    ],
+    windowStart: drilldown.window_start,
+    windowEnd: drilldown.window_end,
+    lastActivityAt,
+    dailyBuckets,
+    recentShareEvents,
+    recentInviteClaims,
+    recentCollectRecords,
+    activeShareGrantSnapshotRows,
+    activeInviteGrantSnapshotRows,
+    attributionScope: buildDrilldownAttributionScopeViewModel(drilldown.attribution_scope),
+    notes: drilldown.notes,
     empty,
   };
 }

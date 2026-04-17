@@ -2,10 +2,12 @@ import type {
   AdminApiErrorKind,
   GroupWorkspaceAdminApiErrorShape,
   GroupWorkspaceBoardRead,
+  GroupWorkspaceConversionDrilldownRead,
   GroupWorkspaceConversionOverviewRead,
   GroupWorkspaceMemberRead,
   GroupWorkspacePaperRead,
   GroupWorkspaceRead,
+  GroupWorkspaceWorkspaceConversionDrilldownRead,
   GroupWorkspaceWorkspaceConversionOverviewRead,
   PaperProfileRead,
   ResultShareGrantIssueResponse,
@@ -178,10 +180,20 @@ export function createGroupWorkspaceAdminApiClient(
         method: "GET",
         path: "/admin/group-workspace-conversion-overview",
       }),
+    getConversionDrilldown: () =>
+      request<GroupWorkspaceConversionDrilldownRead>({
+        method: "GET",
+        path: "/admin/group-workspace-conversion-drilldown",
+      }),
     getWorkspaceConversionOverview: (workspaceId: string) =>
       request<GroupWorkspaceWorkspaceConversionOverviewRead>({
         method: "GET",
         path: `/admin/group-workspaces/${encodeURIComponent(workspaceId)}/conversion-overview`,
+      }),
+    getWorkspaceConversionDrilldown: (workspaceId: string) =>
+      request<GroupWorkspaceWorkspaceConversionDrilldownRead>({
+        method: "GET",
+        path: `/admin/group-workspaces/${encodeURIComponent(workspaceId)}/conversion-drilldown`,
       }),
     addWorkspaceMember: (workspaceId: string, payload: WorkspaceMemberAddInput) =>
       request<GroupWorkspaceMemberRead>({

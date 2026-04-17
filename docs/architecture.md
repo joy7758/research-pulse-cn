@@ -18,7 +18,7 @@ Core flow:
 12. Admin-managed `GroupWorkspace` containers now group selected users and papers into compact shared boards, while `ResultShareGrant` exposes opaque public read-only links for structured digest issues, paper snapshots, and workspace boards without turning sharing into file sync.
 13. A thin public browser shell under `apps/result-share-web` now consumes those token-based share endpoints directly, optionally connects an in-memory self-service token, renders safe read-only structured outputs, exposes explicit collect-preview/collect actions for supported share kinds, and shows a manual invite/join handoff summary for `workspace_board` shares.
 14. A thin public browser shell under `apps/group-workspace-invite-web` now consumes the public invite bootstrap plus self-service claim routes, keeps invite/self-service tokens in memory only, and does not introduce a generic login surface or source-file sharing.
-15. A thin internal browser shell under `apps/group-workspace-admin-web` now consumes the admin-managed workspace and share-grant endpoints, reuses existing `GET /users` and `GET /papers` reads as lookup sources, and keeps admin bearer tokens in memory only.
+15. A thin internal browser shell under `apps/group-workspace-admin-web` now consumes the admin-managed workspace and share-grant endpoints, reuses existing `GET /users` and `GET /papers` reads as lookup sources, renders read-only conversion overview plus drilldown dashboards, and keeps admin bearer tokens in memory only.
 16. Sync devices consume incremental `SyncEvent` feeds and push idempotent mutations back through the same service layer.
 17. A Tauri desktop shell consumes the same sync feed, keeps a local SQLite outbox, performs limited writeback through `/sync/push`, manages a local-only paper workspace, stores local markdown notes/templates, keeps local review-matrix / response-letter workflows, exposes synced `SubscriptionPolicy` quiet-control fields in Settings with non-authoritative local hints, and renders sectioned daily digests on the Today page when the synced cache includes structured digest payloads.
 18. A pulse input layer now records lightweight work activity and research watch profiles so future retrieval can start from explicit inputs instead of implicit guesses.
@@ -342,6 +342,8 @@ Tie-break order is deterministic:
 - The existing internal `apps/group-workspace-admin-web` shell can render those read-only conversion aggregates:
   - a global overview panel
   - a workspace-specific overview block in workspace detail
+  - a global drilldown panel for daily buckets, recent safe rows, top workspaces, and top result-share grants
+  - a workspace-specific drilldown block for recent activity plus active share/invite snapshots
   - attribution notes supplied by the backend read model rather than inferred client-side narratives
 
 ### Result collect reserve boundary

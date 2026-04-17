@@ -104,6 +104,8 @@ Admin-only aggregate reads now also reuse those persisted records for:
 The internal `apps/group-workspace-admin-web` shell now also renders those aggregates as:
 - a global conversion overview panel
 - a workspace conversion overview panel inside workspace detail
+- a global conversion drilldown panel with daily buckets, top entities, and recent safe rows
+- a workspace conversion drilldown panel with recent activity plus active grant snapshots
 - explicit attribution-scope notes from the backend read model
 `workspace_board` share pages now also render a manual invite/join handoff summary:
 - the page stays read-only

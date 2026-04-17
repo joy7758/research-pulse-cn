@@ -30,7 +30,7 @@ Private repository. Proprietary and confidential.
 - The same analytics reserve now also observes a read-only `workspace_board -> result collect` redirect bridge so admin users can aggregate collect-handoff conversion without mixing board-share tokens with digest/paper share tokens or self-service tokens
 - An admin-only group workspace conversion overview reserve now aggregates persisted share, handoff, invite-claim, and result-collect signals into global and per-workspace read models without introducing probabilistic attribution or source-file semantics
 - The same admin boundary now also exposes read-only conversion drilldown reserves with daily buckets, recent activity lists, and top workspace/share-grant aggregates while keeping invite claims explicitly workspace-level aggregate signals in v1
-- A thin internal React/Vite admin shell under `apps/group-workspace-admin-web` for operator-managed workspace list/detail, member/paper add-remove flows, `workspace_board` share-grant issuance, and read-only global/workspace conversion dashboards without introducing end-user login or source-file sharing
+- A thin internal React/Vite admin shell under `apps/group-workspace-admin-web` for operator-managed workspace list/detail, member/paper add-remove flows, `workspace_board` share-grant issuance, and read-only global/workspace conversion overview plus drilldown dashboards without introducing end-user login or source-file sharing
 - A thin internal React/Vite admin shell under `apps/user-workbench-admin-web` for read-only search and drilldown across users, papers, and research watch profiles without introducing end-user login, file sharing, or business write flows
 - A backend-only workspace invite/join reserve that adds opaque invite grants, public invite bootstrap, self-service claim-preview/claim routes, and safe membership summaries without introducing source-file sharing or a generic login system
 - A thin public React/Vite invite shell under `apps/group-workspace-invite-web` for safe workspace-invite bootstrap, self-service claim preview/claim, and membership confirmation without introducing end-user login, browser token persistence, or source-file sharing
@@ -301,6 +301,12 @@ This shell:
   - `GET /admin/group-workspaces/{workspace_id}/board`
   - member and paper add/remove routes
   - `workspace_board` share-grant create/revoke flows
+- renders read-only conversion dashboards from:
+  - `GET /admin/group-workspace-conversion-overview`
+  - `GET /admin/group-workspaces/{workspace_id}/conversion-overview`
+  - `GET /admin/group-workspace-conversion-drilldown`
+  - `GET /admin/group-workspaces/{workspace_id}/conversion-drilldown`
+- shows aggregate overview cards separately from deeper drilldown sections such as daily buckets, recent safe rows, top workspaces, and top result-share grants
 - reuses existing `GET /users` and `GET /papers` reads as internal lookup sources
 - does not add end-user login, public editing, or source-file sharing
 

@@ -43,6 +43,6 @@
 ## Future Work
 - Richer operator dashboard layout and filtering
 - Time-series slices when they are justified
-- Drilldown panels backed by the separate conversion-drilldown reserve
+- Drilldown panels backed by the separate conversion-drilldown reserve now live in the same admin shell and should stay read-only
 - Share-grant-level drilldown if later needed
 - Still no source-file sharing by default

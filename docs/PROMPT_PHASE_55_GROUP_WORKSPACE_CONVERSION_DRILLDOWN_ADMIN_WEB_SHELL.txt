@@ -1,0 +1,35 @@
+Read AGENTS.md, docs/BUILD_SPEC.md, docs/architecture.md, docs/development.md, docs/group_workspace_admin_web_shell_v1.md, docs/group_workspace_conversion_admin_web_shell_v1.md, docs/group_workspace_conversion_drilldown_admin_web_shell_v1.md, docs/group_workspace_conversion_drilldown_reserve_v1.md, docs/group_workspace_conversion_overview_reserve_v1.md, docs/result_share_analytics_reserve_v1.md, docs/result_share_invite_conversion_bridge_v1.md, and docs/result_share_collect_conversion_bridge_v1.md before editing.
+
+Implement Phase 55 only: group workspace conversion drilldown admin web shell v1.
+
+Hard boundaries for this phase:
+- Reuse `apps/group-workspace-admin-web`; do not create a new app.
+- Keep admin bearer tokens in memory only.
+- Consume only:
+  - `GET /admin/group-workspace-conversion-drilldown`
+  - `GET /admin/group-workspaces/{workspace_id}/conversion-drilldown`
+- Add only read-only global/workspace drilldown rendering.
+- Do not add source-file sharing, attachment sharing, real-time collaboration, a new auth system, campaign logic, browser analytics SDKs, or AI attribution copy.
+
+Required UI scope:
+- global drilldown panel
+- workspace drilldown panel inside workspace detail
+- daily buckets
+- recent share events
+- recent invite claims
+- recent collect records
+- top workspaces
+- top result-share grants
+- active share-grant snapshot
+- active invite-grant snapshot
+- explicit direct-vs-aggregate attribution notes
+
+Keep existing workspace list/detail/member/paper/share-grant and conversion-overview behavior intact.
+
+Quality bar:
+- typed frontend code
+- no new write flows
+- no backend migration unless strictly necessary
+- tests for shaping and rendering
+- update README and related docs
+- end with a concise summary of files changed, backend migration status, changed app path, changed commands if any, surfaced drilldown sections, and one next-phase recommendation
