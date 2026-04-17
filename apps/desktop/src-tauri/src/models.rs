@@ -65,6 +65,53 @@ pub struct SubscriptionPolicyRead {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct QuietHoursWindowRead {
+    pub start: String,
+    pub end: String,
+    pub timezone: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeliveryControlSettingsRead {
+    pub id: String,
+    pub user_id: String,
+    pub channel: String,
+    pub enabled: bool,
+    pub frequency: String,
+    pub quiet_hours: Vec<QuietHoursWindowRead>,
+    pub raw_quiet_hours: Option<Value>,
+    pub timezone: String,
+    pub allowed_weekdays: Vec<i64>,
+    pub muted_until: Option<String>,
+    pub minimum_selected_cards: Option<i64>,
+    pub skip_if_no_today_focus: bool,
+    pub frequency_cap: i64,
+    pub updated_at: Option<String>,
+    pub pending_mutation_count: i64,
+    pub last_mutation_error: Option<String>,
+    pub raw_policy: Value,
+    pub local_settings_error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeliveryControlLocalHintRead {
+    pub subscription_policy_id: String,
+    pub channel: String,
+    pub effective_timezone: String,
+    pub current_local_time: String,
+    pub local_weekday: i64,
+    pub quiet_hours_active: bool,
+    pub muted_until_active: bool,
+    pub weekday_blocked: bool,
+    pub next_allowed_at_approx: Option<String>,
+    pub notes: Vec<String>,
+    pub local_settings_error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct WorkspaceStatusRead {
     pub root_path: Option<String>,
     pub status: String,
@@ -226,7 +273,69 @@ pub struct DigestHighlightRead {
     pub title: String,
     pub summary: String,
     pub why_now: Option<String>,
+    pub action_text: Option<String>,
+    pub deep_link: Option<String>,
     pub paper: Option<PaperListItemRead>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct TodaySectionItemRead {
+    pub sort_order: i64,
+    pub pulse_card_id: String,
+    pub card_type: String,
+    pub source_paper_id: Option<String>,
+    pub title: String,
+    pub summary: String,
+    pub why_now: Option<String>,
+    pub action_text: Option<String>,
+    pub deep_link: Option<String>,
+    pub paper: Option<PaperListItemRead>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct TodaySectionRead {
+    pub kind: String,
+    pub title: String,
+    pub item_count: i64,
+    pub items: Vec<TodaySectionItemRead>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct TodayQuickStatsRead {
+    pub selected_card_count: i64,
+    pub related_paper_count: i64,
+    pub signal_update_count: i64,
+    pub touched_paper_count: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct TodayFocusCardRead {
+    pub sort_order: i64,
+    pub pulse_card_id: String,
+    pub card_type: String,
+    pub source_paper_id: Option<String>,
+    pub title: String,
+    pub summary: String,
+    pub why_now: Option<String>,
+    pub action_text: Option<String>,
+    pub deep_link: Option<String>,
+    pub paper: Option<PaperListItemRead>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct TodayPublicationPreviewRead {
+    pub digest_title: Option<String>,
+    pub digest_subtitle: Option<String>,
+    pub digest_highlights: Vec<DigestHighlightRead>,
+    pub primary_cta_text: Option<String>,
+    pub primary_cta_path: Option<String>,
+    pub mini_program_path: Option<String>,
+    pub article_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -242,6 +351,13 @@ pub struct TodayOverviewRead {
     pub selected_card_count: i64,
     pub deep_link_path: Option<String>,
     pub highlights: Vec<DigestHighlightRead>,
+    pub is_structured: bool,
+    pub section_order: Vec<String>,
+    pub sections: Vec<TodaySectionRead>,
+    pub quick_stats: Option<TodayQuickStatsRead>,
+    pub focus_card: Option<TodayFocusCardRead>,
+    pub publication_preview: Option<TodayPublicationPreviewRead>,
+    pub fallback_mode: String,
     pub message: Option<String>,
     pub updated_at: Option<String>,
 }
@@ -259,6 +375,13 @@ impl Default for TodayOverviewRead {
             selected_card_count: 0,
             deep_link_path: None,
             highlights: Vec::new(),
+            is_structured: false,
+            section_order: Vec::new(),
+            sections: Vec::new(),
+            quick_stats: None,
+            focus_card: None,
+            publication_preview: None,
+            fallback_mode: "empty".to_string(),
             message: Some("No digest issue is cached yet.".to_string()),
             updated_at: None,
         }
@@ -560,6 +683,12 @@ pub struct QueueSubscriptionPolicyPatchInput {
     pub quiet_hours: Option<Value>,
     pub frequency_cap: Option<i64>,
     pub policy: Option<Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeliveryControlHintLookupInput {
+    pub subscription_policy_id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -59,10 +59,34 @@ Current behavior:
   - timestamps
 - Raw payload is retained even when parsing or signature validation fails.
 
+## Binding Handshake Reserve
+- `OfficialAccountBindingHandshakeSession` now adds a reserve handoff object between callback evidence and `WeChatIdentityBinding`.
+- This reserve layer is still not real OAuth:
+  - no generic app-login session creation
+  - no automatic callback-to-user binding outside a valid handshake state
+- New reserve settings:
+  - `APP_OFFICIAL_ACCOUNT_BINDING_HANDSHAKE_TTL_MINUTES`
+  - `APP_OFFICIAL_ACCOUNT_BINDING_RECONCILIATION_LOOKBACK_HOURS`
+  - `APP_OFFICIAL_ACCOUNT_BINDING_REQUIRE_SIGNATURE_VALID`
+  - `APP_OFFICIAL_ACCOUNT_BINDING_DEFAULT_DIGEST_ENABLED`
+  - `APP_OFFICIAL_ACCOUNT_OAUTH_ENABLED`
+  - `APP_OFFICIAL_ACCOUNT_OAUTH_DEFAULT_SCOPE`
+  - `APP_OFFICIAL_ACCOUNT_OAUTH_CALLBACK_PUBLIC_BASE_URL`
+  - `APP_OFFICIAL_ACCOUNT_OAUTH_CALLBACK_PATH`
+- New reserve surfaces:
+  - admin handshake session create/list/detail/cancel
+  - admin reconciliation candidate listing
+  - admin explicit claim
+  - admin authorize-url issuance and OAuth status
+  - self-service reserve bootstrap/create/read/cancel
+  - self-service OAuth start/status
+  - mini read-only handoff summary
+
 ## DigestPublicationAttempt Model
 - `DigestPublicationAttempt` records one dispatch attempt for one publication job.
 - Key fields:
   - `digest_publication_job_id`
+  - `dispatch_run_id`
   - `attempt_number`
   - `provider_name`
   - `provider_mode`
@@ -79,13 +103,28 @@ Current behavior:
 
 ## Dispatch Flow
 1. `POST /admin/digest-issues/{digest_issue_id}/prepare-publication`
-2. Eligible official-account bindings get `DigestPublicationJob` rows in `prepared` state.
-3. `POST /admin/digest-publication-jobs/{publication_job_id}/dispatch`
-4. The service creates a `DigestPublicationAttempt`.
-5. The `OfficialAccountPublisher` boundary runs.
-6. In `dry_run` mode the attempt becomes `previewed` and the job becomes `previewed`.
-7. In `real` mode a provider-backed attempt can become `sent` or `failed`.
-8. In `disabled` mode the attempt is recorded as failed and the request returns a controlled conflict.
+2. When available, preparation prefers `PulseDigestIssue.content_payload.publication_preview` over legacy loose highlight fields.
+3. Eligible official-account bindings get `DigestPublicationJob` rows in `prepared` state.
+4. `POST /admin/digest-publication-jobs/{publication_job_id}/dispatch`
+5. The service creates a `DigestPublicationAttempt`.
+6. The `OfficialAccountPublisher` boundary runs.
+7. In `dry_run` mode the attempt becomes `previewed` and the job becomes `previewed`.
+8. In `real` mode a provider-backed attempt can become `sent` or `failed`.
+9. In `disabled` mode the attempt is recorded as failed and the request returns a controlled conflict.
+
+## Issue-Level Dispatch Orchestration
+- `DigestDispatchRun` adds a small orchestration layer above per-job dispatch.
+- It does not replace the provider boundary.
+- Instead it:
+  - loads one `PulseDigestIssue`
+  - gathers eligible `official_account` publication jobs
+  - dispatches them one by one through the existing job-level service
+  - aggregates counts such as `previewed_jobs`, `sent_jobs`, and `failed_jobs`
+- New admin endpoints:
+  - `GET /admin/digest-issues/{digest_issue_id}/dispatch-preview`
+  - `POST /admin/digest-issues/{digest_issue_id}/dispatch`
+  - `GET /admin/digest-dispatch-runs`
+  - `GET /admin/digest-dispatch-runs/{dispatch_run_id}`
 
 ## Inbound Callback Flow
 ### GET handshake
@@ -116,13 +155,26 @@ Current behavior:
   can be updated.
 - If unmatched:
   - the callback event is stored
+  - subscribe events can remain as explicit reconciliation candidates
   - no new user binding is auto-created in v1
+
+### GET OAuth callback
+- `GET /integrations/wechat/official-account/oauth/callback`
+- Validates:
+  - OAuth enabled
+  - `code`
+  - `state`
+  - active handshake session by hashed state token
+- Exchanges `code` server-side and may optionally fetch userinfo.
+- Reuses or creates `WeChatIdentityBinding` safely.
+- Links existing subscribe callback evidence when the same `app_id + openid` already exists in callback reserve data.
 
 ## Current Limitations
 - This document now stops at the provider boundary and callback layer.
 - Real-send activation details live in `docs/official_account_real_send_v1.md`.
 - AES decryption and richer provider callback handling are deferred.
-- No OAuth or end-user reconciliation flow exists for missing bindings.
+- Real official-account OAuth completion now exists for explicit handshake sessions.
+- The system still does not provide a generic user login/session model.
 - Callback processing only supports a narrow event subset in v1.
 - Publication attempts are admin-visible only and are not synced to clients.
 

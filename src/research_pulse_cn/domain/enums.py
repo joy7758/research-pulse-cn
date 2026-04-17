@@ -24,6 +24,7 @@ class ChannelType(StrEnum):
     IN_APP = "in_app"
     DINGTALK = "dingtalk"
     WECHAT = "wechat"
+    OFFICIAL_ACCOUNT = "official_account"
     EMAIL = "email"
     WEBHOOK = "webhook"
 
@@ -145,6 +146,38 @@ class ResearchWatchProfileSourceMode(StrEnum):
     PAPER_BOOTSTRAP = "paper_bootstrap"
 
 
+class ExternalRetrievalMode(StrEnum):
+    DISABLED = "disabled"
+    PLAN_ONLY = "plan_only"
+    EXECUTE = "execute"
+
+
+class ExternalRetrievalSourceKind(StrEnum):
+    OPENALEX = "openalex"
+    CROSSREF = "crossref"
+    ARXIV = "arxiv"
+
+
+class ExternalRetrievalScope(StrEnum):
+    RELATED_PAPER = "related_paper"
+    VENUE_UPDATE = "venue_update"
+    AUTHOR_WATCH = "author_watch"
+
+
+class ExternalRetrievalPlanStatus(StrEnum):
+    PLANNED = "planned"
+    PREVIEWED = "previewed"
+    SKIPPED = "skipped"
+
+
+class ExternalRetrievalRunStatus(StrEnum):
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    SKIPPED = "skipped"
+
+
 class WeChatBindingChannelType(StrEnum):
     OFFICIAL_ACCOUNT = "official_account"
     MINI_PROGRAM = "mini_program"
@@ -190,6 +223,26 @@ class DigestPublicationAttemptStatus(StrEnum):
     FAILED = "failed"
 
 
+class DigestDispatchMode(StrEnum):
+    MANUAL = "manual"
+    AUTO_AFTER_ORCHESTRATION = "auto_after_orchestration"
+    RETRY_FAILED = "retry_failed"
+
+
+class DigestDispatchRunStatus(StrEnum):
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    PARTIAL_FAILED = "partial_failed"
+    FAILED = "failed"
+    SKIPPED = "skipped"
+
+
+class DigestDeliveryDecisionStatus(StrEnum):
+    ELIGIBLE = "eligible"
+    SKIPPED = "skipped"
+
+
 class OfficialAccountProviderMode(StrEnum):
     DISABLED = "disabled"
     DRY_RUN = "dry_run"
@@ -227,11 +280,121 @@ class MiniReadGrantStatus(StrEnum):
     EXPIRED = "expired"
 
 
+class SubscriptionSelfServiceGrantStatus(StrEnum):
+    ACTIVE = "active"
+    REVOKED = "revoked"
+    EXPIRED = "expired"
+
+
+class SubscriptionEditorHandoffGrantStatus(StrEnum):
+    ACTIVE = "active"
+    REVOKED = "revoked"
+    EXPIRED = "expired"
+
+
+class SubscriptionEditorHandoffIssuedBy(StrEnum):
+    MINI_HANDOFF = "mini_handoff"
+    ADMIN = "admin"
+
+
+class OfficialAccountOAuthScope(StrEnum):
+    SNSAPI_BASE = "snsapi_base"
+    SNSAPI_USERINFO = "snsapi_userinfo"
+
+
+class OfficialAccountBindingHandshakeSessionStatus(StrEnum):
+    PENDING = "pending"
+    MATCHED = "matched"
+    CLAIMED = "claimed"
+    EXPIRED = "expired"
+    CANCELLED = "cancelled"
+    FAILED = "failed"
+    CONFLICTED = "conflicted"
+
+
+class GroupWorkspaceStatus(StrEnum):
+    ACTIVE = "active"
+    ARCHIVED = "archived"
+
+
+class GroupWorkspaceMemberRole(StrEnum):
+    OWNER = "owner"
+    EDITOR = "editor"
+    VIEWER = "viewer"
+
+
+class GroupWorkspaceInviteRole(StrEnum):
+    EDITOR = "editor"
+    VIEWER = "viewer"
+
+
+class GroupWorkspaceInviteGrantStatus(StrEnum):
+    ACTIVE = "active"
+    REVOKED = "revoked"
+    EXPIRED = "expired"
+    EXHAUSTED = "exhausted"
+
+
+class GroupWorkspaceInviteClaimStatus(StrEnum):
+    CLAIMED = "claimed"
+    ALREADY_MEMBER = "already_member"
+    REJECTED = "rejected"
+
+
+class ResultShareKind(StrEnum):
+    DIGEST_ISSUE = "digest_issue"
+    PAPER_SNAPSHOT = "paper_snapshot"
+    WORKSPACE_BOARD = "workspace_board"
+
+
+class ResultShareGrantStatus(StrEnum):
+    ACTIVE = "active"
+    REVOKED = "revoked"
+    EXPIRED = "expired"
+
+
+class ResultShareAliasStatus(StrEnum):
+    ACTIVE = "active"
+    REVOKED = "revoked"
+    EXPIRED = "expired"
+
+
+class ResultShareViewAccessMode(StrEnum):
+    SHARE_TOKEN = "share_token"
+    ALIAS = "alias"
+    ALIAS_REDIRECT = "alias_redirect"
+
+
+class ResultShareViewEventType(StrEnum):
+    BOOTSTRAP_VIEW = "bootstrap_view"
+    CONTENT_VIEW = "content_view"
+    REDIRECT = "redirect"
+    INVITE_HANDOFF_REDIRECT = "invite_handoff_redirect"
+    COLLECT_HANDOFF_REDIRECT = "collect_handoff_redirect"
+
+
+class ResultShareViewOutcome(StrEnum):
+    RESOLVED = "resolved"
+    REJECTED = "rejected"
+
+
+class ResultShareHandoffTargetKind(StrEnum):
+    GROUP_WORKSPACE_INVITE_ENTRY = "group_workspace_invite_entry"
+    RESULT_SHARE_COLLECT_ENTRY = "result_share_collect_entry"
+
+
+class GroupWorkspaceResultCollectStatus(StrEnum):
+    COLLECTED = "collected"
+    ALREADY_PRESENT = "already_present"
+    REJECTED = "rejected"
+
+
 ACTIVE_DELIVERY_CHANNELS = frozenset(
     {
         ChannelType.IN_APP,
         ChannelType.EMAIL,
         ChannelType.WEBHOOK,
+        ChannelType.OFFICIAL_ACCOUNT,
     }
 )
 

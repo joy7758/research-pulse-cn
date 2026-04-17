@@ -30,14 +30,29 @@ from research_pulse_cn.domain.enums import (
     ClientType,
     DeliveryAttemptStatus,
     DeliveryJobStatus,
+    DigestDeliveryDecisionStatus,
+    DigestDispatchMode,
+    DigestDispatchRunStatus,
     DigestPublicationAttemptStatus,
     DigestPublicationMode,
     DigestPublicationStatus,
     DigestPublicationTarget,
+    ExternalRetrievalPlanStatus,
+    ExternalRetrievalRunStatus,
+    ExternalRetrievalScope,
+    ExternalRetrievalSourceKind,
+    GroupWorkspaceInviteClaimStatus,
+    GroupWorkspaceInviteGrantStatus,
+    GroupWorkspaceInviteRole,
+    GroupWorkspaceMemberRole,
+    GroupWorkspaceResultCollectStatus,
+    GroupWorkspaceStatus,
     MiniReadGrantStatus,
     MiniReadGrantType,
+    OfficialAccountBindingHandshakeSessionStatus,
     OfficialAccountCallbackPayloadFormat,
     OfficialAccountCallbackProcessingStatus,
+    OfficialAccountOAuthScope,
     OfficialAccountProviderMode,
     PaperType,
     PulseCardType,
@@ -45,8 +60,18 @@ from research_pulse_cn.domain.enums import (
     PulseJobScheduledReason,
     PulseJobStatus,
     ResearchWatchProfileSourceMode,
+    ResultShareAliasStatus,
+    ResultShareGrantStatus,
+    ResultShareHandoffTargetKind,
+    ResultShareKind,
+    ResultShareViewAccessMode,
+    ResultShareViewEventType,
+    ResultShareViewOutcome,
     SignalSource,
+    SubscriptionEditorHandoffGrantStatus,
+    SubscriptionEditorHandoffIssuedBy,
     SubscriptionFrequency,
+    SubscriptionSelfServiceGrantStatus,
     SyncEventSource,
     SyncEventType,
     SyncMutationStatus,
@@ -95,6 +120,36 @@ class AdminAccount(TimestampMixin, Base):
     created_mini_read_grants: Mapped[list[MiniReadGrant]] = relationship(
         back_populates="created_by_admin",
     )
+    issued_subscription_self_service_grants: Mapped[list[SubscriptionSelfServiceGrant]] = (
+        relationship(
+            back_populates="issued_by_admin",
+        )
+    )
+    issued_subscription_editor_handoff_grants: Mapped[list[SubscriptionEditorHandoffGrant]] = (
+        relationship(
+            back_populates="issued_by_admin",
+        )
+    )
+    issued_official_account_binding_handshake_sessions: Mapped[
+        list[OfficialAccountBindingHandshakeSession]
+    ] = relationship(
+        back_populates="issued_by_admin",
+    )
+    created_group_workspaces: Mapped[list[GroupWorkspace]] = relationship(
+        back_populates="created_by_admin",
+    )
+    added_group_workspace_papers: Mapped[list[GroupWorkspacePaper]] = relationship(
+        back_populates="added_by_admin",
+    )
+    issued_result_share_grants: Mapped[list[ResultShareGrant]] = relationship(
+        back_populates="issued_by_admin",
+    )
+    issued_result_share_aliases: Mapped[list[ResultShareAlias]] = relationship(
+        back_populates="issued_by_admin",
+    )
+    issued_group_workspace_invite_grants: Mapped[list[GroupWorkspaceInviteGrant]] = relationship(
+        back_populates="issued_by_admin",
+    )
 
 
 class UserProfile(TimestampMixin, Base):
@@ -138,6 +193,39 @@ class UserProfile(TimestampMixin, Base):
         back_populates="user",
         cascade="all, delete-orphan",
     )
+    subscription_self_service_grants: Mapped[list[SubscriptionSelfServiceGrant]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    subscription_editor_handoff_grants: Mapped[list[SubscriptionEditorHandoffGrant]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+        order_by="SubscriptionEditorHandoffGrant.created_at.desc()",
+    )
+    official_account_binding_handshake_sessions: Mapped[
+        list[OfficialAccountBindingHandshakeSession]
+    ] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+        order_by="OfficialAccountBindingHandshakeSession.created_at.desc()",
+    )
+    group_workspace_memberships: Mapped[list[GroupWorkspaceMember]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+        order_by="GroupWorkspaceMember.created_at.desc()",
+    )
+    group_workspace_invite_claims: Mapped[list[GroupWorkspaceInviteClaim]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+        order_by="GroupWorkspaceInviteClaim.created_at.desc()",
+    )
+    group_workspace_result_collect_records: Mapped[list[GroupWorkspaceResultCollectRecord]] = (
+        relationship(
+            back_populates="user",
+            cascade="all, delete-orphan",
+            order_by="GroupWorkspaceResultCollectRecord.created_at.desc()",
+        )
+    )
     work_activity_events: Mapped[list[WorkActivityEvent]] = relationship(
         back_populates="user",
         cascade="all, delete-orphan",
@@ -147,6 +235,31 @@ class UserProfile(TimestampMixin, Base):
         back_populates="user",
         cascade="all, delete-orphan",
         order_by="ResearchWatchProfile.updated_at.desc()",
+    )
+    external_retrieval_plans: Mapped[list[ExternalRetrievalPlan]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+        order_by="ExternalRetrievalPlan.updated_at.desc()",
+    )
+    external_retrieval_runs: Mapped[list[ExternalRetrievalRun]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+        order_by="ExternalRetrievalRun.created_at.desc()",
+    )
+    digest_dispatch_runs: Mapped[list[DigestDispatchRun]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+        order_by="DigestDispatchRun.created_at.desc()",
+    )
+    digest_delivery_decisions: Mapped[list[DigestDeliveryDecision]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+        order_by="DigestDeliveryDecision.created_at.desc()",
+    )
+    external_retrieval_results: Mapped[list[ExternalRetrievedRecord]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+        order_by="ExternalRetrievedRecord.created_at.desc()",
     )
     sync_events: Mapped[list[SyncEvent]] = relationship(
         back_populates="user",
@@ -189,6 +302,33 @@ class PaperProfile(TimestampMixin, Base):
     )
     research_watch_profiles: Mapped[list[ResearchWatchProfile]] = relationship(
         back_populates="paper",
+    )
+    external_retrieval_plans: Mapped[list[ExternalRetrievalPlan]] = relationship(
+        back_populates="paper",
+    )
+    group_workspace_entries: Mapped[list[GroupWorkspacePaper]] = relationship(
+        back_populates="paper",
+        cascade="all, delete-orphan",
+        order_by="GroupWorkspacePaper.created_at.desc()",
+    )
+    result_share_grants: Mapped[list[ResultShareGrant]] = relationship(
+        back_populates="paper",
+        order_by="ResultShareGrant.created_at.desc()",
+    )
+    collected_group_workspace_results: Mapped[list[GroupWorkspaceResultCollectRecord]] = (
+        relationship(
+            back_populates="collected_paper",
+            cascade="all, delete-orphan",
+            foreign_keys="GroupWorkspaceResultCollectRecord.collected_paper_id",
+            order_by="GroupWorkspaceResultCollectRecord.created_at.desc()",
+        )
+    )
+    source_group_workspace_result_collect_records: Mapped[
+        list[GroupWorkspaceResultCollectRecord]
+    ] = relationship(
+        back_populates="source_paper",
+        foreign_keys="GroupWorkspaceResultCollectRecord.source_paper_id",
+        order_by="GroupWorkspaceResultCollectRecord.created_at.desc()",
     )
 
 
@@ -317,6 +457,7 @@ class PulseCard(Base):
     why_now: Mapped[str] = mapped_column(Text, nullable=False)
     action_text: Mapped[str | None] = mapped_column(String(500))
     deep_link: Mapped[str | None] = mapped_column(String(500))
+    external_reference_key: Mapped[str | None] = mapped_column(String(500))
     evidence_refs: Mapped[list[str]] = mapped_column(JSON_VARIANT, default=list)
     candidate_metadata: Mapped[dict[str, Any] | None] = mapped_column(JSON_VARIANT)
     generated_by: Mapped[dict[str, Any]] = mapped_column(JSON_VARIANT, default=dict)
@@ -381,6 +522,17 @@ class WeChatIdentityBinding(TimestampMixin, Base):
     mini_read_grants: Mapped[list[MiniReadGrant]] = relationship(
         back_populates="binding",
     )
+    subscription_self_service_grants: Mapped[list[SubscriptionSelfServiceGrant]] = relationship(
+        back_populates="binding",
+    )
+    subscription_editor_handoff_grants: Mapped[list[SubscriptionEditorHandoffGrant]] = relationship(
+        back_populates="binding",
+    )
+    claimed_official_account_binding_handshake_sessions: Mapped[
+        list[OfficialAccountBindingHandshakeSession]
+    ] = relationship(
+        back_populates="claimed_binding",
+    )
 
 
 class PulseDigestIssue(TimestampMixin, Base):
@@ -423,8 +575,22 @@ class PulseDigestIssue(TimestampMixin, Base):
         back_populates="digest_issue",
         cascade="all, delete-orphan",
     )
+    dispatch_runs: Mapped[list[DigestDispatchRun]] = relationship(
+        back_populates="digest_issue",
+        cascade="all, delete-orphan",
+        order_by="DigestDispatchRun.created_at.desc()",
+    )
+    delivery_decisions: Mapped[list[DigestDeliveryDecision]] = relationship(
+        back_populates="digest_issue",
+        cascade="all, delete-orphan",
+        order_by="DigestDeliveryDecision.created_at.desc()",
+    )
     mini_read_grants: Mapped[list[MiniReadGrant]] = relationship(
         back_populates="digest_issue",
+    )
+    result_share_grants: Mapped[list[ResultShareGrant]] = relationship(
+        back_populates="digest_issue",
+        order_by="ResultShareGrant.created_at.desc()",
     )
 
 
@@ -462,6 +628,621 @@ class MiniReadGrant(TimestampMixin, Base):
     created_by_admin: Mapped[AdminAccount | None] = relationship(
         back_populates="created_mini_read_grants"
     )
+    subscription_editor_handoff_grants: Mapped[list[SubscriptionEditorHandoffGrant]] = relationship(
+        back_populates="mini_grant",
+    )
+
+
+class SubscriptionSelfServiceGrant(TimestampMixin, Base):
+    __tablename__ = "subscription_self_service_grants"
+    __table_args__ = (
+        Index(
+            "ix_subscription_self_service_grants_user_channel_created_at",
+            "user_id",
+            "channel",
+            "created_at",
+        ),
+        Index(
+            "ix_subscription_self_service_grants_status_expires_at",
+            "status",
+            "expires_at",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("user_profiles.id", ondelete="CASCADE"))
+    binding_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("wechat_identity_bindings.id", ondelete="SET NULL")
+    )
+    channel: Mapped[ChannelType] = mapped_column(
+        Enum(ChannelType, native_enum=False),
+        nullable=False,
+    )
+    grant_scope_json: Mapped[dict[str, Any] | None] = mapped_column("grant_scope", JSON_VARIANT)
+    token_hash: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    status: Mapped[SubscriptionSelfServiceGrantStatus] = mapped_column(
+        Enum(SubscriptionSelfServiceGrantStatus, native_enum=False),
+        nullable=False,
+        default=SubscriptionSelfServiceGrantStatus.ACTIVE,
+    )
+    display_label: Mapped[str | None] = mapped_column(String(255))
+    issued_by_admin_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("admin_accounts.id", ondelete="SET NULL")
+    )
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    user: Mapped[UserProfile] = relationship(back_populates="subscription_self_service_grants")
+    binding: Mapped[WeChatIdentityBinding | None] = relationship(
+        back_populates="subscription_self_service_grants"
+    )
+    issued_by_admin: Mapped[AdminAccount | None] = relationship(
+        back_populates="issued_subscription_self_service_grants"
+    )
+    official_account_binding_handshake_sessions: Mapped[
+        list[OfficialAccountBindingHandshakeSession]
+    ] = relationship(back_populates="self_service_grant")
+    subscription_editor_handoff_grants: Mapped[list[SubscriptionEditorHandoffGrant]] = relationship(
+        back_populates="self_service_grant",
+    )
+
+
+class SubscriptionEditorHandoffGrant(TimestampMixin, Base):
+    __tablename__ = "subscription_editor_handoff_grants"
+    __table_args__ = (
+        Index(
+            "ix_subscription_editor_handoff_grants_user_channel_created_at",
+            "user_id",
+            "channel",
+            "created_at",
+        ),
+        Index(
+            "ix_subscription_editor_handoff_grants_status_expires_at",
+            "status",
+            "expires_at",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("user_profiles.id", ondelete="CASCADE"))
+    channel: Mapped[ChannelType] = mapped_column(
+        Enum(ChannelType, native_enum=False),
+        nullable=False,
+    )
+    mini_grant_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("mini_read_grants.id", ondelete="SET NULL")
+    )
+    self_service_grant_id: Mapped[UUID] = mapped_column(
+        ForeignKey("subscription_self_service_grants.id", ondelete="CASCADE")
+    )
+    binding_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("wechat_identity_bindings.id", ondelete="SET NULL")
+    )
+    token_hash: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    status: Mapped[SubscriptionEditorHandoffGrantStatus] = mapped_column(
+        Enum(SubscriptionEditorHandoffGrantStatus, native_enum=False),
+        nullable=False,
+        default=SubscriptionEditorHandoffGrantStatus.ACTIVE,
+    )
+    display_label: Mapped[str | None] = mapped_column(String(255))
+    issued_by: Mapped[SubscriptionEditorHandoffIssuedBy] = mapped_column(
+        Enum(SubscriptionEditorHandoffIssuedBy, native_enum=False),
+        nullable=False,
+        default=SubscriptionEditorHandoffIssuedBy.MINI_HANDOFF,
+    )
+    issued_by_admin_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("admin_accounts.id", ondelete="SET NULL")
+    )
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    user: Mapped[UserProfile] = relationship(back_populates="subscription_editor_handoff_grants")
+    mini_grant: Mapped[MiniReadGrant | None] = relationship(
+        back_populates="subscription_editor_handoff_grants"
+    )
+    self_service_grant: Mapped[SubscriptionSelfServiceGrant] = relationship(
+        back_populates="subscription_editor_handoff_grants"
+    )
+    binding: Mapped[WeChatIdentityBinding | None] = relationship(
+        back_populates="subscription_editor_handoff_grants"
+    )
+    issued_by_admin: Mapped[AdminAccount | None] = relationship(
+        back_populates="issued_subscription_editor_handoff_grants"
+    )
+
+
+class OfficialAccountBindingHandshakeSession(TimestampMixin, Base):
+    __tablename__ = "official_account_binding_handshake_sessions"
+    __table_args__ = (
+        Index(
+            "ix_oa_binding_handshake_sessions_user_channel_created_at",
+            "user_id",
+            "channel",
+            "created_at",
+        ),
+        Index(
+            "ix_oa_binding_handshake_sessions_status_expires_at",
+            "status",
+            "expires_at",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("user_profiles.id", ondelete="CASCADE"))
+    channel: Mapped[ChannelType] = mapped_column(
+        Enum(ChannelType, native_enum=False),
+        nullable=False,
+    )
+    app_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    display_label: Mapped[str | None] = mapped_column(String(255))
+    self_service_grant_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("subscription_self_service_grants.id", ondelete="SET NULL")
+    )
+    issued_by_admin_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("admin_accounts.id", ondelete="SET NULL")
+    )
+    state_token_hash: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    requested_scope: Mapped[OfficialAccountOAuthScope] = mapped_column(
+        Enum(OfficialAccountOAuthScope, native_enum=False),
+        nullable=False,
+        default=OfficialAccountOAuthScope.SNSAPI_BASE,
+    )
+    authorized_scope: Mapped[OfficialAccountOAuthScope | None] = mapped_column(
+        Enum(OfficialAccountOAuthScope, native_enum=False)
+    )
+    oauth_openid_hash: Mapped[str | None] = mapped_column(String(255))
+    status: Mapped[OfficialAccountBindingHandshakeSessionStatus] = mapped_column(
+        Enum(OfficialAccountBindingHandshakeSessionStatus, native_enum=False),
+        nullable=False,
+        default=OfficialAccountBindingHandshakeSessionStatus.PENDING,
+    )
+    matched_callback_event_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("official_account_callback_events.id", ondelete="SET NULL")
+    )
+    claimed_binding_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("wechat_identity_bindings.id", ondelete="SET NULL")
+    )
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_viewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    authorization_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    matched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    oauth_completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    userinfo_fetched: Mapped[bool] = mapped_column(default=False, nullable=False)
+    last_error: Mapped[str | None] = mapped_column(Text)
+
+    user: Mapped[UserProfile] = relationship(
+        back_populates="official_account_binding_handshake_sessions"
+    )
+    self_service_grant: Mapped[SubscriptionSelfServiceGrant | None] = relationship(
+        back_populates="official_account_binding_handshake_sessions"
+    )
+    issued_by_admin: Mapped[AdminAccount | None] = relationship(
+        back_populates="issued_official_account_binding_handshake_sessions"
+    )
+    matched_callback_event: Mapped[OfficialAccountCallbackEvent | None] = relationship(
+        back_populates="matched_handshake_sessions",
+        foreign_keys=[matched_callback_event_id],
+    )
+    claimed_binding: Mapped[WeChatIdentityBinding | None] = relationship(
+        back_populates="claimed_official_account_binding_handshake_sessions"
+    )
+
+
+class GroupWorkspace(TimestampMixin, Base):
+    __tablename__ = "group_workspaces"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    slug: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[GroupWorkspaceStatus] = mapped_column(
+        Enum(GroupWorkspaceStatus, native_enum=False),
+        nullable=False,
+        default=GroupWorkspaceStatus.ACTIVE,
+    )
+    created_by_admin_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("admin_accounts.id", ondelete="SET NULL")
+    )
+
+    created_by_admin: Mapped[AdminAccount | None] = relationship(
+        back_populates="created_group_workspaces"
+    )
+    members: Mapped[list[GroupWorkspaceMember]] = relationship(
+        back_populates="workspace",
+        cascade="all, delete-orphan",
+        order_by="GroupWorkspaceMember.joined_at.asc()",
+    )
+    papers: Mapped[list[GroupWorkspacePaper]] = relationship(
+        back_populates="workspace",
+        cascade="all, delete-orphan",
+        order_by="GroupWorkspacePaper.created_at.desc()",
+    )
+    result_share_grants: Mapped[list[ResultShareGrant]] = relationship(
+        back_populates="workspace",
+        order_by="ResultShareGrant.created_at.desc()",
+    )
+    invite_grants: Mapped[list[GroupWorkspaceInviteGrant]] = relationship(
+        back_populates="workspace",
+        order_by="GroupWorkspaceInviteGrant.created_at.desc()",
+    )
+    invite_claims: Mapped[list[GroupWorkspaceInviteClaim]] = relationship(
+        back_populates="workspace",
+        order_by="GroupWorkspaceInviteClaim.created_at.desc()",
+    )
+    result_collect_records: Mapped[list[GroupWorkspaceResultCollectRecord]] = relationship(
+        back_populates="workspace",
+        cascade="all, delete-orphan",
+        order_by="GroupWorkspaceResultCollectRecord.created_at.desc()",
+    )
+
+
+class GroupWorkspaceMember(TimestampMixin, Base):
+    __tablename__ = "group_workspace_members"
+    __table_args__ = (
+        UniqueConstraint(
+            "workspace_id",
+            "user_id",
+            name="uq_group_workspace_members_workspace_user",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    workspace_id: Mapped[UUID] = mapped_column(
+        ForeignKey("group_workspaces.id", ondelete="CASCADE")
+    )
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("user_profiles.id", ondelete="CASCADE"))
+    role: Mapped[GroupWorkspaceMemberRole] = mapped_column(
+        Enum(GroupWorkspaceMemberRole, native_enum=False),
+        nullable=False,
+        default=GroupWorkspaceMemberRole.VIEWER,
+    )
+    joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    workspace: Mapped[GroupWorkspace] = relationship(back_populates="members")
+    user: Mapped[UserProfile] = relationship(back_populates="group_workspace_memberships")
+    invite_claims: Mapped[list[GroupWorkspaceInviteClaim]] = relationship(
+        back_populates="membership",
+        order_by="GroupWorkspaceInviteClaim.created_at.desc()",
+    )
+
+
+class GroupWorkspacePaper(TimestampMixin, Base):
+    __tablename__ = "group_workspace_papers"
+    __table_args__ = (
+        UniqueConstraint(
+            "workspace_id",
+            "paper_id",
+            name="uq_group_workspace_papers_workspace_paper",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    workspace_id: Mapped[UUID] = mapped_column(
+        ForeignKey("group_workspaces.id", ondelete="CASCADE")
+    )
+    paper_id: Mapped[UUID] = mapped_column(ForeignKey("paper_profiles.id", ondelete="CASCADE"))
+    added_by_admin_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("admin_accounts.id", ondelete="SET NULL")
+    )
+
+    workspace: Mapped[GroupWorkspace] = relationship(back_populates="papers")
+    paper: Mapped[PaperProfile] = relationship(back_populates="group_workspace_entries")
+    added_by_admin: Mapped[AdminAccount | None] = relationship(
+        back_populates="added_group_workspace_papers"
+    )
+
+
+class GroupWorkspaceInviteGrant(TimestampMixin, Base):
+    __tablename__ = "group_workspace_invite_grants"
+    __table_args__ = (
+        Index(
+            "ix_group_workspace_invite_grants_workspace_status_created_at",
+            "workspace_id",
+            "status",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    workspace_id: Mapped[UUID] = mapped_column(
+        ForeignKey("group_workspaces.id", ondelete="CASCADE")
+    )
+    role_to_assign: Mapped[GroupWorkspaceInviteRole] = mapped_column(
+        Enum(GroupWorkspaceInviteRole, native_enum=False),
+        nullable=False,
+    )
+    token_hash: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    status: Mapped[GroupWorkspaceInviteGrantStatus] = mapped_column(
+        Enum(GroupWorkspaceInviteGrantStatus, native_enum=False),
+        nullable=False,
+        default=GroupWorkspaceInviteGrantStatus.ACTIVE,
+    )
+    display_label: Mapped[str | None] = mapped_column(String(255))
+    max_claims: Mapped[int | None] = mapped_column(Integer)
+    claim_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    issued_by_admin_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("admin_accounts.id", ondelete="SET NULL")
+    )
+
+    workspace: Mapped[GroupWorkspace] = relationship(back_populates="invite_grants")
+    issued_by_admin: Mapped[AdminAccount | None] = relationship(
+        back_populates="issued_group_workspace_invite_grants"
+    )
+    claims: Mapped[list[GroupWorkspaceInviteClaim]] = relationship(
+        back_populates="invite_grant",
+        order_by="GroupWorkspaceInviteClaim.created_at.desc()",
+    )
+
+
+class GroupWorkspaceInviteClaim(TimestampMixin, Base):
+    __tablename__ = "group_workspace_invite_claims"
+    __table_args__ = (
+        UniqueConstraint(
+            "invite_grant_id",
+            "user_id",
+            name="uq_group_workspace_invite_claims_grant_user",
+        ),
+        Index(
+            "ix_group_workspace_invite_claims_workspace_created_at",
+            "workspace_id",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    invite_grant_id: Mapped[UUID] = mapped_column(
+        ForeignKey("group_workspace_invite_grants.id", ondelete="CASCADE")
+    )
+    workspace_id: Mapped[UUID] = mapped_column(
+        ForeignKey("group_workspaces.id", ondelete="CASCADE")
+    )
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("user_profiles.id", ondelete="CASCADE"))
+    membership_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("group_workspace_members.id", ondelete="SET NULL")
+    )
+    role_assigned: Mapped[GroupWorkspaceInviteRole] = mapped_column(
+        Enum(GroupWorkspaceInviteRole, native_enum=False),
+        nullable=False,
+    )
+    claim_status: Mapped[GroupWorkspaceInviteClaimStatus] = mapped_column(
+        Enum(GroupWorkspaceInviteClaimStatus, native_enum=False),
+        nullable=False,
+    )
+    reason_codes: Mapped[list[str]] = mapped_column(JSON_VARIANT, default=list, nullable=False)
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    invite_grant: Mapped[GroupWorkspaceInviteGrant] = relationship(back_populates="claims")
+    workspace: Mapped[GroupWorkspace] = relationship(back_populates="invite_claims")
+    user: Mapped[UserProfile] = relationship(back_populates="group_workspace_invite_claims")
+    membership: Mapped[GroupWorkspaceMember | None] = relationship(back_populates="invite_claims")
+
+
+class GroupWorkspaceResultCollectRecord(TimestampMixin, Base):
+    __tablename__ = "group_workspace_result_collect_records"
+    __table_args__ = (
+        Index(
+            "ix_group_workspace_result_collect_records_workspace_status_created_at",
+            "workspace_id",
+            "status",
+            "created_at",
+        ),
+        UniqueConstraint("idempotency_key", name="uq_group_workspace_result_collect_idempotency"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    workspace_id: Mapped[UUID] = mapped_column(
+        ForeignKey("group_workspaces.id", ondelete="CASCADE")
+    )
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("user_profiles.id", ondelete="CASCADE"))
+    result_share_grant_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("result_share_grants.id", ondelete="SET NULL")
+    )
+    share_kind: Mapped[ResultShareKind] = mapped_column(
+        Enum(ResultShareKind, native_enum=False),
+        nullable=False,
+    )
+    digest_issue_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("pulse_digest_issues.id", ondelete="SET NULL")
+    )
+    source_pulse_card_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("pulse_cards.id", ondelete="SET NULL")
+    )
+    source_paper_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("paper_profiles.id", ondelete="SET NULL")
+    )
+    collected_paper_id: Mapped[UUID] = mapped_column(
+        ForeignKey("paper_profiles.id", ondelete="CASCADE")
+    )
+    idempotency_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[GroupWorkspaceResultCollectStatus] = mapped_column(
+        Enum(GroupWorkspaceResultCollectStatus, native_enum=False),
+        nullable=False,
+    )
+    reason_codes: Mapped[list[str]] = mapped_column(JSON_VARIANT, default=list, nullable=False)
+
+    workspace: Mapped[GroupWorkspace] = relationship(back_populates="result_collect_records")
+    user: Mapped[UserProfile] = relationship(
+        back_populates="group_workspace_result_collect_records"
+    )
+    result_share_grant: Mapped[ResultShareGrant | None] = relationship(
+        back_populates="result_collect_records"
+    )
+    digest_issue: Mapped[PulseDigestIssue | None] = relationship()
+    source_pulse_card: Mapped[PulseCard | None] = relationship()
+    source_paper: Mapped[PaperProfile | None] = relationship(
+        back_populates="source_group_workspace_result_collect_records",
+        foreign_keys=[source_paper_id],
+    )
+    collected_paper: Mapped[PaperProfile] = relationship(
+        back_populates="collected_group_workspace_results",
+        foreign_keys=[collected_paper_id],
+    )
+
+
+class ResultShareGrant(TimestampMixin, Base):
+    __tablename__ = "result_share_grants"
+    __table_args__ = (
+        Index(
+            "ix_result_share_grants_kind_status_created_at",
+            "share_kind",
+            "status",
+            "created_at",
+        ),
+        Index(
+            "ix_result_share_grants_workspace_created_at",
+            "workspace_id",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    share_kind: Mapped[ResultShareKind] = mapped_column(
+        Enum(ResultShareKind, native_enum=False),
+        nullable=False,
+    )
+    workspace_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("group_workspaces.id", ondelete="SET NULL")
+    )
+    digest_issue_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("pulse_digest_issues.id", ondelete="SET NULL")
+    )
+    paper_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("paper_profiles.id", ondelete="SET NULL")
+    )
+    token_hash: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    status: Mapped[ResultShareGrantStatus] = mapped_column(
+        Enum(ResultShareGrantStatus, native_enum=False),
+        nullable=False,
+        default=ResultShareGrantStatus.ACTIVE,
+    )
+    display_label: Mapped[str | None] = mapped_column(String(255))
+    issued_by_admin_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("admin_accounts.id", ondelete="SET NULL")
+    )
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    workspace: Mapped[GroupWorkspace | None] = relationship(back_populates="result_share_grants")
+    digest_issue: Mapped[PulseDigestIssue | None] = relationship(
+        back_populates="result_share_grants"
+    )
+    paper: Mapped[PaperProfile | None] = relationship(back_populates="result_share_grants")
+    issued_by_admin: Mapped[AdminAccount | None] = relationship(
+        back_populates="issued_result_share_grants"
+    )
+    aliases: Mapped[list[ResultShareAlias]] = relationship(
+        back_populates="result_share_grant",
+        order_by="ResultShareAlias.created_at.desc()",
+    )
+    view_events: Mapped[list[ResultShareViewEvent]] = relationship(
+        back_populates="result_share_grant",
+        order_by="ResultShareViewEvent.occurred_at.desc()",
+    )
+    result_collect_records: Mapped[list[GroupWorkspaceResultCollectRecord]] = relationship(
+        back_populates="result_share_grant",
+        order_by="GroupWorkspaceResultCollectRecord.created_at.desc()",
+    )
+
+
+class ResultShareAlias(TimestampMixin, Base):
+    __tablename__ = "result_share_aliases"
+    __table_args__ = (
+        Index(
+            "ix_result_share_aliases_status_created_at",
+            "status",
+            "created_at",
+        ),
+        Index(
+            "ix_result_share_aliases_result_share_grant_created_at",
+            "result_share_grant_id",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    result_share_grant_id: Mapped[UUID] = mapped_column(
+        ForeignKey("result_share_grants.id", ondelete="CASCADE")
+    )
+    alias_hash: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    alias_prefix: Mapped[str | None] = mapped_column(String(64))
+    status: Mapped[ResultShareAliasStatus] = mapped_column(
+        Enum(ResultShareAliasStatus, native_enum=False),
+        nullable=False,
+        default=ResultShareAliasStatus.ACTIVE,
+    )
+    display_label: Mapped[str | None] = mapped_column(String(255))
+    issued_by_admin_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("admin_accounts.id", ondelete="SET NULL")
+    )
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    result_share_grant: Mapped[ResultShareGrant] = relationship(back_populates="aliases")
+    issued_by_admin: Mapped[AdminAccount | None] = relationship(
+        back_populates="issued_result_share_aliases"
+    )
+    view_events: Mapped[list[ResultShareViewEvent]] = relationship(
+        back_populates="result_share_alias",
+        order_by="ResultShareViewEvent.occurred_at.desc()",
+    )
+
+
+class ResultShareViewEvent(Base):
+    __tablename__ = "result_share_view_events"
+    __table_args__ = (
+        Index(
+            "ix_result_share_view_events_occurred_at",
+            "occurred_at",
+        ),
+        Index(
+            "ix_result_share_view_events_result_share_grant_occurred_at",
+            "result_share_grant_id",
+            "occurred_at",
+        ),
+        Index(
+            "ix_result_share_view_events_result_share_alias_occurred_at",
+            "result_share_alias_id",
+            "occurred_at",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    result_share_grant_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("result_share_grants.id", ondelete="SET NULL")
+    )
+    result_share_alias_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("result_share_aliases.id", ondelete="SET NULL")
+    )
+    share_kind: Mapped[ResultShareKind] = mapped_column(
+        Enum(ResultShareKind, native_enum=False),
+        nullable=False,
+    )
+    access_mode: Mapped[ResultShareViewAccessMode] = mapped_column(
+        Enum(ResultShareViewAccessMode, native_enum=False),
+        nullable=False,
+    )
+    event_type: Mapped[ResultShareViewEventType] = mapped_column(
+        Enum(ResultShareViewEventType, native_enum=False),
+        nullable=False,
+    )
+    outcome: Mapped[ResultShareViewOutcome] = mapped_column(
+        Enum(ResultShareViewOutcome, native_enum=False),
+        nullable=False,
+    )
+    handoff_target_kind: Mapped[ResultShareHandoffTargetKind | None] = mapped_column(
+        Enum(ResultShareHandoffTargetKind, native_enum=False),
+    )
+    request_fingerprint_hash: Mapped[str | None] = mapped_column(String(255))
+    referrer_host: Mapped[str | None] = mapped_column(String(255))
+    user_agent_family: Mapped[str | None] = mapped_column(String(128))
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    result_share_grant: Mapped[ResultShareGrant | None] = relationship(back_populates="view_events")
+    result_share_alias: Mapped[ResultShareAlias | None] = relationship(back_populates="view_events")
 
 
 class PulseDigestItem(Base):
@@ -545,6 +1326,117 @@ class DigestPublicationJob(TimestampMixin, Base):
     )
 
 
+class DigestDispatchRun(TimestampMixin, Base):
+    __tablename__ = "digest_dispatch_runs"
+    __table_args__ = (
+        Index(
+            "ix_digest_dispatch_runs_issue_target_status",
+            "digest_issue_id",
+            "publish_target",
+            "status",
+        ),
+        Index("ix_digest_dispatch_runs_user_created_at", "user_id", "created_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    digest_issue_id: Mapped[UUID] = mapped_column(
+        ForeignKey("pulse_digest_issues.id", ondelete="CASCADE")
+    )
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("user_profiles.id", ondelete="CASCADE"))
+    publish_target: Mapped[DigestPublicationTarget] = mapped_column(
+        Enum(DigestPublicationTarget, native_enum=False),
+        nullable=False,
+    )
+    dispatch_mode: Mapped[DigestDispatchMode] = mapped_column(
+        Enum(DigestDispatchMode, native_enum=False),
+        nullable=False,
+        default=DigestDispatchMode.MANUAL,
+    )
+    provider_mode: Mapped[OfficialAccountProviderMode] = mapped_column(
+        Enum(OfficialAccountProviderMode, native_enum=False),
+        nullable=False,
+    )
+    status: Mapped[DigestDispatchRunStatus] = mapped_column(
+        Enum(DigestDispatchRunStatus, native_enum=False),
+        nullable=False,
+        default=DigestDispatchRunStatus.PENDING,
+    )
+    total_jobs: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    eligible_jobs: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    previewed_jobs: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    sent_jobs: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    failed_jobs: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    skipped_jobs: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error: Mapped[str | None] = mapped_column(Text)
+
+    digest_issue: Mapped[PulseDigestIssue] = relationship(back_populates="dispatch_runs")
+    user: Mapped[UserProfile] = relationship(back_populates="digest_dispatch_runs")
+    attempts: Mapped[list[DigestPublicationAttempt]] = relationship(
+        back_populates="dispatch_run",
+        order_by="DigestPublicationAttempt.started_at",
+    )
+    delivery_decisions: Mapped[list[DigestDeliveryDecision]] = relationship(
+        back_populates="dispatch_run",
+        order_by="DigestDeliveryDecision.created_at",
+    )
+
+
+class DigestDeliveryDecision(Base):
+    __tablename__ = "digest_delivery_decisions"
+    __table_args__ = (
+        Index(
+            "ix_digest_delivery_decisions_issue_channel_created_at",
+            "digest_issue_id",
+            "channel",
+            "created_at",
+        ),
+        Index(
+            "ix_digest_delivery_decisions_user_channel_created_at",
+            "user_id",
+            "channel",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    digest_issue_id: Mapped[UUID] = mapped_column(
+        ForeignKey("pulse_digest_issues.id", ondelete="CASCADE")
+    )
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("user_profiles.id", ondelete="CASCADE"))
+    channel: Mapped[ChannelType] = mapped_column(
+        Enum(ChannelType, native_enum=False),
+        nullable=False,
+    )
+    subscription_policy_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("subscription_policies.id", ondelete="SET NULL")
+    )
+    dispatch_run_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("digest_dispatch_runs.id", ondelete="SET NULL")
+    )
+    decision: Mapped[DigestDeliveryDecisionStatus] = mapped_column(
+        Enum(DigestDeliveryDecisionStatus, native_enum=False),
+        nullable=False,
+    )
+    reason_codes: Mapped[list[str]] = mapped_column(JSON_VARIANT, default=list, nullable=False)
+    effective_timezone: Mapped[str] = mapped_column(String(100), nullable=False)
+    local_issue_weekday: Mapped[int | None] = mapped_column(Integer)
+    selected_card_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    focus_card_type: Mapped[str | None] = mapped_column(String(100))
+    quiet_hours: Mapped[dict[str, Any] | None] = mapped_column(JSON_VARIANT)
+    muted_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    next_allowed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    digest_issue: Mapped[PulseDigestIssue] = relationship(back_populates="delivery_decisions")
+    user: Mapped[UserProfile] = relationship(back_populates="digest_delivery_decisions")
+    subscription_policy: Mapped[SubscriptionPolicy | None] = relationship()
+    dispatch_run: Mapped[DigestDispatchRun | None] = relationship(
+        back_populates="delivery_decisions"
+    )
+
+
 class DigestPublicationAttempt(Base):
     __tablename__ = "digest_publication_attempts"
     __table_args__ = (
@@ -558,6 +1450,9 @@ class DigestPublicationAttempt(Base):
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     digest_publication_job_id: Mapped[UUID] = mapped_column(
         ForeignKey("digest_publication_jobs.id", ondelete="CASCADE")
+    )
+    dispatch_run_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("digest_dispatch_runs.id", ondelete="SET NULL")
     )
     attempt_number: Mapped[int] = mapped_column(Integer, nullable=False)
     provider_name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -579,6 +1474,7 @@ class DigestPublicationAttempt(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     digest_publication_job: Mapped[DigestPublicationJob] = relationship(back_populates="attempts")
+    dispatch_run: Mapped[DigestDispatchRun | None] = relationship(back_populates="attempts")
 
 
 class OfficialAccountCallbackEvent(Base):
@@ -618,6 +1514,10 @@ class OfficialAccountCallbackEvent(Base):
 
     linked_binding: Mapped[WeChatIdentityBinding | None] = relationship(
         back_populates="callback_events"
+    )
+    matched_handshake_sessions: Mapped[list[OfficialAccountBindingHandshakeSession]] = relationship(
+        back_populates="matched_callback_event",
+        foreign_keys="OfficialAccountBindingHandshakeSession.matched_callback_event_id",
     )
 
 
@@ -908,3 +1808,172 @@ class ResearchWatchProfile(TimestampMixin, Base):
 
     user: Mapped[UserProfile] = relationship(back_populates="research_watch_profiles")
     paper: Mapped[PaperProfile | None] = relationship(back_populates="research_watch_profiles")
+    external_retrieval_plans: Mapped[list[ExternalRetrievalPlan]] = relationship(
+        back_populates="watch_profile",
+    )
+
+
+class ExternalRetrievalPlan(TimestampMixin, Base):
+    __tablename__ = "external_retrieval_plans"
+    __table_args__ = (
+        Index(
+            "ix_external_retrieval_plans_user_source",
+            "user_id",
+            "source_kind",
+            "created_at",
+        ),
+        Index("ix_external_retrieval_plans_scope", "retrieval_scope"),
+        Index("ix_external_retrieval_plans_paper", "paper_id"),
+        Index("ix_external_retrieval_plans_watch_profile", "watch_profile_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("user_profiles.id", ondelete="CASCADE"))
+    source_kind: Mapped[ExternalRetrievalSourceKind] = mapped_column(
+        Enum(ExternalRetrievalSourceKind, native_enum=False),
+        nullable=False,
+    )
+    retrieval_scope: Mapped[ExternalRetrievalScope] = mapped_column(
+        Enum(ExternalRetrievalScope, native_enum=False),
+        nullable=False,
+    )
+    watch_profile_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("research_watch_profiles.id", ondelete="SET NULL")
+    )
+    paper_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("paper_profiles.id", ondelete="SET NULL")
+    )
+    plan_label: Mapped[str] = mapped_column(String(255), nullable=False)
+    query_text: Mapped[str] = mapped_column(Text, nullable=False)
+    query_payload: Mapped[dict[str, Any]] = mapped_column(JSON_VARIANT, default=dict)
+    effective_inputs: Mapped[dict[str, Any]] = mapped_column(JSON_VARIANT, default=dict)
+    reason_codes: Mapped[list[str]] = mapped_column(JSON_VARIANT, default=list)
+    plan_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    status: Mapped[ExternalRetrievalPlanStatus] = mapped_column(
+        Enum(ExternalRetrievalPlanStatus, native_enum=False),
+        nullable=False,
+        default=ExternalRetrievalPlanStatus.PLANNED,
+    )
+
+    user: Mapped[UserProfile] = relationship(back_populates="external_retrieval_plans")
+    watch_profile: Mapped[ResearchWatchProfile | None] = relationship(
+        back_populates="external_retrieval_plans"
+    )
+    paper: Mapped[PaperProfile | None] = relationship(back_populates="external_retrieval_plans")
+    runs: Mapped[list[ExternalRetrievalRun]] = relationship(
+        back_populates="plan",
+        cascade="all, delete-orphan",
+        order_by="ExternalRetrievalRun.created_at.desc()",
+    )
+    results: Mapped[list[ExternalRetrievedRecord]] = relationship(
+        back_populates="plan",
+        cascade="all, delete-orphan",
+        order_by="ExternalRetrievedRecord.sort_order",
+    )
+
+
+class ExternalRetrievalRun(TimestampMixin, Base):
+    __tablename__ = "external_retrieval_runs"
+    __table_args__ = (
+        Index(
+            "ix_external_retrieval_runs_plan_status",
+            "plan_id",
+            "status",
+            "created_at",
+        ),
+        Index(
+            "ix_external_retrieval_runs_user_source",
+            "user_id",
+            "source_kind",
+            "created_at",
+        ),
+        Index("ix_external_retrieval_runs_scope", "retrieval_scope"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    plan_id: Mapped[UUID] = mapped_column(
+        ForeignKey("external_retrieval_plans.id", ondelete="CASCADE")
+    )
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("user_profiles.id", ondelete="CASCADE"))
+    source_kind: Mapped[ExternalRetrievalSourceKind] = mapped_column(
+        Enum(ExternalRetrievalSourceKind, native_enum=False),
+        nullable=False,
+    )
+    retrieval_scope: Mapped[ExternalRetrievalScope] = mapped_column(
+        Enum(ExternalRetrievalScope, native_enum=False),
+        nullable=False,
+    )
+    status: Mapped[ExternalRetrievalRunStatus] = mapped_column(
+        Enum(ExternalRetrievalRunStatus, native_enum=False),
+        nullable=False,
+        default=ExternalRetrievalRunStatus.PENDING,
+    )
+    request_url: Mapped[str | None] = mapped_column(Text)
+    request_payload: Mapped[dict[str, Any] | None] = mapped_column(JSON_VARIANT)
+    response_summary: Mapped[dict[str, Any] | None] = mapped_column(JSON_VARIANT)
+    raw_result_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    normalized_result_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error: Mapped[str | None] = mapped_column(Text)
+
+    plan: Mapped[ExternalRetrievalPlan] = relationship(back_populates="runs")
+    user: Mapped[UserProfile] = relationship(back_populates="external_retrieval_runs")
+    results: Mapped[list[ExternalRetrievedRecord]] = relationship(
+        back_populates="run",
+        cascade="all, delete-orphan",
+        order_by="ExternalRetrievedRecord.sort_order",
+    )
+
+
+class ExternalRetrievedRecord(TimestampMixin, Base):
+    __tablename__ = "external_retrieved_records"
+    __table_args__ = (
+        UniqueConstraint(
+            "run_id",
+            "external_id",
+            name="uq_external_retrieved_records_run_external_id",
+        ),
+        Index(
+            "ix_external_retrieved_records_user_source",
+            "user_id",
+            "source_kind",
+            "created_at",
+        ),
+        Index("ix_external_retrieved_records_run_sort", "run_id", "sort_order"),
+        Index("ix_external_retrieved_records_plan", "plan_id"),
+        Index("ix_external_retrieved_records_scope", "retrieval_scope"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    run_id: Mapped[UUID] = mapped_column(
+        ForeignKey("external_retrieval_runs.id", ondelete="CASCADE")
+    )
+    plan_id: Mapped[UUID] = mapped_column(
+        ForeignKey("external_retrieval_plans.id", ondelete="CASCADE")
+    )
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("user_profiles.id", ondelete="CASCADE"))
+    source_kind: Mapped[ExternalRetrievalSourceKind] = mapped_column(
+        Enum(ExternalRetrievalSourceKind, native_enum=False),
+        nullable=False,
+    )
+    retrieval_scope: Mapped[ExternalRetrievalScope] = mapped_column(
+        Enum(ExternalRetrievalScope, native_enum=False),
+        nullable=False,
+    )
+    external_id: Mapped[str] = mapped_column(String(500), nullable=False)
+    external_url: Mapped[str | None] = mapped_column(Text)
+    doi: Mapped[str | None] = mapped_column(String(255))
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    abstract_snippet: Mapped[str | None] = mapped_column(Text)
+    publication_year: Mapped[int | None] = mapped_column(Integer)
+    publication_date: Mapped[str | None] = mapped_column(String(64))
+    source_title: Mapped[str | None] = mapped_column(String(500))
+    authors: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON_VARIANT)
+    matched_reason_codes: Mapped[list[str] | None] = mapped_column(JSON_VARIANT)
+    raw_payload: Mapped[dict[str, Any]] = mapped_column(JSON_VARIANT, default=dict)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    run: Mapped[ExternalRetrievalRun] = relationship(back_populates="results")
+    plan: Mapped[ExternalRetrievalPlan] = relationship(back_populates="results")
+    user: Mapped[UserProfile] = relationship(back_populates="external_retrieval_results")

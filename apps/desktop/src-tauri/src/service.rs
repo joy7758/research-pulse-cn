@@ -1,25 +1,27 @@
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
+use chrono::{DateTime, Datelike, Duration, NaiveTime, TimeZone, Timelike, Utc};
+use chrono_tz::Tz;
 use serde_json::{json, Value};
 use uuid::Uuid;
 
 use crate::cache::{LocalCache, PushOutcomeSummary};
 use crate::error::invalid_state;
 use crate::models::{
-    AppBootstrapRead, ChooseWorkspaceRootInput, ConnectDeviceInput, ConnectDeviceResponse,
-    CreateBlankPaperNoteInput, CreatePaperNoteFromTemplateInput, ImportPaperAttachmentsInput,
-    ImportPaperAttachmentsResponse, ListPapersInput, ListReviewRoundsInput,
-    NoteActionResultRead, NoteTemplateRead, PaperAttachmentImportResultRead,
+    AddReviewCommentInput, AppBootstrapRead, ChooseWorkspaceRootInput, ConnectDeviceInput,
+    ConnectDeviceResponse, CreateBlankPaperNoteInput, CreatePaperNoteFromTemplateInput,
+    CreateReviewRoundInput, DeleteReviewCommentInput, DeliveryControlHintLookupInput,
+    DeliveryControlLocalHintRead, DeliveryControlSettingsRead, ImportPaperAttachmentsInput,
+    ImportPaperAttachmentsResponse, ListPapersInput, ListReviewCommentsInput,
+    ListReviewRoundsInput, NoteActionResultRead, NoteTemplateRead, PaperAttachmentImportResultRead,
     PaperAttachmentRead, PaperDetailRead, PaperListItemRead, PaperNoteDetailRead,
     PaperNoteSummaryRead, PaperWorkspaceRead, PendingMutationRead, QueuePaperPatchInput,
-    QueueProgressEventCreateInput, QueueSubscriptionPolicyPatchInput,
+    QueueProgressEventCreateInput, QueueSubscriptionPolicyPatchInput, QuietHoursWindowRead,
     RemoteSyncMutationRequest, RemoteSyncPushRequest, ReviewActionResultRead,
-    ReviewCommentItemRead, ReviewRoundDetailRead, ReviewRoundSummaryRead,
-    SavePaperNoteInput, SubscriptionPolicyRead, SyncNowResponse, SyncStatusRead,
-    TodayOverviewRead, UpdateReviewRoundInput, AddReviewCommentInput, CreateReviewRoundInput,
-    DeleteReviewCommentInput, ListReviewCommentsInput, ReviewRoundLookupInput,
-    UserConnectionRead, WorkspaceStatusRead, WriteActionResultRead,
+    ReviewCommentItemRead, ReviewRoundDetailRead, ReviewRoundLookupInput, ReviewRoundSummaryRead,
+    SavePaperNoteInput, SubscriptionPolicyRead, SyncNowResponse, SyncStatusRead, TodayOverviewRead,
+    UpdateReviewRoundInput, UserConnectionRead, WorkspaceStatusRead, WriteActionResultRead,
 };
 use crate::notes::{
     list_note_templates, note_status_for_path, prepare_blank_note, prepare_generated_note,
@@ -39,6 +41,13 @@ use crate::workspace::{
 };
 
 const FEED_PAGE_LIMIT: usize = 100;
+const DESKTOP_DEFAULT_DELIVERY_TIMEZONE: &str = "UTC";
+
+#[derive(Debug, Clone)]
+struct ParsedDeliveryControlSettings {
+    read: DeliveryControlSettingsRead,
+    quiet_hours: Vec<QuietHoursWindowRead>,
+}
 
 #[derive(Debug, Clone)]
 pub struct DesktopPaths {
@@ -93,6 +102,56 @@ impl DesktopService {
 
     pub fn list_subscription_policies(&self) -> Result<Vec<SubscriptionPolicyRead>> {
         self.cache().list_subscription_policies()
+    }
+
+    pub fn get_delivery_control_settings(&self) -> Result<Vec<DeliveryControlSettingsRead>> {
+        let mut settings = self
+            .list_subscription_policies()?
+            .into_iter()
+            .map(parse_delivery_control_settings)
+            .map(|parsed| parsed.read)
+            .collect::<Vec<_>>();
+        settings.sort_by(|left, right| {
+            let left_priority = if left.channel == "official_account" {
+                0
+            } else {
+                1
+            };
+            let right_priority = if right.channel == "official_account" {
+                0
+            } else {
+                1
+            };
+            left_priority
+                .cmp(&right_priority)
+                .then(left.channel.cmp(&right.channel))
+                .then(
+                    (right.updated_at.as_deref().unwrap_or(""))
+                        .cmp(left.updated_at.as_deref().unwrap_or("")),
+                )
+                .then(left.id.cmp(&right.id))
+        });
+        Ok(settings)
+    }
+
+    pub fn get_delivery_control_local_hint(
+        &self,
+        input: DeliveryControlHintLookupInput,
+    ) -> Result<DeliveryControlLocalHintRead> {
+        let settings = self
+            .list_subscription_policies()?
+            .into_iter()
+            .find(|policy| policy.id == input.subscription_policy_id)
+            .ok_or_else(|| {
+                invalid_state(format!(
+                    "subscription policy {} is not cached",
+                    input.subscription_policy_id
+                ))
+            })?;
+        Ok(build_delivery_control_local_hint(
+            &parse_delivery_control_settings(settings),
+            Utc::now(),
+        ))
     }
 
     pub fn list_pending_mutations(&self) -> Result<Vec<PendingMutationRead>> {
@@ -424,8 +483,8 @@ impl DesktopService {
         if input.paper_id.trim().is_empty() {
             return Err(invalid_state("paper_id is required"));
         }
-        let round_label = non_empty(input.round_label)
-            .ok_or_else(|| invalid_state("round_label is required"))?;
+        let round_label =
+            non_empty(input.round_label).ok_or_else(|| invalid_state("round_label is required"))?;
         let cache = self.cache();
         let paper = cache.get_paper_detail(&input.paper_id)?;
         let round_id = Uuid::new_v4().to_string();
@@ -435,10 +494,7 @@ impl DesktopService {
             &paper.id,
             &round_label,
             input.venue.as_deref().and_then(trimmed_optional),
-            input
-                .decision_label
-                .as_deref()
-                .and_then(trimmed_optional),
+            input.decision_label.as_deref().and_then(trimmed_optional),
             "open",
             "manual",
             0,
@@ -532,8 +588,8 @@ impl DesktopService {
         }
         let reviewer_label = non_empty(input.reviewer_label)
             .ok_or_else(|| invalid_state("reviewer_label is required"))?;
-        let comment_text =
-            non_empty(input.comment_text).ok_or_else(|| invalid_state("comment_text is required"))?;
+        let comment_text = non_empty(input.comment_text)
+            .ok_or_else(|| invalid_state("comment_text is required"))?;
         let cache = self.cache();
         let round = cache.get_review_round_summary(&input.review_round_id)?;
         let comment_id = Uuid::new_v4().to_string();
@@ -597,7 +653,10 @@ impl DesktopService {
             &existing.review_round_id,
             &existing.paper_id,
             &reviewer_label,
-            option_override(existing.comment_code.as_deref(), input.comment_code.as_deref()),
+            option_override(
+                existing.comment_code.as_deref(),
+                input.comment_code.as_deref(),
+            ),
             existing.sort_order,
             &comment_text,
             option_override(existing.category.as_deref(), input.category.as_deref()),
@@ -606,7 +665,10 @@ impl DesktopService {
                 existing.response_summary.as_deref(),
                 input.response_summary.as_deref(),
             ),
-            option_override(existing.action_note.as_deref(), input.action_note.as_deref()),
+            option_override(
+                existing.action_note.as_deref(),
+                input.action_note.as_deref(),
+            ),
             &existing.created_at,
             &chrono::Utc::now().to_rfc3339(),
         )?;
@@ -763,22 +825,24 @@ impl DesktopService {
         let root = self.get_workspace_status()?;
         let root_path = root.root_path.as_deref();
         let paper_title = cache.get_paper_detail(paper_id)?.title;
-        let fallback_rel_path = build_workspace_layout(
-            std::path::Path::new(root_path.unwrap_or(".")),
-            paper_id,
-        )
-        .paper_rel_path;
-        let current = cache.get_paper_workspace(paper_id).unwrap_or(PaperWorkspaceRead {
-            paper_id: paper_id.to_string(),
-            paper_title: paper_title.clone(),
-            workspace_rel_path: fallback_rel_path,
-            workspace_abs_path: workspace_root_rebind_path(root_path, &format!("papers/{paper_id}")),
-            workspace_ready: false,
-            attachment_count: 0,
-            last_imported_at: None,
-        });
-        let workspace_abs_path =
-            workspace_root_rebind_path(root_path, &current.workspace_rel_path);
+        let fallback_rel_path =
+            build_workspace_layout(std::path::Path::new(root_path.unwrap_or(".")), paper_id)
+                .paper_rel_path;
+        let current = cache
+            .get_paper_workspace(paper_id)
+            .unwrap_or(PaperWorkspaceRead {
+                paper_id: paper_id.to_string(),
+                paper_title: paper_title.clone(),
+                workspace_rel_path: fallback_rel_path,
+                workspace_abs_path: workspace_root_rebind_path(
+                    root_path,
+                    &format!("papers/{paper_id}"),
+                ),
+                workspace_ready: false,
+                attachment_count: 0,
+                last_imported_at: None,
+            });
+        let workspace_abs_path = workspace_root_rebind_path(root_path, &current.workspace_rel_path);
         let workspace_ready = paper_workspace_ready_for_path(workspace_abs_path.as_deref());
         cache.upsert_paper_workspace(
             paper_id,
@@ -811,7 +875,8 @@ impl DesktopService {
             cache.reset_local_cache()?;
         }
 
-        self.secret_store().save_device_token(input.device_token.trim())?;
+        self.secret_store()
+            .save_device_token(input.device_token.trim())?;
         let effective_display_name = input
             .device_display_name
             .filter(|value| !value.trim().is_empty())
@@ -1044,19 +1109,24 @@ impl DesktopService {
                 state.last_event_sequence
             };
 
-            Ok((push_summary, pages_fetched, events_applied, acknowledged_sequence))
+            Ok((
+                push_summary,
+                pages_fetched,
+                events_applied,
+                acknowledged_sequence,
+            ))
         })();
 
-        let (push_summary, pages_fetched, events_applied, acknowledged_sequence) = match sync_outcome
-        {
-            Ok(result) => result,
-            Err(error) => {
-                let message = format!("{error:#}");
-                let _ = cache.recover_inflight_mutations();
-                let _ = cache.mark_sync_error(&message);
-                return Err(error);
-            }
-        };
+        let (push_summary, pages_fetched, events_applied, acknowledged_sequence) =
+            match sync_outcome {
+                Ok(result) => result,
+                Err(error) => {
+                    let message = format!("{error:#}");
+                    let _ = cache.recover_inflight_mutations();
+                    let _ = cache.mark_sync_error(&message);
+                    return Err(error);
+                }
+            };
 
         cache.clear_sync_error()?;
         let outbox_stats = cache.outbox_stats()?;
@@ -1188,10 +1258,9 @@ impl DesktopService {
         let _ = self.get_workspace_status()?;
         let root = self.cache().workspace_root_record()?;
         if root.status != "ready" {
-            return Err(invalid_state(
-                root.last_error
-                    .unwrap_or_else(|| "workspace root is not configured and ready".to_string()),
-            ));
+            return Err(invalid_state(root.last_error.unwrap_or_else(|| {
+                "workspace root is not configured and ready".to_string()
+            })));
         }
         Ok(root)
     }
@@ -1220,12 +1289,16 @@ impl DesktopService {
         )?;
 
         let rendered = match template_kind {
-            "reviewer_matrix" => {
-                render_reviewer_matrix_note(&build_note_context(&paper), &detail.round, &detail.comments)
-            }
-            "response_letter" => {
-                render_response_letter_note(&build_note_context(&paper), &detail.round, &detail.comments)
-            }
+            "reviewer_matrix" => render_reviewer_matrix_note(
+                &build_note_context(&paper),
+                &detail.round,
+                &detail.comments,
+            ),
+            "response_letter" => render_response_letter_note(
+                &build_note_context(&paper),
+                &detail.round,
+                &detail.comments,
+            ),
             _ => {
                 return Err(invalid_state(format!(
                     "unsupported review note template kind {template_kind}"
@@ -1302,7 +1375,10 @@ impl DesktopService {
         self.record_local_work_activity(
             Some(&paper.id),
             activity_type,
-            format!("Generated {} for {}.", rendered.title, updated_round.round_label),
+            format!(
+                "Generated {} for {}.",
+                rendered.title, updated_round.round_label
+            ),
             json!({
                 "review_round_id": updated_round.id,
                 "note_id": generated_note.note_id,
@@ -1311,7 +1387,10 @@ impl DesktopService {
             &activity_happened_at,
         )?;
         Ok(ReviewActionResultRead {
-            message: format!("Generated {} note for {}.", rendered.title, updated_round.round_label),
+            message: format!(
+                "Generated {} note for {}.",
+                rendered.title, updated_round.round_label
+            ),
             round: Some(updated_round),
             comment: None,
             detail: Some(updated_detail),
@@ -1330,14 +1409,8 @@ impl DesktopService {
     ) -> Result<crate::models::GeneratedReviewNoteRead> {
         let created_at = chrono::Utc::now().to_rfc3339();
         let note_id = Uuid::new_v4().to_string();
-        let prepared = prepare_generated_note(
-            layout,
-            template_kind,
-            title,
-            content,
-            &note_id,
-            &created_at,
-        )?;
+        let prepared =
+            prepare_generated_note(layout, template_kind, title, content, &note_id, &created_at)?;
         let file_stats = write_note_file(&prepared.absolute_path, &prepared.content)?;
         let status = note_status_for_path(Some(&prepared.absolute_path));
         cache.upsert_paper_note(
@@ -1357,7 +1430,8 @@ impl DesktopService {
             &prepared.created_at,
             Some(&prepared.created_at),
         )?;
-        cache.generated_review_note(Some(&prepared.note_id), template_kind)?
+        cache
+            .generated_review_note(Some(&prepared.note_id), template_kind)?
             .ok_or_else(|| invalid_state("generated note was not indexed"))
     }
 
@@ -1372,7 +1446,9 @@ impl DesktopService {
     ) -> Result<crate::models::GeneratedReviewNoteRead> {
         let existing = cache.get_paper_note_summary(note_id)?;
         let absolute_path = existing.absolute_path.clone().ok_or_else(|| {
-            invalid_state("generated note path is not available because the workspace root is missing")
+            invalid_state(
+                "generated note path is not available because the workspace root is missing",
+            )
         })?;
         let updated_at = chrono::Utc::now().to_rfc3339();
         let file_stats = write_note_file(&absolute_path, content)?;
@@ -1394,7 +1470,8 @@ impl DesktopService {
             &updated_at,
             Some(&updated_at),
         )?;
-        cache.generated_review_note(Some(&existing.id), template_kind)?
+        cache
+            .generated_review_note(Some(&existing.id), template_kind)?
             .ok_or_else(|| invalid_state("generated note was not indexed"))
     }
 
@@ -1409,9 +1486,11 @@ impl DesktopService {
         imported_at: &str,
     ) -> Result<PaperAttachmentImportResultRead> {
         let metadata = collect_file_import_metadata(source_path)?;
-        if let Some(duplicate) =
-            cache.find_duplicate_attachment(paper_id, metadata.sha256.as_deref(), metadata.size_bytes)?
-        {
+        if let Some(duplicate) = cache.find_duplicate_attachment(
+            paper_id,
+            metadata.sha256.as_deref(),
+            metadata.size_bytes,
+        )? {
             if should_treat_as_duplicate(
                 duplicate.sha256.as_deref(),
                 duplicate.size_bytes,
@@ -1517,21 +1596,465 @@ fn build_note_context(paper: &PaperDetailRead) -> NoteTemplateContext {
     }
 }
 
+fn parse_delivery_control_settings(
+    policy: SubscriptionPolicyRead,
+) -> ParsedDeliveryControlSettings {
+    let mut errors = Vec::new();
+    let quiet_hours_timezone = extract_quiet_hours_timezone(policy.quiet_hours.as_ref());
+    let raw_policy = match &policy.policy {
+        Value::Object(_) => policy.policy.clone(),
+        Value::Null => Value::Object(Default::default()),
+        _ => {
+            errors.push("Cached policy JSON is not an object.".to_string());
+            Value::Object(Default::default())
+        }
+    };
+    let raw_policy_object = raw_policy.as_object().cloned().unwrap_or_default();
+    let policy_timezone = match raw_policy_object.get("timezone") {
+        Some(Value::String(value)) => Some(value.as_str()),
+        Some(Value::Null) | None => None,
+        Some(_) => {
+            errors.push("Cached policy timezone must be a string.".to_string());
+            None
+        }
+    };
+    let effective_timezone = normalized_timezone_name(
+        policy_timezone.or(quiet_hours_timezone.as_deref()),
+        &mut errors,
+        "timezone",
+    );
+    let quiet_hours = parse_quiet_hours_windows(
+        policy.quiet_hours.as_ref(),
+        &effective_timezone,
+        &mut errors,
+    );
+    let allowed_weekdays =
+        parse_allowed_weekdays(raw_policy_object.get("allowed_weekdays"), &mut errors);
+    let muted_until = parse_optional_datetime(
+        raw_policy_object.get("muted_until"),
+        &mut errors,
+        "muted_until",
+    )
+    .map(|value| value.with_timezone(&Utc).to_rfc3339());
+    let minimum_selected_cards = parse_optional_non_negative_i64(
+        raw_policy_object.get("minimum_selected_cards"),
+        &mut errors,
+        "minimum_selected_cards",
+    );
+    let skip_if_no_today_focus = parse_optional_bool(
+        raw_policy_object.get("skip_if_no_today_focus"),
+        &mut errors,
+        "skip_if_no_today_focus",
+    )
+    .unwrap_or(false);
+
+    ParsedDeliveryControlSettings {
+        read: DeliveryControlSettingsRead {
+            id: policy.id,
+            user_id: policy.user_id,
+            channel: policy.channel,
+            enabled: policy.enabled,
+            frequency: policy.frequency,
+            quiet_hours: quiet_hours.clone(),
+            raw_quiet_hours: policy.quiet_hours,
+            timezone: effective_timezone,
+            allowed_weekdays,
+            muted_until,
+            minimum_selected_cards,
+            skip_if_no_today_focus,
+            frequency_cap: policy.frequency_cap,
+            updated_at: policy.updated_at,
+            pending_mutation_count: policy.pending_mutation_count,
+            last_mutation_error: policy.last_mutation_error,
+            raw_policy,
+            local_settings_error: (!errors.is_empty()).then(|| errors.join(" ")),
+        },
+        quiet_hours,
+    }
+}
+
+fn build_delivery_control_local_hint(
+    settings: &ParsedDeliveryControlSettings,
+    current_time: DateTime<Utc>,
+) -> DeliveryControlLocalHintRead {
+    let timezone = parse_timezone(&settings.read.timezone);
+    let local_now = current_time.with_timezone(&timezone);
+    let local_weekday = i64::from(local_now.weekday().num_days_from_monday());
+    let quiet_window = settings
+        .quiet_hours
+        .iter()
+        .find(|window| quiet_window_active(window, current_time));
+    let quiet_hours_active = quiet_window.is_some();
+    let muted_until = settings
+        .read
+        .muted_until
+        .as_deref()
+        .and_then(|value| DateTime::parse_from_rfc3339(value).ok())
+        .map(|value| value.with_timezone(&Utc));
+    let muted_until_active = muted_until.is_some_and(|value| current_time < value);
+    let weekday_blocked = !settings.read.allowed_weekdays.is_empty()
+        && !settings.read.allowed_weekdays.contains(&local_weekday);
+
+    let mut next_allowed_at = None;
+    if let Some(window) = quiet_window {
+        next_allowed_at = max_datetime(
+            next_allowed_at,
+            next_allowed_after_quiet_window(window, current_time),
+        );
+    }
+    if muted_until_active {
+        next_allowed_at = max_datetime(next_allowed_at, muted_until);
+    }
+    if weekday_blocked {
+        next_allowed_at = max_datetime(
+            next_allowed_at,
+            next_allowed_weekday(local_now, &settings.read.allowed_weekdays),
+        );
+    }
+
+    let mut notes = Vec::new();
+    if quiet_hours_active {
+        notes.push("Quiet hours are currently active in the synced policy.".to_string());
+    }
+    if muted_until_active {
+        notes.push("Muted-until is currently active in the synced policy.".to_string());
+    }
+    if weekday_blocked {
+        notes.push("Today is currently blocked by the allowed weekdays rule.".to_string());
+    }
+    if let Some(minimum_selected_cards) = settings.read.minimum_selected_cards {
+        notes.push(format!(
+            "Minimum selected cards is configured as {minimum_selected_cards}; this local hint does not evaluate digest content."
+        ));
+    }
+    if settings.read.skip_if_no_today_focus {
+        notes.push(
+            "Skip-if-no-today-focus is enabled; this local hint does not evaluate digest sections."
+                .to_string(),
+        );
+    }
+    if notes.is_empty() {
+        notes.push(
+            "Local hint only: the current synced policy does not block delivery by time, mute, or weekday."
+                .to_string(),
+        );
+    }
+    if settings.read.local_settings_error.is_some() {
+        notes.push(
+            "Local hint is best-effort because the cached policy payload needs normalization attention."
+                .to_string(),
+        );
+    }
+
+    DeliveryControlLocalHintRead {
+        subscription_policy_id: settings.read.id.clone(),
+        channel: settings.read.channel.clone(),
+        effective_timezone: settings.read.timezone.clone(),
+        current_local_time: local_now.to_rfc3339(),
+        local_weekday,
+        quiet_hours_active,
+        muted_until_active,
+        weekday_blocked,
+        next_allowed_at_approx: next_allowed_at.map(|value| value.to_rfc3339()),
+        notes,
+        local_settings_error: settings.read.local_settings_error.clone(),
+    }
+}
+
+fn extract_quiet_hours_timezone(value: Option<&Value>) -> Option<String> {
+    let Value::Object(object) = value? else {
+        return None;
+    };
+    if let Some(timezone) = object.get("timezone").and_then(Value::as_str) {
+        let trimmed = timezone.trim();
+        if !trimmed.is_empty() {
+            return Some(trimmed.to_string());
+        }
+    }
+    let windows = object.get("windows")?.as_array()?;
+    let first = windows.first()?.as_object()?;
+    let timezone = first.get("timezone")?.as_str()?;
+    let trimmed = timezone.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
+}
+
+fn parse_quiet_hours_windows(
+    value: Option<&Value>,
+    fallback_timezone: &str,
+    errors: &mut Vec<String>,
+) -> Vec<QuietHoursWindowRead> {
+    let Some(value) = value else {
+        return Vec::new();
+    };
+    let Value::Object(object) = value else {
+        errors.push("Quiet hours payload must be a JSON object.".to_string());
+        return Vec::new();
+    };
+
+    let windows_values = match object.get("windows") {
+        Some(Value::Array(items)) => items.iter().collect::<Vec<_>>(),
+        Some(_) => {
+            errors.push("Quiet hours windows must be an array.".to_string());
+            return Vec::new();
+        }
+        None => vec![value],
+    };
+
+    let mut windows = Vec::new();
+    for window in windows_values {
+        let Value::Object(window_object) = window else {
+            errors.push("Quiet hours windows must be JSON objects.".to_string());
+            continue;
+        };
+        let Some(start) = window_object.get("start").and_then(Value::as_str) else {
+            errors.push("Quiet hours requires a start time in HH:MM format.".to_string());
+            continue;
+        };
+        let Some(end) = window_object.get("end").and_then(Value::as_str) else {
+            errors.push("Quiet hours requires an end time in HH:MM format.".to_string());
+            continue;
+        };
+        if NaiveTime::parse_from_str(start, "%H:%M").is_err() {
+            errors.push(format!("Quiet hours start time {start} is invalid."));
+            continue;
+        }
+        if NaiveTime::parse_from_str(end, "%H:%M").is_err() {
+            errors.push(format!("Quiet hours end time {end} is invalid."));
+            continue;
+        }
+        let timezone = normalized_timezone_name(
+            window_object
+                .get("timezone")
+                .and_then(Value::as_str)
+                .or_else(|| object.get("timezone").and_then(Value::as_str))
+                .or(Some(fallback_timezone)),
+            errors,
+            "quiet_hours.timezone",
+        );
+        windows.push(QuietHoursWindowRead {
+            start: start.to_string(),
+            end: end.to_string(),
+            timezone,
+        });
+    }
+    windows
+}
+
+fn parse_allowed_weekdays(value: Option<&Value>, errors: &mut Vec<String>) -> Vec<i64> {
+    let Some(value) = value else {
+        return Vec::new();
+    };
+    let Value::Array(items) = value else {
+        errors.push("allowed_weekdays must be an array of integers from 0 to 6.".to_string());
+        return Vec::new();
+    };
+    let mut weekdays = Vec::new();
+    for item in items {
+        let Some(raw) = item.as_i64() else {
+            errors.push("allowed_weekdays values must be integers from 0 to 6.".to_string());
+            return Vec::new();
+        };
+        if !(0..=6).contains(&raw) {
+            errors.push("allowed_weekdays values must be integers from 0 to 6.".to_string());
+            return Vec::new();
+        }
+        if !weekdays.contains(&raw) {
+            weekdays.push(raw);
+        }
+    }
+    weekdays
+}
+
+fn parse_optional_datetime(
+    value: Option<&Value>,
+    errors: &mut Vec<String>,
+    field_name: &str,
+) -> Option<DateTime<chrono::FixedOffset>> {
+    match value {
+        None | Some(Value::Null) => None,
+        Some(Value::String(text)) => match DateTime::parse_from_rfc3339(text) {
+            Ok(value) => Some(value),
+            Err(_) => {
+                errors.push(format!(
+                    "{field_name} must be a valid ISO 8601 datetime string."
+                ));
+                None
+            }
+        },
+        Some(_) => {
+            errors.push(format!(
+                "{field_name} must be a valid ISO 8601 datetime string."
+            ));
+            None
+        }
+    }
+}
+
+fn parse_optional_non_negative_i64(
+    value: Option<&Value>,
+    errors: &mut Vec<String>,
+    field_name: &str,
+) -> Option<i64> {
+    match value {
+        None | Some(Value::Null) => None,
+        Some(Value::Number(number)) => number.as_i64().and_then(|value| {
+            if value < 0 {
+                errors.push(format!("{field_name} must be a non-negative integer."));
+                None
+            } else {
+                Some(value)
+            }
+        }),
+        Some(_) => {
+            errors.push(format!("{field_name} must be a non-negative integer."));
+            None
+        }
+    }
+}
+
+fn parse_optional_bool(
+    value: Option<&Value>,
+    errors: &mut Vec<String>,
+    field_name: &str,
+) -> Option<bool> {
+    match value {
+        None | Some(Value::Null) => None,
+        Some(Value::Bool(flag)) => Some(*flag),
+        Some(_) => {
+            errors.push(format!("{field_name} must be a boolean."));
+            None
+        }
+    }
+}
+
+fn normalized_timezone_name(
+    value: Option<&str>,
+    errors: &mut Vec<String>,
+    field_name: &str,
+) -> String {
+    let candidate = value
+        .map(str::trim)
+        .filter(|entry| !entry.is_empty())
+        .unwrap_or(DESKTOP_DEFAULT_DELIVERY_TIMEZONE);
+    if candidate.parse::<Tz>().is_ok() {
+        candidate.to_string()
+    } else {
+        errors.push(format!(
+            "{field_name} uses unsupported timezone {candidate}; falling back to UTC."
+        ));
+        DESKTOP_DEFAULT_DELIVERY_TIMEZONE.to_string()
+    }
+}
+
+fn parse_timezone(value: &str) -> Tz {
+    value.parse::<Tz>().unwrap_or(chrono_tz::UTC)
+}
+
+fn quiet_window_active(window: &QuietHoursWindowRead, current_time: DateTime<Utc>) -> bool {
+    let timezone = parse_timezone(&window.timezone);
+    let local_now = current_time.with_timezone(&timezone);
+    let Ok(start) = NaiveTime::parse_from_str(&window.start, "%H:%M") else {
+        return false;
+    };
+    let Ok(end) = NaiveTime::parse_from_str(&window.end, "%H:%M") else {
+        return false;
+    };
+    let current_local_time = local_now.time();
+    if start <= end {
+        start <= current_local_time && current_local_time < end
+    } else {
+        current_local_time >= start || current_local_time < end
+    }
+}
+
+fn next_allowed_after_quiet_window(
+    window: &QuietHoursWindowRead,
+    current_time: DateTime<Utc>,
+) -> Option<DateTime<Utc>> {
+    let timezone = parse_timezone(&window.timezone);
+    let local_now = current_time.with_timezone(&timezone);
+    let end = NaiveTime::parse_from_str(&window.end, "%H:%M").ok()?;
+    let mut candidate = timezone
+        .with_ymd_and_hms(
+            local_now.year(),
+            local_now.month(),
+            local_now.day(),
+            end.hour(),
+            end.minute(),
+            0,
+        )
+        .single()?;
+    if candidate <= local_now {
+        candidate = candidate + Duration::days(1);
+    }
+    Some(candidate.with_timezone(&Utc))
+}
+
+fn next_allowed_weekday(
+    local_now: DateTime<Tz>,
+    allowed_weekdays: &[i64],
+) -> Option<DateTime<Utc>> {
+    if allowed_weekdays.is_empty() {
+        return None;
+    }
+    for offset in 1..=7 {
+        let candidate = local_now + Duration::days(offset);
+        let weekday = i64::from(candidate.weekday().num_days_from_monday());
+        if allowed_weekdays.contains(&weekday) {
+            let midnight = candidate
+                .timezone()
+                .with_ymd_and_hms(
+                    candidate.year(),
+                    candidate.month(),
+                    candidate.day(),
+                    0,
+                    0,
+                    0,
+                )
+                .single()?;
+            return Some(midnight.with_timezone(&Utc));
+        }
+    }
+    None
+}
+
+fn max_datetime(
+    current: Option<DateTime<Utc>>,
+    candidate: Option<DateTime<Utc>>,
+) -> Option<DateTime<Utc>> {
+    match (current, candidate) {
+        (Some(current), Some(candidate)) => Some(current.max(candidate)),
+        (Some(current), None) => Some(current),
+        (None, Some(candidate)) => Some(candidate),
+        (None, None) => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::{cell::RefCell, path::PathBuf, rc::Rc};
 
-    use serde_json::json;
+    use chrono::{TimeZone, Utc};
+    use serde_json::{json, Value};
     use tempfile::tempdir;
 
-    use super::{ChooseWorkspaceRootInput, ConnectDeviceInput, DesktopPaths, DesktopService, ListPapersInput};
+    use super::{
+        build_delivery_control_local_hint, parse_delivery_control_settings,
+        ChooseWorkspaceRootInput, ConnectDeviceInput, DesktopPaths, DesktopService,
+        ListPapersInput,
+    };
     use crate::models::{
         AddReviewCommentInput, CreateBlankPaperNoteInput, CreatePaperNoteFromTemplateInput,
         CreateReviewRoundInput, DeleteReviewCommentInput, ImportPaperAttachmentsInput,
         QueuePaperPatchInput, QueueProgressEventCreateInput, QueueSubscriptionPolicyPatchInput,
-        ReviewRoundLookupInput, SavePaperNoteInput, UpdateReviewCommentInput,
-        RemoteSyncAck, RemoteSyncDevice, RemoteSyncEvent, RemoteSyncFeed, RemoteSyncMe, RemoteSyncMutationResult,
-        RemoteSyncPushRequest, RemoteSyncPushResponse, RemoteSyncUser,
+        RemoteSyncAck, RemoteSyncDevice, RemoteSyncEvent, RemoteSyncFeed, RemoteSyncMe,
+        RemoteSyncMutationResult, RemoteSyncPushRequest, RemoteSyncPushResponse, RemoteSyncUser,
+        ReviewRoundLookupInput, SavePaperNoteInput, SubscriptionPolicyRead,
+        UpdateReviewCommentInput,
     };
     use crate::sync_client::SyncBackendApi;
 
@@ -1558,7 +2081,9 @@ mod tests {
             self.call_log.borrow_mut().push("push".to_string());
             self.pushed_batches.borrow_mut().push(payload.clone());
             if self.push_results.borrow().is_empty() {
-                return Ok(RemoteSyncPushResponse { results: Vec::new() });
+                return Ok(RemoteSyncPushResponse {
+                    results: Vec::new(),
+                });
             }
             self.push_results.borrow_mut().remove(0)
         }
@@ -1606,7 +2131,11 @@ mod tests {
         path
     }
 
-    fn connect(service: &DesktopService, api: &FakeApi, feed_results: Vec<anyhow::Result<RemoteSyncFeed>>) {
+    fn connect(
+        service: &DesktopService,
+        api: &FakeApi,
+        feed_results: Vec<anyhow::Result<RemoteSyncFeed>>,
+    ) {
         api.sync_me_result.replace(Some(Ok(RemoteSyncMe {
             device: RemoteSyncDevice {
                 id: "device-1".to_string(),
@@ -1692,6 +2221,25 @@ mod tests {
         }
     }
 
+    fn official_account_policy_read(
+        quiet_hours: Option<Value>,
+        policy: Value,
+    ) -> SubscriptionPolicyRead {
+        SubscriptionPolicyRead {
+            id: "policy-official".to_string(),
+            user_id: "user-1".to_string(),
+            channel: "official_account".to_string(),
+            enabled: true,
+            frequency: "daily".to_string(),
+            quiet_hours,
+            frequency_cap: 3,
+            policy,
+            updated_at: Some("2026-04-15T00:00:00Z".to_string()),
+            pending_mutation_count: 0,
+            last_mutation_error: None,
+        }
+    }
+
     fn progress_event(sequence: i64) -> RemoteSyncEvent {
         RemoteSyncEvent {
             id: format!("evt-progress-{sequence}"),
@@ -1736,28 +2284,93 @@ mod tests {
                 "deep_link_path": "/mini/pulse-digests/user-1/2026-04-15",
                 "highlights": [{
                     "sort_order": 1,
-                    "pulse_card_id": "card-1",
-                    "card_type": "signal_change",
+                    "pulse_card_id": "card-focus",
+                    "card_type": "today_suggestion",
                     "source_paper_id": "paper-1",
-                    "title": "Signal update",
-                    "summary": "Summary",
-                    "why_now": "Why now"
+                    "title": "Execute next action for Digest Paper",
+                    "summary": "Finish the response memo.",
+                    "why_now": "This is the clearest next step for today.",
+                    "action_text": "Finish the response memo",
+                    "deep_link": "/papers/paper-1"
                 }],
                 "items": [{
                     "sort_order": 1,
-                    "pulse_card_id": "card-1",
-                    "card_type": "signal_change",
+                    "pulse_card_id": "card-focus",
+                    "card_type": "today_suggestion",
                     "source_paper_id": "paper-1",
-                    "title": "Signal update",
-                    "summary": "Summary",
-                    "why_now": "Why now"
+                    "title": "Execute next action for Digest Paper",
+                    "summary": "Finish the response memo.",
+                    "why_now": "This is the clearest next step for today.",
+                    "action_text": "Finish the response memo",
+                    "deep_link": "/papers/paper-1"
                 }],
+                "section_order": [
+                    "today_focus",
+                    "yesterday_recap",
+                    "signal_updates",
+                    "related_papers",
+                    "other_updates"
+                ],
+                "sections": [{
+                    "kind": "today_focus",
+                    "title": "Today Focus",
+                    "item_count": 1,
+                    "items": [{
+                        "sort_order": 1,
+                        "pulse_card_id": "card-focus",
+                        "card_type": "today_suggestion",
+                        "source_paper_id": "paper-1",
+                        "title": "Execute next action for Digest Paper",
+                        "summary": "Finish the response memo.",
+                        "why_now": "This is the clearest next step for today.",
+                        "action_text": "Finish the response memo",
+                        "deep_link": "/papers/paper-1"
+                    }]
+                }],
+                "quick_stats": {
+                    "selected_card_count": 1,
+                    "related_paper_count": 0,
+                    "signal_update_count": 0,
+                    "touched_paper_count": 1
+                },
+                "focus_card": {
+                    "sort_order": 1,
+                    "pulse_card_id": "card-focus",
+                    "card_type": "today_suggestion",
+                    "source_paper_id": "paper-1",
+                    "title": "Execute next action for Digest Paper",
+                    "summary": "Finish the response memo.",
+                    "why_now": "This is the clearest next step for today.",
+                    "action_text": "Finish the response memo",
+                    "deep_link": "/papers/paper-1"
+                },
+                "publication_preview": {
+                    "digest_title": "Daily digest for 2026-04-15",
+                    "digest_subtitle": "1 today focus from 1 selected pulse card.",
+                    "digest_highlights": [{
+                        "sort_order": 1,
+                        "pulse_card_id": "card-focus",
+                        "card_type": "today_suggestion",
+                        "source_paper_id": "paper-1",
+                        "title": "Execute next action for Digest Paper",
+                        "summary": "Finish the response memo.",
+                        "why_now": "This is the clearest next step for today.",
+                        "action_text": "Finish the response memo",
+                        "deep_link": "/papers/paper-1"
+                    }],
+                    "primary_cta_text": "Finish the response memo",
+                    "primary_cta_path": "/mini/pulse-digests/user-1/2026-04-15",
+                    "mini_program_path": "mini/pulse-digests/user-1/2026-04-15",
+                    "article_url": null
+                },
                 "updated_at": "2026-04-15T00:00:00Z"
             }),
         }
     }
 
-    fn work_activity_mutations(service: &DesktopService) -> Vec<crate::models::PendingMutationRead> {
+    fn work_activity_mutations(
+        service: &DesktopService,
+    ) -> Vec<crate::models::PendingMutationRead> {
         service
             .list_pending_mutations()
             .unwrap()
@@ -1884,6 +2497,84 @@ mod tests {
     }
 
     #[test]
+    fn delivery_control_settings_normalize_cached_policy_payload() {
+        let parsed = parse_delivery_control_settings(official_account_policy_read(
+            Some(json!({
+                "timezone": "Asia/Shanghai",
+                "windows": [{"start": "22:00", "end": "07:00", "timezone": "Asia/Shanghai"}]
+            })),
+            json!({
+                "timezone": "Asia/Shanghai",
+                "allowed_weekdays": [0, 2, 4],
+                "muted_until": "2026-04-16T00:00:00Z",
+                "minimum_selected_cards": 2,
+                "skip_if_no_today_focus": true
+            }),
+        ));
+
+        assert_eq!(parsed.read.channel, "official_account");
+        assert_eq!(parsed.read.timezone, "Asia/Shanghai");
+        assert_eq!(parsed.read.allowed_weekdays, vec![0, 2, 4]);
+        assert_eq!(parsed.read.minimum_selected_cards, Some(2));
+        assert!(parsed.read.skip_if_no_today_focus);
+        assert_eq!(parsed.read.quiet_hours.len(), 1);
+        assert!(parsed.read.local_settings_error.is_none());
+    }
+
+    #[test]
+    fn delivery_control_local_hint_flags_quiet_hours_active() {
+        let parsed = parse_delivery_control_settings(official_account_policy_read(
+            Some(json!({
+                "timezone": "UTC",
+                "windows": [{"start": "08:00", "end": "10:00", "timezone": "UTC"}]
+            })),
+            json!({
+                "timezone": "UTC",
+                "allowed_weekdays": [2],
+            }),
+        ));
+
+        let hint = build_delivery_control_local_hint(
+            &parsed,
+            Utc.with_ymd_and_hms(2026, 4, 15, 9, 30, 0)
+                .single()
+                .unwrap(),
+        );
+
+        assert!(hint.quiet_hours_active);
+        assert!(!hint.muted_until_active);
+        assert!(!hint.weekday_blocked);
+        assert_eq!(hint.local_weekday, 2);
+        assert!(hint.next_allowed_at_approx.is_some());
+    }
+
+    #[test]
+    fn delivery_control_local_hint_flags_muted_until_active() {
+        let parsed = parse_delivery_control_settings(official_account_policy_read(
+            None,
+            json!({
+                "timezone": "UTC",
+                "muted_until": "2026-04-15T12:00:00Z",
+            }),
+        ));
+
+        let hint = build_delivery_control_local_hint(
+            &parsed,
+            Utc.with_ymd_and_hms(2026, 4, 15, 9, 30, 0)
+                .single()
+                .unwrap(),
+        );
+
+        assert!(!hint.quiet_hours_active);
+        assert!(hint.muted_until_active);
+        assert!(!hint.weekday_blocked);
+        assert_eq!(
+            hint.next_allowed_at_approx.as_deref(),
+            Some("2026-04-15T12:00:00+00:00"),
+        );
+    }
+
+    #[test]
     fn sync_now_pushes_before_pulling_feed() {
         let service = service();
         let api = FakeApi {
@@ -1933,10 +2624,39 @@ mod tests {
         );
         let log = api.call_log.borrow().clone();
         let push_idx = log.iter().rposition(|entry| entry == "push").unwrap();
-        let feed_idx = log.iter().rposition(|entry| entry.starts_with("feed:1")).unwrap();
+        let feed_idx = log
+            .iter()
+            .rposition(|entry| entry.starts_with("feed:1"))
+            .unwrap();
         let ack_idx = log.iter().rposition(|entry| entry == "ack").unwrap();
         assert!(push_idx < feed_idx);
         assert!(feed_idx < ack_idx);
+    }
+
+    #[test]
+    fn sync_now_response_includes_structured_today_overview_when_digest_is_synced() {
+        let service = service();
+        let api = FakeApi::default();
+        connect(
+            &service,
+            &api,
+            vec![Ok(RemoteSyncFeed {
+                events: vec![paper_event("revision", 1)],
+                next_after_sequence: 1,
+                has_more: false,
+            })],
+        );
+        api.feed_results.replace(vec![Ok(RemoteSyncFeed {
+            events: vec![digest_event(2)],
+            next_after_sequence: 2,
+            has_more: false,
+        })]);
+
+        let response = service.sync_with(&api).unwrap();
+
+        assert!(response.today_overview.is_structured);
+        assert_eq!(response.today_overview.sections.len(), 1);
+        assert_eq!(response.today_overview.sections[0].kind, "today_focus");
     }
 
     #[test]
@@ -2021,7 +2741,10 @@ mod tests {
         let paper = service.get_paper_detail("paper-1").unwrap();
 
         assert_eq!(response.failed_count, 1);
-        assert_eq!(paper.last_mutation_error.as_deref(), Some("validation failed"));
+        assert_eq!(
+            paper.last_mutation_error.as_deref(),
+            Some("validation failed")
+        );
         assert_eq!(service.get_sync_status().unwrap().failed_mutation_count, 1);
     }
 
@@ -2193,6 +2916,44 @@ mod tests {
         assert_eq!(status.pending_mutation_count, 0);
         assert!(service.list_papers(None).unwrap().is_empty());
         assert!(service.list_pending_mutations().unwrap().is_empty());
+    }
+
+    #[test]
+    fn today_overview_prefers_structured_digest_payload_when_available() {
+        let service = service();
+        let api = FakeApi::default();
+        connect(
+            &service,
+            &api,
+            vec![Ok(RemoteSyncFeed {
+                events: vec![paper_event("revision", 1), digest_event(2)],
+                next_after_sequence: 2,
+                has_more: false,
+            })],
+        );
+
+        let today = service.get_today_overview().unwrap();
+        assert!(today.is_structured);
+        assert_eq!(today.fallback_mode, "structured");
+        assert_eq!(today.section_order[0], "today_focus");
+        assert_eq!(today.sections[0].kind, "today_focus");
+        assert_eq!(
+            today
+                .focus_card
+                .as_ref()
+                .map(|card| card.card_type.as_str()),
+            Some("today_suggestion"),
+        );
+        assert_eq!(
+            today
+                .publication_preview
+                .as_ref()
+                .and_then(|preview| preview.primary_cta_text.as_deref()),
+            Some("Finish the response memo"),
+        );
+
+        let bootstrap = service.app_bootstrap().unwrap();
+        assert!(bootstrap.today_overview.is_structured);
     }
 
     #[test]
@@ -2497,7 +3258,9 @@ mod tests {
         let service = service();
         let templates = service.list_note_templates().unwrap();
         assert_eq!(templates.len(), 6);
-        assert!(templates.iter().any(|template| template.kind == "reviewer_matrix"));
+        assert!(templates
+            .iter()
+            .any(|template| template.kind == "reviewer_matrix"));
     }
 
     #[test]
@@ -2528,7 +3291,11 @@ mod tests {
             .unwrap();
 
         assert_eq!(created.note.note.template_kind, "research_note");
-        assert!(created.note.content.unwrap_or_default().contains("# Research Note"));
+        assert!(created
+            .note
+            .content
+            .unwrap_or_default()
+            .contains("# Research Note"));
         assert!(PathBuf::from(created.note.note.absolute_path.unwrap()).exists());
         assert_eq!(service.list_paper_notes("paper-1").unwrap().len(), 1);
         let work_mutations = work_activity_mutations(&service);
@@ -2599,7 +3366,10 @@ mod tests {
             })
             .unwrap();
         let loaded = service.get_paper_note(&created.note.note.id).unwrap();
-        assert!(loaded.content.unwrap_or_default().contains("# Revision Plan"));
+        assert!(loaded
+            .content
+            .unwrap_or_default()
+            .contains("# Revision Plan"));
 
         let saved = service
             .save_paper_note(SavePaperNoteInput {
@@ -2610,7 +3380,10 @@ mod tests {
         let absolute_path = PathBuf::from(saved.note.note.absolute_path.clone().unwrap());
         let disk_content = std::fs::read_to_string(absolute_path).unwrap();
         assert_eq!(disk_content, "# Updated Note\n\nSaved locally.\n");
-        assert_eq!(saved.note.content.unwrap_or_default(), "# Updated Note\n\nSaved locally.\n");
+        assert_eq!(
+            saved.note.content.unwrap_or_default(),
+            "# Updated Note\n\nSaved locally.\n"
+        );
         assert!(saved.note.note.sha256.is_some());
         let work_mutations = work_activity_mutations(&service);
         assert_eq!(work_mutations.len(), 2);
@@ -2713,8 +3486,20 @@ mod tests {
             })
             .unwrap();
 
-        assert_eq!(result.round.as_ref().map(|round| round.round_label.as_str()), Some("Round 1"));
-        assert_eq!(service.get_paper_detail("paper-1").unwrap().review_round_count, 1);
+        assert_eq!(
+            result
+                .round
+                .as_ref()
+                .map(|round| round.round_label.as_str()),
+            Some("Round 1")
+        );
+        assert_eq!(
+            service
+                .get_paper_detail("paper-1")
+                .unwrap()
+                .review_round_count,
+            1
+        );
         let work_mutations = work_activity_mutations(&service);
         assert_eq!(work_mutations.len(), 1);
         assert_eq!(
@@ -2793,7 +3578,10 @@ mod tests {
             })
             .unwrap();
         assert_eq!(
-            updated.comment.as_ref().and_then(|comment| comment.response_summary.as_deref()),
+            updated
+                .comment
+                .as_ref()
+                .and_then(|comment| comment.response_summary.as_deref()),
             Some("Updated response")
         );
 
@@ -2854,10 +3642,11 @@ mod tests {
             })
             .unwrap();
         let first_note = first.generated_note.unwrap();
-        let first_detail = service
-            .get_paper_note(&first_note.note_id)
-            .unwrap();
-        assert!(first_detail.content.unwrap_or_default().contains("We expanded Section 2."));
+        let first_detail = service.get_paper_note(&first_note.note_id).unwrap();
+        assert!(first_detail
+            .content
+            .unwrap_or_default()
+            .contains("We expanded Section 2."));
 
         service
             .add_review_comment(AddReviewCommentInput {
@@ -2890,7 +3679,10 @@ mod tests {
             })
             .unwrap();
         assert_eq!(
-            matrix.generated_note.as_ref().map(|note| note.kind.as_str()),
+            matrix
+                .generated_note
+                .as_ref()
+                .map(|note| note.kind.as_str()),
             Some("reviewer_matrix")
         );
         let work_mutations = work_activity_mutations(&service);

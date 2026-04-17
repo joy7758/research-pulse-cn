@@ -6,8 +6,13 @@ from pydantic import Field, computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from research_pulse_cn.domain.enums import (
+    ExternalRetrievalMode,
+    ExternalRetrievalSourceKind,
+    GroupWorkspaceMemberRole,
+    OfficialAccountOAuthScope,
     OfficialAccountProviderMode,
     OfficialAccountTransportKind,
+    ResultShareKind,
 )
 
 
@@ -102,6 +107,86 @@ class Settings(BaseSettings):
         default=4,
         validation_alias="APP_PULSE_MODIFIER_YESTERDAY_SUMMARY_MULTI_PAPER",
     )
+    pulse_modifier_related_paper_has_doi: int = Field(
+        default=2,
+        validation_alias="APP_PULSE_MODIFIER_RELATED_PAPER_HAS_DOI",
+    )
+    pulse_modifier_related_paper_match_reason_count: int = Field(
+        default=1,
+        validation_alias="APP_PULSE_MODIFIER_RELATED_PAPER_MATCH_REASON_COUNT",
+    )
+    pulse_modifier_related_paper_linked_paper: int = Field(
+        default=3,
+        validation_alias="APP_PULSE_MODIFIER_RELATED_PAPER_LINKED_PAPER",
+    )
+    pulse_modifier_related_paper_recent_retrieval: int = Field(
+        default=2,
+        validation_alias="APP_PULSE_MODIFIER_RELATED_PAPER_RECENT_RETRIEVAL",
+    )
+    pulse_related_paper_lookback_days: int = Field(
+        default=14,
+        validation_alias="APP_PULSE_RELATED_PAPER_LOOKBACK_DAYS",
+    )
+    pulse_related_paper_max_candidates_per_run: int = Field(
+        default=3,
+        validation_alias="APP_PULSE_RELATED_PAPER_MAX_CANDIDATES_PER_RUN",
+    )
+    pulse_related_paper_dedupe_days: int = Field(
+        default=7,
+        validation_alias="APP_PULSE_RELATED_PAPER_DEDUPE_DAYS",
+    )
+    external_retrieval_mode: ExternalRetrievalMode = Field(
+        default=ExternalRetrievalMode.DISABLED,
+        validation_alias="APP_EXTERNAL_RETRIEVAL_MODE",
+    )
+    external_retrieval_enabled_sources: str = Field(
+        default="openalex,crossref,arxiv",
+        validation_alias="APP_EXTERNAL_RETRIEVAL_ENABLED_SOURCES",
+    )
+    external_retrieval_max_plans_per_user: int = Field(
+        default=6,
+        validation_alias="APP_EXTERNAL_RETRIEVAL_MAX_PLANS_PER_USER",
+    )
+    external_retrieval_max_keywords_per_plan: int = Field(
+        default=4,
+        validation_alias="APP_EXTERNAL_RETRIEVAL_MAX_KEYWORDS_PER_PLAN",
+    )
+    external_retrieval_max_topics_per_plan: int = Field(
+        default=3,
+        validation_alias="APP_EXTERNAL_RETRIEVAL_MAX_TOPICS_PER_PLAN",
+    )
+    external_retrieval_lookback_days_for_activity_context: int = Field(
+        default=7,
+        validation_alias="APP_EXTERNAL_RETRIEVAL_LOOKBACK_DAYS_FOR_ACTIVITY_CONTEXT",
+    )
+    external_retrieval_http_connect_timeout_seconds: int = Field(
+        default=5,
+        validation_alias="APP_EXTERNAL_RETRIEVAL_HTTP_CONNECT_TIMEOUT_SECONDS",
+    )
+    external_retrieval_http_read_timeout_seconds: int = Field(
+        default=10,
+        validation_alias="APP_EXTERNAL_RETRIEVAL_HTTP_READ_TIMEOUT_SECONDS",
+    )
+    external_retrieval_max_results_per_plan: int = Field(
+        default=5,
+        validation_alias="APP_EXTERNAL_RETRIEVAL_MAX_RESULTS_PER_PLAN",
+    )
+    external_retrieval_execution_dedupe_minutes: int = Field(
+        default=60,
+        validation_alias="APP_EXTERNAL_RETRIEVAL_EXECUTION_DEDUPE_MINUTES",
+    )
+    external_retrieval_openalex_api_key: str | None = Field(
+        default=None,
+        validation_alias="APP_EXTERNAL_RETRIEVAL_OPENALEX_API_KEY",
+    )
+    external_retrieval_crossref_mailto: str | None = Field(
+        default=None,
+        validation_alias="APP_EXTERNAL_RETRIEVAL_CROSSREF_MAILTO",
+    )
+    external_retrieval_crossref_user_agent_app_name: str | None = Field(
+        default=None,
+        validation_alias="APP_EXTERNAL_RETRIEVAL_CROSSREF_USER_AGENT_APP_NAME",
+    )
     default_timezone: str = Field(default="UTC", validation_alias="APP_DEFAULT_TIMEZONE")
     pulse_default_send_hour_local: int = Field(
         default=9, validation_alias="APP_PULSE_DEFAULT_SEND_HOUR_LOCAL"
@@ -164,6 +249,189 @@ class Settings(BaseSettings):
     mini_papers_max_limit: int = Field(
         default=100,
         validation_alias="APP_MINI_PAPERS_MAX_LIMIT",
+    )
+    subscription_editor_web_allowed_origins: str = Field(
+        default=(
+            "http://127.0.0.1:5173,http://localhost:5173,"
+            "http://127.0.0.1:4173,http://localhost:4173"
+        ),
+        validation_alias="APP_SUBSCRIPTION_EDITOR_WEB_ALLOWED_ORIGINS",
+    )
+    result_share_web_allowed_origins: str = Field(
+        default=(
+            "http://127.0.0.1:5174,http://localhost:5174,"
+            "http://127.0.0.1:4174,http://localhost:4174"
+        ),
+        validation_alias="APP_RESULT_SHARE_WEB_ALLOWED_ORIGINS",
+    )
+    group_workspace_admin_web_allowed_origins: str = Field(
+        default=(
+            "http://127.0.0.1:5175,http://localhost:5175,"
+            "http://127.0.0.1:4175,http://localhost:4175"
+        ),
+        validation_alias="APP_GROUP_WORKSPACE_ADMIN_WEB_ALLOWED_ORIGINS",
+    )
+    user_workbench_admin_web_allowed_origins: str = Field(
+        default=(
+            "http://127.0.0.1:5176,http://localhost:5176,"
+            "http://127.0.0.1:4176,http://localhost:4176"
+        ),
+        validation_alias="APP_USER_WORKBENCH_ADMIN_WEB_ALLOWED_ORIGINS",
+    )
+    group_workspace_invite_web_allowed_origins: str = Field(
+        default=(
+            "http://127.0.0.1:5177,http://localhost:5177,"
+            "http://127.0.0.1:4177,http://localhost:4177"
+        ),
+        validation_alias="APP_GROUP_WORKSPACE_INVITE_WEB_ALLOWED_ORIGINS",
+    )
+    group_workspace_invite_web_entry_base_url: str | None = Field(
+        default=None,
+        validation_alias="APP_GROUP_WORKSPACE_INVITE_WEB_ENTRY_BASE_URL",
+    )
+    result_share_web_entry_base_url: str | None = Field(
+        default=None,
+        validation_alias="APP_RESULT_SHARE_WEB_ENTRY_BASE_URL",
+    )
+    result_share_alias_enabled: bool = Field(
+        default=False,
+        validation_alias="APP_RESULT_SHARE_ALIAS_ENABLED",
+    )
+    result_share_alias_length: int = Field(
+        default=16,
+        validation_alias="APP_RESULT_SHARE_ALIAS_LENGTH",
+    )
+    result_share_alias_ttl_hours: int = Field(
+        default=168,
+        validation_alias="APP_RESULT_SHARE_ALIAS_TTL_HOURS",
+    )
+    result_share_redirect_enabled: bool = Field(
+        default=False,
+        validation_alias="APP_RESULT_SHARE_REDIRECT_ENABLED",
+    )
+    result_share_analytics_enabled: bool = Field(
+        default=False,
+        validation_alias="APP_RESULT_SHARE_ANALYTICS_ENABLED",
+    )
+    result_share_analytics_capture_referrer_host: bool = Field(
+        default=False,
+        validation_alias="APP_RESULT_SHARE_ANALYTICS_CAPTURE_REFERRER_HOST",
+    )
+    result_share_analytics_capture_user_agent_family: bool = Field(
+        default=False,
+        validation_alias="APP_RESULT_SHARE_ANALYTICS_CAPTURE_USER_AGENT_FAMILY",
+    )
+    result_share_analytics_enable_fingerprint: bool = Field(
+        default=False,
+        validation_alias="APP_RESULT_SHARE_ANALYTICS_ENABLE_FINGERPRINT",
+    )
+    result_share_analytics_fingerprint_salt: str | None = Field(
+        default=None,
+        validation_alias="APP_RESULT_SHARE_ANALYTICS_FINGERPRINT_SALT",
+    )
+    result_share_analytics_default_lookback_days: int = Field(
+        default=30,
+        validation_alias="APP_RESULT_SHARE_ANALYTICS_DEFAULT_LOOKBACK_DAYS",
+    )
+    result_share_invite_handoff_enabled: bool = Field(
+        default=True,
+        validation_alias="APP_RESULT_SHARE_INVITE_HANDOFF_ENABLED",
+    )
+    result_share_invite_handoff_allowed_share_kinds: str = Field(
+        default="workspace_board",
+        validation_alias="APP_RESULT_SHARE_INVITE_HANDOFF_ALLOWED_SHARE_KINDS",
+    )
+    result_share_collect_handoff_enabled: bool = Field(
+        default=True,
+        validation_alias="APP_RESULT_SHARE_COLLECT_HANDOFF_ENABLED",
+    )
+    result_share_collect_handoff_allowed_share_kinds: str = Field(
+        default="workspace_board",
+        validation_alias="APP_RESULT_SHARE_COLLECT_HANDOFF_ALLOWED_SHARE_KINDS",
+    )
+    group_workspace_invites_enabled: bool = Field(
+        default=False,
+        validation_alias="APP_GROUP_WORKSPACE_INVITES_ENABLED",
+    )
+    group_workspace_invite_default_max_claims: int = Field(
+        default=1,
+        validation_alias="APP_GROUP_WORKSPACE_INVITE_DEFAULT_MAX_CLAIMS",
+    )
+    group_workspace_invite_ttl_hours: int = Field(
+        default=72,
+        validation_alias="APP_GROUP_WORKSPACE_INVITE_TTL_HOURS",
+    )
+    group_workspace_invite_public_bootstrap_enabled: bool = Field(
+        default=True,
+        validation_alias="APP_GROUP_WORKSPACE_INVITE_PUBLIC_BOOTSTRAP_ENABLED",
+    )
+    group_workspace_result_collect_enabled: bool = Field(
+        default=False,
+        validation_alias="APP_GROUP_WORKSPACE_RESULT_COLLECT_ENABLED",
+    )
+    group_workspace_result_collect_allowed_share_kinds: str = Field(
+        default="digest_issue,paper_snapshot",
+        validation_alias="APP_GROUP_WORKSPACE_RESULT_COLLECT_ALLOWED_SHARE_KINDS",
+    )
+    group_workspace_result_collect_allowed_roles: str = Field(
+        default="owner,editor",
+        validation_alias="APP_GROUP_WORKSPACE_RESULT_COLLECT_ALLOWED_ROLES",
+    )
+    group_workspace_result_collect_max_papers_per_digest: int = Field(
+        default=10,
+        validation_alias="APP_GROUP_WORKSPACE_RESULT_COLLECT_MAX_PAPERS_PER_DIGEST",
+    )
+    subscription_editor_handoff_enabled: bool = Field(
+        default=False,
+        validation_alias="APP_SUBSCRIPTION_EDITOR_HANDOFF_ENABLED",
+    )
+    subscription_editor_handoff_ttl_minutes: int = Field(
+        default=15,
+        validation_alias="APP_SUBSCRIPTION_EDITOR_HANDOFF_TTL_MINUTES",
+    )
+    subscription_editor_handoff_require_active_self_service_grant: bool = Field(
+        default=True,
+        validation_alias="APP_SUBSCRIPTION_EDITOR_HANDOFF_REQUIRE_ACTIVE_SELF_SERVICE_GRANT",
+    )
+    subscription_editor_handoff_require_channel_binding: bool = Field(
+        default=False,
+        validation_alias="APP_SUBSCRIPTION_EDITOR_HANDOFF_REQUIRE_CHANNEL_BINDING",
+    )
+    digest_signal_updates_max_items: int = Field(
+        default=2,
+        validation_alias="APP_DIGEST_SIGNAL_UPDATES_MAX_ITEMS",
+    )
+    digest_related_papers_max_items: int = Field(
+        default=2,
+        validation_alias="APP_DIGEST_RELATED_PAPERS_MAX_ITEMS",
+    )
+    digest_other_updates_max_items: int = Field(
+        default=3,
+        validation_alias="APP_DIGEST_OTHER_UPDATES_MAX_ITEMS",
+    )
+    digest_auto_prepare_official_account: bool = Field(
+        default=False,
+        validation_alias="APP_DIGEST_AUTO_PREPARE_OFFICIAL_ACCOUNT",
+    )
+    digest_auto_dispatch_official_account: bool = Field(
+        default=False,
+        validation_alias="APP_DIGEST_AUTO_DISPATCH_OFFICIAL_ACCOUNT",
+    )
+    digest_dispatch_max_publication_jobs_per_run: int = Field(
+        default=20,
+        validation_alias="APP_DIGEST_DISPATCH_MAX_PUBLICATION_JOBS_PER_RUN",
+    )
+    digest_dispatch_retry_failed_jobs: bool = Field(
+        default=False,
+        validation_alias="APP_DIGEST_DISPATCH_RETRY_FAILED_JOBS",
+    )
+    digest_dispatch_prepare_if_missing: bool = Field(
+        default=False,
+        validation_alias="APP_DIGEST_DISPATCH_PREPARE_IF_MISSING",
+    )
+    digest_auto_dispatch_require_real_mode: bool = Field(
+        default=True,
+        validation_alias="APP_DIGEST_AUTO_DISPATCH_REQUIRE_REAL_MODE",
     )
     official_account_provider_mode: OfficialAccountProviderMode = Field(
         default=OfficialAccountProviderMode.DISABLED,
@@ -233,6 +501,54 @@ class Settings(BaseSettings):
         default=5,
         validation_alias="APP_OFFICIAL_ACCOUNT_DISPATCH_TIMEOUT_SECONDS",
     )
+    official_account_binding_handshake_ttl_minutes: int = Field(
+        default=30,
+        validation_alias="APP_OFFICIAL_ACCOUNT_BINDING_HANDSHAKE_TTL_MINUTES",
+    )
+    official_account_binding_reconciliation_lookback_hours: int = Field(
+        default=72,
+        validation_alias="APP_OFFICIAL_ACCOUNT_BINDING_RECONCILIATION_LOOKBACK_HOURS",
+    )
+    official_account_binding_require_signature_valid: bool = Field(
+        default=True,
+        validation_alias="APP_OFFICIAL_ACCOUNT_BINDING_REQUIRE_SIGNATURE_VALID",
+    )
+    official_account_binding_default_digest_enabled: bool = Field(
+        default=True,
+        validation_alias="APP_OFFICIAL_ACCOUNT_BINDING_DEFAULT_DIGEST_ENABLED",
+    )
+    official_account_oauth_enabled: bool = Field(
+        default=False,
+        validation_alias="APP_OFFICIAL_ACCOUNT_OAUTH_ENABLED",
+    )
+    official_account_oauth_default_scope: OfficialAccountOAuthScope = Field(
+        default=OfficialAccountOAuthScope.SNSAPI_BASE,
+        validation_alias="APP_OFFICIAL_ACCOUNT_OAUTH_DEFAULT_SCOPE",
+    )
+    official_account_oauth_callback_public_base_url: str | None = Field(
+        default=None,
+        validation_alias="APP_OFFICIAL_ACCOUNT_OAUTH_CALLBACK_PUBLIC_BASE_URL",
+    )
+    official_account_oauth_callback_path: str = Field(
+        default="/integrations/wechat/official-account/oauth/callback",
+        validation_alias="APP_OFFICIAL_ACCOUNT_OAUTH_CALLBACK_PATH",
+    )
+    official_account_oauth_fetch_userinfo_when_scope_userinfo: bool = Field(
+        default=True,
+        validation_alias="APP_OFFICIAL_ACCOUNT_OAUTH_FETCH_USERINFO_WHEN_SCOPE_USERINFO",
+    )
+    official_account_oauth_lang: str = Field(
+        default="zh_CN",
+        validation_alias="APP_OFFICIAL_ACCOUNT_OAUTH_LANG",
+    )
+    official_account_oauth_success_redirect_url: str | None = Field(
+        default=None,
+        validation_alias="APP_OFFICIAL_ACCOUNT_OAUTH_SUCCESS_REDIRECT_URL",
+    )
+    official_account_oauth_failure_redirect_url: str | None = Field(
+        default=None,
+        validation_alias="APP_OFFICIAL_ACCOUNT_OAUTH_FAILURE_REDIRECT_URL",
+    )
 
     postgres_host: str = Field(default="localhost", validation_alias="POSTGRES_HOST")
     postgres_port: int = Field(default=5432, validation_alias="POSTGRES_PORT")
@@ -267,6 +583,226 @@ class Settings(BaseSettings):
     def redis_url(self) -> str:
         """Build the Redis connection URL for queue and cache integrations."""
         return f"redis://{self.redis_host}:{self.redis_port}/{self.redis_db}"
+
+    @property
+    def external_retrieval_enabled_source_kinds(self) -> list[ExternalRetrievalSourceKind]:
+        """Return enabled retrieval sources parsed from the environment string."""
+        values: list[ExternalRetrievalSourceKind] = []
+        seen: set[ExternalRetrievalSourceKind] = set()
+        raw_values = str(self.external_retrieval_enabled_sources).replace(";", ",").split(",")
+        for raw_value in raw_values:
+            cleaned = raw_value.strip().lower()
+            if not cleaned:
+                continue
+            try:
+                source_kind = ExternalRetrievalSourceKind(cleaned)
+            except ValueError:
+                continue
+            if source_kind in seen:
+                continue
+            seen.add(source_kind)
+            values.append(source_kind)
+        return values
+
+    @property
+    def subscription_editor_web_allowed_origin_list(self) -> list[str]:
+        """Return allowed browser origins for the subscription editor shell."""
+        values: list[str] = []
+        seen: set[str] = set()
+        raw_values = str(self.subscription_editor_web_allowed_origins).replace(";", ",").split(",")
+        for raw_value in raw_values:
+            cleaned = raw_value.strip().rstrip("/")
+            if not cleaned or cleaned in seen:
+                continue
+            seen.add(cleaned)
+            values.append(cleaned)
+        return values
+
+    @property
+    def result_share_web_allowed_origin_list(self) -> list[str]:
+        """Return allowed browser origins for the result share shell."""
+        values: list[str] = []
+        seen: set[str] = set()
+        raw_values = str(self.result_share_web_allowed_origins).replace(";", ",").split(",")
+        for raw_value in raw_values:
+            cleaned = raw_value.strip().rstrip("/")
+            if not cleaned or cleaned in seen:
+                continue
+            seen.add(cleaned)
+            values.append(cleaned)
+        return values
+
+    @property
+    def group_workspace_admin_web_allowed_origin_list(self) -> list[str]:
+        """Return allowed browser origins for the group workspace admin shell."""
+        values: list[str] = []
+        seen: set[str] = set()
+        raw_values = (
+            str(self.group_workspace_admin_web_allowed_origins).replace(";", ",").split(",")
+        )
+        for raw_value in raw_values:
+            cleaned = raw_value.strip().rstrip("/")
+            if not cleaned or cleaned in seen:
+                continue
+            seen.add(cleaned)
+            values.append(cleaned)
+        return values
+
+    @property
+    def user_workbench_admin_web_allowed_origin_list(self) -> list[str]:
+        """Return allowed browser origins for the user workbench admin shell."""
+        values: list[str] = []
+        seen: set[str] = set()
+        raw_values = str(self.user_workbench_admin_web_allowed_origins).replace(";", ",").split(",")
+        for raw_value in raw_values:
+            cleaned = raw_value.strip().rstrip("/")
+            if not cleaned or cleaned in seen:
+                continue
+            seen.add(cleaned)
+            values.append(cleaned)
+        return values
+
+    @property
+    def group_workspace_invite_web_allowed_origin_list(self) -> list[str]:
+        """Return allowed browser origins for the group workspace invite shell."""
+        values: list[str] = []
+        seen: set[str] = set()
+        raw_values = (
+            str(self.group_workspace_invite_web_allowed_origins).replace(";", ",").split(",")
+        )
+        for raw_value in raw_values:
+            cleaned = raw_value.strip().rstrip("/")
+            if not cleaned or cleaned in seen:
+                continue
+            seen.add(cleaned)
+            values.append(cleaned)
+        return values
+
+    @property
+    def group_workspace_invite_web_entry_url(self) -> str | None:
+        """Return the optional invite shell entry URL without a trailing slash."""
+        raw_value = self.group_workspace_invite_web_entry_base_url
+        if raw_value is None:
+            return None
+        cleaned = str(raw_value).strip().rstrip("/")
+        return cleaned or None
+
+    @property
+    def result_share_web_entry_url(self) -> str | None:
+        """Return the optional result-share shell entry URL without a trailing slash."""
+        raw_value = self.result_share_web_entry_base_url
+        if raw_value is None:
+            return None
+        cleaned = str(raw_value).strip().rstrip("/")
+        return cleaned or None
+
+    @property
+    def result_share_invite_handoff_allowed_share_kind_list(self) -> list[ResultShareKind]:
+        """Return invite-handoff eligible share kinds parsed from configuration."""
+        values: list[ResultShareKind] = []
+        seen: set[ResultShareKind] = set()
+        raw_values = (
+            str(self.result_share_invite_handoff_allowed_share_kinds).replace(";", ",").split(",")
+        )
+        for raw_value in raw_values:
+            cleaned = raw_value.strip().lower()
+            if not cleaned:
+                continue
+            try:
+                share_kind = ResultShareKind(cleaned)
+            except ValueError:
+                continue
+            if share_kind in seen:
+                continue
+            seen.add(share_kind)
+            values.append(share_kind)
+        return values
+
+    @property
+    def result_share_collect_handoff_allowed_share_kind_list(self) -> list[ResultShareKind]:
+        """Return collect-handoff eligible share kinds parsed from configuration."""
+        values: list[ResultShareKind] = []
+        seen: set[ResultShareKind] = set()
+        raw_values = (
+            str(self.result_share_collect_handoff_allowed_share_kinds).replace(";", ",").split(",")
+        )
+        for raw_value in raw_values:
+            cleaned = raw_value.strip().lower()
+            if not cleaned:
+                continue
+            try:
+                share_kind = ResultShareKind(cleaned)
+            except ValueError:
+                continue
+            if share_kind in seen:
+                continue
+            seen.add(share_kind)
+            values.append(share_kind)
+        return values
+
+    @property
+    def group_workspace_result_collect_allowed_share_kind_list(self) -> list[ResultShareKind]:
+        """Return collectable share kinds parsed from configuration."""
+        values: list[ResultShareKind] = []
+        seen: set[ResultShareKind] = set()
+        raw_values = (
+            str(self.group_workspace_result_collect_allowed_share_kinds)
+            .replace(";", ",")
+            .split(",")
+        )
+        for raw_value in raw_values:
+            cleaned = raw_value.strip().lower()
+            if not cleaned:
+                continue
+            try:
+                share_kind = ResultShareKind(cleaned)
+            except ValueError:
+                continue
+            if share_kind in seen:
+                continue
+            seen.add(share_kind)
+            values.append(share_kind)
+        return values
+
+    @property
+    def group_workspace_result_collect_allowed_role_list(self) -> list[GroupWorkspaceMemberRole]:
+        """Return workspace member roles allowed to collect shared results."""
+        values: list[GroupWorkspaceMemberRole] = []
+        seen: set[GroupWorkspaceMemberRole] = set()
+        raw_values = (
+            str(self.group_workspace_result_collect_allowed_roles).replace(";", ",").split(",")
+        )
+        for raw_value in raw_values:
+            cleaned = raw_value.strip().lower()
+            if not cleaned:
+                continue
+            try:
+                role = GroupWorkspaceMemberRole(cleaned)
+            except ValueError:
+                continue
+            if role in seen:
+                continue
+            seen.add(role)
+            values.append(role)
+        return values
+
+    @property
+    def browser_allowed_origin_list(self) -> list[str]:
+        """Return combined loopback origins for thin browser shells."""
+        values: list[str] = []
+        seen: set[str] = set()
+        for origin in (
+            *self.subscription_editor_web_allowed_origin_list,
+            *self.result_share_web_allowed_origin_list,
+            *self.group_workspace_admin_web_allowed_origin_list,
+            *self.user_workbench_admin_web_allowed_origin_list,
+            *self.group_workspace_invite_web_allowed_origin_list,
+        ):
+            if origin in seen:
+                continue
+            seen.add(origin)
+            values.append(origin)
+        return values
 
 
 @lru_cache(maxsize=1)

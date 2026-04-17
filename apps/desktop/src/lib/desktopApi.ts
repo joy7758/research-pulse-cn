@@ -7,6 +7,8 @@ import type {
   ConnectDeviceResponse,
   CreateBlankPaperNoteInput,
   CreatePaperNoteFromTemplateInput,
+  DeliveryControlLocalHintRead,
+  DeliveryControlSettingsRead,
   ImportPaperAttachmentsInput,
   ImportPaperAttachmentsResponse,
   ListReviewCommentsInput,
@@ -57,6 +59,12 @@ export const desktopApi = {
     invoke<PaperDetailRead>("getPaperDetail", { paperId }),
   listSubscriptionPolicies: () =>
     invoke<SubscriptionPolicyRead[]>("listSubscriptionPolicies"),
+  getDeliveryControlSettings: () =>
+    invoke<DeliveryControlSettingsRead[]>("getDeliveryControlSettings"),
+  getDeliveryControlLocalHint: (subscriptionPolicyId: string) =>
+    invoke<DeliveryControlLocalHintRead>("getDeliveryControlLocalHint", {
+      input: { subscriptionPolicyId },
+    }),
   listPendingMutations: () =>
     invoke<PendingMutationRead[]>("listPendingMutations"),
   getWorkspaceStatus: () => invoke<WorkspaceStatusRead>("getWorkspaceStatus"),

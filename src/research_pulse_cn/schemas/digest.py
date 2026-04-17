@@ -9,12 +9,18 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from research_pulse_cn.domain.enums import (
+    ChannelType,
+    DigestDeliveryDecisionStatus,
+    DigestDispatchMode,
+    DigestDispatchRunStatus,
     DigestPublicationAttemptStatus,
     DigestPublicationMode,
     DigestPublicationStatus,
     DigestPublicationTarget,
+    OfficialAccountBindingHandshakeSessionStatus,
     OfficialAccountCallbackPayloadFormat,
     OfficialAccountCallbackProcessingStatus,
+    OfficialAccountOAuthScope,
     OfficialAccountProviderMode,
     OfficialAccountTransportKind,
     PulseCardType,
@@ -109,6 +115,7 @@ class DigestPublicationJobRead(ORMModel):
 class DigestPublicationAttemptRead(BaseModel):
     id: UUID
     digest_publication_job_id: UUID
+    dispatch_run_id: UUID | None
     digest_issue_id: UUID
     user_id: UUID
     binding_id: UUID | None
@@ -189,6 +196,112 @@ class OfficialAccountCallbackEventRead(ORMModel):
     processed_at: datetime | None
 
 
+class OfficialAccountBindingSafeRead(BaseModel):
+    id: UUID
+    channel_type: WeChatBindingChannelType
+    app_id: str
+    display_label: str | None
+    bind_state: WeChatBindingState
+    subscribed: bool
+    digest_enabled: bool
+    subscribed_at: datetime | None
+    unsubscribed_at: datetime | None
+    last_seen_at: datetime | None
+
+
+class OfficialAccountBindingHandshakeSessionCreateRequest(BaseModel):
+    user_id: UUID
+    app_id: str | None = Field(default=None, min_length=1, max_length=255)
+    display_label: str | None = Field(default=None, max_length=255)
+    self_service_grant_id: UUID | None = None
+    expires_at: datetime | None = None
+
+
+class OfficialAccountBindingHandshakeSessionRead(ORMModel):
+    id: UUID
+    user_id: UUID
+    channel: ChannelType
+    app_id: str
+    display_label: str | None
+    self_service_grant_id: UUID | None
+    issued_by_admin_id: UUID | None
+    requested_scope: OfficialAccountOAuthScope
+    authorized_scope: OfficialAccountOAuthScope | None
+    status: OfficialAccountBindingHandshakeSessionStatus
+    oauth_openid_hash: str | None
+    matched_callback_event_id: UUID | None
+    claimed_binding_id: UUID | None
+    expires_at: datetime | None
+    last_viewed_at: datetime | None
+    authorization_started_at: datetime | None
+    matched_at: datetime | None
+    claimed_at: datetime | None
+    oauth_completed_at: datetime | None
+    userinfo_fetched: bool
+    last_error: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class OfficialAccountBindingHandshakeSessionIssueResponse(BaseModel):
+    session: OfficialAccountBindingHandshakeSessionRead
+    plain_text_state_token: str
+    expires_at: datetime | None
+
+
+class OfficialAccountBindingHandshakeSessionCancelResponse(BaseModel):
+    session: OfficialAccountBindingHandshakeSessionRead
+    cancelled_at: datetime
+
+
+class OfficialAccountBindingReconciliationCandidateRead(BaseModel):
+    callback_event_id: UUID
+    app_id: str | None
+    event_type: str | None
+    event_time: datetime | None
+    processing_status: OfficialAccountCallbackProcessingStatus
+    signature_valid: bool
+    masked_openid: str | None
+    created_at: datetime
+    linked_binding_id: UUID | None
+    notes: list[str] = Field(default_factory=list)
+
+
+class OfficialAccountBindingHandshakeClaimRequest(BaseModel):
+    callback_event_id: UUID | None = None
+
+
+class OfficialAccountOAuthAuthorizeUrlRequest(BaseModel):
+    requested_scope: OfficialAccountOAuthScope | None = None
+
+
+class OfficialAccountOAuthAuthorizeUrlResponse(BaseModel):
+    session: OfficialAccountBindingHandshakeSessionRead
+    authorize_url: str
+    requested_scope: OfficialAccountOAuthScope
+    expires_at: datetime | None
+    notes: list[str] = Field(default_factory=list)
+
+
+class OfficialAccountOAuthStatusRead(BaseModel):
+    oauth_enabled: bool
+    default_scope: OfficialAccountOAuthScope
+    callback_public_base_url_configured: bool
+    callback_path: str
+    fetch_userinfo_when_scope_userinfo: bool
+    success_redirect_configured: bool
+    failure_redirect_configured: bool
+    readiness_checks: dict[str, bool]
+    readiness_failures: list[str] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
+
+
+class OfficialAccountBindingHandshakeClaimResponse(BaseModel):
+    session: OfficialAccountBindingHandshakeSessionRead
+    claimed_binding: OfficialAccountBindingSafeRead
+    callback_event: OfficialAccountBindingReconciliationCandidateRead
+
+
 class PulseDigestIssueRead(ORMModel):
     id: UUID
     user_id: UUID
@@ -212,6 +325,61 @@ class PulseDigestIssueDetailRead(PulseDigestIssueRead):
     publication_jobs: list[DigestPublicationJobRead] = Field(default_factory=list)
 
 
+class DigestDispatchRunRead(ORMModel):
+    id: UUID
+    digest_issue_id: UUID
+    user_id: UUID
+    publish_target: DigestPublicationTarget
+    dispatch_mode: DigestDispatchMode
+    provider_mode: OfficialAccountProviderMode
+    status: DigestDispatchRunStatus
+    total_jobs: int
+    eligible_jobs: int
+    previewed_jobs: int
+    sent_jobs: int
+    failed_jobs: int
+    skipped_jobs: int
+    started_at: datetime | None
+    finished_at: datetime | None
+    last_error: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class DigestDispatchRunDetailRead(DigestDispatchRunRead):
+    attempts: list[DigestPublicationAttemptRead] = Field(default_factory=list)
+
+
+class DigestDeliveryDecisionRead(ORMModel):
+    id: UUID
+    digest_issue_id: UUID
+    user_id: UUID
+    channel: ChannelType
+    subscription_policy_id: UUID | None
+    dispatch_run_id: UUID | None
+    decision: DigestDeliveryDecisionStatus
+    reason_codes: list[str] = Field(default_factory=list)
+    effective_timezone: str
+    local_issue_weekday: int | None
+    selected_card_count: int
+    focus_card_type: str | None
+    quiet_hours: dict[str, Any] | None
+    muted_until: datetime | None
+    next_allowed_at: datetime | None
+    created_at: datetime
+
+
+class DigestDeliveryControlPreviewRead(BaseModel):
+    issue: PulseDigestIssueRead
+    matched_subscription_policy: dict[str, Any] | None = None
+    normalized_control_policy: dict[str, Any]
+    current_local_time: datetime
+    local_weekday: int
+    decision: DigestDeliveryDecisionStatus
+    reason_codes: list[str] = Field(default_factory=list)
+    next_allowed_at: datetime | None = None
+
+
 class DigestIssueBuildRequest(BaseModel):
     issue_date: date | None = None
     source_pulse_job_id: UUID | None = None
@@ -220,6 +388,12 @@ class DigestIssueBuildRequest(BaseModel):
 class DigestIssueBuildResponse(BaseModel):
     action: str
     issue: PulseDigestIssueDetailRead
+
+
+class DigestIssueOrchestrateResponse(BaseModel):
+    action: str
+    issue: PulseDigestIssueDetailRead
+    publication_jobs: list[DigestPublicationJobRead] = Field(default_factory=list)
 
 
 class DigestPublicationPrepareResponse(BaseModel):
@@ -231,3 +405,36 @@ class DigestPublicationDispatchResponse(BaseModel):
     action: str
     publication_job: DigestPublicationJobRead
     attempt: DigestPublicationAttemptRead | None = None
+
+
+class DigestIssueDailyPreviewResponse(BaseModel):
+    issue: PulseDigestIssueDetailRead
+    content_payload: dict[str, Any]
+    publication_preview: dict[str, Any] | None = None
+
+
+class DigestIssueDispatchRequest(BaseModel):
+    retry_failed: bool = False
+    force_prepare: bool = False
+
+
+class DigestIssueDispatchPreviewResponse(BaseModel):
+    issue: PulseDigestIssueDetailRead
+    provider_status: OfficialAccountProviderStatusRead
+    delivery_control_preview: DigestDeliveryControlPreviewRead
+    total_publication_jobs: int
+    eligible_jobs: int
+    already_sent_jobs: int
+    failed_jobs: int
+    skipped_reasons: list[str] = Field(default_factory=list)
+    would_prepare: bool
+    retry_failed: bool
+    force_prepare: bool
+
+
+class DigestIssueDispatchResponse(BaseModel):
+    action: str
+    issue: PulseDigestIssueDetailRead
+    dispatch_run: DigestDispatchRunRead | None = None
+    delivery_decision: DigestDeliveryDecisionRead | None = None
+    publication_jobs: list[DigestPublicationJobRead] = Field(default_factory=list)

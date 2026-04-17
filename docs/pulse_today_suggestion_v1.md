@@ -83,10 +83,12 @@
 
 ## Digest Compatibility Notes
 - Digest building tolerates selected `today_suggestion` cards without special branching.
+- Official-account daily digest orchestration now prefers `today_suggestion` as the `today_focus` section head when one is selected.
+- Desktop Today rendering now uses that structured `today_focus` section when synced digest payloads include it.
 - In this phase, `today_suggestion` is usually paper-centric:
   - `source_paper_id` is normally set
 - Compact digest and mini/desktop read payloads still should not assume every card shares the same metadata shape.
-- Desktop compatibility is limited to type and Today-view tolerance in this phase.
+- Desktop compatibility in this phase now includes structured Today rendering while remaining read-only.
 
 ## Current Non-Goals
 - no external academic retrieval
@@ -97,8 +99,20 @@
 - no syncing local file or note contents to the backend
 
 ## Future Work
-- external academic retrieval inputs
-- related-paper and related-news cards
+- external academic retrieval planning inputs and later execution
+- related-news cards
 - richer today-suggestion heuristics
 - user feedback loops for suggestion quality
 - smarter suppression across overlapping internal action cards
+
+## Relationship To Retrieval Planning Boundary
+- `today_suggestion` remains fully internal in this phase.
+- The external retrieval planning and execution boundary does not affect today-suggestion generation:
+  - no network calls
+  - no external result ranking inside today-suggestion
+  - no related-news cards
+- The two layers now coexist:
+  - `today_suggestion` answers "what is the best internal next step today?"
+  - retrieval planning answers "what would we query externally later?"
+  - retrieval execution answers "what official scholarly records did those plans return?"
+  - `related_paper` later answers "which persisted normalized scholarly result is worth reviewing now?"

@@ -52,6 +52,47 @@ export type SubscriptionPolicyRead = {
   lastMutationError: string | null;
 };
 
+export type QuietHoursWindowRead = {
+  start: string;
+  end: string;
+  timezone: string;
+};
+
+export type DeliveryControlSettingsRead = {
+  id: string;
+  userId: string;
+  channel: string;
+  enabled: boolean;
+  frequency: string;
+  quietHours: QuietHoursWindowRead[];
+  rawQuietHours: Record<string, unknown> | null;
+  timezone: string;
+  allowedWeekdays: number[];
+  mutedUntil: string | null;
+  minimumSelectedCards: number | null;
+  skipIfNoTodayFocus: boolean;
+  frequencyCap: number;
+  updatedAt: string | null;
+  pendingMutationCount: number;
+  lastMutationError: string | null;
+  rawPolicy: Record<string, unknown>;
+  localSettingsError: string | null;
+};
+
+export type DeliveryControlLocalHintRead = {
+  subscriptionPolicyId: string;
+  channel: string;
+  effectiveTimezone: string;
+  currentLocalTime: string;
+  localWeekday: number;
+  quietHoursActive: boolean;
+  mutedUntilActive: boolean;
+  weekdayBlocked: boolean;
+  nextAllowedAtApprox: string | null;
+  notes: string[];
+  localSettingsError: string | null;
+};
+
 export type WorkspaceStatusRead = {
   rootPath: string | null;
   status: "unconfigured" | "ready" | "missing" | "invalid" | string;
@@ -218,7 +259,56 @@ export type DigestHighlightRead = {
   title: string;
   summary: string;
   whyNow: string | null;
+  actionText: string | null;
+  deepLink: string | null;
   paper: PaperListItemRead | null;
+};
+
+export type TodaySectionKindRead =
+  | "today_focus"
+  | "yesterday_recap"
+  | "signal_updates"
+  | "related_papers"
+  | "other_updates"
+  | string;
+
+export type TodaySectionItemRead = {
+  sortOrder: number;
+  pulseCardId: string;
+  cardType: PulseCardTypeRead;
+  sourcePaperId: string | null;
+  title: string;
+  summary: string;
+  whyNow: string | null;
+  actionText: string | null;
+  deepLink: string | null;
+  paper: PaperListItemRead | null;
+};
+
+export type TodaySectionRead = {
+  kind: TodaySectionKindRead;
+  title: string;
+  itemCount: number;
+  items: TodaySectionItemRead[];
+};
+
+export type TodayQuickStatsRead = {
+  selectedCardCount: number;
+  relatedPaperCount: number;
+  signalUpdateCount: number;
+  touchedPaperCount: number;
+};
+
+export type TodayFocusCardRead = TodaySectionItemRead;
+
+export type TodayPublicationPreviewRead = {
+  digestTitle: string | null;
+  digestSubtitle: string | null;
+  digestHighlights: DigestHighlightRead[];
+  primaryCtaText: string | null;
+  primaryCtaPath: string | null;
+  miniProgramPath: string | null;
+  articleUrl: string | null;
 };
 
 export type TodayOverviewRead = {
@@ -232,6 +322,13 @@ export type TodayOverviewRead = {
   selectedCardCount: number;
   deepLinkPath: string | null;
   highlights: DigestHighlightRead[];
+  isStructured: boolean;
+  sectionOrder: TodaySectionKindRead[];
+  sections: TodaySectionRead[];
+  quickStats: TodayQuickStatsRead | null;
+  focusCard: TodayFocusCardRead | null;
+  publicationPreview: TodayPublicationPreviewRead | null;
+  fallbackMode: "structured" | "highlights_only" | "empty" | string;
   message: string | null;
   updatedAt: string | null;
 };

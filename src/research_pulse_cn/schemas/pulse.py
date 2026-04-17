@@ -99,6 +99,7 @@ class PulseCardRead(ORMModel):
     why_now: str
     action_text: str | None
     deep_link: str | None
+    external_reference_key: str | None = None
     evidence_refs: list[str]
     candidate_metadata: dict[str, Any] | None
     generated_by: dict[str, Any]

@@ -12,15 +12,28 @@ from research_pulse_cn.services.audit import AuditService
 from research_pulse_cn.services.auth import AuthService
 from research_pulse_cn.services.delivery import DeliveryService
 from research_pulse_cn.services.digest import DigestService
+from research_pulse_cn.services.external_retrieval import ExternalRetrievalService
+from research_pulse_cn.services.group_workspace import GroupWorkspaceService
 from research_pulse_cn.services.mini import MiniService
+from research_pulse_cn.services.official_account_binding_handshake import (
+    OfficialAccountBindingHandshakeService,
+)
+from research_pulse_cn.services.official_account_oauth import OfficialAccountOAuthService
 from research_pulse_cn.services.ops import OpsService
 from research_pulse_cn.services.paper import PaperService
 from research_pulse_cn.services.pulse import PulseService
 from research_pulse_cn.services.research_watch import ResearchWatchProfileService
 from research_pulse_cn.services.scheduler import SchedulerService
+from research_pulse_cn.services.subscription_editor_handoff import (
+    SubscriptionEditorHandoffService,
+)
 from research_pulse_cn.services.subscription_policy import SubscriptionPolicyService
+from research_pulse_cn.services.subscription_self_service import (
+    SubscriptionSelfServiceService,
+)
 from research_pulse_cn.services.sync import SyncService
 from research_pulse_cn.services.user import UserService
+from research_pulse_cn.services.user_workbench import UserWorkbenchService
 from research_pulse_cn.services.work_activity import WorkActivityService
 
 
@@ -55,6 +68,10 @@ def get_research_watch_profile_service(session: SessionDep) -> ResearchWatchProf
     return ResearchWatchProfileService(session)
 
 
+def get_external_retrieval_service(session: SessionDep) -> ExternalRetrievalService:
+    return ExternalRetrievalService(session)
+
+
 def get_delivery_service(session: SessionDep) -> DeliveryService:
     return DeliveryService(session)
 
@@ -63,8 +80,34 @@ def get_digest_service(session: SessionDep) -> DigestService:
     return DigestService(session)
 
 
+def get_official_account_binding_handshake_service(
+    session: SessionDep,
+) -> OfficialAccountBindingHandshakeService:
+    return OfficialAccountBindingHandshakeService(session)
+
+
+def get_official_account_oauth_service(session: SessionDep) -> OfficialAccountOAuthService:
+    return OfficialAccountOAuthService(session)
+
+
 def get_mini_service(session: SessionDep) -> MiniService:
     return MiniService(session)
+
+
+def get_group_workspace_service(session: SessionDep) -> GroupWorkspaceService:
+    return GroupWorkspaceService(session)
+
+
+def get_subscription_self_service_service(
+    session: SessionDep,
+) -> SubscriptionSelfServiceService:
+    return SubscriptionSelfServiceService(session)
+
+
+def get_subscription_editor_handoff_service(
+    session: SessionDep,
+) -> SubscriptionEditorHandoffService:
+    return SubscriptionEditorHandoffService(session)
 
 
 def get_scheduler_service(session: SessionDep) -> SchedulerService:
@@ -89,3 +132,7 @@ def get_audit_service(session: SessionDep) -> AuditService:
 
 def get_sync_service(session: SessionDep) -> SyncService:
     return SyncService(session)
+
+
+def get_user_workbench_service(session: SessionDep) -> UserWorkbenchService:
+    return UserWorkbenchService(session)

@@ -53,6 +53,7 @@ from research_pulse_cn.schemas.pulse import PulseCardPreview
 from research_pulse_cn.services.common import commit_session
 from research_pulse_cn.services.delivery import DeliveryService
 from research_pulse_cn.services.digest import DigestService
+from research_pulse_cn.services.related_paper import RelatedPaperCandidateBuilder
 from research_pulse_cn.services.sync_events import SyncEventService
 from research_pulse_cn.services.today_suggestion import TodaySuggestionBuilder
 from research_pulse_cn.services.yesterday_summary import YesterdaySummaryBuilder
@@ -121,7 +122,7 @@ class DeterministicFactCollector(FactCollector):
         facts: list[PulseFact] = []
 
         for paper in papers:
-            facts.extend(self._collect_fact_set(paper, now, papers))
+            facts.extend(self._collect_fact_set(paper, now))
 
         return sorted(
             facts,
@@ -136,7 +137,6 @@ class DeterministicFactCollector(FactCollector):
         self,
         paper: PaperProfile,
         now: datetime,
-        portfolio_papers: list[PaperProfile],
     ) -> list[PulseFact]:
         facts: list[PulseFact] = []
         latest_touch = _coerce_utc(paper.last_touch_at or paper.created_at)
@@ -198,10 +198,6 @@ class DeterministicFactCollector(FactCollector):
         deadline_fact = self._build_deadline_risk_fact(paper, now, stagnation_days)
         if deadline_fact is not None:
             facts.append(deadline_fact)
-
-        related_fact = self._build_related_paper_fact(paper, portfolio_papers, now)
-        if related_fact is not None:
-            facts.append(related_fact)
 
         return facts
 
@@ -306,60 +302,12 @@ class DeterministicFactCollector(FactCollector):
             },
         )
 
-    def _build_related_paper_fact(
-        self,
-        paper: PaperProfile,
-        portfolio_papers: list[PaperProfile],
-        now: datetime,
-    ) -> PulseFact | None:
-        for other in portfolio_papers:
-            if other.id == paper.id:
-                continue
-            relation_reason = self._related_reason(paper, other)
-            if relation_reason is None:
-                continue
-            return PulseFact(
-                id=f"related_paper:{paper.id}:{other.id}",
-                user_id=paper.user_id,
-                card_type=PulseCardType.RELATED_PAPER,
-                source_paper_id=paper.id,
-                source_timestamp=now,
-                paper_title=paper.title,
-                summary=f"{other.title} may provide a relevant comparison point.",
-                why_now=relation_reason,
-                action_text="Compare the two paper tracks before the next update.",
-                deep_link=f"/papers/{other.id}",
-                evidence_refs=(paper.source_links + other.source_links)[:3],
-                metadata={
-                    "paper_priority": paper.priority,
-                    "related_paper_id": str(other.id),
-                    "related_paper_title": other.title,
-                    "related_reason": relation_reason,
-                    "source": "portfolio_placeholder",
-                    "paper_type": paper.type.value,
-                },
-            )
-        return None
-
-    def _related_reason(self, paper: PaperProfile, other: PaperProfile) -> str | None:
-        if paper.venue and other.venue and paper.venue == other.venue:
-            return f"{paper.title} shares venue context with {other.title}."
-        paper_tokens = {token for token in paper.title.lower().split() if len(token) > 4}
-        other_tokens = {token for token in other.title.lower().split() if len(token) > 4}
-        overlap = sorted(paper_tokens & other_tokens)
-        if overlap:
-            return (
-                f"{paper.title} overlaps with {other.title} on the topic keywords: "
-                f"{', '.join(overlap[:3])}."
-            )
-        return None
-
 
 class DeterministicRuleEngine(RuleEngine):
     """Convert facts into stable pulse candidates."""
 
     def generate_candidates(self, facts: list[PulseFact]) -> list[PulseCandidate]:
-        deduped: dict[tuple[UUID | None, PulseCardType], PulseCandidate] = {}
+        deduped: dict[tuple[Any, ...], PulseCandidate] = {}
         for fact in facts:
             title_hint = TITLE_HINTS[fact.card_type]
             title = f"{title_hint}: {fact.paper_title}"
@@ -367,6 +315,8 @@ class DeterministicRuleEngine(RuleEngine):
                 title = str(fact.metadata.get("title", title))
             elif fact.card_type == PulseCardType.YESTERDAY_SUMMARY:
                 title = f"Yesterday summary for {fact.metadata['summary_date']}"
+            elif fact.card_type == PulseCardType.RELATED_PAPER:
+                title = f"Related paper: {fact.metadata.get('title', fact.paper_title)}"
             candidate = PulseCandidate(
                 id=f"{fact.card_type.value}:{fact.source_paper_id or 'global'}:{fact.id}",
                 fact_id=fact.id,
@@ -384,7 +334,14 @@ class DeterministicRuleEngine(RuleEngine):
                 evidence_refs=list(fact.evidence_refs),
                 candidate_metadata=dict(fact.metadata),
             )
-            key = (fact.source_paper_id, fact.card_type)
+            if fact.card_type == PulseCardType.RELATED_PAPER:
+                key = (
+                    fact.source_paper_id,
+                    fact.card_type,
+                    str(fact.metadata.get("external_reference_key", fact.id)),
+                )
+            else:
+                key = (fact.source_paper_id, fact.card_type)
             current = deduped.get(key)
             if current is None or fact.source_timestamp > current.source_timestamp:
                 deduped[key] = candidate
@@ -430,6 +387,11 @@ class PulseService:
             now_provider=self.now_provider,
         )
         self.today_suggestion_builder = TodaySuggestionBuilder(
+            session,
+            settings=self.settings,
+            now_provider=self.now_provider,
+        )
+        self.related_paper_builder = RelatedPaperCandidateBuilder(
             session,
             settings=self.settings,
             now_provider=self.now_provider,
@@ -565,6 +527,14 @@ class PulseService:
                         "pulse_today_suggestion_cards_selected_total",
                         today_suggestion_count,
                     )
+                related_paper_count = sum(
+                    1 for card in cards if card.card_type == PulseCardType.RELATED_PAPER
+                )
+                if related_paper_count:
+                    self.metrics.increment(
+                        "pulse_related_paper_cards_selected_total",
+                        related_paper_count,
+                    )
                 logger.info("pulse job completed", extra={"selected_cards": len(cards)})
             except Exception as exc:
                 self.session.rollback()
@@ -629,6 +599,16 @@ class PulseService:
         if yesterday_summary_fact is not None:
             facts.append(yesterday_summary_fact)
             self.metrics.increment("pulse_yesterday_summary_candidates_total")
+        related_paper_facts = self._build_related_paper_facts(
+            user_id=user_id,
+            config=resolved_policy.config,
+        )
+        if related_paper_facts:
+            facts.extend(related_paper_facts)
+            self.metrics.increment(
+                "pulse_related_paper_candidates_total",
+                len(related_paper_facts),
+            )
         facts = self._filter_facts_for_config(
             sorted(
                 facts,
@@ -659,6 +639,15 @@ class PulseService:
                 ),
             )
         )
+        recent_related_paper_reference_keys = (
+            self.pulse_repository.list_recent_related_paper_reference_keys(
+                user_id=user_id,
+                since=(
+                    self.now_provider()
+                    - timedelta(days=resolved_policy.config.related_paper_dedupe_days)
+                ),
+            )
+        )
         quiet_hour_window = self._matching_quiet_hours(
             self.now_provider(),
             resolved_policy.config.quiet_hours,
@@ -672,6 +661,7 @@ class PulseService:
                 recent_signatures,
                 recent_yesterday_summary_dates,
                 recent_today_suggestion_contexts,
+                recent_related_paper_reference_keys,
                 quiet_hour_window,
             )
 
@@ -756,6 +746,19 @@ class PulseService:
         yesterday_summary_multi_paper_bonus = (
             self.settings.pulse_modifier_yesterday_summary_multi_paper
         )
+        related_paper_lookback_days = self.settings.pulse_related_paper_lookback_days
+        related_paper_max_candidates_per_run = (
+            self.settings.pulse_related_paper_max_candidates_per_run
+        )
+        related_paper_dedupe_days = self.settings.pulse_related_paper_dedupe_days
+        related_paper_has_doi_bonus = self.settings.pulse_modifier_related_paper_has_doi
+        related_paper_match_reason_count_bonus = (
+            self.settings.pulse_modifier_related_paper_match_reason_count
+        )
+        related_paper_linked_paper_bonus = self.settings.pulse_modifier_related_paper_linked_paper
+        related_paper_recent_retrieval_bonus = (
+            self.settings.pulse_modifier_related_paper_recent_retrieval
+        )
         urgency_modifiers = {
             "recent_signal_delta": self.settings.pulse_modifier_recent_signal_delta,
             "approaching_deadline": self.settings.pulse_modifier_approaching_deadline,
@@ -820,6 +823,28 @@ class PulseService:
                 yesterday_summary_multi_paper_bonus = int(
                     overrides["yesterday_summary_multi_paper_bonus"]
                 )
+            if "related_paper_lookback_days" in overrides:
+                related_paper_lookback_days = int(overrides["related_paper_lookback_days"])
+            if "related_paper_max_candidates_per_run" in overrides:
+                related_paper_max_candidates_per_run = int(
+                    overrides["related_paper_max_candidates_per_run"]
+                )
+            if "related_paper_dedupe_days" in overrides:
+                related_paper_dedupe_days = int(overrides["related_paper_dedupe_days"])
+            if "related_paper_has_doi_bonus" in overrides:
+                related_paper_has_doi_bonus = int(overrides["related_paper_has_doi_bonus"])
+            if "related_paper_match_reason_count_bonus" in overrides:
+                related_paper_match_reason_count_bonus = int(
+                    overrides["related_paper_match_reason_count_bonus"]
+                )
+            if "related_paper_linked_paper_bonus" in overrides:
+                related_paper_linked_paper_bonus = int(
+                    overrides["related_paper_linked_paper_bonus"]
+                )
+            if "related_paper_recent_retrieval_bonus" in overrides:
+                related_paper_recent_retrieval_bonus = int(
+                    overrides["related_paper_recent_retrieval_bonus"]
+                )
             weight_overrides = overrides.get("score_weights")
             if isinstance(weight_overrides, dict):
                 for key, value in weight_overrides.items():
@@ -846,6 +871,13 @@ class PulseService:
             yesterday_summary_min_events=max(1, yesterday_summary_min_events),
             yesterday_summary_activity_diversity_bonus=yesterday_summary_activity_diversity_bonus,
             yesterday_summary_multi_paper_bonus=yesterday_summary_multi_paper_bonus,
+            related_paper_lookback_days=max(1, related_paper_lookback_days),
+            related_paper_max_candidates_per_run=max(1, related_paper_max_candidates_per_run),
+            related_paper_dedupe_days=max(1, related_paper_dedupe_days),
+            related_paper_has_doi_bonus=related_paper_has_doi_bonus,
+            related_paper_match_reason_count_bonus=related_paper_match_reason_count_bonus,
+            related_paper_linked_paper_bonus=related_paper_linked_paper_bonus,
+            related_paper_recent_retrieval_bonus=related_paper_recent_retrieval_bonus,
             score_weights=score_weights,
             urgency_modifiers=urgency_modifiers,
             quiet_hours=quiet_hours,
@@ -903,6 +935,28 @@ class PulseService:
                     config.yesterday_summary_multi_paper_bonus
                 )
 
+        if candidate.card_type == PulseCardType.RELATED_PAPER:
+            if candidate.candidate_metadata.get("doi"):
+                breakdown.modifiers["related_paper_has_doi"] = config.related_paper_has_doi_bonus
+            match_reason_count = len(
+                list(candidate.candidate_metadata.get("matched_reason_codes") or [])
+            )
+            if match_reason_count:
+                breakdown.modifiers["related_paper_match_reason_count"] = (
+                    min(3, match_reason_count) * config.related_paper_match_reason_count_bonus
+                )
+            if candidate.candidate_metadata.get("linked_paper_id"):
+                breakdown.modifiers["related_paper_linked_paper"] = (
+                    config.related_paper_linked_paper_bonus
+                )
+            run_finished_at = _parse_datetime(candidate.candidate_metadata.get("run_finished_at"))
+            if run_finished_at is not None and (self.now_provider() - run_finished_at).days <= min(
+                3, config.related_paper_lookback_days
+            ):
+                breakdown.modifiers["related_paper_recent_retrieval"] = (
+                    config.related_paper_recent_retrieval_bonus
+                )
+
         if candidate.card_type == PulseCardType.SIGNAL_CHANGE:
             signal_age_hours = int(candidate.candidate_metadata.get("hours_since_signal", 999999))
             if signal_age_hours <= config.dedupe_window_hours:
@@ -939,6 +993,7 @@ class PulseService:
         recent_signatures: set[tuple[str, str]],
         recent_yesterday_summary_dates: set[str],
         recent_today_suggestion_contexts: set[tuple[str, str, str]],
+        recent_related_paper_reference_keys: set[str],
         quiet_hour_window: dict[str, Any] | None,
     ) -> None:
         if candidate.candidate_metadata.get("paper_type") == PaperType.PAUSED.value:
@@ -1015,6 +1070,28 @@ class PulseService:
                             "card_type": candidate.card_type.value,
                             "summary_date": summary_date,
                             "dedupe_window_hours": config.dedupe_window_hours,
+                        },
+                    )
+                )
+        elif candidate.card_type == PulseCardType.RELATED_PAPER:
+            external_reference_key = str(
+                candidate.candidate_metadata.get("external_reference_key", "")
+            )
+            if (
+                external_reference_key
+                and external_reference_key in recent_related_paper_reference_keys
+            ):
+                candidate.add_suppression(
+                    SuppressionReason(
+                        code=SuppressionCode.DEDUPE_WINDOW,
+                        message=(
+                            "A matching user/external-reference related-paper card already "
+                            "exists in the dedupe window."
+                        ),
+                        details={
+                            "card_type": candidate.card_type.value,
+                            "external_reference_key": external_reference_key,
+                            "dedupe_days": config.related_paper_dedupe_days,
                         },
                     )
                 )
@@ -1148,6 +1225,68 @@ class PulseService:
             },
         )
 
+    def _build_related_paper_facts(
+        self,
+        *,
+        user_id: UUID,
+        config: PulseScoringConfig,
+    ) -> list[PulseFact]:
+        decisions = self.related_paper_builder.build(
+            user_id=user_id,
+            lookback_days=config.related_paper_lookback_days,
+            max_candidates=config.related_paper_max_candidates_per_run,
+            reference=self.now_provider(),
+        )
+        facts: list[PulseFact] = []
+        for decision in decisions:
+            facts.append(
+                PulseFact(
+                    id=(
+                        f"related_paper:{decision.external_reference_key}:"
+                        f"{decision.external_record_id}"
+                    ),
+                    user_id=user_id,
+                    card_type=PulseCardType.RELATED_PAPER,
+                    source_paper_id=decision.linked_paper_id,
+                    source_timestamp=decision.source_timestamp,
+                    paper_title=decision.title,
+                    summary=decision.summary,
+                    why_now=decision.why_now,
+                    action_text="Review related paper",
+                    deep_link=decision.external_url,
+                    evidence_refs=[decision.external_url] if decision.external_url else [],
+                    metadata={
+                        "external_record_id": str(decision.external_record_id),
+                        "external_reference_key": decision.external_reference_key,
+                        "external_run_id": str(decision.external_run_id),
+                        "external_plan_id": str(decision.external_plan_id),
+                        "source_kind": decision.source_kind,
+                        "retrieval_scope": decision.retrieval_scope,
+                        "external_id": decision.external_id,
+                        "external_url": decision.external_url,
+                        "doi": decision.doi,
+                        "title": decision.title,
+                        "publication_year": decision.publication_year,
+                        "publication_date": decision.publication_date,
+                        "source_title": decision.source_title,
+                        "authors_summary": decision.authors_summary,
+                        "matched_reason_codes": decision.matched_reason_codes,
+                        "linked_paper_id": (
+                            str(decision.linked_paper_id) if decision.linked_paper_id else None
+                        ),
+                        "linked_paper_title": decision.linked_paper_title,
+                        "run_finished_at": (
+                            decision.run_finished_at.isoformat()
+                            if decision.run_finished_at
+                            else None
+                        ),
+                        "result_created_at": decision.result_created_at.isoformat(),
+                        "top_reason_codes": decision.top_reason_codes,
+                    },
+                )
+            )
+        return facts
+
     def _resolve_effective_timezone_name(
         self,
         *,
@@ -1250,6 +1389,9 @@ class PulseService:
             why_now=preview.why_now,
             action_text=preview.action_text,
             deep_link=preview.deep_link,
+            external_reference_key=_maybe_str(
+                preview.candidate_metadata.get("external_reference_key")
+            ),
             evidence_refs=preview.evidence_refs,
             candidate_metadata=preview.candidate_metadata,
             generated_by=preview.generated_by,

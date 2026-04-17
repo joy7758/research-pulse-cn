@@ -2,24 +2,32 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from research_pulse_cn.db.models import (
+    DigestDeliveryDecision,
+    DigestDispatchRun,
     DigestPublicationAttempt,
     DigestPublicationJob,
+    OfficialAccountBindingHandshakeSession,
     OfficialAccountCallbackEvent,
     PulseDigestIssue,
     PulseDigestItem,
     WeChatIdentityBinding,
 )
 from research_pulse_cn.domain.enums import (
+    ChannelType,
+    DigestDeliveryDecisionStatus,
+    DigestDispatchMode,
+    DigestDispatchRunStatus,
     DigestPublicationAttemptStatus,
     DigestPublicationStatus,
     DigestPublicationTarget,
+    OfficialAccountBindingHandshakeSessionStatus,
     OfficialAccountCallbackProcessingStatus,
     OfficialAccountProviderMode,
     PulseDigestIssueStatus,
@@ -141,6 +149,9 @@ class DigestRepository:
                 selectinload(PulseDigestIssue.publication_jobs).selectinload(
                     DigestPublicationJob.binding
                 ),
+                selectinload(PulseDigestIssue.dispatch_runs).selectinload(
+                    DigestDispatchRun.attempts
+                ),
                 selectinload(PulseDigestIssue.user),
                 selectinload(PulseDigestIssue.source_pulse_job),
             )
@@ -161,6 +172,7 @@ class DigestRepository:
                 selectinload(PulseDigestIssue.publication_jobs).selectinload(
                     DigestPublicationJob.binding
                 ),
+                selectinload(PulseDigestIssue.dispatch_runs),
                 selectinload(PulseDigestIssue.source_pulse_job),
             )
             .where(
@@ -252,6 +264,15 @@ class DigestRepository:
         self.session.refresh(attempt)
         return attempt
 
+    def add_delivery_decision(
+        self,
+        decision: DigestDeliveryDecision,
+    ) -> DigestDeliveryDecision:
+        self.session.add(decision)
+        self.session.flush()
+        self.session.refresh(decision)
+        return decision
+
     def list_publication_attempts(
         self,
         *,
@@ -275,6 +296,7 @@ class DigestRepository:
                 selectinload(DigestPublicationAttempt.digest_publication_job).selectinload(
                     DigestPublicationJob.binding
                 ),
+                selectinload(DigestPublicationAttempt.dispatch_run),
             )
             .order_by(
                 DigestPublicationAttempt.started_at.desc(),
@@ -311,6 +333,111 @@ class DigestRepository:
         )
         return self.session.scalar(statement)
 
+    def add_dispatch_run(
+        self,
+        dispatch_run: DigestDispatchRun,
+    ) -> DigestDispatchRun:
+        self.session.add(dispatch_run)
+        self.session.flush()
+        self.session.refresh(dispatch_run)
+        return dispatch_run
+
+    def list_delivery_decisions(
+        self,
+        *,
+        user_id: UUID | None = None,
+        digest_issue_id: UUID | None = None,
+        channel: ChannelType | None = None,
+        decision: DigestDeliveryDecisionStatus | None = None,
+    ) -> list[DigestDeliveryDecision]:
+        statement = (
+            select(DigestDeliveryDecision)
+            .options(
+                selectinload(DigestDeliveryDecision.digest_issue),
+                selectinload(DigestDeliveryDecision.subscription_policy),
+                selectinload(DigestDeliveryDecision.dispatch_run),
+                selectinload(DigestDeliveryDecision.user),
+            )
+            .order_by(
+                DigestDeliveryDecision.created_at.desc(),
+                DigestDeliveryDecision.id.desc(),
+            )
+        )
+        if user_id is not None:
+            statement = statement.where(DigestDeliveryDecision.user_id == user_id)
+        if digest_issue_id is not None:
+            statement = statement.where(DigestDeliveryDecision.digest_issue_id == digest_issue_id)
+        if channel is not None:
+            statement = statement.where(DigestDeliveryDecision.channel == channel)
+        if decision is not None:
+            statement = statement.where(DigestDeliveryDecision.decision == decision)
+        return list(self.session.scalars(statement))
+
+    def list_dispatch_runs(
+        self,
+        *,
+        user_id: UUID | None = None,
+        digest_issue_id: UUID | None = None,
+        status: DigestDispatchRunStatus | None = None,
+        dispatch_mode: DigestDispatchMode | None = None,
+        publish_target: DigestPublicationTarget | None = None,
+    ) -> list[DigestDispatchRun]:
+        statement = (
+            select(DigestDispatchRun)
+            .options(
+                selectinload(DigestDispatchRun.digest_issue),
+                selectinload(DigestDispatchRun.user),
+                selectinload(DigestDispatchRun.attempts).selectinload(
+                    DigestPublicationAttempt.digest_publication_job
+                ),
+            )
+            .order_by(DigestDispatchRun.created_at.desc(), DigestDispatchRun.id.desc())
+        )
+        if user_id is not None:
+            statement = statement.where(DigestDispatchRun.user_id == user_id)
+        if digest_issue_id is not None:
+            statement = statement.where(DigestDispatchRun.digest_issue_id == digest_issue_id)
+        if status is not None:
+            statement = statement.where(DigestDispatchRun.status == status)
+        if dispatch_mode is not None:
+            statement = statement.where(DigestDispatchRun.dispatch_mode == dispatch_mode)
+        if publish_target is not None:
+            statement = statement.where(DigestDispatchRun.publish_target == publish_target)
+        return list(self.session.scalars(statement))
+
+    def get_dispatch_run(self, dispatch_run_id: UUID) -> DigestDispatchRun | None:
+        statement = (
+            select(DigestDispatchRun)
+            .options(
+                selectinload(DigestDispatchRun.digest_issue),
+                selectinload(DigestDispatchRun.user),
+                selectinload(DigestDispatchRun.attempts).selectinload(
+                    DigestPublicationAttempt.digest_publication_job
+                ),
+            )
+            .where(DigestDispatchRun.id == dispatch_run_id)
+            .limit(1)
+        )
+        return self.session.scalar(statement)
+
+    def get_running_dispatch_run(
+        self,
+        *,
+        digest_issue_id: UUID,
+        publish_target: DigestPublicationTarget,
+    ) -> DigestDispatchRun | None:
+        statement = (
+            select(DigestDispatchRun)
+            .where(
+                DigestDispatchRun.digest_issue_id == digest_issue_id,
+                DigestDispatchRun.publish_target == publish_target,
+                DigestDispatchRun.status == DigestDispatchRunStatus.RUNNING,
+            )
+            .order_by(DigestDispatchRun.started_at.desc(), DigestDispatchRun.created_at.desc())
+            .limit(1)
+        )
+        return self.session.scalar(statement)
+
     def add_callback_event(
         self,
         event: OfficialAccountCallbackEvent,
@@ -319,6 +446,15 @@ class DigestRepository:
         self.session.flush()
         self.session.refresh(event)
         return event
+
+    def get_callback_event(self, callback_event_id: UUID) -> OfficialAccountCallbackEvent | None:
+        statement = (
+            select(OfficialAccountCallbackEvent)
+            .options(selectinload(OfficialAccountCallbackEvent.linked_binding))
+            .where(OfficialAccountCallbackEvent.id == callback_event_id)
+            .limit(1)
+        )
+        return self.session.scalar(statement)
 
     def get_callback_event_by_dedupe_key(
         self,
@@ -336,9 +472,13 @@ class DigestRepository:
         self,
         *,
         user_id: UUID | None = None,
+        app_id: str | None = None,
         linked_binding_id: UUID | None = None,
         processing_status: OfficialAccountCallbackProcessingStatus | None = None,
+        event_type: str | None = None,
         signature_valid: bool | None = None,
+        unmatched_only: bool = False,
+        created_after: datetime | None = None,
     ) -> list[OfficialAccountCallbackEvent]:
         statement = (
             select(OfficialAccountCallbackEvent)
@@ -353,16 +493,107 @@ class DigestRepository:
                 WeChatIdentityBinding,
                 OfficialAccountCallbackEvent.linked_binding_id == WeChatIdentityBinding.id,
             ).where(WeChatIdentityBinding.user_id == user_id)
+        if app_id is not None:
+            statement = statement.where(OfficialAccountCallbackEvent.app_id == app_id)
         if linked_binding_id is not None:
             statement = statement.where(
                 OfficialAccountCallbackEvent.linked_binding_id == linked_binding_id
             )
+        if unmatched_only:
+            statement = statement.where(OfficialAccountCallbackEvent.linked_binding_id.is_(None))
         if processing_status is not None:
             statement = statement.where(
                 OfficialAccountCallbackEvent.processing_status == processing_status
             )
+        if event_type is not None:
+            statement = statement.where(OfficialAccountCallbackEvent.event_type == event_type)
         if signature_valid is not None:
             statement = statement.where(
                 OfficialAccountCallbackEvent.signature_valid.is_(signature_valid)
             )
+        if created_after is not None:
+            statement = statement.where(OfficialAccountCallbackEvent.created_at >= created_after)
+        return list(self.session.scalars(statement))
+
+    def add_handshake_session(
+        self,
+        handshake_session: OfficialAccountBindingHandshakeSession,
+    ) -> OfficialAccountBindingHandshakeSession:
+        self.session.add(handshake_session)
+        self.session.flush()
+        self.session.refresh(handshake_session)
+        return handshake_session
+
+    def get_handshake_session(
+        self,
+        session_id: UUID,
+    ) -> OfficialAccountBindingHandshakeSession | None:
+        statement = (
+            select(OfficialAccountBindingHandshakeSession)
+            .options(
+                selectinload(OfficialAccountBindingHandshakeSession.user),
+                selectinload(OfficialAccountBindingHandshakeSession.self_service_grant),
+                selectinload(OfficialAccountBindingHandshakeSession.issued_by_admin),
+                selectinload(OfficialAccountBindingHandshakeSession.matched_callback_event),
+                selectinload(OfficialAccountBindingHandshakeSession.claimed_binding),
+            )
+            .where(OfficialAccountBindingHandshakeSession.id == session_id)
+            .limit(1)
+        )
+        return self.session.scalar(statement)
+
+    def get_handshake_session_by_state_token_hash(
+        self,
+        state_token_hash: str,
+    ) -> OfficialAccountBindingHandshakeSession | None:
+        statement = (
+            select(OfficialAccountBindingHandshakeSession)
+            .options(
+                selectinload(OfficialAccountBindingHandshakeSession.user),
+                selectinload(OfficialAccountBindingHandshakeSession.self_service_grant),
+                selectinload(OfficialAccountBindingHandshakeSession.issued_by_admin),
+                selectinload(OfficialAccountBindingHandshakeSession.matched_callback_event),
+                selectinload(OfficialAccountBindingHandshakeSession.claimed_binding),
+            )
+            .where(OfficialAccountBindingHandshakeSession.state_token_hash == state_token_hash)
+            .limit(1)
+        )
+        return self.session.scalar(statement)
+
+    def list_handshake_sessions(
+        self,
+        *,
+        user_id: UUID | None = None,
+        channel: ChannelType | None = None,
+        status: OfficialAccountBindingHandshakeSessionStatus | None = None,
+        self_service_grant_id: UUID | None = None,
+        app_id: str | None = None,
+    ) -> list[OfficialAccountBindingHandshakeSession]:
+        statement = (
+            select(OfficialAccountBindingHandshakeSession)
+            .options(
+                selectinload(OfficialAccountBindingHandshakeSession.user),
+                selectinload(OfficialAccountBindingHandshakeSession.self_service_grant),
+                selectinload(OfficialAccountBindingHandshakeSession.issued_by_admin),
+                selectinload(OfficialAccountBindingHandshakeSession.matched_callback_event),
+                selectinload(OfficialAccountBindingHandshakeSession.claimed_binding),
+            )
+            .order_by(
+                OfficialAccountBindingHandshakeSession.created_at.desc(),
+                OfficialAccountBindingHandshakeSession.id.desc(),
+            )
+        )
+        if user_id is not None:
+            statement = statement.where(OfficialAccountBindingHandshakeSession.user_id == user_id)
+        if channel is not None:
+            statement = statement.where(OfficialAccountBindingHandshakeSession.channel == channel)
+        if status is not None:
+            statement = statement.where(OfficialAccountBindingHandshakeSession.status == status)
+        if self_service_grant_id is not None:
+            statement = statement.where(
+                OfficialAccountBindingHandshakeSession.self_service_grant_id
+                == self_service_grant_id
+            )
+        if app_id is not None:
+            statement = statement.where(OfficialAccountBindingHandshakeSession.app_id == app_id)
         return list(self.session.scalars(statement))

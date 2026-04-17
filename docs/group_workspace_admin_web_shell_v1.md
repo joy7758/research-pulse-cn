@@ -1,0 +1,95 @@
+## Why An Internal Admin Operator Shell Is Added After Workspace Share Backend Exists
+
+Phase 37 established the backend boundary for admin-managed group workspaces and read-only result sharing. This phase adds a thin internal browser shell so operators can exercise that boundary without introducing a generic end-user login system or any source-file sharing semantics.
+
+The shell is intentionally narrow:
+
+- it consumes existing admin workspace and share-grant endpoints
+- it keeps admin bearer tokens only in memory
+- it remains focused on structured workspace results instead of raw files
+- it now sits alongside a separate read-only user workbench shell for user/paper/watch-profile drilldown, keeping workspace management concerns isolated
+
+## Token Bootstrap Flow
+
+The shell accepts an admin/operator bearer token through:
+
+- manual paste into the connect form
+- optional `#admin_bearer=...` fragment ingestion
+- optional `?admin_bearer=...` query ingestion for local/dev use
+
+When a token is sourced from the URL, the shell immediately moves it into in-memory React state and clears the visible URL via `history.replaceState`. The token is never persisted to:
+
+- `localStorage`
+- `sessionStorage`
+- cookies
+
+The API base URL comes from:
+
+- `VITE_GROUP_WORKSPACE_ADMIN_API_BASE_URL`
+- an optional manual override input for local development
+
+## Supported Workspace Management Actions
+
+The shell currently supports:
+
+- listing `GroupWorkspace` rows
+- creating workspaces with `slug`, `name`, and `description`
+- updating workspace `name`, `description`, and `status`
+- loading the read-only workspace board
+- adding/removing `GroupWorkspaceMember`
+- adding/removing `GroupWorkspacePaper`
+- loading existing `workspace_board` share grants for the current workspace
+
+For v1 usability, the shell reuses existing admin-safe reads:
+
+- `GET /users`
+- `GET /papers`
+
+These lookups remain read-only and are used only to help operators choose user IDs and paper IDs.
+
+## Workspace Board Share Grant UI Scope
+
+The share-grant UI is intentionally limited to `workspace_board` grants in this phase.
+
+Supported actions:
+
+- list existing `workspace_board` share grants for the selected workspace
+- create a new `workspace_board` share grant
+- revoke an existing `workspace_board` share grant
+
+When a share grant is created, the plaintext token is shown once with explicit copy-now messaging. After dismissal, the shell retains only safe grant metadata and never persists the token.
+
+Digest-issue and paper-snapshot share creation remain out of scope for this shell in v1.
+
+## Safety Exclusions
+
+The shell must not expose or reconstruct:
+
+- local filesystem paths
+- local attachment paths
+- local note contents
+- PDF/source-file payloads
+- source-file sharing semantics
+- end-user login/session flows
+
+The workspace board stays read-only and renders only structured workspace/member/paper summaries that already pass through backend safety filtering.
+
+## Current Non-Goals
+
+This phase does not add:
+
+- source-file or attachment sharing
+- live collaboration
+- bulk workspace import
+- digest/paper share management UI
+- desktop UI
+- mini UI
+- campaign/referral flows
+- AI-generated share copy
+
+## Future Work
+
+- richer internal admin UX for search, filtering, and validation
+- user-managed workspace membership and invitation flows
+- digest-issue and paper-snapshot share management UI
+- later invite/handoff flows if justified

@@ -13,10 +13,15 @@ import {
 import "./App.css";
 import { desktopApi } from "./lib/desktopApi";
 import {
-  buildQuietHoursPatch,
+  buildSubscriptionPolicyDraft,
+  buildSubscriptionPolicyPatchInput,
   buildTodayEmptyState,
-  extractQuietHoursDraft,
+  deliveryControlWeekdays,
+  orderTodaySections,
   sortPapers,
+  sortDeliveryControlSettings,
+  summarizeDeliveryControlHint,
+  type SubscriptionPolicyDraft,
 } from "./lib/readModels";
 import type {
   AddReviewCommentInput,
@@ -25,6 +30,8 @@ import type {
   CreateReviewRoundInput,
   CreateBlankPaperNoteInput,
   CreatePaperNoteFromTemplateInput,
+  DeliveryControlLocalHintRead,
+  DeliveryControlSettingsRead,
   DeleteReviewCommentInput,
   ImportPaperAttachmentsResponse,
   ListPapersInput,
@@ -35,10 +42,8 @@ import type {
   PendingMutationRead,
   QueuePaperPatchInput,
   QueueProgressEventCreateInput,
-  QueueSubscriptionPolicyPatchInput,
   ReviewRoundDetailRead,
   SavePaperNoteInput,
-  SubscriptionPolicyRead,
   SyncNowResponse,
   SyncStatusRead,
   TodayOverviewRead,
@@ -67,13 +72,6 @@ type ProgressEventDraft = {
   happenedAt: string;
   summary: string;
   owner: string;
-};
-
-type SubscriptionPolicyDraft = {
-  enabled: boolean;
-  frequencyCap: string;
-  quietStart: string;
-  quietEnd: string;
 };
 
 type AttachmentImportDraft = {
@@ -571,6 +569,24 @@ function TodayView({ todayOverview }: { todayOverview: TodayOverviewRead }) {
     );
   }
 
+  const orderedSections = orderTodaySections(
+    todayOverview.sections.filter((section) => section.items.length > 0),
+    todayOverview.sectionOrder,
+  );
+  const todayFocusSection =
+    orderedSections.find((section) => section.kind === "today_focus") ??
+    (todayOverview.focusCard
+      ? {
+          kind: "today_focus",
+          title: "Today Focus",
+          itemCount: 1,
+          items: [todayOverview.focusCard],
+        }
+      : null);
+  const nonFocusSections = orderedSections.filter(
+    (section) => section.kind !== "today_focus",
+  );
+
   return (
     <section className="page-grid">
       <div className="panel">
@@ -589,36 +605,123 @@ function TodayView({ todayOverview }: { todayOverview: TodayOverviewRead }) {
             value={todayOverview.deepLinkPath ?? "Mini path pending"}
           />
         </div>
-      </div>
-      <div className="panel">
-        <div className="eyebrow">Highlights</div>
-        <div className="list-stack">
-          {todayOverview.highlights.map((highlight) => (
-            <article className="list-card" key={highlight.pulseCardId}>
-              <div className="list-card-topline">
-                <span>#{highlight.sortOrder}</span>
-                <span>{highlight.cardType}</span>
-              </div>
-              <h3>{highlight.title}</h3>
-              <p>{highlight.summary}</p>
-              {highlight.paper ? (
-                <div className="pill-row">
-                  <span className="pill">{highlight.paper.title}</span>
-                  <span className="pill">
-                    {highlight.paper.progressPercentage}% progress
-                  </span>
-                  {highlight.paper.pendingMutationCount ? (
-                    <span className="pill pill-accent">
-                      {highlight.paper.pendingMutationCount} pending write
-                    </span>
-                  ) : null}
-                </div>
-              ) : null}
-            </article>
-          ))}
+        {todayOverview.quickStats ? (
+          <div className="stat-grid today-stat-grid">
+            <StatCard
+              label="Selected Cards"
+              value={String(todayOverview.quickStats.selectedCardCount)}
+            />
+            <StatCard
+              label="Related Papers"
+              value={String(todayOverview.quickStats.relatedPaperCount)}
+            />
+            <StatCard
+              label="Signal Updates"
+              value={String(todayOverview.quickStats.signalUpdateCount)}
+            />
+            <StatCard
+              label="Touched Papers"
+              value={String(todayOverview.quickStats.touchedPaperCount)}
+            />
+          </div>
+        ) : null}
+        <div className="pill-row">
+          <span className="pill">
+            {todayOverview.isStructured ? "Structured digest" : "Legacy digest fallback"}
+          </span>
+          <span className="pill">Mode {todayOverview.fallbackMode}</span>
         </div>
       </div>
+
+      {todayOverview.publicationPreview ? (
+        <div className="panel today-preview-panel">
+          <div className="eyebrow">Publication Preview</div>
+          <h3>{todayOverview.publicationPreview.digestTitle ?? "Daily digest preview"}</h3>
+          {todayOverview.publicationPreview.digestSubtitle ? (
+            <p>{todayOverview.publicationPreview.digestSubtitle}</p>
+          ) : null}
+          <div className="pill-row">
+            {todayOverview.publicationPreview.primaryCtaText ? (
+              <span className="pill pill-accent">
+                CTA {todayOverview.publicationPreview.primaryCtaText}
+              </span>
+            ) : null}
+            {todayOverview.publicationPreview.primaryCtaPath ? (
+              <span className="pill">
+                Path {todayOverview.publicationPreview.primaryCtaPath}
+              </span>
+            ) : null}
+            {todayOverview.publicationPreview.articleUrl ? (
+              <span className="pill">Article ready</span>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      {todayFocusSection ? (
+        <TodaySectionPanel section={todayFocusSection} accent />
+      ) : null}
+
+      {nonFocusSections.map((section) => (
+        <TodaySectionPanel key={section.kind} section={section} />
+      ))}
+
+      {!todayFocusSection && !nonFocusSections.length ? (
+        <div className="panel">
+          <div className="eyebrow">Today</div>
+          <p className="panel-message">
+            No structured digest sections are available yet. Run sync after the backend
+            publishes a digest issue.
+          </p>
+        </div>
+      ) : null}
     </section>
+  );
+}
+
+function TodaySectionPanel({
+  section,
+  accent = false,
+}: {
+  section: {
+    kind: string;
+    title: string;
+    itemCount: number;
+    items: TodayOverviewRead["sections"][number]["items"];
+  };
+  accent?: boolean;
+}) {
+  return (
+    <div className={`panel ${accent ? "today-focus-panel" : ""}`}>
+        <div className="today-section-header">
+          <div>
+          <div className="eyebrow">{section.kind.split("_").join(" ")}</div>
+          <h3>{section.title}</h3>
+          </div>
+        <span className="pill">{section.itemCount} item{section.itemCount === 1 ? "" : "s"}</span>
+      </div>
+      <div className="list-stack">
+        {section.items.map((item) => (
+          <article className={`list-card ${accent ? "list-card-focus" : ""}`} key={item.pulseCardId}>
+            <div className="list-card-topline">
+              <span>#{item.sortOrder}</span>
+              <span>{item.cardType}</span>
+            </div>
+            <h3>{item.title}</h3>
+            <p>{item.summary}</p>
+            {item.whyNow ? <p className="today-item-why-now">{item.whyNow}</p> : null}
+            <div className="pill-row">
+              {item.actionText ? <span className="pill pill-accent">{item.actionText}</span> : null}
+              {item.deepLink ? <span className="pill">{item.deepLink}</span> : null}
+              {item.paper ? <span className="pill">{item.paper.title}</span> : null}
+              {item.paper ? (
+                <span className="pill">{item.paper.progressPercentage}% progress</span>
+              ) : null}
+            </div>
+          </article>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -2176,7 +2279,8 @@ function SettingsView({
   onWriteResult: (result: WriteActionResultRead) => Promise<WriteActionResultRead>;
   dataVersion: number;
 }) {
-  const [policies, setPolicies] = useState<SubscriptionPolicyRead[]>([]);
+  const [deliverySettings, setDeliverySettings] = useState<DeliveryControlSettingsRead[]>([]);
+  const [localHints, setLocalHints] = useState<Record<string, DeliveryControlLocalHintRead>>({});
   const [pendingMutations, setPendingMutations] = useState<PendingMutationRead[]>([]);
   const [workspaceStatus, setWorkspaceStatus] = useState<WorkspaceStatusRead | null>(null);
   const [drafts, setDrafts] = useState<Record<string, SubscriptionPolicyDraft>>({});
@@ -2190,25 +2294,32 @@ function SettingsView({
     void (async () => {
       setLoading(true);
       try {
-        const [nextPolicies, nextPending, nextWorkspaceStatus] = await Promise.all([
-          desktopApi.listSubscriptionPolicies(),
+        const [nextSettingsRaw, nextPending, nextWorkspaceStatus] = await Promise.all([
+          desktopApi.getDeliveryControlSettings(),
           desktopApi.listPendingMutations(),
           desktopApi.getWorkspaceStatus(),
         ]);
-        setPolicies(nextPolicies);
+        const nextSettings = sortDeliveryControlSettings(nextSettingsRaw);
+        const hintEntries = await Promise.all(
+          nextSettings.map(async (policy) => {
+            try {
+              const hint = await desktopApi.getDeliveryControlLocalHint(policy.id);
+              return [policy.id, hint] as const;
+            } catch (hintError) {
+              return [
+                policy.id,
+                buildFallbackDeliveryControlHint(policy, hintError),
+              ] as const;
+            }
+          }),
+        );
+        setDeliverySettings(nextSettings);
+        setLocalHints(Object.fromEntries(hintEntries));
         setPendingMutations(nextPending);
         setWorkspaceStatus(nextWorkspaceStatus);
         setDrafts(
           Object.fromEntries(
-            nextPolicies.map((policy) => [
-              policy.id,
-              {
-                enabled: policy.enabled,
-                frequencyCap: String(policy.frequencyCap),
-                quietStart: extractQuietHoursDraft(policy.quietHours).start,
-                quietEnd: extractQuietHoursDraft(policy.quietHours).end,
-              },
-            ]),
+            nextSettings.map((policy) => [policy.id, buildSubscriptionPolicyDraft(policy)]),
           ),
         );
         setError(null);
@@ -2220,19 +2331,32 @@ function SettingsView({
     })();
   }, [dataVersion]);
 
-  async function handleSavePolicy(policy: SubscriptionPolicyRead) {
+  function updateDraft(
+    policyId: string,
+    updater: (current: SubscriptionPolicyDraft) => SubscriptionPolicyDraft,
+  ) {
+    setDrafts((current) => {
+      const draft = current[policyId];
+      if (!draft) {
+        return current;
+      }
+      return {
+        ...current,
+        [policyId]: updater(draft),
+      };
+    });
+  }
+
+  async function handleSavePolicy(policy: DeliveryControlSettingsRead) {
     const draft = drafts[policy.id];
     if (!draft) {
       return;
     }
     setSavingPolicyId(policy.id);
     try {
-      const result = await desktopApi.queueSubscriptionPolicyPatch({
-        subscriptionPolicyId: policy.id,
-        enabled: draft.enabled,
-        frequencyCap: Number(draft.frequencyCap),
-        quietHours: buildQuietHoursPatch(policy.quietHours, draft.quietStart, draft.quietEnd),
-      } satisfies QueueSubscriptionPolicyPatchInput);
+      const result = await desktopApi.queueSubscriptionPolicyPatch(
+        buildSubscriptionPolicyPatchInput(policy, draft),
+      );
       await onWriteResult(result);
       setActionMessage(buildWriteMessage(result, "Subscription policy queued"));
     } catch (saveError) {
@@ -2346,19 +2470,25 @@ function SettingsView({
 
       <div className="panel">
         <div className="eyebrow">Subscription Policies</div>
+        <h1>Delivery control settings</h1>
+        <p className="panel-message">
+          Desktop only shows a local interpretation of the synced policy. Authoritative send
+          eligibility still comes from backend dispatch evaluation.
+        </p>
         {loading ? <LoadingState label="Loading cached subscription policies" /> : null}
         {error ? <p className="panel-message">{error}</p> : null}
-        {!loading && !policies.length ? (
+        {!loading && !deliverySettings.length ? (
           <p className="panel-message">
             No subscription policies are cached yet. Run sync to edit desktop-side pulse settings.
           </p>
         ) : null}
         <div className="list-stack">
-          {policies.map((policy) => {
+          {deliverySettings.map((policy) => {
             const draft = drafts[policy.id];
             if (!draft) {
               return null;
             }
+            const hint = localHints[policy.id];
             return (
               <article className="list-card" key={policy.id}>
                 <div className="list-card-topline">
@@ -2371,12 +2501,9 @@ function SettingsView({
                       type="checkbox"
                       checked={draft.enabled}
                       onChange={(event) =>
-                        setDrafts((current) => ({
+                        updateDraft(policy.id, (current) => ({
                           ...current,
-                          [policy.id]: {
-                            ...draft,
-                            enabled: event.target.checked,
-                          },
+                          enabled: event.target.checked,
                         }))
                       }
                     />
@@ -2389,12 +2516,22 @@ function SettingsView({
                       min={1}
                       value={draft.frequencyCap}
                       onChange={(event) =>
-                        setDrafts((current) => ({
+                        updateDraft(policy.id, (current) => ({
                           ...current,
-                          [policy.id]: {
-                            ...draft,
-                            frequencyCap: event.target.value,
-                          },
+                          frequencyCap: event.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                  <label>
+                    Timezone
+                    <input
+                      type="text"
+                      value={draft.timezone}
+                      onChange={(event) =>
+                        updateDraft(policy.id, (current) => ({
+                          ...current,
+                          timezone: event.target.value,
                         }))
                       }
                     />
@@ -2405,12 +2542,9 @@ function SettingsView({
                       type="time"
                       value={draft.quietStart}
                       onChange={(event) =>
-                        setDrafts((current) => ({
+                        updateDraft(policy.id, (current) => ({
                           ...current,
-                          [policy.id]: {
-                            ...draft,
-                            quietStart: event.target.value,
-                          },
+                          quietStart: event.target.value,
                         }))
                       }
                     />
@@ -2421,16 +2555,82 @@ function SettingsView({
                       type="time"
                       value={draft.quietEnd}
                       onChange={(event) =>
-                        setDrafts((current) => ({
+                        updateDraft(policy.id, (current) => ({
                           ...current,
-                          [policy.id]: {
-                            ...draft,
-                            quietEnd: event.target.value,
-                          },
+                          quietEnd: event.target.value,
                         }))
                       }
                     />
                   </label>
+                  <label>
+                    Minimum selected cards
+                    <input
+                      type="number"
+                      min={0}
+                      value={draft.minimumSelectedCards}
+                      onChange={(event) =>
+                        updateDraft(policy.id, (current) => ({
+                          ...current,
+                          minimumSelectedCards: event.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                  <label>
+                    Muted until (desktop local)
+                    <input
+                      type="datetime-local"
+                      value={draft.mutedUntil}
+                      onChange={(event) =>
+                        updateDraft(policy.id, (current) => ({
+                          ...current,
+                          mutedUntil: event.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                  <label className="checkbox-field">
+                    <input
+                      type="checkbox"
+                      checked={draft.skipIfNoTodayFocus}
+                      onChange={(event) =>
+                        updateDraft(policy.id, (current) => ({
+                          ...current,
+                          skipIfNoTodayFocus: event.target.checked,
+                        }))
+                      }
+                    />
+                    Skip if no today focus
+                  </label>
+                  <div className="form-full">
+                    <div className="sidebar-label">Allowed weekdays (0 = Monday, 6 = Sunday)</div>
+                    <div className="weekday-grid">
+                      {deliveryControlWeekdays.map((weekday) => {
+                        const checked = draft.allowedWeekdays.includes(weekday.value);
+                        return (
+                          <label className="weekday-option" key={`${policy.id}-${weekday.value}`}>
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(event) =>
+                                updateDraft(policy.id, (current) => ({
+                                  ...current,
+                                  allowedWeekdays: event.target.checked
+                                    ? [...current.allowedWeekdays, weekday.value]
+                                    : current.allowedWeekdays.filter(
+                                        (value) => value !== weekday.value,
+                                      ),
+                                }))
+                              }
+                            />
+                            <span>
+                              {weekday.label} / {weekday.value}
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
                 <div className="pill-row">
                   {policy.pendingMutationCount ? (
@@ -2443,8 +2643,65 @@ function SettingsView({
                   {policy.lastMutationError ? (
                     <span className="pill pill-danger">{policy.lastMutationError}</span>
                   ) : null}
+                  {policy.localSettingsError ? (
+                    <span className="pill pill-danger">Local policy warning</span>
+                  ) : null}
+                  {hint?.quietHoursActive ? (
+                    <span className="pill pill-danger">Quiet hours active</span>
+                  ) : null}
+                  {hint?.mutedUntilActive ? (
+                    <span className="pill pill-danger">Muted until active</span>
+                  ) : null}
+                  {hint?.weekdayBlocked ? (
+                    <span className="pill pill-danger">Weekday blocked</span>
+                  ) : null}
                 </div>
+                <div className="detail-grid">
+                  <DetailRow label="Updated" value={policy.updatedAt ? formatDateTime(policy.updatedAt) : "Unknown"} />
+                  <DetailRow label="Effective timezone" value={hint?.effectiveTimezone ?? policy.timezone} />
+                  <DetailRow
+                    label="Current local weekday"
+                    value={hint ? String(hint.localWeekday) : "Unknown"}
+                  />
+                  <DetailRow
+                    label="Next allowed (approx)"
+                    value={
+                      hint?.nextAllowedAtApprox
+                        ? formatDateTime(hint.nextAllowedAtApprox)
+                        : "No current time-based block"
+                    }
+                  />
+                </div>
+                {policy.localSettingsError ? (
+                  <p className="meta-note">{policy.localSettingsError}</p>
+                ) : null}
+                {hint ? (
+                  <div className="hint-panel">
+                    <div className="sidebar-label">Local hint</div>
+                    <p className="meta-note">{summarizeDeliveryControlHint(hint)}</p>
+                    <div className="meta-list">
+                      {hint.notes.map((note) => (
+                        <div key={`${policy.id}-${note}`} className="meta-note">
+                          {note}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
                 <div className="form-actions">
+                  <button
+                    type="button"
+                    className="button-secondary"
+                    onClick={() =>
+                      updateDraft(policy.id, (current) => ({
+                        ...current,
+                        mutedUntil: "",
+                      }))
+                    }
+                    disabled={savingPolicyId === policy.id}
+                  >
+                    Clear Mute
+                  </button>
                   <button
                     type="button"
                     onClick={() => void handleSavePolicy(policy)}
@@ -2563,6 +2820,26 @@ function DetailRow({ label, value }: { label: string; value: string }) {
       <strong>{value}</strong>
     </div>
   );
+}
+
+function buildFallbackDeliveryControlHint(
+  policy: DeliveryControlSettingsRead,
+  error: unknown,
+): DeliveryControlLocalHintRead {
+  const message = error instanceof Error ? error.message : String(error);
+  return {
+    subscriptionPolicyId: policy.id,
+    channel: policy.channel,
+    effectiveTimezone: policy.timezone,
+    currentLocalTime: new Date().toISOString(),
+    localWeekday: new Date().getDay() === 0 ? 6 : new Date().getDay() - 1,
+    quietHoursActive: false,
+    mutedUntilActive: false,
+    weekdayBlocked: false,
+    nextAllowedAtApprox: null,
+    notes: [`Local hint unavailable: ${message}`],
+    localSettingsError: message,
+  };
 }
 
 function buildWriteMessage(result: WriteActionResultRead, prefix: string) {

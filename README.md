@@ -15,10 +15,30 @@ Private repository. Proprietary and confidential.
 - Worker heartbeats, delivery-attempt tracking, readiness checks, and Prometheus-style metrics
 - Current delivery paths for `in_app`, `email`, and `webhook`, with console/webhook adapters for local development
 - Device-token sync backbone for desktop and future lightweight clients
-- WeChat identity bindings plus digest issue/publication reserve objects for future official-account and mini-program flows
+- WeChat identity bindings plus digest issue/publication reserve objects for future official-account and mini-program flows, including deterministic daily-digest orchestration and issue-level official-account dispatch orchestration
 - Official-account provider boundary with `disabled` / `dry_run` / explicit `real` mode, callback ingress, and token-backed real-send activation
+- Deterministic user-side delivery control on top of official-account digest dispatch, including quiet hours, mute-until, weekday allow-lists, minimum digest thresholds, and persisted delivery decisions
+- Admin-issued subscription self-service reserve grants that expose safe official-account settings reads, safe settings patching, and authoritative delivery-control preview without real WeChat OAuth
+- Self-service editor reserve endpoints that add machine-readable field/section contracts, preview-before-save semantics, and future mobile/web handoff metadata on top of the same self-service grant boundary
+- Mini editor handoff reserve that adds a short-lived `SubscriptionEditorHandoffGrant` bridge from mini read-only reserve to `/subscription-editor/*` without making mini grants directly writable
+- A thin React/Vite subscription editor web shell under `apps/subscription-editor-web` for manually exercising handoff-grant-protected `/subscription-editor/*` flows in a browser or future WebView shell
+- Admin-managed group workspaces with structured workspace boards plus opaque read-only result share grants for `digest_issue`, `paper_snapshot`, and `workspace_board` without exposing source files, local attachment paths, or local note contents
+- A thin public React/Vite result-share shell under `apps/result-share-web` for opening `ResultShareGrant` links in a browser, optionally connecting an in-memory self-service token for collect-preview/collect flows, and surfacing manual invite/join plus result-collect handoff summaries on `workspace_board` shares without introducing source-file sharing, browser token persistence, or a generic login system
+- The same result-sharing boundary now also supports admin-issued opaque `ResultShareAlias` links so public browser entry can use aliases without exposing the underlying raw share token
+- A backend-only result-share analytics reserve that records privacy-aware bootstrap/content/redirect view events for raw share-token, alias, and alias-redirect access without adding browser trackers or exposing raw request identity data
+- The same analytics reserve now also observes a read-only `workspace_board -> invite` redirect bridge so admin users can aggregate invite-handoff conversion without mixing share, invite, or self-service tokens
+- The same analytics reserve now also observes a read-only `workspace_board -> result collect` redirect bridge so admin users can aggregate collect-handoff conversion without mixing board-share tokens with digest/paper share tokens or self-service tokens
+- An admin-only group workspace conversion overview reserve now aggregates persisted share, handoff, invite-claim, and result-collect signals into global and per-workspace read models without introducing probabilistic attribution or source-file semantics
+- A thin internal React/Vite admin shell under `apps/group-workspace-admin-web` for operator-managed workspace list/detail, member/paper add-remove flows, and `workspace_board` share-grant issuance without introducing end-user login or source-file sharing
+- A thin internal React/Vite admin shell under `apps/user-workbench-admin-web` for read-only search and drilldown across users, papers, and research watch profiles without introducing end-user login, file sharing, or business write flows
+- A backend-only workspace invite/join reserve that adds opaque invite grants, public invite bootstrap, self-service claim-preview/claim routes, and safe membership summaries without introducing source-file sharing or a generic login system
+- A thin public React/Vite invite shell under `apps/group-workspace-invite-web` for safe workspace-invite bootstrap, self-service claim preview/claim, and membership confirmation without introducing end-user login, browser token persistence, or source-file sharing
+- The same invite shell can now also surface a manual handoff summary toward the separate result-share collect flow after membership is claimed or confirmed, without mixing invite tokens and share tokens or introducing source-file sharing
+- A backend-only result collect reserve that lets self-service users collect structured `digest_issue` and `paper_snapshot` paper objects into eligible group workspaces without exposing source files, local attachments, or local notes
+- Official-account binding handshake reserve sessions that connect callback evidence, existing bindings, and self-service grants, plus real official-account webpage OAuth completion for code/state exchange and safe binding create/reuse without introducing a generic app login system
+- Mini read-only reserve endpoints that now consume structured digests, expose a safe subscription reserve summary, and keep mini grant auth separate from self-service grant auth
 - Tauri 2 desktop shell with Rust-side pull sync, local SQLite cache, mutation outbox, minimal writeback for paper/progress/subscription policy edits, a local paper workspace layer, local markdown notes/templates, and a local review-matrix workflow that generates reviewer-matrix / response-letter drafts
-- Pulse input-layer foundation with lightweight `WorkActivityEvent` capture, `ResearchWatchProfile` management, desktop-emitted work activity mutations, deterministic pulse-input preview APIs, a deterministic `yesterday_summary` pulse card, and a deterministic `today_suggestion` pulse card generated from internal paper/progress/signal state only
+- Pulse input-layer foundation with lightweight `WorkActivityEvent` capture, `ResearchWatchProfile` management, deterministic external-retrieval planning plus official-source execution/normalization boundaries, desktop-emitted work activity mutations, deterministic pulse-input preview APIs, a deterministic `yesterday_summary` pulse card, a deterministic `today_suggestion` pulse card generated from internal paper/progress/signal state only, and a deterministic `related_paper` pulse card generated only from persisted normalized external scholarly results
 - Seed data, Docker Compose, pytest, Ruff, and CI
 
 ## Architecture
@@ -69,6 +89,56 @@ The code keeps pulse generation behind stable interfaces such as `FactCollector`
    `make desktop-install`
 12. Run the desktop shell:
    `make desktop-dev`
+13. Install the subscription editor web shell if you want to test handoff-grant editing flows:
+   `make subscription-editor-install`
+14. Run the subscription editor web shell:
+   `make subscription-editor-dev`
+15. Install the result share shell if you want to demo public share links:
+   `make result-share-install`
+16. Run the result share shell:
+   `make result-share-dev`
+17. Install the internal workspace admin shell if you want to manage workspaces in a browser:
+   `make workspace-admin-install`
+18. Run the internal workspace admin shell:
+   `make workspace-admin-dev`
+19. Install the internal user workbench shell if you want read-only search across users, papers, and watch profiles:
+   `make user-workbench-install`
+20. Run the internal user workbench shell:
+   `make user-workbench-dev`
+21. Install the workspace invite shell if you want to test public invite bootstrap plus self-service claim flows:
+   `make workspace-invite-install`
+22. Run the workspace invite shell:
+   `make workspace-invite-dev`
+
+Group workspace/result sharing in this phase now has two thin browser shells:
+- internal admin/operator management in `apps/group-workspace-admin-web`
+- public read-only share rendering in `apps/result-share-web`
+- public invite bootstrap plus self-service claim rendering in `apps/group-workspace-invite-web`
+- public opaque-alias entry for the same result-share shell:
+  - `GET /share-aliases/{alias}/bootstrap`
+  - `GET /share-aliases/{alias}/content`
+  - optional `GET /s/{alias}` redirect boundary
+- public workspace-board invite handoff redirect for the same result-share shell:
+  - `GET /result-shares/{share_token}/invite-handoff`
+  - `GET /share-aliases/{alias}/invite-handoff`
+- self-service result collect reserve for:
+  - `GET /subscription-self-service/result-shares/{share_token}/collect-preview`
+  - `POST /subscription-self-service/result-shares/{share_token}/collect`
+  - `GET /subscription-self-service/share-aliases/{alias}/collect-preview`
+  - `POST /subscription-self-service/share-aliases/{alias}/collect`
+  - `GET /subscription-self-service/workspace-result-collections`
+- PDFs, source files, local attachments, and local note contents are still excluded
+- workspace invite/join now also has a backend reserve:
+  - `GET /workspace-invites/{invite_token}/bootstrap`
+  - `GET /subscription-self-service/workspace-invites/{invite_token}/claim-preview`
+  - `POST /subscription-self-service/workspace-invites/{invite_token}/claim`
+  - `GET /subscription-self-service/workspace-memberships`
+
+Internal support workflows in this phase now also have a separate read-only workbench in `apps/user-workbench-admin-web` for:
+- user lookup
+- paper lookup
+- watch-profile lookup
+- safe drilldown across those structured objects only
 
 Open API docs at `http://127.0.0.1:8000/docs`.
 
@@ -113,18 +183,194 @@ Review matrix data and generated drafts stay local in v1 and do not sync to the 
 
 Selected desktop-local actions now also emit lightweight `work_activity.record` mutations through the existing sync outbox so the cloud can build pulse inputs without receiving local file or note contents.
 
+Desktop Settings now also exposes synced delivery-control fields from cached `SubscriptionPolicy` rows:
+- `enabled`
+- `quiet_hours`
+- `policy.timezone`
+- `policy.allowed_weekdays`
+- `policy.muted_until`
+- `policy.minimum_selected_cards`
+- `policy.skip_if_no_today_focus`
+
+These edits still queue `subscription_policy.patch` through the existing sync writeback path. The Settings hint panel is local-only and is not an authoritative backend dispatch decision.
+
+Desktop Today now also prefers the orchestrated sectioned digest payload when available:
+- `today_focus`
+- `yesterday_recap`
+- `signal_updates`
+- `related_papers`
+- `other_updates`
+
+Older cached digests that only have `highlights` / `items` still render through a deterministic desktop fallback path.
+
+Mini read-only routes now also prefer the same orchestrated sectioned digest payload when available and fall back to legacy `highlights` / `items` when older digest content is all that exists.
+
+Mini reserve now also exposes a short-lived editor handoff bridge:
+- `POST /mini/subscription-reserve/editor-handoff`
+- `GET /mini/subscription-reserve/editor-handoff-status`
+
+These routes mint or inspect a narrow handoff token for `/subscription-editor/*` only. Mini grants still cannot patch subscription settings directly.
+Mini reserve now also exposes an informational `workspace_invite_reserve` block:
+- mini grant still cannot claim workspace membership directly
+- a separate self-service grant is required
+- invite claim remains self-service-only in this phase
+Mini reserve now also exposes an informational `workspace_collect_reserve` block:
+- mini grant still cannot collect shared results into a workspace directly
+- a separate self-service grant is required
+- collect remains limited to `digest_issue` and `paper_snapshot` in this phase
+
+## Subscription editor web shell
+The repository now also includes a thin browser/WebView-friendly shell under `apps/subscription-editor-web` using:
+- React
+- TypeScript
+- Vite
+
+This shell:
+- accepts a short-lived handoff token from manual paste or `#handoff_token=...`
+- keeps the token in memory only
+- calls only:
+  - `GET /subscription-editor/bootstrap`
+  - `GET /subscription-editor/contract`
+  - `POST /subscription-editor/settings/preview`
+  - `PATCH /subscription-editor/settings`
+- does not create a new auth system or generic app login surface
+
+## Result share web shell
+The repository now also includes a thin public browser shell under `apps/result-share-web` using:
+- React
+- TypeScript
+- Vite
+
+This shell:
+- accepts a raw share token from `/share/<token>`, query/fragment fallback, or manual paste
+- accepts an opaque share alias from `/share-alias/<alias>`, query/fragment fallback, or manual paste
+- accepts an optional self-service token from manual paste or local-dev query/fragment fallback
+- keeps query/fragment token or alias hints in memory only after clearing them from the visible URL
+- calls only:
+  - `GET /result-shares/{share_token}/bootstrap`
+  - `GET /result-shares/{share_token}/content`
+  - `GET /share-aliases/{alias}/bootstrap`
+  - `GET /share-aliases/{alias}/content`
+  - `GET /subscription-self-service/result-shares/{share_token}/collect-preview`
+  - `POST /subscription-self-service/result-shares/{share_token}/collect`
+  - `GET /subscription-self-service/share-aliases/{alias}/collect-preview`
+  - `POST /subscription-self-service/share-aliases/{alias}/collect`
+  - `GET /subscription-self-service/workspace-result-collections`
+- keeps public share rendering read-only while the backend may record privacy-aware internal analytics events for:
+  - `bootstrap_view`
+  - `content_view`
+  - `redirect`
+  - `invite_handoff_redirect`
+  - `collect_handoff_redirect`
+- renders read-only `digest_issue`, `paper_snapshot`, and `workspace_board` views plus an explicit self-service collect flow for collectable share kinds
+- shows a manual invite/join handoff summary on `workspace_board` shares without mixing the share page into invite claim auth
+- shows a separate manual result-collect handoff summary on `workspace_board` shares without turning the board share itself into a collect source
+- may show `Open invite entry` and `Open result collect entry` CTAs on `workspace_board` shares when backend redirect boundaries are configured
+- keeps raw token mode and opaque alias mode additive over the same underlying `ResultShareGrant` semantics
+
+Admin-only analytics reserve now also exists behind the same share boundary:
+- `GET /admin/result-share-analytics/summary`
+- `GET /admin/result-share-analytics/events`
+- `GET /admin/group-workspace-conversion-overview`
+- `GET /admin/group-workspaces/{workspace_id}/conversion-overview`
+- event capture is backend-only and does not add browser trackers or expose raw IPs, full referrer URLs, or raw user agents
+- conversion overview stays aggregate-only and explicitly separates direct share/collect links from workspace-level invite aggregates
+- does not add login, editing, or source-file sharing
+
+The separate invite shell under `apps/group-workspace-invite-web` now also:
+- keeps invite/self-service tokens in memory only
+- stays focused on membership bootstrap, claim preview, claim, and membership summaries
+- may show a manual result-collect handoff summary after claimed / already_member / membership states
+- still does not perform collect directly
+
+## Group workspace admin web shell
+The repository now also includes a thin internal browser shell under `apps/group-workspace-admin-web` using:
+- React
+- TypeScript
+- Vite
+
+This shell:
+- accepts an admin/operator bearer token from manual paste or query/fragment fallback
+- keeps the token in memory only
+- manages only:
+  - `GET/POST/PATCH /admin/group-workspaces`
+  - `GET /admin/group-workspaces/{workspace_id}/board`
+  - member and paper add/remove routes
+  - `workspace_board` share-grant create/revoke flows
+- reuses existing `GET /users` and `GET /papers` reads as internal lookup sources
+- does not add end-user login, public editing, or source-file sharing
+
+## Group workspace invite web shell
+The repository now also includes a thin public browser shell under `apps/group-workspace-invite-web` using:
+- React
+- TypeScript
+- Vite
+
+This shell:
+- accepts an invite token from `/invite/<token>`, query/fragment fallback, or manual paste
+- accepts an optional self-service token from manual paste or local-dev query/fragment fallback
+- keeps both tokens in memory only after clearing visible URL hints
+- calls only:
+  - `GET /workspace-invites/{invite_token}/bootstrap`
+  - `GET /subscription-self-service/workspace-invites/{invite_token}/claim-preview`
+  - `POST /subscription-self-service/workspace-invites/{invite_token}/claim`
+  - `GET /subscription-self-service/workspace-memberships`
+- does not add a generic login system, source-file sharing, or browser token persistence
+
+## User workbench admin web shell
+The repository now also includes a thin internal browser shell under `apps/user-workbench-admin-web` using:
+- React
+- TypeScript
+- Vite
+
+This shell:
+- accepts a viewer/operator/super_admin bearer token from manual paste or query/fragment fallback
+- keeps the token in memory only
+- reads only:
+  - `GET /admin/user-workbench/users`
+  - `GET /admin/user-workbench/users/{user_id}`
+  - `GET /admin/user-workbench/papers`
+  - `GET /admin/user-workbench/papers/{paper_id}`
+  - `GET /admin/user-workbench/watch-profiles`
+- supports drilldown:
+  - user -> papers
+  - user -> watch profiles
+  - paper -> watch profiles
+- does not add end-user login, business writes, or source-file sharing
+
+Official-account binding reserve now also adds:
+- admin-created handshake sessions with one-time state tokens
+- admin reconciliation candidate listing over unmatched subscribe callback events
+- explicit callback-event claim into `WeChatIdentityBinding`
+- self-service handshake reserve bootstrap/create/read/cancel endpoints
+- mini read-only `binding_handoff_reserve` summary
+- real webpage OAuth completion on top of the reserve:
+  - self-service `oauth-start`
+  - admin authorize-url issuance
+  - public callback `code/state` exchange
+  - safe binding create/reuse and callback-evidence linking
+
 ## Pulse input layer
 The backend now includes a pulse input layer for future retrieval and recap work:
 - `WorkActivityEvent` for structured "what the user did" signals
 - `ResearchWatchProfile` for structured "what the user should watch" interests
-- `GET /pulse/input-preview/{user_id}` for a deterministic preview of the current input window, activity summary, and effective watch seeds
+- deterministic external retrieval planning through `ExternalRetrievalPlan`
+- official-source retrieval execution through `ExternalRetrievalRun`
+- normalized scholarly result storage through `ExternalRetrievedRecord`
+- `GET /pulse/input-preview/{user_id}` for a deterministic preview of the current input window, activity summary, effective watch seeds, and compact retrieval planning
+- `GET /external-retrieval/input-preview/{user_id}` for full retrieval-input preview
+- `POST /external-retrieval/plans/build/{user_id}` for plan-hash-upserted plan persistence
+- `GET /external-retrieval/provider-status` for safe execution readiness
+- `POST /external-retrieval/plans/execute/{plan_id}` for official-source fetch + normalize
+- `GET /external-retrieval/runs` and `GET /external-retrieval/results` for inspecting persisted runs and normalized records
 - `yesterday_summary` pulse cards built only from previous-local-day `WorkActivityEvent` rows
 - `today_suggestion` pulse cards built only from internal paper, progress, signal, and policy-timezone context
+- `related_paper` pulse cards built only from persisted `ExternalRetrievedRecord` rows whose runs completed successfully
 
-This phase still avoids external retrieval:
-- no external retrieval
+This phase still keeps external-card consumption narrow:
+- no related-news cards
 - no AI summarization
-- no related-paper/news fetching from outside the portfolio
+- no AI ranking of fetched scholarly records
 
 Yesterday-summary behavior in this phase:
 - uses previous-local-day activity only
@@ -160,6 +406,31 @@ Today-suggestion behavior in this phase:
 - `make desktop-lint`: run desktop lint and typecheck
 - `make desktop-test`: run desktop frontend tests plus Rust cache/sync tests
 - `make desktop-build-web`: build the desktop web frontend without native packaging
+- `make subscription-editor-install`: install subscription-editor shell dependencies under `apps/subscription-editor-web`
+- `make subscription-editor-dev`: run the subscription-editor shell in development mode
+- `make subscription-editor-lint`: run subscription-editor shell lint and typecheck
+- `make subscription-editor-test`: run subscription-editor shell tests
+- `make subscription-editor-build`: build the subscription-editor shell
+- `make result-share-install`: install result-share shell dependencies under `apps/result-share-web`
+- `make result-share-dev`: run the result-share shell in development mode
+- `make result-share-lint`: run result-share shell lint and typecheck
+- `make result-share-test`: run result-share shell tests
+- `make result-share-build`: build the result-share shell
+- `make workspace-admin-install`: install workspace-admin shell dependencies under `apps/group-workspace-admin-web`
+- `make workspace-admin-dev`: run the workspace-admin shell in development mode
+- `make workspace-admin-lint`: run workspace-admin shell lint and typecheck
+- `make workspace-admin-test`: run workspace-admin shell tests
+- `make workspace-admin-build`: build the workspace-admin shell
+- `make user-workbench-install`: install user-workbench shell dependencies under `apps/user-workbench-admin-web`
+- `make user-workbench-dev`: run the user-workbench shell in development mode
+- `make user-workbench-lint`: run user-workbench shell lint and typecheck
+- `make user-workbench-test`: run user-workbench shell tests
+- `make user-workbench-build`: build the user-workbench shell
+- `make subscription-editor-install`: install web-shell dependencies under `apps/subscription-editor-web`
+- `make subscription-editor-dev`: run the subscription editor web shell
+- `make subscription-editor-lint`: run editor web lint and typecheck
+- `make subscription-editor-test`: run editor web tests
+- `make subscription-editor-build`: build the editor web shell
 
 ## Environment
 Main environment variables are documented in `.env.example`.
@@ -188,6 +459,57 @@ Important values:
 - `APP_MINI_READ_GRANT_DEFAULT_TTL_HOURS`: default preview-grant lifetime for `/mini/*`
 - `APP_MINI_PAPERS_DEFAULT_LIMIT`: default compact paper page size for mini reads
 - `APP_MINI_PAPERS_MAX_LIMIT`: max compact paper page size for mini reads
+- `APP_SUBSCRIPTION_EDITOR_WEB_ALLOWED_ORIGINS`: browser origins allowed to call the editor shell APIs during local development
+- `APP_GROUP_WORKSPACE_INVITES_ENABLED`: enable or disable workspace invite issuance and claim flows
+- `APP_GROUP_WORKSPACE_INVITE_DEFAULT_MAX_CLAIMS`: default invite claim capacity when create does not override it
+- `APP_GROUP_WORKSPACE_INVITE_TTL_HOURS`: default invite lifetime
+- `APP_GROUP_WORKSPACE_INVITE_PUBLIC_BOOTSTRAP_ENABLED`: enable or disable public invite bootstrap separately
+- `APP_DIGEST_SIGNAL_UPDATES_MAX_ITEMS`: max `signal_change` cards kept in the `signal_updates` digest section
+- `APP_DIGEST_RELATED_PAPERS_MAX_ITEMS`: max `related_paper` cards kept in the `related_papers` digest section
+- `APP_DIGEST_OTHER_UPDATES_MAX_ITEMS`: max overflow cards kept in the `other_updates` digest section
+- `APP_DIGEST_AUTO_PREPARE_OFFICIAL_ACCOUNT`: when true, digest orchestration also upserts prepared official-account publication jobs without dispatching sends
+- `APP_DIGEST_AUTO_DISPATCH_OFFICIAL_ACCOUNT`: when true, orchestration may also trigger one issue-level official-account dispatch run
+- `APP_DIGEST_DISPATCH_MAX_PUBLICATION_JOBS_PER_RUN`: cap for eligible official-account jobs dispatched under one digest issue run
+- `APP_DIGEST_DISPATCH_RETRY_FAILED_JOBS`: allow failed official-account jobs to re-enter issue-level dispatch eligibility by default
+- `APP_DIGEST_DISPATCH_PREPARE_IF_MISSING`: allow issue-level dispatch to prepare official-account jobs first when none exist yet
+- `APP_DIGEST_AUTO_DISPATCH_REQUIRE_REAL_MODE`: when true, auto-dispatch only runs in `real` mode with real send enabled
+- Official-account delivery control policy keys now live in `SubscriptionPolicy.policy`:
+  - `timezone`
+  - `allowed_weekdays`
+  - `muted_until`
+  - `minimum_selected_cards`
+  - `skip_if_no_today_focus`
+- `SubscriptionPolicy.quiet_hours` remains the separate quiet-window field for user-side delivery gating
+- `SubscriptionSelfServiceGrant` now reserves a separate bearer-token auth boundary for `/subscription-self-service/*`
+- mini read-only subscription reserve is exposed through:
+  - `GET /mini/subscription-reserve`
+  - mini grant auth only
+  - authoritative delivery preview reuse without write access
+- self-service editor reserve is exposed through:
+  - `GET /subscription-self-service/editor-bootstrap`
+  - `GET /subscription-self-service/editor-contract`
+  - `POST /subscription-self-service/settings/preview`
+  - `PATCH /subscription-self-service/settings?include_preview=true`
+  - authoritative preview-before-save without persisting draft state
+- group workspace invite/join reserve is exposed through:
+  - `GET /workspace-invites/{invite_token}/bootstrap`
+  - `GET /subscription-self-service/workspace-invites/{invite_token}/claim-preview`
+  - `POST /subscription-self-service/workspace-invites/{invite_token}/claim`
+  - `GET /subscription-self-service/workspace-memberships`
+  - public bootstrap stays read-only
+  - membership claim stays behind self-service grant auth
+- `subscription-self-service` editable fields are limited to:
+  - `enabled`
+  - `quiet_hours`
+  - `timezone`
+  - `allowed_weekdays`
+  - `muted_until`
+  - `minimum_selected_cards`
+  - `skip_if_no_today_focus`
+- mini read-only reserve now also includes a `self_service_entry` handoff block describing:
+  - mini grant remains read-only
+  - a separate self-service grant is still required for edits
+  - editor contract and editor preview are available for future clients
 - `APP_OFFICIAL_ACCOUNT_PROVIDER_MODE`: official-account provider mode: `disabled`, `dry_run`, or `real`
 - `APP_OFFICIAL_ACCOUNT_TRANSPORT_KIND`: outbound transport strategy, currently `template_notice`
 - `APP_WECHAT_OFFICIAL_APP_ID`: official-account app id for provider readiness and callback matching
@@ -216,6 +538,33 @@ Important values:
 - `APP_PULSE_YESTERDAY_SUMMARY_MIN_EVENTS`: minimum qualifying previous-day activity events before candidate generation
 - `APP_PULSE_MODIFIER_YESTERDAY_SUMMARY_ACTIVITY_DIVERSITY`: bonus when multiple activity types were recorded
 - `APP_PULSE_MODIFIER_YESTERDAY_SUMMARY_MULTI_PAPER`: bonus when previous-day work touched multiple papers
+- `APP_PULSE_WEIGHT_RELATED_PAPER`: base score weight for `related_paper`
+- `APP_PULSE_MODIFIER_RELATED_PAPER_HAS_DOI`: bonus when a normalized scholarly result has a DOI
+- `APP_PULSE_MODIFIER_RELATED_PAPER_MATCH_REASON_COUNT`: per-match-reason bonus for normalized related-paper candidates
+- `APP_PULSE_MODIFIER_RELATED_PAPER_LINKED_PAPER`: bonus when the normalized record links back to a known internal paper
+- `APP_PULSE_MODIFIER_RELATED_PAPER_RECENT_RETRIEVAL`: bonus when the source retrieval run completed recently
+- `APP_PULSE_RELATED_PAPER_LOOKBACK_DAYS`: lookback window for eligible completed related-paper retrieval results
+- `APP_PULSE_RELATED_PAPER_MAX_CANDIDATES_PER_RUN`: cap for deterministic related-paper candidates before scoring/selection
+- `APP_PULSE_RELATED_PAPER_DEDUPE_DAYS`: historical resurfacing window for the same canonical scholarly result
+- `APP_EXTERNAL_RETRIEVAL_MODE`: `disabled`, `plan_only`, or `execute`
+- `APP_EXTERNAL_RETRIEVAL_ENABLED_SOURCES`: enabled official sources for planning and execution
+- `APP_EXTERNAL_RETRIEVAL_MAX_PLANS_PER_USER`: cap for persisted planning rows built per user
+- `APP_EXTERNAL_RETRIEVAL_MAX_KEYWORDS_PER_PLAN`: keyword cap per deterministic plan
+- `APP_EXTERNAL_RETRIEVAL_MAX_TOPICS_PER_PLAN`: topic cap per deterministic plan
+- `APP_EXTERNAL_RETRIEVAL_LOOKBACK_DAYS_FOR_ACTIVITY_CONTEXT`: activity lookback window used for retrieval seeds
+- `APP_EXTERNAL_RETRIEVAL_HTTP_CONNECT_TIMEOUT_SECONDS`: connect timeout for external source calls
+- `APP_EXTERNAL_RETRIEVAL_HTTP_READ_TIMEOUT_SECONDS`: read timeout for external source calls
+- `APP_EXTERNAL_RETRIEVAL_MAX_RESULTS_PER_PLAN`: per-plan result cap during execution
+- `APP_EXTERNAL_RETRIEVAL_EXECUTION_DEDUPE_MINUTES`: reuse window for recent successful plan runs
+- `APP_EXTERNAL_RETRIEVAL_OPENALEX_API_KEY`: optional OpenAlex API key
+- `APP_EXTERNAL_RETRIEVAL_CROSSREF_MAILTO`: optional Crossref polite-access email
+- `APP_EXTERNAL_RETRIEVAL_CROSSREF_USER_AGENT_APP_NAME`: optional Crossref user-agent app label
+- `APP_EXTERNAL_RETRIEVAL_MODE`: `disabled` or `plan_only`
+- `APP_EXTERNAL_RETRIEVAL_ENABLED_SOURCES`: comma-separated enabled planning sources for this phase
+- `APP_EXTERNAL_RETRIEVAL_MAX_PLANS_PER_USER`: max persisted plans produced per build
+- `APP_EXTERNAL_RETRIEVAL_MAX_KEYWORDS_PER_PLAN`: keyword cap used by source plan builders
+- `APP_EXTERNAL_RETRIEVAL_MAX_TOPICS_PER_PLAN`: topic cap used by source plan builders
+- `APP_EXTERNAL_RETRIEVAL_LOOKBACK_DAYS_FOR_ACTIVITY_CONTEXT`: recent activity lookback used for touched-paper seed context
 
 Real official-account sending stays opt-in. Local and test setups do not require live WeChat credentials unless you intentionally enable `provider_mode=real` and `APP_OFFICIAL_ACCOUNT_REAL_SEND_ENABLED=true`.
 Mini-program access is reserve-only and read-only in this phase.
@@ -257,10 +606,16 @@ With Docker Compose, the codebase now exposes separate `api`, `worker`, and `sch
   - `GET /admin/digest-issues`
   - `GET /admin/digest-issues/{digest_issue_id}`
   - `POST /admin/digest-issues/build/{user_id}`
+  - `POST /admin/digest-issues/orchestrate/{user_id}`
+  - `GET /admin/digest-issues/{digest_issue_id}/daily-preview`
+  - `GET /admin/digest-issues/{digest_issue_id}/dispatch-preview`
+  - `POST /admin/digest-issues/{digest_issue_id}/dispatch`
   - `POST /admin/digest-issues/{digest_issue_id}/prepare-publication`
   - `GET /admin/digest-publication-jobs`
   - `POST /admin/digest-publication-jobs/{publication_job_id}/dispatch`
   - `GET /admin/digest-publication-attempts`
+  - `GET /admin/digest-dispatch-runs`
+  - `GET /admin/digest-dispatch-runs/{dispatch_run_id}`
   - `GET /admin/official-account/provider-status`
   - `POST /admin/official-account/provider-token/refresh`
   - `GET /admin/official-account/callback-events`
@@ -342,8 +697,14 @@ Desktop shell layout, local cache, pull-sync flow, and developer workflow are do
 ## Official-account digest reserve
 Digest issues, WeChat identity binding, and publication preparation without real external sends are documented in [docs/official_account_digest_reserve.md](docs/official_account_digest_reserve.md).
 
+Deterministic sectioned daily-digest orchestration for official-account publication preparation is documented in [docs/official_account_daily_digest_orchestration_v1.md](docs/official_account_daily_digest_orchestration_v1.md).
+
+Issue-level official-account daily dispatch orchestration is documented in [docs/official_account_daily_dispatch_v1.md](docs/official_account_daily_dispatch_v1.md).
+
 ## Mini-program read-only reserve
 Mini preview grants, compact mobile read models, and derived paper progress percentages are documented in [docs/mini_program_readonly_reserve.md](docs/mini_program_readonly_reserve.md).
+
+User-side editor reserve bootstrap, machine-readable contract, and preview-before-save semantics are documented in [docs/user_subscription_self_service_editor_reserve_v1.md](docs/user_subscription_self_service_editor_reserve_v1.md).
 
 ## Official-account provider boundary
 Dry-run dispatch, callback ingress, subscription-state updates, and provider-safe settings are documented in [docs/official_account_provider_boundary.md](docs/official_account_provider_boundary.md).

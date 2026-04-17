@@ -1,7 +1,9 @@
 from datetime import timedelta
+from uuid import UUID
 
 from research_pulse_cn.db.models import utcnow
-from research_pulse_cn.domain.enums import PaperType
+from research_pulse_cn.domain.enums import PaperType, WorkActivitySource, WorkActivityType
+from research_pulse_cn.services.work_activity import WorkActivityService
 
 
 def create_user(client, headers, *, email: str) -> dict:
@@ -83,6 +85,7 @@ def test_pulse_input_preview_returns_work_activity_summary_and_effective_watch_s
     client,
     operator_headers,
     viewer_headers,
+    session,
 ) -> None:
     user = create_user(client, operator_headers, email="pulse-input-preview@example.com")
     paper = create_paper(
@@ -98,12 +101,22 @@ def test_pulse_input_preview_returns_work_activity_summary_and_effective_watch_s
         headers=operator_headers,
         json={"priority": 5, "next_action": "Draft revised response"},
     )
+    _preview_date, started_at, _ended_at = WorkActivityService(session).previous_day_window()
+    WorkActivityService(session).record_event(
+        user_id=UUID(user["id"]),
+        paper_id=UUID(paper["id"]),
+        activity_type=WorkActivityType.PAPER_UPDATED,
+        summary="Updated paper priority for pulse input preview.",
+        happened_at=started_at + timedelta(hours=1),
+        source=WorkActivitySource.API,
+    )
+    session.commit()
     add_progress = client.post(
         f"/papers/{paper['id']}/progress-events",
         headers=operator_headers,
         json={
             "stage": "revision",
-            "happened_at": (utcnow() - timedelta(days=1, hours=2)).isoformat(),
+            "happened_at": (started_at + timedelta(hours=2)).isoformat(),
             "summary": "Prepared revised response outline.",
             "evidence_links": [],
             "owner": "operator",
@@ -127,6 +140,7 @@ def test_pulse_input_preview_returns_work_activity_summary_and_effective_watch_s
         headers=operator_headers,
     )
 
+    session.commit()
     preview = client.get(
         f"/pulse/input-preview/{user['id']}",
         headers=viewer_headers,

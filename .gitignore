@@ -34,3 +34,23 @@ apps/desktop/node_modules/
 apps/desktop/dist/
 apps/desktop/src-tauri/target/
 apps/desktop/src-tauri/gen/
+
+# Subscription editor web shell
+apps/subscription-editor-web/node_modules/
+apps/subscription-editor-web/dist/
+
+# Result share web shell
+apps/result-share-web/node_modules/
+apps/result-share-web/dist/
+
+# Group workspace admin web shell
+apps/group-workspace-admin-web/node_modules/
+apps/group-workspace-admin-web/dist/
+
+# User workbench admin web shell
+apps/user-workbench-admin-web/node_modules/
+apps/user-workbench-admin-web/dist/
+
+# Group workspace invite web shell
+apps/group-workspace-invite-web/node_modules/
+apps/group-workspace-invite-web/dist/

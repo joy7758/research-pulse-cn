@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from uuid import uuid4
 
 from fastapi import FastAPI, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
 
 from research_pulse_cn import __version__
 from research_pulse_cn.api.errors import register_exception_handlers
@@ -35,6 +36,15 @@ def create_app() -> FastAPI:
         openapi_url="/openapi.json",
         redoc_url="/redoc",
     )
+    if settings.browser_allowed_origin_list:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=settings.browser_allowed_origin_list,
+            allow_credentials=False,
+            allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+            allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
+            expose_headers=["X-Request-ID"],
+        )
     register_exception_handlers(app)
 
     @app.middleware("http")

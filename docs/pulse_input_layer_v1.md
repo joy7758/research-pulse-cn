@@ -102,7 +102,7 @@
 - no new delivery channel behavior
 
 ## Future Work
-- external academic retrieval driven by watch seeds
+- external academic retrieval execution driven by the persisted planning boundary
 - richer multi-day activity cards built from `WorkActivityEvent`
 - related paper and research-news retrieval
 - richer watch-profile derivation from user portfolios
@@ -127,3 +127,43 @@
   - external retrieval
   - AI suggestion generation
   - local file or note content sync
+
+## Relationship To Retrieval Planning Boundary
+- The input layer now also feeds a deterministic external retrieval planning boundary.
+- `ExternalRetrievalPlan` does not fetch anything yet. It only persists deterministic source-specific plans built from:
+  - enabled `ResearchWatchProfile` rows
+  - recent non-system `WorkActivityEvent` context
+- `GET /pulse/input-preview/{user_id}` now includes a compact retrieval-planning section.
+- `GET /external-retrieval/input-preview/{user_id}` exposes the full planning preview:
+  - effective retrieval seeds
+  - recent activity context summary
+  - source plan previews for `openalex`, `crossref`, and `arxiv`
+- No external execution, AI rewriting, or result ranking is introduced in this step.
+
+## Relationship To Retrieval Execution Boundary
+- The retrieval boundary now also supports official-source execution while keeping pulse-card generation separate.
+- `ExternalRetrievalRun` stores one fetch attempt for one plan.
+- `ExternalRetrievedRecord` stores normalized scholarly records returned by:
+  - `openalex`
+  - `crossref`
+  - `arxiv`
+- `GET /external-retrieval/provider-status` exposes safe execution readiness.
+- `POST /external-retrieval/plans/execute/{plan_id}` executes a persisted plan only when `APP_EXTERNAL_RETRIEVAL_MODE=execute`.
+- `GET /external-retrieval/results` exposes normalized records for later pulse consumption.
+- This still does not add:
+  - related-news pulse cards
+  - AI rewriting or ranking
+  - generic crawler behavior
+
+## Relationship To User Workbench Admin Shell
+- A separate internal shell under `apps/user-workbench-admin-web` now consumes safe read-only admin summaries derived from:
+  - `UserProfile`
+  - `PaperProfile`
+  - `ResearchWatchProfile`
+  - latest digest issue summaries
+- That shell is intentionally read-only in v1.
+- It does not expose:
+  - local file paths
+  - local note contents
+  - local attachment paths
+  - source-file contents

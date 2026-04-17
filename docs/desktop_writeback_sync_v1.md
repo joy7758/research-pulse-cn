@@ -57,6 +57,11 @@ The authoritative local cache still comes from server events, not direct optimis
   - `quiet_hours`
   - `frequency_cap`
   - `policy`
+    - `timezone`
+    - `allowed_weekdays`
+    - `muted_until`
+    - `minimum_selected_cards`
+    - `skip_if_no_today_focus`
 
 ## Pending And Failed Mutation UX
 - Paper list/detail now expose:
@@ -68,6 +73,8 @@ The authoritative local cache still comes from server events, not direct optimis
   - recent outbox errors
 - Settings view shows:
   - cached subscription policies
+  - delivery-control editor fields backed by synced cache
+  - local-only quiet-control hint state
   - unresolved outbox rows
   - policy-level pending/error state
 

@@ -30,6 +30,7 @@
 
 ## Template Payload Builder And Field Mapping
 - The real transport uses `template_notice`.
+- When digest orchestration has populated `content_payload.publication_preview`, the provider-neutral payload prefers that sectioned daily-digest preview over older loose highlight text.
 - Default logical digest fields:
   - `issue_title`
   - `issue_date`
@@ -55,6 +56,17 @@
    - `dry_run -> previewed`
    - `real -> sent` or `failed`
 5. Already sent jobs do not resend by default unless a future forced retry is introduced explicitly.
+
+## Issue-Level Dispatch Layer
+- A later issue-level orchestration layer can now batch multiple prepared official-account jobs under one `DigestDispatchRun`.
+- That layer still reuses the same per-job provider semantics:
+  - `disabled -> blocked`
+  - `dry_run -> previewed`
+  - `real -> sent` or `failed`
+- `DigestPublicationAttempt.dispatch_run_id` links each per-job attempt back to the issue-level run when dispatch happens through the batch path.
+- User-side delivery policy is a separate boundary on top of this:
+  - issue-level dispatch may still be skipped before provider invocation because of quiet hours, mute windows, weekday rules, or digest-content thresholds
+  - those policy decisions are recorded through `DigestDeliveryDecision`
 
 ## Readiness Model
 - Provider readiness is true only when:

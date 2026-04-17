@@ -59,3 +59,158 @@ jobs:
 
       - name: Desktop web build
         run: npm run build
+
+  subscription-editor-web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/subscription-editor-web
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: apps/subscription-editor-web/package-lock.json
+
+      - name: Install editor web dependencies
+        run: npm ci
+
+      - name: Editor web lint
+        run: npm run lint
+
+      - name: Editor web typecheck
+        run: npm run typecheck
+
+      - name: Editor web tests
+        run: npm run test
+
+      - name: Editor web build
+        run: npm run build
+
+  result-share-web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/result-share-web
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: apps/result-share-web/package-lock.json
+
+      - name: Install result share dependencies
+        run: npm ci
+
+      - name: Result share lint
+        run: npm run lint
+
+      - name: Result share typecheck
+        run: npm run typecheck
+
+      - name: Result share tests
+        run: npm run test
+
+      - name: Result share build
+        run: npm run build
+
+  group-workspace-admin-web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/group-workspace-admin-web
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: apps/group-workspace-admin-web/package-lock.json
+
+      - name: Install workspace admin dependencies
+        run: npm ci
+
+      - name: Workspace admin lint
+        run: npm run lint
+
+      - name: Workspace admin typecheck
+        run: npm run typecheck
+
+      - name: Workspace admin tests
+        run: npm run test
+
+      - name: Workspace admin build
+        run: npm run build
+
+  user-workbench-admin-web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/user-workbench-admin-web
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: apps/user-workbench-admin-web/package-lock.json
+
+      - name: Install user workbench dependencies
+        run: npm ci
+
+      - name: User workbench lint
+        run: npm run lint
+
+      - name: User workbench typecheck
+        run: npm run typecheck
+
+      - name: User workbench tests
+        run: npm run test
+
+      - name: User workbench build
+        run: npm run build
+
+  group-workspace-invite-web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/group-workspace-invite-web
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: apps/group-workspace-invite-web/package-lock.json
+
+      - name: Install workspace invite dependencies
+        run: npm ci
+
+      - name: Workspace invite lint
+        run: npm run lint
+
+      - name: Workspace invite typecheck
+        run: npm run typecheck
+
+      - name: Workspace invite tests
+        run: npm run test
+
+      - name: Workspace invite build
+        run: npm run build
