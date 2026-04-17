@@ -62,3 +62,9 @@
 - Richer workspace drilldown and trend slices
 - Stronger attribution only if later justified by real persisted links
 - Still no source-file sharing by default
+
+The first consumer of these read models is now the existing internal `apps/group-workspace-admin-web` shell, which renders:
+
+- a global conversion overview panel
+- a workspace conversion overview block inside workspace detail
+- direct-vs-aggregate attribution notes without adding new write flows

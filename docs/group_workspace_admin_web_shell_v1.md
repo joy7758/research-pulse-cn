@@ -61,6 +61,26 @@ When a share grant is created, the plaintext token is shown once with explicit c
 
 Digest-issue and paper-snapshot share creation remain out of scope for this shell in v1.
 
+## Read-Only Conversion Dashboard Scope
+
+The same shell may now also render admin-safe conversion overview reads on top of the existing workspace list/detail UI:
+
+- `GET /admin/group-workspace-conversion-overview`
+- `GET /admin/group-workspaces/{workspace_id}/conversion-overview`
+
+The dashboard remains read-only and focuses on:
+
+- global share / handoff / invite / collect aggregates
+- per-workspace invite and collect movement
+- explicit direct-vs-aggregate attribution notes from the backend
+
+It does not add:
+
+- new mutations
+- new token types
+- probabilistic attribution
+- source-file semantics
+
 ## Safety Exclusions
 
 The shell must not expose or reconstruct:

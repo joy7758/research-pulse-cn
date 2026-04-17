@@ -98,6 +98,10 @@ Admin-only aggregate reads now also reuse those persisted records for:
 - `GET /admin/group-workspaces/{workspace_id}/conversion-overview`
 - direct share/collect attribution where persisted links exist
 - workspace-level invite aggregates without claiming strict per-share causality
+The internal `apps/group-workspace-admin-web` shell now also renders those aggregates as:
+- a global conversion overview panel
+- a workspace conversion overview panel inside workspace detail
+- explicit attribution-scope notes from the backend read model
 `workspace_board` share pages now also render a manual invite/join handoff summary:
 - the page stays read-only
 - joining still requires a separate invite token

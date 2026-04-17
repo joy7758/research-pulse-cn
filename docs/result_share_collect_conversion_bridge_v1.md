@@ -35,6 +35,7 @@
   - no raw full user-agent storage
   - analytics failures must not block the redirect
 - These redirect events now also feed admin-only aggregate conversion overview reads; collect counts remain direct only when `GroupWorkspaceResultCollectRecord.result_share_grant_id` is present.
+- The first operator-facing consumer of those aggregates is the existing internal `apps/group-workspace-admin-web` shell.
 
 ## Bootstrap Handoff URL Enrichment
 - `workspace_board` share bootstrap now extends `result_collect_handoff_reserve` with:

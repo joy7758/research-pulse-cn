@@ -135,6 +135,11 @@ button {
   gap: 4px;
 }
 
+.panel-copy {
+  margin: 8px 0 0;
+  color: #4e5f81;
+}
+
 .admin-shell-grid {
   display: grid;
   grid-template-columns: minmax(320px, 360px) minmax(0, 1fr);
@@ -357,9 +362,118 @@ button {
   text-align: center;
 }
 
+.conversion-panel {
+  margin-bottom: 20px;
+}
+
+.conversion-meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.meta-chip {
+  min-width: 220px;
+  padding: 12px 14px;
+  background: #f4f7fd;
+  border-radius: 14px;
+}
+
+.meta-chip span {
+  display: block;
+  font-size: 0.74rem;
+  color: #5d6c8c;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.meta-chip strong {
+  display: block;
+  margin-top: 4px;
+  word-break: break-word;
+}
+
+.conversion-stat-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.stat-hint {
+  margin: 6px 0 0;
+  color: #5d6c8c;
+  font-size: 0.82rem;
+}
+
+.conversion-section-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.conversion-section-card,
+.conversion-notes-card {
+  margin-top: 18px;
+  padding: 18px;
+  border-radius: 18px;
+  background: #f7f9fd;
+  border: 1px solid rgba(23, 32, 51, 0.08);
+}
+
+.conversion-section-header {
+  margin-bottom: 12px;
+}
+
+.conversion-section-header h3 {
+  margin: 0;
+}
+
+.metric-kv-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+
+.metric-kv-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.84);
+}
+
+.metric-kv-item dt {
+  color: #4e5f81;
+}
+
+.metric-kv-item dd {
+  margin: 0;
+  font-weight: 700;
+  color: #20345e;
+}
+
+.conversion-notes-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin-bottom: 12px;
+}
+
+.note-list {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  color: #4e5f81;
+}
+
+.note-list li + li {
+  margin-top: 6px;
+}
+
 @media (max-width: 1100px) {
   .admin-shell-grid,
   .split-grid,
+  .conversion-section-grid,
+  .conversion-notes-grid,
   .field-grid,
   .stat-grid {
     grid-template-columns: 1fr;

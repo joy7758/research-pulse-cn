@@ -1,10 +1,13 @@
+import { ConversionOverviewPanel } from "./ConversionOverviewPanel";
 import type {
+  ApiErrorViewModel,
   GroupWorkspaceRead,
   GroupWorkspaceMemberRole,
   GroupWorkspaceStatus,
   LookupOption,
   ResultShareGrantRead,
   ShareGrantOneTimeDisplayModel,
+  WorkspaceConversionOverviewViewModel,
   WorkspaceBoardShareCreateInput,
   WorkspaceBoardViewModel,
   WorkspaceMemberAddInput,
@@ -22,6 +25,9 @@ type WorkspaceDetailViewProps = {
   userOptions: LookupOption[];
   paperOptions: LookupOption[];
   shareGrants: ResultShareGrantRead[];
+  conversionOverview: WorkspaceConversionOverviewViewModel | null;
+  conversionError: ApiErrorViewModel | null;
+  conversionLoading: boolean;
   actionLoading: boolean;
   oneTimeGrant: ShareGrantOneTimeDisplayModel | null;
   onUpdateInputChange: (patch: Partial<WorkspaceUpdateInput>) => void;
@@ -51,6 +57,9 @@ export function WorkspaceDetailView({
   userOptions,
   paperOptions,
   shareGrants,
+  conversionOverview,
+  conversionError,
+  conversionLoading,
   actionLoading,
   oneTimeGrant,
   onUpdateInputChange,
@@ -141,6 +150,22 @@ export function WorkspaceDetailView({
           </button>
         </div>
       </section>
+
+      <ConversionOverviewPanel
+        eyebrow="Workspace conversion"
+        title="Workspace conversion overview"
+        description="Read-only aggregate signals for share views, invite claims, and result collect movement in this workspace."
+        summaryMetrics={conversionOverview?.summaryMetrics ?? []}
+        sections={conversionOverview?.sections ?? []}
+        attributionScope={conversionOverview?.attributionScope ?? null}
+        windowStart={conversionOverview?.windowStart ?? null}
+        windowEnd={conversionOverview?.windowEnd ?? null}
+        lastActivityAt={conversionOverview?.lastActivityAt ?? null}
+        loading={conversionLoading}
+        error={conversionError}
+        empty={conversionOverview?.empty ?? !conversionLoading}
+        emptyMessage="No workspace conversion activity has been recorded in this window."
+      />
 
       <section className="split-grid">
         <section className="panel-card">

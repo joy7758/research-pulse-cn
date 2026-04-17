@@ -242,3 +242,109 @@ export type ShareGrantOneTimeDisplayModel = {
   expiresAt: string | null;
   copyHint: string;
 };
+
+export type GroupWorkspaceSafeSummaryRead = {
+  id: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  status: GroupWorkspaceStatus;
+};
+
+export type GroupWorkspaceConversionAttributionRead = {
+  direct_attribution_metrics: string[];
+  workspace_level_aggregate_metrics: string[];
+  notes: string[];
+};
+
+export type GroupWorkspaceConversionOverviewRead = {
+  window_start: string | null;
+  window_end: string | null;
+  total_share_view_events: number;
+  bootstrap_view_count: number;
+  content_view_count: number;
+  redirect_count: number;
+  invite_handoff_redirect_count: number;
+  collect_handoff_redirect_count: number;
+  resolved_event_count: number;
+  rejected_event_count: number;
+  by_share_kind: Record<string, number>;
+  by_access_mode: Record<string, number>;
+  by_handoff_target: Record<string, number>;
+  invite_claimed_count: number;
+  invite_already_member_count: number;
+  invite_rejected_count: number;
+  collect_collected_count: number;
+  collect_already_present_count: number;
+  collect_rejected_count: number;
+  unique_result_share_grant_count: number;
+  unique_workspace_count: number;
+  last_activity_at: string | null;
+  attribution_scope: GroupWorkspaceConversionAttributionRead;
+};
+
+export type GroupWorkspaceWorkspaceConversionOverviewRead = {
+  window_start: string | null;
+  window_end: string | null;
+  workspace: GroupWorkspaceSafeSummaryRead;
+  active_workspace_board_share_grant_count: number;
+  active_digest_issue_share_grant_count: number;
+  active_paper_snapshot_share_grant_count: number;
+  active_invite_grant_count: number;
+  workspace_board_view_count: number;
+  invite_handoff_redirect_count: number;
+  collect_handoff_redirect_count: number;
+  invite_claimed_count: number;
+  invite_already_member_count: number;
+  collect_collected_count: number;
+  collect_already_present_count: number;
+  unique_collected_paper_count: number;
+  unique_collecting_user_count: number;
+  last_activity_at: string | null;
+  attribution_scope: GroupWorkspaceConversionAttributionRead;
+};
+
+export type ConversionMetricBucketViewModel = {
+  key: string;
+  label: string;
+  count: number;
+};
+
+export type ConversionMetricSectionViewModel = {
+  title: string;
+  rows: ConversionMetricBucketViewModel[];
+  emptyLabel: string;
+};
+
+export type ConversionSummaryMetricViewModel = {
+  label: string;
+  value: number;
+  hint: string | null;
+};
+
+export type ConversionAttributionScopeViewModel = {
+  directMetrics: string[];
+  workspaceLevelAggregateMetrics: string[];
+  notes: string[];
+};
+
+export type GlobalConversionOverviewViewModel = {
+  summaryMetrics: ConversionSummaryMetricViewModel[];
+  sections: ConversionMetricSectionViewModel[];
+  windowStart: string | null;
+  windowEnd: string | null;
+  lastActivityAt: string | null;
+  attributionScope: ConversionAttributionScopeViewModel;
+  empty: boolean;
+};
+
+export type WorkspaceConversionOverviewViewModel = {
+  workspace: GroupWorkspaceSafeSummaryRead;
+  summaryMetrics: ConversionSummaryMetricViewModel[];
+  sections: ConversionMetricSectionViewModel[];
+  windowStart: string | null;
+  windowEnd: string | null;
+  lastActivityAt: string | null;
+  attributionScope: ConversionAttributionScopeViewModel;
+  empty: boolean;
+};

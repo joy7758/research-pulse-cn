@@ -69,6 +69,7 @@
 - The same persisted records now also feed aggregate conversion overview reads:
   - `GET /admin/group-workspace-conversion-overview`
   - `GET /admin/group-workspaces/{workspace_id}/conversion-overview`
+- The same persisted records are now surfaced in the existing internal `apps/group-workspace-admin-web` shell as a compact read-only conversion dashboard.
 - Those overview reads stay explicit about attribution boundaries:
   - view/handoff signals are direct persisted event counts
   - invite claims stay workspace-level aggregate signals in v1

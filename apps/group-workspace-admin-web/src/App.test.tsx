@@ -5,7 +5,9 @@ import { GroupWorkspaceAdminShell } from "./App";
 import { GroupWorkspaceAdminApiError } from "./lib/apiClient";
 import type {
   GroupWorkspaceBoardRead,
+  GroupWorkspaceConversionOverviewRead,
   GroupWorkspaceRead,
+  GroupWorkspaceWorkspaceConversionOverviewRead,
   PaperProfileRead,
   ResultShareGrantIssueResponse,
   ResultShareGrantRead,
@@ -183,6 +185,83 @@ function issuedShareFixture(): ResultShareGrantIssueResponse {
   };
 }
 
+function globalConversionFixture(): GroupWorkspaceConversionOverviewRead {
+  return {
+    window_start: "2026-03-18T00:00:00Z",
+    window_end: null,
+    total_share_view_events: 4,
+    bootstrap_view_count: 1,
+    content_view_count: 1,
+    redirect_count: 0,
+    invite_handoff_redirect_count: 1,
+    collect_handoff_redirect_count: 1,
+    resolved_event_count: 4,
+    rejected_event_count: 0,
+    by_share_kind: {
+      workspace_board: 4,
+    },
+    by_access_mode: {
+      share_token: 2,
+      alias: 2,
+    },
+    by_handoff_target: {
+      group_workspace_invite_entry: 1,
+      result_share_collect_entry: 1,
+    },
+    invite_claimed_count: 1,
+    invite_already_member_count: 1,
+    invite_rejected_count: 0,
+    collect_collected_count: 1,
+    collect_already_present_count: 1,
+    collect_rejected_count: 0,
+    unique_result_share_grant_count: 3,
+    unique_workspace_count: 1,
+    last_activity_at: "2026-04-17T08:00:00Z",
+    attribution_scope: {
+      direct_attribution_metrics: ["total_share_view_events", "collect_collected_count"],
+      workspace_level_aggregate_metrics: ["invite_claimed_count"],
+      notes: [
+        "Invite claim metrics are workspace-level aggregate signals in v1 and are not strict per-share causal attribution.",
+      ],
+    },
+  };
+}
+
+function workspaceConversionFixture(): GroupWorkspaceWorkspaceConversionOverviewRead {
+  return {
+    window_start: "2026-03-18T00:00:00Z",
+    window_end: null,
+    workspace: {
+      id: "workspace-1",
+      slug: "materials-group",
+      name: "Materials Group",
+      description: "Workspace description",
+      status: "active",
+    },
+    active_workspace_board_share_grant_count: 1,
+    active_digest_issue_share_grant_count: 1,
+    active_paper_snapshot_share_grant_count: 2,
+    active_invite_grant_count: 1,
+    workspace_board_view_count: 2,
+    invite_handoff_redirect_count: 1,
+    collect_handoff_redirect_count: 1,
+    invite_claimed_count: 1,
+    invite_already_member_count: 1,
+    collect_collected_count: 2,
+    collect_already_present_count: 1,
+    unique_collected_paper_count: 3,
+    unique_collecting_user_count: 1,
+    last_activity_at: "2026-04-17T08:00:00Z",
+    attribution_scope: {
+      direct_attribution_metrics: ["workspace_board_view_count", "collect_collected_count"],
+      workspace_level_aggregate_metrics: ["invite_claimed_count"],
+      notes: [
+        "Collect metrics are directly linked when result_share_grant_id is present; records without that link remain aggregate-only signals.",
+      ],
+    },
+  };
+}
+
 function buildApiClient() {
   return {
     listWorkspaces: vi.fn().mockResolvedValue([workspaceFixture()]),
@@ -190,6 +269,8 @@ function buildApiClient() {
     getWorkspace: vi.fn().mockResolvedValue(workspaceFixture()),
     updateWorkspace: vi.fn().mockResolvedValue(workspaceFixture()),
     getWorkspaceBoard: vi.fn().mockResolvedValue(boardFixture()),
+    getConversionOverview: vi.fn().mockResolvedValue(globalConversionFixture()),
+    getWorkspaceConversionOverview: vi.fn().mockResolvedValue(workspaceConversionFixture()),
     addWorkspaceMember: vi.fn().mockResolvedValue(undefined),
     removeWorkspaceMember: vi.fn().mockResolvedValue(undefined),
     addWorkspacePaper: vi.fn().mockResolvedValue(undefined),
@@ -240,6 +321,10 @@ describe("group workspace admin shell", () => {
 
     expect(await screen.findByText("Shared Paper")).toBeVisible();
     expect(screen.getByText("Workspace members")).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Global conversion overview" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Workspace conversion overview" })).toBeVisible();
+    expect(screen.getAllByText("Invite handoffs").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Attribution scope")).toHaveLength(2);
   });
 
   it("shows the one-time share token after workspace_board grant creation", async () => {
@@ -274,6 +359,7 @@ describe("group workspace admin shell", () => {
           kind: "unauthorized",
         }),
       ),
+      getConversionOverview: vi.fn().mockResolvedValue(globalConversionFixture()),
       listUsers: vi.fn(),
       listPapers: vi.fn(),
     };
@@ -286,5 +372,38 @@ describe("group workspace admin shell", () => {
     await waitFor(() => {
       expect(screen.getByRole("alert")).toHaveTextContent("Unauthorized admin token");
     });
+  });
+
+  it("renders a graceful empty conversion state when overview counts are zero", async () => {
+    const client = buildApiClient();
+    client.getConversionOverview.mockResolvedValue({
+      ...globalConversionFixture(),
+      total_share_view_events: 0,
+      bootstrap_view_count: 0,
+      content_view_count: 0,
+      invite_handoff_redirect_count: 0,
+      collect_handoff_redirect_count: 0,
+      invite_claimed_count: 0,
+      invite_already_member_count: 0,
+      invite_rejected_count: 0,
+      collect_collected_count: 0,
+      collect_already_present_count: 0,
+      collect_rejected_count: 0,
+      by_share_kind: {},
+      by_access_mode: {},
+      by_handoff_target: {},
+    });
+    const user = userEvent.setup();
+
+    render(<GroupWorkspaceAdminShell apiClientFactory={() => client} />);
+
+    await user.type(screen.getByLabelText(/admin bearer token/i), "manual-token");
+    await user.click(screen.getByRole("button", { name: /open workspace shell/i }));
+
+    expect(
+      await screen.findByText(
+        "No share, invite, or collect activity has been recorded in this analytics window.",
+      ),
+    ).toBeVisible();
   });
 });

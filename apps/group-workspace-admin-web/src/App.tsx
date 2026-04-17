@@ -1,15 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import "./App.css";
+import { ConversionOverviewPanel } from "./components/ConversionOverviewPanel";
 import { TokenEntryView } from "./components/TokenEntryView";
 import { WorkspaceDetailView } from "./components/WorkspaceDetailView";
 import { WorkspaceListPanel } from "./components/WorkspaceListPanel";
 import {
   buildApiErrorViewModel,
+  buildGlobalConversionOverviewViewModel,
   buildPaperLookupOptions,
   buildShareGrantIssueViewModel,
   buildUserLookupOptions,
   buildWorkspaceBoardViewModel,
+  buildWorkspaceConversionOverviewViewModel,
   buildWorkspaceListItems,
 } from "./lib/adminModel";
 import {
@@ -24,7 +27,9 @@ import {
 import type {
   ApiErrorViewModel,
   GroupWorkspaceBoardRead,
+  GroupWorkspaceConversionOverviewRead,
   GroupWorkspaceRead,
+  GroupWorkspaceWorkspaceConversionOverviewRead,
   PaperProfileRead,
   ResultShareGrantRead,
   ShareGrantOneTimeDisplayModel,
@@ -77,12 +82,21 @@ export function GroupWorkspaceAdminShell({
   const [selectedWorkspace, setSelectedWorkspace] = useState<GroupWorkspaceRead | null>(null);
   const [selectedBoard, setSelectedBoard] = useState<GroupWorkspaceBoardRead | null>(null);
   const [selectedShareGrants, setSelectedShareGrants] = useState<ResultShareGrantRead[]>([]);
+  const [globalConversionOverview, setGlobalConversionOverview] =
+    useState<GroupWorkspaceConversionOverviewRead | null>(null);
+  const [workspaceConversionOverview, setWorkspaceConversionOverview] =
+    useState<GroupWorkspaceWorkspaceConversionOverviewRead | null>(null);
   const [boardCache, setBoardCache] = useState<Record<string, GroupWorkspaceBoardRead | undefined>>(
     {},
   );
   const [loadingMessage, setLoadingMessage] = useState<string | null>(null);
+  const [globalConversionLoading, setGlobalConversionLoading] = useState(false);
+  const [workspaceConversionLoading, setWorkspaceConversionLoading] = useState(false);
   const [connectError, setConnectError] = useState<ApiErrorViewModel | null>(null);
   const [actionError, setActionError] = useState<ApiErrorViewModel | null>(null);
+  const [globalConversionError, setGlobalConversionError] = useState<ApiErrorViewModel | null>(null);
+  const [workspaceConversionError, setWorkspaceConversionError] =
+    useState<ApiErrorViewModel | null>(null);
   const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
   const [oneTimeGrant, setOneTimeGrant] = useState<ShareGrantOneTimeDisplayModel | null>(null);
   const [createInput, setCreateInput] = useState<WorkspaceCreateInput>({
@@ -117,40 +131,59 @@ export function GroupWorkspaceAdminShell({
     setSelectedWorkspace(null);
     setSelectedBoard(null);
     setSelectedShareGrants([]);
+    setGlobalConversionOverview(null);
+    setWorkspaceConversionOverview(null);
     setBoardCache({});
+    setGlobalConversionError(null);
+    setWorkspaceConversionError(null);
     setOneTimeGrant(null);
   }, []);
 
-  const handleError = useCallback((error: unknown, setter: (error: ApiErrorViewModel | null) => void) => {
+  const toApiErrorViewModel = useCallback((error: unknown): ApiErrorViewModel => {
     if (error instanceof GroupWorkspaceAdminApiError) {
-      setter(buildApiErrorViewModel(error));
-      return;
+      return buildApiErrorViewModel(error);
     }
-    setter(
-      buildApiErrorViewModel({
-        kind: "request_failed",
-        detail: error instanceof Error ? error.message : String(error),
-      }),
-    );
+    return buildApiErrorViewModel({
+      kind: "request_failed",
+      detail: error instanceof Error ? error.message : String(error),
+    });
   }, []);
+
+  const handleError = useCallback(
+    (error: unknown, setter: (error: ApiErrorViewModel | null) => void) => {
+      setter(toApiErrorViewModel(error));
+    },
+    [toApiErrorViewModel],
+  );
 
   const loadWorkspaceContext = useCallback(
     async (client: GroupWorkspaceAdminApiClient, workspaceId: string) => {
       setLoadingMessage("Loading workspace detail and board...");
       setActionError(null);
+      setWorkspaceConversionLoading(true);
+      setWorkspaceConversionError(null);
       try {
-        const [workspace, board, shareGrants] = await Promise.all([
+        const [workspace, board, shareGrants, conversionResult] = await Promise.all([
           client.getWorkspace(workspaceId),
           client.getWorkspaceBoard(workspaceId),
           client.listResultShareGrants({
             workspaceId,
             shareKind: "workspace_board",
           }),
+          client
+            .getWorkspaceConversionOverview(workspaceId)
+            .then((conversion) => ({ conversion, error: null }))
+            .catch((error: unknown) => ({
+              conversion: null,
+              error: toApiErrorViewModel(error),
+            })),
         ]);
         setSelectedWorkspaceId(workspaceId);
         setSelectedWorkspace(workspace);
         setSelectedBoard(board);
         setSelectedShareGrants(shareGrants);
+        setWorkspaceConversionOverview(conversionResult.conversion);
+        setWorkspaceConversionError(conversionResult.error);
         setUpdateInput({
           name: workspace.name,
           description: workspace.description ?? "",
@@ -163,10 +196,11 @@ export function GroupWorkspaceAdminShell({
       } catch (error) {
         handleError(error, setActionError);
       } finally {
+        setWorkspaceConversionLoading(false);
         setLoadingMessage(null);
       }
     },
-    [handleError],
+    [handleError, toApiErrorViewModel],
   );
 
   const connectWithToken = useCallback(
@@ -199,8 +233,10 @@ export function GroupWorkspaceAdminShell({
       }
 
       setLoadingMessage("Connecting admin shell...");
+      setGlobalConversionLoading(true);
       setConnectError(null);
       setActionError(null);
+      setGlobalConversionError(null);
       setNoticeMessage(
         source === "query" || source === "fragment"
           ? "Admin bearer token was moved from the URL into in-memory state."
@@ -213,10 +249,17 @@ export function GroupWorkspaceAdminShell({
       });
 
       try {
-        const [workspaceList, userList, paperList] = await Promise.all([
+        const [workspaceList, userList, paperList, globalConversion] = await Promise.all([
           client.listWorkspaces(),
           client.listUsers(),
           client.listPapers(),
+          client
+            .getConversionOverview()
+            .then((overview) => ({ overview, error: null }))
+            .catch((error: unknown) => ({
+              overview: null,
+              error: toApiErrorViewModel(error),
+            })),
         ]);
         setSession({
           apiBaseUrl: trimmedApiBaseUrl,
@@ -226,6 +269,8 @@ export function GroupWorkspaceAdminShell({
         setWorkspaces(workspaceList);
         setUsers(userList);
         setPapers(paperList);
+        setGlobalConversionOverview(globalConversion.overview);
+        setGlobalConversionError(globalConversion.error);
         setAdminTokenInput("");
 
         const initialWorkspaceId = workspaceList[0]?.id ?? null;
@@ -242,10 +287,11 @@ export function GroupWorkspaceAdminShell({
         handleError(error, setConnectError);
         setAdminTokenInput(source === "manual" ? trimmedToken : "");
       } finally {
+        setGlobalConversionLoading(false);
         setLoadingMessage(null);
       }
     },
-    [apiClientFactory, handleError, loadWorkspaceContext, resetConnectedState],
+    [apiClientFactory, handleError, loadWorkspaceContext, resetConnectedState, toApiErrorViewModel],
   );
 
   useEffect(() => {
@@ -306,6 +352,20 @@ export function GroupWorkspaceAdminShell({
   const boardViewModel = useMemo(
     () => (selectedBoard ? buildWorkspaceBoardViewModel(selectedBoard) : null),
     [selectedBoard],
+  );
+  const globalConversionViewModel = useMemo(
+    () =>
+      globalConversionOverview
+        ? buildGlobalConversionOverviewViewModel(globalConversionOverview)
+        : null,
+    [globalConversionOverview],
+  );
+  const workspaceConversionViewModel = useMemo(
+    () =>
+      workspaceConversionOverview
+        ? buildWorkspaceConversionOverviewViewModel(workspaceConversionOverview)
+        : null,
+    [workspaceConversionOverview],
   );
 
   const handleOpenShell = useCallback(() => {
@@ -502,6 +562,22 @@ export function GroupWorkspaceAdminShell({
       ) : null}
       {loadingMessage ? <div className="inline-banner info">{loadingMessage}</div> : null}
 
+      <ConversionOverviewPanel
+        eyebrow="Conversion dashboard"
+        title="Global conversion overview"
+        description="Read-only aggregate signals across public share views, handoff redirects, invite claims, and result collect records."
+        summaryMetrics={globalConversionViewModel?.summaryMetrics ?? []}
+        sections={globalConversionViewModel?.sections ?? []}
+        attributionScope={globalConversionViewModel?.attributionScope ?? null}
+        windowStart={globalConversionViewModel?.windowStart ?? null}
+        windowEnd={globalConversionViewModel?.windowEnd ?? null}
+        lastActivityAt={globalConversionViewModel?.lastActivityAt ?? null}
+        loading={globalConversionLoading}
+        error={globalConversionError}
+        empty={globalConversionViewModel?.empty ?? !globalConversionLoading}
+        emptyMessage="No share, invite, or collect activity has been recorded in this analytics window."
+      />
+
       <section className="admin-shell-grid">
         <WorkspaceListPanel
           items={workspaceListItems}
@@ -533,6 +609,9 @@ export function GroupWorkspaceAdminShell({
           userOptions={availableUserOptions}
           paperOptions={availablePaperOptions}
           shareGrants={selectedShareGrants}
+          conversionOverview={workspaceConversionViewModel}
+          conversionError={workspaceConversionError}
+          conversionLoading={workspaceConversionLoading}
           actionLoading={loadingMessage !== null}
           oneTimeGrant={oneTimeGrant}
           onUpdateInputChange={(patch) =>
