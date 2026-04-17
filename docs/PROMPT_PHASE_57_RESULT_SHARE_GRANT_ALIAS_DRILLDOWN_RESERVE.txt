@@ -1,0 +1,259 @@
+Read AGENTS.md, docs/BUILD_SPEC.md, docs/architecture.md, docs/development.md, docs/result_share_analytics_reserve_v1.md, docs/result_share_alias_boundary_v1.md, docs/result_share_invite_conversion_bridge_v1.md, docs/result_share_collect_conversion_bridge_v1.md, docs/group_workspace_conversion_overview_reserve_v1.md, and docs/group_workspace_conversion_drilldown_reserve_v1.md before editing.
+
+Implement Phase 57 only: result share grant / alias conversion drilldown reserve v1.
+
+Hard boundaries for this phase:
+- Do not add source file sharing.
+- Do not add local attachment sharing, note-file sharing, or cloud attachment sync.
+- Do not add real-time collaboration or live multi-user editing.
+- Do not add new delivery channels.
+- Do not add desktop or mini UI work in this phase.
+- Do not add a generic end-user login/session system.
+- Do not add campaign/broadcast/referral behavior.
+- Do not add third-party browser analytics scripts.
+- Do not add AI attribution, AI summarization, or LLM-based conversion analysis.
+- Do not create a new frontend app in this phase.
+- Do not weaken existing auth boundaries.
+- Do not replace the modular monolith backend architecture.
+
+Primary goal:
+Add read-only per-share drilldown APIs for:
+1. ResultShareGrant
+2. ResultShareAlias
+
+This phase should make the repository suitable for:
+- inspecting one share grant’s full read-only activity surface
+- inspecting one alias’s access behavior and outcomes
+- separating direct share-event attribution from direct collect linkage
+- preparing a later admin per-share dashboard without exposing raw files
+
+Architectural intent:
+- Reuse existing persisted records only.
+- Prefer no new persistence.
+- Keep everything admin read-only.
+- Keep share-grant drilldown and alias drilldown compact and operator-readable.
+- No source-file semantics are exposed anywhere.
+
+Required changes:
+
+1. Prefer no migration
+Do not add a new table unless absolutely necessary.
+Prefer aggregating from existing sources:
+- ResultShareGrant
+- ResultShareAlias
+- ResultShareViewEvent
+- GroupWorkspaceResultCollectRecord
+
+If a tiny additive index or nullable field is absolutely necessary, keep it strongly justified and backward-friendly.
+Otherwise, no migration.
+
+2. Share-grant drilldown service
+Add a read-only service for a single ResultShareGrant.
+
+Required output:
+- share_grant safe summary
+- window_start
+- window_end
+- total_events
+- bootstrap_view_count
+- content_view_count
+- redirect_count
+- invite_handoff_redirect_count
+- collect_handoff_redirect_count
+- resolved_event_count
+- rejected_event_count
+- by_access_mode
+- by_event_type
+- by_outcome
+- active_alias_count
+- aliases[]
+- recent_events[]
+- direct_collect_records[]
+- direct_collect_collected_count
+- direct_collect_already_present_count
+- direct_collect_rejected_count
+- unique_collecting_user_count
+- last_activity_at
+- attribution_scope
+- notes
+
+Aliases[] minimum fields:
+- alias_id
+- alias_prefix
+- status
+- display_label
+- expires_at
+- last_used_at
+- created_at
+
+Recent events minimum fields:
+- id
+- result_share_alias_id nullable
+- share_kind
+- access_mode
+- event_type
+- outcome
+- handoff_target_kind nullable
+- occurred_at
+
+Direct collect record minimum fields:
+- id
+- workspace_id
+- user_id
+- share_kind
+- collected_paper_id
+- status
+- reason_codes
+- created_at
+
+3. Alias drilldown service
+Add a read-only service for a single ResultShareAlias.
+
+Required output:
+- alias safe summary
+- result_share_grant safe summary
+- window_start
+- window_end
+- total_events
+- bootstrap_view_count
+- content_view_count
+- redirect_count
+- invite_handoff_redirect_count
+- collect_handoff_redirect_count
+- resolved_event_count
+- rejected_event_count
+- by_event_type
+- by_outcome
+- recent_events[]
+- last_activity_at
+- attribution_scope
+- notes
+
+Requirements:
+- alias drilldown is alias-scoped only
+- collect counts stay grant-level unless they are genuinely alias-linked in persisted events
+- document clearly that alias drilldown is about access-path behavior, not file/content semantics
+
+4. Admin endpoints
+Add protected admin read-only endpoints:
+
+Required:
+- GET /admin/result-share-grants/{grant_id}/conversion-drilldown
+- GET /admin/result-share-aliases/{alias_id}/conversion-drilldown
+
+Behavior:
+- operator and super_admin can read
+- viewer access only if aligned with current read-only admin policy; otherwise restrict and document
+- support reasonable filters where practical:
+  - date_from
+  - date_to
+  - access_mode
+  - event_type
+  - outcome
+  - limit for recent lists
+
+5. Safe read models
+Add read models such as:
+- ResultShareGrantConversionDrilldownRead
+- ResultShareAliasConversionDrilldownRead
+- ResultShareAliasSummaryRead
+- ResultShareRecentEventRead
+- ResultShareDirectCollectRecordRead
+- ResultShareAttributionScopeRead
+
+Safety exclusions:
+- no plaintext share tokens
+- no plaintext aliases
+- no raw IP
+- no full referrer URL
+- no raw user-agent
+- no openid / unionid
+- no local filesystem paths
+- no local note contents
+- no local attachment paths
+- no source file contents
+
+6. Attribution semantics
+Be explicit and deterministic.
+
+Requirements:
+- share-event metrics are direct to the grant or alias when ids are present
+- collect metrics are direct only when GroupWorkspaceResultCollectRecord.result_share_grant_id is present
+- alias drilldown must not invent collect attribution if only grant-level linkage exists
+- notes must clearly explain this distinction
+
+7. Existing endpoint compatibility
+Requirements:
+- public share bootstrap/content remain unchanged
+- alias redirect / invite handoff / collect handoff behavior remain unchanged
+- result-share-web remains unchanged in behavior
+- group-workspace-admin-web remains unchanged in behavior
+- group workspace overview/drilldown endpoints remain unchanged
+
+8. Optional minimal metrics
+Only if natural and low-risk:
+- result_share_grant_conversion_drilldown_reads_total
+- result_share_alias_conversion_drilldown_reads_total
+
+Do not add browser tracking scripts.
+Do not log plaintext aliases or share tokens.
+
+9. Tests
+Add or update tests covering at minimum:
+
+Backend:
+- result-share grant drilldown aggregates direct event counts correctly
+- result-share grant drilldown aggregates direct collect counts correctly
+- alias drilldown aggregates alias-scoped event counts correctly
+- alias drilldown does not over-claim collect attribution
+- filters date_from/date_to/access_mode/event_type/outcome work cleanly
+- safe read models exclude raw tokens/aliases/IP/full referrer/raw UA
+- existing analytics, alias, invite bridge, collect bridge, overview, and workspace drilldown tests continue to pass
+
+Frontend:
+- no frontend feature changes required
+- if tiny compatibility changes are made, keep them minimal and tested
+
+10. Documentation
+Add docs/result_share_grant_alias_drilldown_reserve_v1.md
+
+It should explain:
+- why per-share drilldown is added after global/workspace overview and drilldown exist
+- grant drilldown vs alias drilldown semantics
+- direct event attribution vs direct collect linkage
+- safe read model
+- current non-goals
+- future work:
+  - admin per-share drilldown UI
+  - richer time-series drilldown
+  - alias comparison views
+  - still no source-file sharing by default
+
+Also update:
+- README.md
+- docs/development.md
+- docs/architecture.md
+- docs/result_share_analytics_reserve_v1.md
+- docs/result_share_alias_boundary_v1.md
+- docs/group_workspace_conversion_drilldown_reserve_v1.md
+- any docs that should mention per-share drilldown reserve
+
+11. Quality bar
+- keep code typed and readable
+- keep backend changes minimal and justified
+- do not add unnecessary dependencies
+- do not require live external credentials in tests
+- do not add source-file sharing in this phase
+- do not add new channels in this phase
+- do not add a generic login system
+- do not weaken auth boundaries
+- do not add browser tracking scripts
+- run available checks
+- fix obvious lint/test issues
+- end with a concise summary:
+  - files changed
+  - whether any migration was needed
+  - new endpoints
+  - drilldown outputs
+  - attribution caveats
+  - next-phase recommendation only

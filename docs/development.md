@@ -98,9 +98,12 @@ Admin-only aggregate reads now also reuse those persisted records for:
 - `GET /admin/group-workspaces/{workspace_id}/conversion-overview`
 - `GET /admin/group-workspace-conversion-drilldown`
 - `GET /admin/group-workspaces/{workspace_id}/conversion-drilldown`
+- `GET /admin/result-share-grants/{grant_id}/conversion-drilldown`
+- `GET /admin/result-share-aliases/{alias_id}/conversion-drilldown`
 - direct share/collect attribution where persisted links exist
 - workspace-level invite aggregates without claiming strict per-share causality
 - daily buckets, recent safe rows, and top workspace/share-grant lists now live in the drilldown reserve
+- per-share grant and alias drilldown now stays backend-only in this phase so a later admin shell can consume it without changing public share behavior
 The internal `apps/group-workspace-admin-web` shell now also renders those aggregates as:
 - a global conversion overview panel
 - a workspace conversion overview panel inside workspace detail
@@ -160,6 +163,9 @@ The shell lives under `apps/group-workspace-admin-web` and uses:
   - `event_type`
   - `outcome`
   - `limit` on drilldown recent/top sections only
+- plus backend-only per-share drilldown reserve routes for future admin UI work:
+  - `GET /admin/result-share-grants/{grant_id}/conversion-drilldown`
+  - `GET /admin/result-share-aliases/{alias_id}/conversion-drilldown`
 
 The shell is internal/admin-only, keeps bearer tokens in memory only, and does not introduce end-user login or source-file sharing. Filter controls narrow overview/drilldown reads only and do not change attribution semantics.
 
@@ -223,6 +229,8 @@ After membership is claimed or confirmed, the same shell may also show a manual 
   - `GET /admin/result-share-grants`
   - `POST /admin/result-share-grants`
   - `POST /admin/result-share-grants/{grant_id}/revoke`
+  - `GET /admin/result-share-grants/{grant_id}/conversion-drilldown`
+  - `GET /admin/result-share-aliases/{alias_id}/conversion-drilldown`
 - Admin-managed workspace invite routes:
   - `GET /admin/group-workspace-invite-grants`
   - `POST /admin/group-workspace-invite-grants`

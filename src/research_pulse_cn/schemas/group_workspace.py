@@ -490,6 +490,111 @@ class GroupWorkspaceConversionWorkspaceDrilldownRead(BaseModel):
     notes: list[str] = Field(default_factory=list)
 
 
+class ResultShareGrantSummaryRead(BaseModel):
+    grant_id: UUID
+    share_kind: ResultShareKind
+    workspace_id: UUID | None = None
+    digest_issue_id: UUID | None = None
+    paper_id: UUID | None = None
+    status: ResultShareGrantStatus
+    display_label: str | None = None
+    expires_at: datetime | None = None
+    last_used_at: datetime | None = None
+    created_at: datetime
+
+
+class ResultShareAliasSummaryRead(BaseModel):
+    alias_id: UUID
+    result_share_grant_id: UUID
+    share_kind: ResultShareKind
+    alias_prefix: str | None = None
+    status: ResultShareAliasStatus
+    display_label: str | None = None
+    expires_at: datetime | None = None
+    last_used_at: datetime | None = None
+    created_at: datetime
+
+
+class ResultShareRecentEventRead(BaseModel):
+    id: UUID
+    result_share_grant_id: UUID | None = None
+    result_share_alias_id: UUID | None = None
+    share_kind: ResultShareKind
+    access_mode: ResultShareViewAccessMode
+    event_type: ResultShareViewEventType
+    outcome: ResultShareViewOutcome
+    handoff_target_kind: ResultShareHandoffTargetKind | None = None
+    occurred_at: datetime
+
+
+class ResultShareDirectCollectRecordRead(BaseModel):
+    id: UUID
+    workspace_id: UUID
+    user_id: UUID
+    result_share_grant_id: UUID
+    share_kind: ResultShareKind
+    collected_paper_id: UUID
+    status: GroupWorkspaceResultCollectStatus
+    reason_codes: list[str] = Field(default_factory=list)
+    created_at: datetime
+
+
+class ResultShareAttributionScopeRead(BaseModel):
+    direct_event_metrics: list[str] = Field(default_factory=list)
+    direct_collect_metrics: list[str] = Field(default_factory=list)
+    non_attribution_fields: list[str] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
+
+
+class ResultShareGrantConversionDrilldownRead(BaseModel):
+    share_grant: ResultShareGrantSummaryRead
+    window_start: datetime | None = None
+    window_end: datetime | None = None
+    total_events: int
+    bootstrap_view_count: int
+    content_view_count: int
+    redirect_count: int
+    invite_handoff_redirect_count: int
+    collect_handoff_redirect_count: int
+    resolved_event_count: int
+    rejected_event_count: int
+    by_access_mode: dict[str, int] = Field(default_factory=dict)
+    by_event_type: dict[str, int] = Field(default_factory=dict)
+    by_outcome: dict[str, int] = Field(default_factory=dict)
+    active_alias_count: int
+    aliases: list[ResultShareAliasSummaryRead] = Field(default_factory=list)
+    recent_events: list[ResultShareRecentEventRead] = Field(default_factory=list)
+    direct_collect_records: list[ResultShareDirectCollectRecordRead] = Field(default_factory=list)
+    direct_collect_collected_count: int
+    direct_collect_already_present_count: int
+    direct_collect_rejected_count: int
+    unique_collecting_user_count: int
+    last_activity_at: datetime | None = None
+    attribution_scope: ResultShareAttributionScopeRead
+    notes: list[str] = Field(default_factory=list)
+
+
+class ResultShareAliasConversionDrilldownRead(BaseModel):
+    alias: ResultShareAliasSummaryRead
+    result_share_grant: ResultShareGrantSummaryRead
+    window_start: datetime | None = None
+    window_end: datetime | None = None
+    total_events: int
+    bootstrap_view_count: int
+    content_view_count: int
+    redirect_count: int
+    invite_handoff_redirect_count: int
+    collect_handoff_redirect_count: int
+    resolved_event_count: int
+    rejected_event_count: int
+    by_event_type: dict[str, int] = Field(default_factory=dict)
+    by_outcome: dict[str, int] = Field(default_factory=dict)
+    recent_events: list[ResultShareRecentEventRead] = Field(default_factory=list)
+    last_activity_at: datetime | None = None
+    attribution_scope: ResultShareAttributionScopeRead
+    notes: list[str] = Field(default_factory=list)
+
+
 class ResultShareViewEventRead(ORMModel):
     id: UUID
     result_share_grant_id: UUID | None = None

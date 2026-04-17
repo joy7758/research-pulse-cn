@@ -19,11 +19,12 @@ Core flow:
 13. A thin public browser shell under `apps/result-share-web` now consumes those token-based share endpoints directly, optionally connects an in-memory self-service token, renders safe read-only structured outputs, exposes explicit collect-preview/collect actions for supported share kinds, and shows a manual invite/join handoff summary for `workspace_board` shares.
 14. A thin public browser shell under `apps/group-workspace-invite-web` now consumes the public invite bootstrap plus self-service claim routes, keeps invite/self-service tokens in memory only, and does not introduce a generic login surface or source-file sharing.
 15. A thin internal browser shell under `apps/group-workspace-admin-web` now consumes the admin-managed workspace and share-grant endpoints, reuses existing `GET /users` and `GET /papers` reads as lookup sources, renders read-only conversion overview plus drilldown dashboards, adds compact time-window and dimension filters over those reads, and keeps admin bearer tokens in memory only.
-16. Sync devices consume incremental `SyncEvent` feeds and push idempotent mutations back through the same service layer.
-17. A Tauri desktop shell consumes the same sync feed, keeps a local SQLite outbox, performs limited writeback through `/sync/push`, manages a local-only paper workspace, stores local markdown notes/templates, keeps local review-matrix / response-letter workflows, exposes synced `SubscriptionPolicy` quiet-control fields in Settings with non-authoritative local hints, and renders sectioned daily digests on the Today page when the synced cache includes structured digest payloads.
-18. A pulse input layer now records lightweight work activity and research watch profiles so future retrieval can start from explicit inputs instead of implicit guesses.
-19. A thin internal browser shell under `apps/user-workbench-admin-web` now consumes read-only `/admin/user-workbench/*` aggregation routes so support workflows can traverse users, papers, and watch profiles without introducing writes or file sharing.
-20. An external retrieval boundary now converts those inputs into persisted source-specific plans, executes official-source fetches behind provider adapters, stores normalized scholarly results, and lets the pulse pipeline consume those persisted records for deterministic `related_paper` cards without executing retrieval inline.
+16. The same admin boundary now also exposes backend-only per-share drilldown reads for individual `ResultShareGrant` and `ResultShareAlias` objects so a later operator UI can inspect one share path without weakening the existing public boundary or inventing alias-level collect attribution.
+17. Sync devices consume incremental `SyncEvent` feeds and push idempotent mutations back through the same service layer.
+18. A Tauri desktop shell consumes the same sync feed, keeps a local SQLite outbox, performs limited writeback through `/sync/push`, manages a local-only paper workspace, stores local markdown notes/templates, keeps local review-matrix / response-letter workflows, exposes synced `SubscriptionPolicy` quiet-control fields in Settings with non-authoritative local hints, and renders sectioned daily digests on the Today page when the synced cache includes structured digest payloads.
+19. A pulse input layer now records lightweight work activity and research watch profiles so future retrieval can start from explicit inputs instead of implicit guesses.
+20. A thin internal browser shell under `apps/user-workbench-admin-web` now consumes read-only `/admin/user-workbench/*` aggregation routes so support workflows can traverse users, papers, and watch profiles without introducing writes or file sharing.
+21. An external retrieval boundary now converts those inputs into persisted source-specific plans, executes official-source fetches behind provider adapters, stores normalized scholarly results, and lets the pulse pipeline consume those persisted records for deterministic `related_paper` cards without executing retrieval inline.
 
 ## Module boundaries
 
@@ -340,6 +341,11 @@ Tie-break order is deterministic:
   - `GET /admin/group-workspaces/{workspace_id}/conversion-drilldown`
   - they reuse the same persisted records for daily buckets, recent safe rows, and top workspace/share-grant lists
   - they keep invite claims labeled as workspace-level aggregate signals instead of strict per-share attribution
+- Admin per-share drilldown reads stay inside the same admin boundary:
+  - `GET /admin/result-share-grants/{grant_id}/conversion-drilldown`
+  - `GET /admin/result-share-aliases/{alias_id}/conversion-drilldown`
+  - grant drilldown combines direct share-event counts with direct collect linkage only when `GroupWorkspaceResultCollectRecord.result_share_grant_id` is present
+  - alias drilldown stays alias-scoped for access-path behavior and does not invent collect attribution when persistence is only grant-linked
 - The existing internal `apps/group-workspace-admin-web` shell can render those read-only conversion aggregates:
   - a global overview panel
   - a workspace-specific overview block in workspace detail
@@ -347,6 +353,7 @@ Tie-break order is deterministic:
   - a workspace-specific drilldown block for recent activity plus active share/invite snapshots
   - shared global/workspace filter bars for `date_from`, `date_to`, `share_kind`, `access_mode`, `event_type`, `outcome`, and drilldown `limit`
   - attribution notes supplied by the backend read model rather than inferred client-side narratives
+  - a later per-share admin UI can reuse the same backend-only grant/alias drilldown reserve without changing public share routes
 
 ### Result collect reserve boundary
 - `GroupWorkspaceResultCollectRecord` records one audit-friendly collect outcome per:

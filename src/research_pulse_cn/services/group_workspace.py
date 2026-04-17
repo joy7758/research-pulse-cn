@@ -808,6 +808,162 @@ class GroupWorkspaceService:
             "created_at": event.created_at,
         }
 
+    def summarize_result_share_grant_conversion_drilldown(
+        self,
+        *,
+        grant_id: UUID,
+        access_mode: ResultShareViewAccessMode | None = None,
+        event_type: ResultShareViewEventType | None = None,
+        outcome: ResultShareViewOutcome | None = None,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
+        limit: int = 20,
+    ) -> dict[str, Any]:
+        grant = self.get_result_share_grant(grant_id)
+        normalized_from, normalized_to = self._normalize_result_share_analytics_window(
+            date_from=date_from,
+            date_to=date_to,
+        )
+        effective_limit = max(1, min(limit, 100))
+        events = self.list_result_share_view_events(
+            result_share_grant_id=grant.id,
+            access_mode=access_mode,
+            event_type=event_type,
+            outcome=outcome,
+            date_from=normalized_from,
+            date_to=normalized_to,
+        )
+        aliases = self.list_result_share_aliases(result_share_grant_id=grant.id)
+        direct_collect_records = [
+            record
+            for record in self.list_result_collect_records(result_share_grant_id=grant.id)
+            if self._timestamp_in_window(
+                record.created_at,
+                date_from=normalized_from,
+                date_to=normalized_to,
+            )
+        ]
+        event_breakdown = self._result_share_event_breakdown(events)
+        last_activity_at = event_breakdown["last_activity_at"]
+        for record in direct_collect_records:
+            last_activity_at = self._max_activity_timestamp(last_activity_at, record.created_at)
+        attribution_scope = self._result_share_drilldown_attribution_scope_summary(
+            alias_scoped=False,
+            event_filters_applied=access_mode is not None
+            or event_type is not None
+            or outcome is not None,
+        )
+        return {
+            "share_grant": self._result_share_grant_drilldown_summary(grant),
+            "window_start": normalized_from,
+            "window_end": normalized_to,
+            "total_events": len(events),
+            "bootstrap_view_count": event_breakdown["bootstrap_view_count"],
+            "content_view_count": event_breakdown["content_view_count"],
+            "redirect_count": event_breakdown["redirect_count"],
+            "invite_handoff_redirect_count": event_breakdown["invite_handoff_redirect_count"],
+            "collect_handoff_redirect_count": event_breakdown["collect_handoff_redirect_count"],
+            "resolved_event_count": event_breakdown["resolved_event_count"],
+            "rejected_event_count": event_breakdown["rejected_event_count"],
+            "by_access_mode": event_breakdown["by_access_mode"],
+            "by_event_type": event_breakdown["by_event_type"],
+            "by_outcome": event_breakdown["by_outcome"],
+            "active_alias_count": sum(
+                1 for alias in aliases if alias.status == ResultShareAliasStatus.ACTIVE
+            ),
+            "aliases": [self._result_share_alias_drilldown_summary(alias) for alias in aliases],
+            "recent_events": [
+                self._serialize_conversion_recent_share_event(event)
+                for event in events[:effective_limit]
+            ],
+            "direct_collect_records": [
+                self._serialize_conversion_recent_collect_record(record)
+                for record in direct_collect_records[:effective_limit]
+            ],
+            "direct_collect_collected_count": sum(
+                1
+                for record in direct_collect_records
+                if record.status == GroupWorkspaceResultCollectStatus.COLLECTED
+            ),
+            "direct_collect_already_present_count": sum(
+                1
+                for record in direct_collect_records
+                if record.status == GroupWorkspaceResultCollectStatus.ALREADY_PRESENT
+            ),
+            "direct_collect_rejected_count": sum(
+                1
+                for record in direct_collect_records
+                if record.status == GroupWorkspaceResultCollectStatus.REJECTED
+            ),
+            "unique_collecting_user_count": len(
+                {record.user_id for record in direct_collect_records}
+            ),
+            "last_activity_at": last_activity_at,
+            "attribution_scope": attribution_scope,
+            "notes": self._result_share_grant_drilldown_notes(
+                attribution_scope=attribution_scope,
+            ),
+        }
+
+    def summarize_result_share_alias_conversion_drilldown(
+        self,
+        *,
+        alias_id: UUID,
+        access_mode: ResultShareViewAccessMode | None = None,
+        event_type: ResultShareViewEventType | None = None,
+        outcome: ResultShareViewOutcome | None = None,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
+        limit: int = 20,
+    ) -> dict[str, Any]:
+        alias = self.get_result_share_alias(alias_id)
+        grant = self.get_result_share_grant(alias.result_share_grant_id)
+        normalized_from, normalized_to = self._normalize_result_share_analytics_window(
+            date_from=date_from,
+            date_to=date_to,
+        )
+        effective_limit = max(1, min(limit, 100))
+        events = self.list_result_share_view_events(
+            result_share_alias_id=alias.id,
+            access_mode=access_mode,
+            event_type=event_type,
+            outcome=outcome,
+            date_from=normalized_from,
+            date_to=normalized_to,
+        )
+        event_breakdown = self._result_share_event_breakdown(events)
+        attribution_scope = self._result_share_drilldown_attribution_scope_summary(
+            alias_scoped=True,
+            event_filters_applied=access_mode is not None
+            or event_type is not None
+            or outcome is not None,
+        )
+        return {
+            "alias": self._result_share_alias_drilldown_summary(alias),
+            "result_share_grant": self._result_share_grant_drilldown_summary(grant),
+            "window_start": normalized_from,
+            "window_end": normalized_to,
+            "total_events": len(events),
+            "bootstrap_view_count": event_breakdown["bootstrap_view_count"],
+            "content_view_count": event_breakdown["content_view_count"],
+            "redirect_count": event_breakdown["redirect_count"],
+            "invite_handoff_redirect_count": event_breakdown["invite_handoff_redirect_count"],
+            "collect_handoff_redirect_count": event_breakdown["collect_handoff_redirect_count"],
+            "resolved_event_count": event_breakdown["resolved_event_count"],
+            "rejected_event_count": event_breakdown["rejected_event_count"],
+            "by_event_type": event_breakdown["by_event_type"],
+            "by_outcome": event_breakdown["by_outcome"],
+            "recent_events": [
+                self._serialize_conversion_recent_share_event(event)
+                for event in events[:effective_limit]
+            ],
+            "last_activity_at": event_breakdown["last_activity_at"],
+            "attribution_scope": attribution_scope,
+            "notes": self._result_share_alias_drilldown_notes(
+                attribution_scope=attribution_scope,
+            ),
+        }
+
     def summarize_group_workspace_conversion_overview(
         self,
         *,
@@ -1442,6 +1598,223 @@ class GroupWorkspaceService:
             "reason_codes": list(record.reason_codes or []),
             "created_at": record.created_at,
         }
+
+    def _result_share_grant_drilldown_summary(
+        self,
+        grant: ResultShareGrant,
+    ) -> dict[str, Any]:
+        return {
+            "grant_id": grant.id,
+            "share_kind": grant.share_kind,
+            "workspace_id": grant.workspace_id,
+            "digest_issue_id": grant.digest_issue_id,
+            "paper_id": grant.paper_id,
+            "status": grant.status,
+            "display_label": grant.display_label,
+            "expires_at": grant.expires_at,
+            "last_used_at": grant.last_used_at,
+            "created_at": grant.created_at,
+        }
+
+    def _result_share_alias_drilldown_summary(
+        self,
+        alias: ResultShareAlias,
+    ) -> dict[str, Any]:
+        share_kind = (
+            alias.result_share_grant.share_kind
+            if alias.result_share_grant is not None
+            else self.get_result_share_grant(alias.result_share_grant_id).share_kind
+        )
+        return {
+            "alias_id": alias.id,
+            "result_share_grant_id": alias.result_share_grant_id,
+            "share_kind": share_kind,
+            "alias_prefix": alias.alias_prefix,
+            "status": alias.status,
+            "display_label": alias.display_label,
+            "expires_at": alias.expires_at,
+            "last_used_at": alias.last_used_at,
+            "created_at": alias.created_at,
+        }
+
+    def _result_share_event_breakdown(
+        self,
+        events: Sequence[ResultShareViewEvent],
+    ) -> dict[str, Any]:
+        by_access_mode: dict[str, int] = {}
+        by_event_type: dict[str, int] = {}
+        by_outcome: dict[str, int] = {}
+        last_activity_at: datetime | None = None
+
+        for event in events:
+            by_access_mode[event.access_mode.value] = (
+                by_access_mode.get(event.access_mode.value, 0) + 1
+            )
+            by_event_type[event.event_type.value] = by_event_type.get(event.event_type.value, 0) + 1
+            by_outcome[event.outcome.value] = by_outcome.get(event.outcome.value, 0) + 1
+            last_activity_at = self._max_activity_timestamp(last_activity_at, event.occurred_at)
+
+        return {
+            "by_access_mode": by_access_mode,
+            "by_event_type": by_event_type,
+            "by_outcome": by_outcome,
+            "bootstrap_view_count": by_event_type.get(
+                ResultShareViewEventType.BOOTSTRAP_VIEW.value,
+                0,
+            ),
+            "content_view_count": by_event_type.get(
+                ResultShareViewEventType.CONTENT_VIEW.value,
+                0,
+            ),
+            "redirect_count": by_event_type.get(ResultShareViewEventType.REDIRECT.value, 0),
+            "invite_handoff_redirect_count": by_event_type.get(
+                ResultShareViewEventType.INVITE_HANDOFF_REDIRECT.value,
+                0,
+            ),
+            "collect_handoff_redirect_count": by_event_type.get(
+                ResultShareViewEventType.COLLECT_HANDOFF_REDIRECT.value,
+                0,
+            ),
+            "resolved_event_count": by_outcome.get(ResultShareViewOutcome.RESOLVED.value, 0),
+            "rejected_event_count": by_outcome.get(ResultShareViewOutcome.REJECTED.value, 0),
+            "last_activity_at": last_activity_at,
+        }
+
+    def _result_share_drilldown_attribution_scope_summary(
+        self,
+        *,
+        alias_scoped: bool,
+        event_filters_applied: bool,
+    ) -> dict[str, Any]:
+        if alias_scoped:
+            notes = [
+                (
+                    "Event metrics are direct only when ResultShareViewEvent.result_share_alias_id "
+                    "matches this alias."
+                ),
+                (
+                    "Collect linkage remains grant-level because "
+                    "GroupWorkspaceResultCollectRecord does not persist result_share_alias_id."
+                ),
+            ]
+            if event_filters_applied:
+                notes.append(
+                    "access_mode, event_type, and outcome filters scope alias event metrics only."
+                )
+            return {
+                "direct_event_metrics": [
+                    "total_events",
+                    "bootstrap_view_count",
+                    "content_view_count",
+                    "redirect_count",
+                    "invite_handoff_redirect_count",
+                    "collect_handoff_redirect_count",
+                    "resolved_event_count",
+                    "rejected_event_count",
+                    "by_event_type",
+                    "by_outcome",
+                    "recent_events",
+                ],
+                "direct_collect_metrics": [],
+                "non_attribution_fields": [
+                    "alias",
+                    "result_share_grant",
+                    "window_start",
+                    "window_end",
+                    "last_activity_at",
+                    "notes",
+                ],
+                "notes": notes,
+            }
+
+        notes = [
+            (
+                "Event metrics are direct because ResultShareViewEvent stores "
+                "result_share_grant_id, access_mode, event_type, and outcome."
+            ),
+            (
+                "Direct collect metrics include only GroupWorkspaceResultCollectRecord rows with a "
+                "matching result_share_grant_id."
+            ),
+        ]
+        if event_filters_applied:
+            notes.append(
+                "access_mode, event_type, and outcome filters scope event metrics only; "
+                "direct collect metrics still reflect direct collect records in the "
+                "selected window."
+            )
+        return {
+            "direct_event_metrics": [
+                "total_events",
+                "bootstrap_view_count",
+                "content_view_count",
+                "redirect_count",
+                "invite_handoff_redirect_count",
+                "collect_handoff_redirect_count",
+                "resolved_event_count",
+                "rejected_event_count",
+                "by_access_mode",
+                "by_event_type",
+                "by_outcome",
+                "recent_events",
+            ],
+            "direct_collect_metrics": [
+                "direct_collect_records",
+                "direct_collect_collected_count",
+                "direct_collect_already_present_count",
+                "direct_collect_rejected_count",
+                "unique_collecting_user_count",
+            ],
+            "non_attribution_fields": [
+                "share_grant",
+                "active_alias_count",
+                "aliases",
+                "window_start",
+                "window_end",
+                "last_activity_at",
+                "notes",
+            ],
+            "notes": notes,
+        }
+
+    def _result_share_grant_drilldown_notes(
+        self,
+        *,
+        attribution_scope: dict[str, Any],
+    ) -> list[str]:
+        notes = list(attribution_scope.get("notes", []))
+        notes.append(
+            "Alias rows expose only safe alias metadata and never re-expose plaintext aliases."
+        )
+        notes.append(
+            "Recent events show raw-token, alias, and alias-redirect access behavior "
+            "for this share."
+        )
+        notes.append(
+            "Direct collect rows stay grant-scoped and require a persisted "
+            "result_share_grant_id link."
+        )
+        return notes
+
+    def _result_share_alias_drilldown_notes(
+        self,
+        *,
+        attribution_scope: dict[str, Any],
+    ) -> list[str]:
+        notes = list(attribution_scope.get("notes", []))
+        notes.append(
+            "Alias drilldown is access-path analysis only and does not imply file "
+            "or content semantics."
+        )
+        notes.append(
+            "Recent events include only persisted rows whose result_share_alias_id "
+            "matches this alias."
+        )
+        notes.append(
+            "Underlying grant context is shown for operator reference, but direct collect linkage "
+            "remains grant-level."
+        )
+        return notes
 
     def _conversion_daily_buckets(
         self,

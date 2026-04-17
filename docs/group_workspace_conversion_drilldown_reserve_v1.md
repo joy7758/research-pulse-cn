@@ -64,5 +64,8 @@
 - The existing `apps/group-workspace-admin-web` shell now consumes these reserve reads through a minimal read-only dashboard plus compact time-window and dimension filters without changing the backend boundary
 - Richer operator dashboard UI for those drilldown reads
 - Time-series charting if later justified
-- Share-grant drilldown if later justified by operator need
+- Backend-only per-share drilldown reserve now exists for:
+  - `GET /admin/result-share-grants/{grant_id}/conversion-drilldown`
+  - `GET /admin/result-share-aliases/{alias_id}/conversion-drilldown`
+- Admin UI for those per-share reserve reads if later justified by operator need
 - Still no source-file sharing by default
