@@ -1,0 +1,232 @@
+Read AGENTS.md, docs/BUILD_SPEC.md, docs/architecture.md, docs/development.md, docs/group_workspace_admin_web_shell_v1.md, docs/group_workspace_conversion_admin_web_shell_v1.md, docs/group_workspace_conversion_drilldown_admin_web_shell_v1.md, docs/group_workspace_conversion_overview_reserve_v1.md, and docs/group_workspace_conversion_drilldown_reserve_v1.md before editing.
+
+Implement Phase 56 only: group workspace conversion time-window filtering admin web shell v1.
+
+Hard boundaries for this phase:
+- Do not add source file sharing.
+- Do not add local attachment sharing, note-file sharing, or cloud attachment sync.
+- Do not add real-time collaboration or live multi-user editing.
+- Do not add new delivery channels.
+- Do not add desktop or mini UI work in this phase.
+- Do not add a generic end-user login/session system.
+- Do not add campaign/broadcast/referral behavior.
+- Do not add third-party browser analytics scripts.
+- Do not add AI attribution, AI summarization, or LLM-based dashboard copy.
+- Do not create a new frontend app; extend the existing group-workspace-admin-web only.
+- Do not weaken existing auth boundaries.
+- Do not replace the modular monolith backend architecture.
+
+Primary goal:
+Extend the existing internal group-workspace admin shell with read-only time-window and dimension filters over the already implemented overview + drilldown endpoints.
+
+This phase should make the repository suitable for:
+- changing the time window of global conversion overview/drilldown
+- changing the time window of workspace conversion overview/drilldown
+- filtering by share_kind / access_mode / event_type / outcome where supported
+- reviewing recent activity with explicit limit controls
+- keeping the shell operator-readable, compact, and strictly read-only
+
+Architectural intent:
+- Reuse existing apps/group-workspace-admin-web.
+- Reuse existing read-only backend endpoints.
+- Prefer frontend-only work.
+- If backend filter support is incomplete or inconsistent, add only tiny read-only compatibility fixes.
+- No source-file semantics are exposed anywhere.
+
+Required changes:
+
+1. Reuse existing app only
+Work inside:
+- apps/group-workspace-admin-web
+
+Requirements:
+- do not create a new frontend app
+- preserve current workspace list/detail/member/paper/share-grant/conversion-overview/drilldown behavior
+- add filter controls on top of the existing shell
+
+2. Existing admin auth boot flow remains unchanged
+Requirements:
+- continue in-memory admin bearer token entry
+- continue query/fragment token ingestion and immediate URL cleanup
+- do not persist admin bearer tokens in:
+  - localStorage
+  - sessionStorage
+  - cookies
+- reuse existing API base URL handling
+
+3. API client extension
+Extend the existing typed API client.
+
+Required filterable calls:
+- GET /admin/group-workspace-conversion-overview
+- GET /admin/group-workspace-conversion-drilldown
+- GET /admin/group-workspaces/{workspace_id}/conversion-overview
+- GET /admin/group-workspaces/{workspace_id}/conversion-drilldown
+
+Add typed filter input model such as:
+- ConversionFilterInput
+
+Minimum fields:
+- dateFrom nullable
+- dateTo nullable
+- shareKind nullable
+- accessMode nullable
+- eventType nullable
+- outcome nullable
+- limit nullable
+
+Requirements:
+- keep network logic out of React components
+- attach bearer token from in-memory state only
+- build query params deterministically
+- return structured error objects suitable for UI display
+
+4. Filter state model
+Add frontend state / view-model helpers for:
+- global conversion filters
+- workspace conversion filters
+- active filter chips/summary
+- date range normalization
+- recent list limit handling
+
+Requirements:
+- support a sensible default window, e.g. backend default analytics window or last 30 days
+- support reset to defaults
+- support applying filters without page reload
+- optionally reflect filter state in query params if simple and stable
+- do not create a heavy routing layer
+
+5. UI structure
+Extend the existing group-workspace-admin-web shell with:
+- global filter bar
+- workspace filter bar inside workspace detail
+- applied-filter summary line or chips
+- recent list limit controls
+- empty/error states for filtered results
+
+Requirements:
+- keep current overview and drilldown panels
+- filters must affect both overview and drilldown reads where appropriate
+- workspace filters should be scoped to the selected workspace
+- simple responsive layout is enough
+- no design system dependency unless clearly justified
+
+6. Required filter behavior
+Global view:
+- date_from/date_to affects:
+  - global conversion overview
+  - global conversion drilldown
+- optional share_kind/access_mode/event_type/outcome affects:
+  - drilldown endpoint directly
+  - overview when backend supports it cleanly
+
+Workspace view:
+- date_from/date_to affects:
+  - workspace conversion overview
+  - workspace conversion drilldown
+- optional share_kind/access_mode/event_type/outcome affects:
+  - workspace drilldown directly
+  - workspace overview when backend supports it cleanly
+
+Limit:
+- controls recent lists in drilldown reads where backend supports it
+- keep a compact default such as 20
+
+7. Attribution clarity
+Requirements:
+- preserve existing direct-vs-aggregate attribution notes
+- make it obvious that filters narrow the read model but do not change attribution semantics
+- no inferred causality
+- no invented funnel percentages
+
+8. Minimal backend compatibility
+Prefer no backend changes.
+
+Allowed only if strictly needed:
+- tiny response-shape normalization fixes
+- tiny filter-param consistency fixes across overview/drilldown endpoints
+- tiny CORS/dev-origin support if current allowlist needs update
+- no migration unless absolutely necessary
+- no new mutations
+- no new analytics persistence
+
+9. Developer workflow and CI
+Reuse the existing group-workspace-admin-web app and commands.
+
+Requirements:
+- keep existing Makefile targets:
+  - workspace-admin-install
+  - workspace-admin-dev
+  - workspace-admin-lint
+  - workspace-admin-test
+  - workspace-admin-build
+- keep existing CI job for group-workspace-admin-web
+- extend tests/builds as needed
+- do not add deployment/release packaging
+
+10. Tests
+Add or update tests covering at minimum:
+
+Frontend / TS tests:
+- ConversionFilterInput shaping
+- date range normalization
+- active filter summary/chip shaping
+- global overview/drilldown filter query shaping
+- workspace overview/drilldown filter query shaping
+- recent list limit shaping
+- zero-data / empty-state shaping under filters
+- token handling remains unchanged
+
+If lightweight component tests are practical:
+- global filter bar render
+- workspace filter bar render
+- filtered empty state render
+- reset filters behavior
+- existing workspace list/detail behavior remains intact
+
+Backend:
+- no major backend work expected
+- if tiny compatibility changes are made, existing backend tests must continue to pass
+
+11. Documentation
+Add docs/group_workspace_conversion_filter_admin_web_v1.md
+
+It should explain:
+- why time-window filtering is added after overview + drilldown shells exist
+- supported filter dimensions
+- global vs workspace filter scope
+- attribution semantics remain unchanged
+- current non-goals
+- future work:
+  - saved filter presets
+  - richer time-series controls
+  - per-share drilldown filters if later justified
+  - still no source-file sharing by default
+
+Also update:
+- README.md
+- docs/development.md
+- docs/architecture.md
+- docs/group_workspace_conversion_admin_web_shell_v1.md
+- docs/group_workspace_conversion_drilldown_admin_web_shell_v1.md
+- any docs that should mention filterable admin dashboards
+
+12. Quality bar
+- keep frontend code typed and readable
+- keep backend changes zero or minimal
+- do not add unnecessary dependencies
+- do not require live external credentials in tests
+- do not add source-file sharing in this phase
+- do not add new channels in this phase
+- do not add a generic login system
+- do not weaken auth boundaries
+- do not add browser tracking scripts
+- run available checks
+- fix obvious lint/test issues
+- end with a concise summary:
+  - files changed
+  - whether any backend migration was needed
+  - changed app path
+  - filter dimensions surfaced
+  - query/state behavior
+  - next-phase recommendation only

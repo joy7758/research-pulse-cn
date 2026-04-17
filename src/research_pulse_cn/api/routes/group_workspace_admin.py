@@ -504,6 +504,7 @@ def get_group_workspace_conversion_overview(
     share_kind: Annotated[ResultShareKind | None, Query()] = None,
     access_mode: Annotated[ResultShareViewAccessMode | None, Query()] = None,
     event_type: Annotated[ResultShareViewEventType | None, Query()] = None,
+    outcome: Annotated[ResultShareViewOutcome | None, Query()] = None,
     date_from: Annotated[datetime | None, Query()] = None,
     date_to: Annotated[datetime | None, Query()] = None,
 ) -> GroupWorkspaceConversionOverviewRead:
@@ -513,6 +514,7 @@ def get_group_workspace_conversion_overview(
             share_kind=share_kind,
             access_mode=access_mode,
             event_type=event_type,
+            outcome=outcome,
             date_from=date_from,
             date_to=date_to,
         )
@@ -527,12 +529,20 @@ def get_group_workspace_workspace_conversion_overview(
     workspace_id: UUID,
     _actor: ViewerDep,
     service: WorkspaceServiceDep,
+    share_kind: Annotated[ResultShareKind | None, Query()] = None,
+    access_mode: Annotated[ResultShareViewAccessMode | None, Query()] = None,
+    event_type: Annotated[ResultShareViewEventType | None, Query()] = None,
+    outcome: Annotated[ResultShareViewOutcome | None, Query()] = None,
     date_from: Annotated[datetime | None, Query()] = None,
     date_to: Annotated[datetime | None, Query()] = None,
 ) -> GroupWorkspaceConversionWorkspaceOverviewRead:
     return GroupWorkspaceConversionWorkspaceOverviewRead(
         **service.summarize_workspace_conversion_overview(
             workspace_id=workspace_id,
+            share_kind=share_kind,
+            access_mode=access_mode,
+            event_type=event_type,
+            outcome=outcome,
             date_from=date_from,
             date_to=date_to,
         )

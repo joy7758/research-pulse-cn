@@ -366,6 +366,10 @@ button {
   margin-bottom: 20px;
 }
 
+.filter-bar-card {
+  margin-bottom: 20px;
+}
+
 .conversion-meta-row {
   display: flex;
   flex-wrap: wrap;
@@ -392,6 +396,48 @@ button {
   display: block;
   margin-top: 4px;
   word-break: break-word;
+}
+
+.filter-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.filter-summary-card {
+  margin-top: 18px;
+  padding: 18px;
+  border-radius: 18px;
+  background: #f7f9fd;
+  border: 1px solid rgba(23, 32, 51, 0.08);
+}
+
+.filter-chip-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(23, 32, 51, 0.08);
+}
+
+.filter-chip span {
+  color: #5d6c8c;
+  font-size: 0.84rem;
+}
+
+.filter-chip strong {
+  color: #20345e;
 }
 
 .conversion-stat-grid {
@@ -577,6 +623,7 @@ button {
   .split-grid,
   .conversion-section-grid,
   .conversion-notes-grid,
+  .filter-grid,
   .field-grid,
   .stat-grid {
     grid-template-columns: 1fr;

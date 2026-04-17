@@ -93,6 +93,8 @@ The shell now also includes a minimal read-only drilldown consumer on top of tho
 - global drilldown under the main dashboard area
 - workspace drilldown inside workspace detail
 - explicit direct-attribution vs workspace-level aggregate-only notes
+- compact global and workspace filter bars for `date_from`, `date_to`, `share_kind`, `access_mode`, `event_type`, `outcome`, and drilldown `limit`
+- reset-to-default filtering that reuses the backend default analytics window and keeps recent rows compact
 - no new write paths, auth surfaces, or source-file semantics
 
 ## Safety Exclusions
@@ -123,8 +125,8 @@ This phase does not add:
 
 ## Future Work
 
-- richer internal admin UX for search, filtering, and validation
+- richer internal admin UX for search, filtering presets, and validation
 - user-managed workspace membership and invitation flows
 - digest-issue and paper-snapshot share management UI
-- richer drilldown filtering and time-series charting if operator demand justifies it
+- richer time-series charting and comparison controls if operator demand justifies it
 - later invite/handoff flows if justified

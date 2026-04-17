@@ -13,6 +13,9 @@ from research_pulse_cn.domain.enums import (
     PaperType,
     PulseDigestIssueStatus,
     ResultShareKind,
+    ResultShareViewAccessMode,
+    ResultShareViewEventType,
+    ResultShareViewOutcome,
 )
 
 
@@ -481,6 +484,44 @@ def test_group_workspace_conversion_overview_aggregates_global_signals(
             payload["attribution_scope"]["notes"]
         )
 
+        filtered_overview = client.get(
+            "/admin/group-workspace-conversion-overview",
+            headers=operator_headers,
+            params={
+                "share_kind": ResultShareKind.WORKSPACE_BOARD.value,
+                "access_mode": ResultShareViewAccessMode.ALIAS.value,
+                "event_type": ResultShareViewEventType.CONTENT_VIEW.value,
+                "outcome": ResultShareViewOutcome.RESOLVED.value,
+            },
+        )
+        assert filtered_overview.status_code == 200
+        filtered_payload = filtered_overview.json()
+        assert filtered_payload["total_share_view_events"] == 1
+        assert filtered_payload["bootstrap_view_count"] == 0
+        assert filtered_payload["content_view_count"] == 1
+        assert filtered_payload["redirect_count"] == 0
+        assert filtered_payload["invite_handoff_redirect_count"] == 0
+        assert filtered_payload["collect_handoff_redirect_count"] == 0
+        assert filtered_payload["resolved_event_count"] == 1
+        assert filtered_payload["rejected_event_count"] == 0
+        assert filtered_payload["by_share_kind"] == {"workspace_board": 1}
+        assert filtered_payload["by_access_mode"] == {"alias": 1}
+        assert filtered_payload["by_handoff_target"] == {}
+        assert filtered_payload["invite_claimed_count"] == 1
+        assert filtered_payload["invite_already_member_count"] == 1
+        assert filtered_payload["invite_rejected_count"] == 1
+        assert filtered_payload["collect_collected_count"] == 0
+        assert filtered_payload["collect_already_present_count"] == 0
+        assert filtered_payload["collect_rejected_count"] == 0
+        assert filtered_payload["unique_result_share_grant_count"] == 1
+        assert filtered_payload["unique_workspace_count"] == 1
+        assert "share_kind filters scope view-event metrics" in " ".join(
+            filtered_payload["attribution_scope"]["notes"]
+        )
+        assert "access_mode and event_type filters scope only" in " ".join(
+            filtered_payload["attribution_scope"]["notes"]
+        )
+
         serialized = json.dumps(payload)
         assert board_share["plain_text_token"] not in serialized
         assert board_alias["plain_text_alias"] not in serialized
@@ -711,6 +752,39 @@ def test_group_workspace_workspace_conversion_overview_aggregates_workspace_sign
         assert (
             "unique_collecting_user_count"
             in payload["attribution_scope"]["workspace_level_aggregate_metrics"]
+        )
+
+        filtered_overview = client.get(
+            f"/admin/group-workspaces/{workspace['id']}/conversion-overview",
+            headers=operator_headers,
+            params={
+                "share_kind": ResultShareKind.WORKSPACE_BOARD.value,
+                "access_mode": ResultShareViewAccessMode.ALIAS.value,
+                "event_type": ResultShareViewEventType.CONTENT_VIEW.value,
+                "outcome": ResultShareViewOutcome.RESOLVED.value,
+            },
+        )
+        assert filtered_overview.status_code == 200
+        filtered_payload = filtered_overview.json()
+        assert filtered_payload["workspace"]["id"] == workspace["id"]
+        assert filtered_payload["active_workspace_board_share_grant_count"] == 1
+        assert filtered_payload["active_digest_issue_share_grant_count"] == 0
+        assert filtered_payload["active_paper_snapshot_share_grant_count"] == 0
+        assert filtered_payload["active_invite_grant_count"] == 1
+        assert filtered_payload["workspace_board_view_count"] == 1
+        assert filtered_payload["invite_handoff_redirect_count"] == 0
+        assert filtered_payload["collect_handoff_redirect_count"] == 0
+        assert filtered_payload["invite_claimed_count"] == 1
+        assert filtered_payload["invite_already_member_count"] == 1
+        assert filtered_payload["collect_collected_count"] == 0
+        assert filtered_payload["collect_already_present_count"] == 0
+        assert filtered_payload["unique_collected_paper_count"] == 0
+        assert filtered_payload["unique_collecting_user_count"] == 0
+        assert "share_kind filters scope view-event metrics" in " ".join(
+            filtered_payload["attribution_scope"]["notes"]
+        )
+        assert "access_mode and event_type filters scope only" in " ".join(
+            filtered_payload["attribution_scope"]["notes"]
         )
 
         serialized = json.dumps(payload)

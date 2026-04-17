@@ -1,8 +1,9 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { GroupWorkspaceAdminShell } from "./App";
 import { GroupWorkspaceAdminApiError } from "./lib/apiClient";
+import { DEFAULT_CONVERSION_FILTER_INPUT } from "./lib/conversionFilters";
 import type {
   GroupWorkspaceBoardRead,
   GroupWorkspaceConversionDrilldownRead,
@@ -459,6 +460,8 @@ describe("group workspace admin shell", () => {
 
     expect(await screen.findByText("Shared Paper")).toBeVisible();
     expect(screen.getByText("Workspace members")).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Global conversion filters" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Workspace conversion filters" })).toBeVisible();
     expect(screen.getByRole("heading", { name: "Global conversion overview" })).toBeVisible();
     expect(screen.getByRole("heading", { name: "Global conversion drilldown" })).toBeVisible();
     expect(screen.getByRole("heading", { name: "Workspace conversion overview" })).toBeVisible();
@@ -514,6 +517,122 @@ describe("group workspace admin shell", () => {
 
     await waitFor(() => {
       expect(screen.getByRole("alert")).toHaveTextContent("Unauthorized admin token");
+    });
+  });
+
+  it("applies and resets global conversion filters without a page reload", async () => {
+    const client = buildApiClient();
+    const user = userEvent.setup();
+
+    render(<GroupWorkspaceAdminShell apiClientFactory={() => client} />);
+
+    await user.type(screen.getByLabelText(/admin bearer token/i), "manual-token");
+    await user.click(screen.getByRole("button", { name: /open workspace shell/i }));
+
+    const globalFilterCard = screen
+      .getByRole("heading", { name: "Global conversion filters" })
+      .closest("section");
+    expect(globalFilterCard).not.toBeNull();
+    const scoped = within(globalFilterCard as HTMLElement);
+
+    fireEvent.change(scoped.getByLabelText("Date from"), {
+      target: { value: "2026-04-01" },
+    });
+    fireEvent.change(scoped.getByLabelText("Date to"), {
+      target: { value: "2026-04-17" },
+    });
+    await user.selectOptions(scoped.getByLabelText("Share kind"), "workspace_board");
+    await user.selectOptions(scoped.getByLabelText("Access mode"), "alias");
+    await user.selectOptions(scoped.getByLabelText("Event type"), "content_view");
+    await user.selectOptions(scoped.getByLabelText("Outcome"), "resolved");
+    await user.selectOptions(scoped.getByLabelText("Recent rows limit"), "50");
+    await user.click(scoped.getByRole("button", { name: "Apply filters" }));
+
+    await waitFor(() => {
+      expect(client.getConversionOverview).toHaveBeenLastCalledWith({
+        dateFrom: "2026-04-01",
+        dateTo: "2026-04-17",
+        shareKind: "workspace_board",
+        accessMode: "alias",
+        eventType: "content_view",
+        outcome: "resolved",
+        limit: 50,
+      });
+      expect(client.getConversionDrilldown).toHaveBeenLastCalledWith({
+        dateFrom: "2026-04-01",
+        dateTo: "2026-04-17",
+        shareKind: "workspace_board",
+        accessMode: "alias",
+        eventType: "content_view",
+        outcome: "resolved",
+        limit: 50,
+      });
+    });
+
+    const summaryCard = scoped
+      .getByRole("heading", { name: "Applied filter summary" })
+      .closest("section");
+    expect(summaryCard).not.toBeNull();
+
+    const summary = within(summaryCard as HTMLElement);
+    expect(summary.getByText("Workspace board")).toBeVisible();
+    expect(summary.getByText("Resolved")).toBeVisible();
+
+    await user.click(scoped.getByRole("button", { name: "Reset defaults" }));
+
+    await waitFor(() => {
+      expect(client.getConversionOverview).toHaveBeenLastCalledWith(
+        DEFAULT_CONVERSION_FILTER_INPUT,
+      );
+      expect(client.getConversionDrilldown).toHaveBeenLastCalledWith(
+        DEFAULT_CONVERSION_FILTER_INPUT,
+      );
+    });
+  });
+
+  it("applies workspace conversion filters inside workspace detail", async () => {
+    const client = buildApiClient();
+    const user = userEvent.setup();
+
+    render(<GroupWorkspaceAdminShell apiClientFactory={() => client} />);
+
+    await user.type(screen.getByLabelText(/admin bearer token/i), "manual-token");
+    await user.click(screen.getByRole("button", { name: /open workspace shell/i }));
+
+    const workspaceFilterCard = screen
+      .getByRole("heading", { name: "Workspace conversion filters" })
+      .closest("section");
+    expect(workspaceFilterCard).not.toBeNull();
+    const scoped = within(workspaceFilterCard as HTMLElement);
+
+    fireEvent.change(scoped.getByLabelText("Date from"), {
+      target: { value: "2026-04-05" },
+    });
+    await user.selectOptions(scoped.getByLabelText("Share kind"), "paper_snapshot");
+    await user.selectOptions(scoped.getByLabelText("Event type"), "collect_handoff_redirect");
+    await user.selectOptions(scoped.getByLabelText("Outcome"), "rejected");
+    await user.selectOptions(scoped.getByLabelText("Recent rows limit"), "10");
+    await user.click(scoped.getByRole("button", { name: "Apply filters" }));
+
+    await waitFor(() => {
+      expect(client.getWorkspaceConversionOverview).toHaveBeenLastCalledWith("workspace-1", {
+        dateFrom: "2026-04-05",
+        dateTo: null,
+        shareKind: "paper_snapshot",
+        accessMode: null,
+        eventType: "collect_handoff_redirect",
+        outcome: "rejected",
+        limit: 10,
+      });
+      expect(client.getWorkspaceConversionDrilldown).toHaveBeenLastCalledWith("workspace-1", {
+        dateFrom: "2026-04-05",
+        dateTo: null,
+        shareKind: "paper_snapshot",
+        accessMode: null,
+        eventType: "collect_handoff_redirect",
+        outcome: "rejected",
+        limit: 10,
+      });
     });
   });
 

@@ -815,6 +815,7 @@ class GroupWorkspaceService:
         share_kind: ResultShareKind | None = None,
         access_mode: ResultShareViewAccessMode | None = None,
         event_type: ResultShareViewEventType | None = None,
+        outcome: ResultShareViewOutcome | None = None,
         date_from: datetime | None = None,
         date_to: datetime | None = None,
     ) -> dict[str, Any]:
@@ -826,6 +827,7 @@ class GroupWorkspaceService:
             share_kind=share_kind,
             access_mode=access_mode,
             event_type=event_type,
+            outcome=outcome,
             date_from=normalized_from,
             date_to=normalized_to,
         )
@@ -963,7 +965,9 @@ class GroupWorkspaceService:
                 include_inventory_metrics=False,
                 include_workspace_metrics=False,
                 share_filter_applied=share_kind is not None,
-                event_filters_applied=access_mode is not None or event_type is not None,
+                event_filters_applied=access_mode is not None
+                or event_type is not None
+                or outcome is not None,
             ),
         }
 
@@ -971,6 +975,10 @@ class GroupWorkspaceService:
         self,
         *,
         workspace_id: UUID,
+        share_kind: ResultShareKind | None = None,
+        access_mode: ResultShareViewAccessMode | None = None,
+        event_type: ResultShareViewEventType | None = None,
+        outcome: ResultShareViewOutcome | None = None,
         date_from: datetime | None = None,
         date_to: datetime | None = None,
     ) -> dict[str, Any]:
@@ -983,6 +991,10 @@ class GroupWorkspaceService:
         events = [
             event
             for event in self.list_result_share_view_events(
+                share_kind=share_kind,
+                access_mode=access_mode,
+                event_type=event_type,
+                outcome=outcome,
                 date_from=normalized_from,
                 date_to=normalized_to,
             )
@@ -1001,7 +1013,8 @@ class GroupWorkspaceService:
         collects = [
             record
             for record in all_workspace_collects
-            if self._timestamp_in_window(
+            if self._result_collect_record_matches_share_kind(record, share_kind=share_kind)
+            and self._timestamp_in_window(
                 record.created_at,
                 date_from=normalized_from,
                 date_to=normalized_to,
@@ -1058,10 +1071,26 @@ class GroupWorkspaceService:
             "window_start": normalized_from,
             "window_end": normalized_to,
             "workspace": self._workspace_safe_summary(workspace),
-            "active_workspace_board_share_grant_count": len(active_board_grants),
-            "active_digest_issue_share_grant_count": len(active_digest_issue_share_grant_ids),
-            "active_paper_snapshot_share_grant_count": len(active_paper_snapshot_share_grant_ids),
-            "active_invite_grant_count": len(active_invite_grants),
+            "active_workspace_board_share_grant_count": (
+                len(active_board_grants)
+                if share_kind in {None, ResultShareKind.WORKSPACE_BOARD}
+                else 0
+            ),
+            "active_digest_issue_share_grant_count": (
+                len(active_digest_issue_share_grant_ids)
+                if share_kind in {None, ResultShareKind.DIGEST_ISSUE}
+                else 0
+            ),
+            "active_paper_snapshot_share_grant_count": (
+                len(active_paper_snapshot_share_grant_ids)
+                if share_kind in {None, ResultShareKind.PAPER_SNAPSHOT}
+                else 0
+            ),
+            "active_invite_grant_count": (
+                len(active_invite_grants)
+                if share_kind in {None, ResultShareKind.WORKSPACE_BOARD}
+                else 0
+            ),
             "workspace_board_view_count": sum(
                 1
                 for event in events
@@ -1113,8 +1142,10 @@ class GroupWorkspaceService:
                 workspace_overview=True,
                 include_inventory_metrics=False,
                 include_workspace_metrics=True,
-                share_filter_applied=False,
-                event_filters_applied=False,
+                share_filter_applied=share_kind is not None,
+                event_filters_applied=access_mode is not None
+                or event_type is not None
+                or outcome is not None,
             ),
         }
 

@@ -2,10 +2,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import "./App.css";
 import { ConversionDrilldownPanel } from "./components/ConversionDrilldownPanel";
+import { ConversionFilterBar } from "./components/ConversionFilterBar";
 import { ConversionOverviewPanel } from "./components/ConversionOverviewPanel";
 import { TokenEntryView } from "./components/TokenEntryView";
 import { WorkspaceDetailView } from "./components/WorkspaceDetailView";
 import { WorkspaceListPanel } from "./components/WorkspaceListPanel";
+import {
+  buildConversionFilterSummaryViewModel,
+  DEFAULT_CONVERSION_FILTER_INPUT,
+  GLOBAL_CONVERSION_FILTER_SUPPORT,
+  normalizeConversionFilterInput,
+  WORKSPACE_CONVERSION_FILTER_SUPPORT,
+} from "./lib/conversionFilters";
 import {
   buildApiErrorViewModel,
   buildGlobalConversionDrilldownViewModel,
@@ -29,6 +37,7 @@ import {
 } from "./lib/token";
 import type {
   ApiErrorViewModel,
+  ConversionFilterInput,
   GroupWorkspaceBoardRead,
   GroupWorkspaceConversionDrilldownRead,
   GroupWorkspaceConversionOverviewRead,
@@ -115,6 +124,15 @@ export function GroupWorkspaceAdminShell({
     useState<ApiErrorViewModel | null>(null);
   const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
   const [oneTimeGrant, setOneTimeGrant] = useState<ShareGrantOneTimeDisplayModel | null>(null);
+  const [globalConversionFilters, setGlobalConversionFilters] = useState<ConversionFilterInput>(
+    DEFAULT_CONVERSION_FILTER_INPUT,
+  );
+  const [globalConversionFilterDraft, setGlobalConversionFilterDraft] =
+    useState<ConversionFilterInput>(DEFAULT_CONVERSION_FILTER_INPUT);
+  const [workspaceConversionFilters, setWorkspaceConversionFilters] =
+    useState<ConversionFilterInput>(DEFAULT_CONVERSION_FILTER_INPUT);
+  const [workspaceConversionFilterDraft, setWorkspaceConversionFilterDraft] =
+    useState<ConversionFilterInput>(DEFAULT_CONVERSION_FILTER_INPUT);
   const [createInput, setCreateInput] = useState<WorkspaceCreateInput>({
     slug: "",
     name: "",
@@ -156,6 +174,10 @@ export function GroupWorkspaceAdminShell({
     setGlobalConversionDrilldownError(null);
     setWorkspaceConversionError(null);
     setWorkspaceConversionDrilldownError(null);
+    setGlobalConversionFilters(DEFAULT_CONVERSION_FILTER_INPUT);
+    setGlobalConversionFilterDraft(DEFAULT_CONVERSION_FILTER_INPUT);
+    setWorkspaceConversionFilters(DEFAULT_CONVERSION_FILTER_INPUT);
+    setWorkspaceConversionFilterDraft(DEFAULT_CONVERSION_FILTER_INPUT);
     setOneTimeGrant(null);
   }, []);
 
@@ -176,45 +198,104 @@ export function GroupWorkspaceAdminShell({
     [toApiErrorViewModel],
   );
 
-  const loadWorkspaceContext = useCallback(
-    async (client: GroupWorkspaceAdminApiClient, workspaceId: string) => {
-      setLoadingMessage("Loading workspace detail and board...");
-      setActionError(null);
-      setWorkspaceConversionLoading(true);
-      setWorkspaceConversionDrilldownLoading(true);
-      setWorkspaceConversionError(null);
-      setWorkspaceConversionDrilldownError(null);
+  const loadGlobalConversionPanels = useCallback(
+    async (
+      client: GroupWorkspaceAdminApiClient,
+      filters: ConversionFilterInput,
+    ) => {
+      setGlobalConversionLoading(true);
+      setGlobalConversionDrilldownLoading(true);
+      setGlobalConversionError(null);
+      setGlobalConversionDrilldownError(null);
       try {
-        const [workspace, board, shareGrants, conversionResult, drilldownResult] = await Promise.all([
-          client.getWorkspace(workspaceId),
-          client.getWorkspaceBoard(workspaceId),
-          client.listResultShareGrants({
-            workspaceId,
-            shareKind: "workspace_board",
-          }),
+        const [overviewResult, drilldownResult] = await Promise.all([
           client
-            .getWorkspaceConversionOverview(workspaceId)
-            .then((conversion) => ({ conversion, error: null }))
+            .getConversionOverview(filters)
+            .then((overview) => ({ overview, error: null }))
             .catch((error: unknown) => ({
-              conversion: null,
+              overview: null,
               error: toApiErrorViewModel(error),
             })),
           client
-            .getWorkspaceConversionDrilldown(workspaceId)
+            .getConversionDrilldown(filters)
             .then((drilldown) => ({ drilldown, error: null }))
             .catch((error: unknown) => ({
               drilldown: null,
               error: toApiErrorViewModel(error),
             })),
         ]);
+        setGlobalConversionOverview(overviewResult.overview);
+        setGlobalConversionError(overviewResult.error);
+        setGlobalConversionDrilldown(drilldownResult.drilldown);
+        setGlobalConversionDrilldownError(drilldownResult.error);
+      } finally {
+        setGlobalConversionLoading(false);
+        setGlobalConversionDrilldownLoading(false);
+      }
+    },
+    [toApiErrorViewModel],
+  );
+
+  const loadWorkspaceConversionPanels = useCallback(
+    async (
+      client: GroupWorkspaceAdminApiClient,
+      workspaceId: string,
+      filters: ConversionFilterInput,
+    ) => {
+      setWorkspaceConversionLoading(true);
+      setWorkspaceConversionDrilldownLoading(true);
+      setWorkspaceConversionError(null);
+      setWorkspaceConversionDrilldownError(null);
+      try {
+        const [overviewResult, drilldownResult] = await Promise.all([
+          client
+            .getWorkspaceConversionOverview(workspaceId, filters)
+            .then((conversion) => ({ conversion, error: null }))
+            .catch((error: unknown) => ({
+              conversion: null,
+              error: toApiErrorViewModel(error),
+            })),
+          client
+            .getWorkspaceConversionDrilldown(workspaceId, filters)
+            .then((drilldown) => ({ drilldown, error: null }))
+            .catch((error: unknown) => ({
+              drilldown: null,
+              error: toApiErrorViewModel(error),
+            })),
+        ]);
+        setWorkspaceConversionOverview(overviewResult.conversion);
+        setWorkspaceConversionError(overviewResult.error);
+        setWorkspaceConversionDrilldown(drilldownResult.drilldown);
+        setWorkspaceConversionDrilldownError(drilldownResult.error);
+      } finally {
+        setWorkspaceConversionLoading(false);
+        setWorkspaceConversionDrilldownLoading(false);
+      }
+    },
+    [toApiErrorViewModel],
+  );
+
+  const loadWorkspaceContext = useCallback(
+    async (
+      client: GroupWorkspaceAdminApiClient,
+      workspaceId: string,
+      filters: ConversionFilterInput,
+    ) => {
+      setLoadingMessage("Loading workspace detail and board...");
+      setActionError(null);
+      try {
+        const [workspace, board, shareGrants] = await Promise.all([
+          client.getWorkspace(workspaceId),
+          client.getWorkspaceBoard(workspaceId),
+          client.listResultShareGrants({
+            workspaceId,
+            shareKind: "workspace_board",
+          }),
+        ]);
         setSelectedWorkspaceId(workspaceId);
         setSelectedWorkspace(workspace);
         setSelectedBoard(board);
         setSelectedShareGrants(shareGrants);
-        setWorkspaceConversionOverview(conversionResult.conversion);
-        setWorkspaceConversionError(conversionResult.error);
-        setWorkspaceConversionDrilldown(drilldownResult.drilldown);
-        setWorkspaceConversionDrilldownError(drilldownResult.error);
         setUpdateInput({
           name: workspace.name,
           description: workspace.description ?? "",
@@ -224,15 +305,14 @@ export function GroupWorkspaceAdminShell({
           ...current,
           [workspaceId]: board,
         }));
+        await loadWorkspaceConversionPanels(client, workspaceId, filters);
       } catch (error) {
         handleError(error, setActionError);
       } finally {
-        setWorkspaceConversionLoading(false);
-        setWorkspaceConversionDrilldownLoading(false);
         setLoadingMessage(null);
       }
     },
-    [handleError, toApiErrorViewModel],
+    [handleError, loadWorkspaceConversionPanels],
   );
 
   const connectWithToken = useCallback(
@@ -265,12 +345,8 @@ export function GroupWorkspaceAdminShell({
       }
 
       setLoadingMessage("Connecting admin shell...");
-      setGlobalConversionLoading(true);
-      setGlobalConversionDrilldownLoading(true);
       setConnectError(null);
       setActionError(null);
-      setGlobalConversionError(null);
-      setGlobalConversionDrilldownError(null);
       setNoticeMessage(
         source === "query" || source === "fragment"
           ? "Admin bearer token was moved from the URL into in-memory state."
@@ -283,26 +359,11 @@ export function GroupWorkspaceAdminShell({
       });
 
       try {
-        const [workspaceList, userList, paperList, globalConversion, globalDrilldown] =
-          await Promise.all([
+        const [workspaceList, userList, paperList] = await Promise.all([
           client.listWorkspaces(),
           client.listUsers(),
           client.listPapers(),
-          client
-            .getConversionOverview()
-            .then((overview) => ({ overview, error: null }))
-            .catch((error: unknown) => ({
-              overview: null,
-              error: toApiErrorViewModel(error),
-            })),
-            client
-              .getConversionDrilldown()
-              .then((drilldown) => ({ drilldown, error: null }))
-              .catch((error: unknown) => ({
-                drilldown: null,
-                error: toApiErrorViewModel(error),
-              })),
-          ]);
+        ]);
         setSession({
           apiBaseUrl: trimmedApiBaseUrl,
           adminToken: trimmedToken,
@@ -311,15 +372,12 @@ export function GroupWorkspaceAdminShell({
         setWorkspaces(workspaceList);
         setUsers(userList);
         setPapers(paperList);
-        setGlobalConversionOverview(globalConversion.overview);
-        setGlobalConversionError(globalConversion.error);
-        setGlobalConversionDrilldown(globalDrilldown.drilldown);
-        setGlobalConversionDrilldownError(globalDrilldown.error);
         setAdminTokenInput("");
+        await loadGlobalConversionPanels(client, globalConversionFilters);
 
         const initialWorkspaceId = workspaceList[0]?.id ?? null;
         if (initialWorkspaceId) {
-          await loadWorkspaceContext(client, initialWorkspaceId);
+          await loadWorkspaceContext(client, initialWorkspaceId, workspaceConversionFilters);
         } else {
           setSelectedWorkspaceId(null);
           setSelectedWorkspace(null);
@@ -333,12 +391,18 @@ export function GroupWorkspaceAdminShell({
         handleError(error, setConnectError);
         setAdminTokenInput(source === "manual" ? trimmedToken : "");
       } finally {
-        setGlobalConversionLoading(false);
-        setGlobalConversionDrilldownLoading(false);
         setLoadingMessage(null);
       }
     },
-    [apiClientFactory, handleError, loadWorkspaceContext, resetConnectedState, toApiErrorViewModel],
+    [
+      apiClientFactory,
+      globalConversionFilters,
+      handleError,
+      loadGlobalConversionPanels,
+      loadWorkspaceContext,
+      resetConnectedState,
+      workspaceConversionFilters,
+    ],
   );
 
   useEffect(() => {
@@ -378,8 +442,8 @@ export function GroupWorkspaceAdminShell({
     if (!session || !selectedWorkspaceId) {
       return;
     }
-    await loadWorkspaceContext(session.client, selectedWorkspaceId);
-  }, [loadWorkspaceContext, selectedWorkspaceId, session]);
+    await loadWorkspaceContext(session.client, selectedWorkspaceId, workspaceConversionFilters);
+  }, [loadWorkspaceContext, selectedWorkspaceId, session, workspaceConversionFilters]);
 
   const availableUserOptions = useMemo(() => {
     const currentMemberIds = new Set((selectedBoard?.members ?? []).map((member) => member.user_id));
@@ -428,6 +492,40 @@ export function GroupWorkspaceAdminShell({
         : null,
     [workspaceConversionDrilldown],
   );
+  const globalConversionFilterSummary = useMemo(
+    () =>
+      buildConversionFilterSummaryViewModel(
+        globalConversionFilters,
+        GLOBAL_CONVERSION_FILTER_SUPPORT,
+      ),
+    [globalConversionFilters],
+  );
+  const workspaceConversionFilterSummary = useMemo(
+    () =>
+      buildConversionFilterSummaryViewModel(
+        workspaceConversionFilters,
+        WORKSPACE_CONVERSION_FILTER_SUPPORT,
+      ),
+    [workspaceConversionFilters],
+  );
+
+  const patchGlobalFilterDraft = useCallback((patch: Partial<ConversionFilterInput>) => {
+    setGlobalConversionFilterDraft((current) =>
+      normalizeConversionFilterInput({
+        ...current,
+        ...patch,
+      }),
+    );
+  }, []);
+
+  const patchWorkspaceFilterDraft = useCallback((patch: Partial<ConversionFilterInput>) => {
+    setWorkspaceConversionFilterDraft((current) =>
+      normalizeConversionFilterInput({
+        ...current,
+        ...patch,
+      }),
+    );
+  }, []);
 
   const handleOpenShell = useCallback(() => {
     void connectWithToken({
@@ -460,6 +558,53 @@ export function GroupWorkspaceAdminShell({
     [handleError],
   );
 
+  const handleApplyGlobalFilters = useCallback(() => {
+    if (!session) {
+      return;
+    }
+    const nextFilters = normalizeConversionFilterInput(globalConversionFilterDraft);
+    setGlobalConversionFilterDraft(nextFilters);
+    setGlobalConversionFilters(nextFilters);
+    void loadGlobalConversionPanels(session.client, nextFilters);
+  }, [globalConversionFilterDraft, loadGlobalConversionPanels, session]);
+
+  const handleResetGlobalFilters = useCallback(() => {
+    if (!session) {
+      return;
+    }
+    setGlobalConversionFilterDraft(DEFAULT_CONVERSION_FILTER_INPUT);
+    setGlobalConversionFilters(DEFAULT_CONVERSION_FILTER_INPUT);
+    void loadGlobalConversionPanels(session.client, DEFAULT_CONVERSION_FILTER_INPUT);
+  }, [loadGlobalConversionPanels, session]);
+
+  const handleApplyWorkspaceFilters = useCallback(() => {
+    if (!session || !selectedWorkspaceId) {
+      return;
+    }
+    const nextFilters = normalizeConversionFilterInput(workspaceConversionFilterDraft);
+    setWorkspaceConversionFilterDraft(nextFilters);
+    setWorkspaceConversionFilters(nextFilters);
+    void loadWorkspaceConversionPanels(session.client, selectedWorkspaceId, nextFilters);
+  }, [
+    loadWorkspaceConversionPanels,
+    selectedWorkspaceId,
+    session,
+    workspaceConversionFilterDraft,
+  ]);
+
+  const handleResetWorkspaceFilters = useCallback(() => {
+    if (!session || !selectedWorkspaceId) {
+      return;
+    }
+    setWorkspaceConversionFilterDraft(DEFAULT_CONVERSION_FILTER_INPUT);
+    setWorkspaceConversionFilters(DEFAULT_CONVERSION_FILTER_INPUT);
+    void loadWorkspaceConversionPanels(
+      session.client,
+      selectedWorkspaceId,
+      DEFAULT_CONVERSION_FILTER_INPUT,
+    );
+  }, [loadWorkspaceConversionPanels, selectedWorkspaceId, session]);
+
   const handleCreateWorkspace = useCallback(() => {
     if (!session) {
       return;
@@ -470,9 +615,16 @@ export function GroupWorkspaceAdminShell({
       setCreateInput({ slug: "", name: "", description: "" });
       setNoticeMessage(`Created workspace ${created.name}.`);
       const selected = latest.find((workspace) => workspace.id === created.id)?.id ?? created.id;
-      await loadWorkspaceContext(session.client, selected);
+      await loadWorkspaceContext(session.client, selected, workspaceConversionFilters);
     });
-  }, [createInput, loadWorkspaceContext, refreshWorkspaces, runAction, session]);
+  }, [
+    createInput,
+    loadWorkspaceContext,
+    refreshWorkspaces,
+    runAction,
+    session,
+    workspaceConversionFilters,
+  ]);
 
   const handleSaveWorkspace = useCallback(() => {
     if (!session || !selectedWorkspaceId) {
@@ -623,6 +775,18 @@ export function GroupWorkspaceAdminShell({
       ) : null}
       {loadingMessage ? <div className="inline-banner info">{loadingMessage}</div> : null}
 
+      <ConversionFilterBar
+        eyebrow="Global filters"
+        title="Global conversion filters"
+        description="Read-only time-window and dimension filters for the global overview and drilldown panels. Recent-row limit applies to drilldown sections only."
+        filters={globalConversionFilterDraft}
+        summary={globalConversionFilterSummary}
+        disabled={globalConversionLoading || globalConversionDrilldownLoading}
+        onChange={patchGlobalFilterDraft}
+        onApply={handleApplyGlobalFilters}
+        onReset={handleResetGlobalFilters}
+      />
+
       <ConversionOverviewPanel
         eyebrow="Conversion dashboard"
         title="Global conversion overview"
@@ -671,7 +835,7 @@ export function GroupWorkspaceAdminShell({
             if (!session) {
               return;
             }
-            void loadWorkspaceContext(session.client, workspaceId);
+            void loadWorkspaceContext(session.client, workspaceId, workspaceConversionFilters);
           }}
           onCreateInputChange={(patch) =>
             setCreateInput((current) => ({
@@ -692,6 +856,11 @@ export function GroupWorkspaceAdminShell({
           userOptions={availableUserOptions}
           paperOptions={availablePaperOptions}
           shareGrants={selectedShareGrants}
+          conversionFilters={workspaceConversionFilterDraft}
+          conversionFilterSummary={workspaceConversionFilterSummary}
+          conversionFilterDisabled={
+            workspaceConversionLoading || workspaceConversionDrilldownLoading
+          }
           conversionOverview={workspaceConversionViewModel}
           conversionError={workspaceConversionError}
           conversionLoading={workspaceConversionLoading}
@@ -699,6 +868,9 @@ export function GroupWorkspaceAdminShell({
           conversionDrilldownError={workspaceConversionDrilldownError}
           conversionDrilldownLoading={workspaceConversionDrilldownLoading}
           actionLoading={loadingMessage !== null}
+          onConversionFilterChange={patchWorkspaceFilterDraft}
+          onApplyConversionFilters={handleApplyWorkspaceFilters}
+          onResetConversionFilters={handleResetWorkspaceFilters}
           oneTimeGrant={oneTimeGrant}
           onUpdateInputChange={(patch) =>
             setUpdateInput((current) => ({

@@ -11,6 +11,14 @@
 - The same shell now renders:
   - a global drilldown panel alongside the existing global overview
   - a workspace drilldown panel inside workspace detail alongside the existing workspace overview
+- Both drilldown surfaces now sit behind the same compact read-only filter controls used by overview:
+  - `date_from`
+  - `date_to`
+  - `share_kind`
+  - `access_mode`
+  - `event_type`
+  - `outcome`
+  - `limit` for recent/top sections
 - Both panels stay read-only and reuse the same in-memory admin bearer-token boot flow.
 
 ## Daily Buckets, Recent Activity, And Top Lists
@@ -56,7 +64,7 @@
 - No AI attribution or AI-written dashboard copy
 
 ## Future Work
-- Richer operator filtering and comparison controls
+- Saved filter presets and richer comparison controls
 - Time-series charting when it becomes justified
 - Share-grant drilldown UI if later operator usage warrants it
 - Still no source-file sharing by default

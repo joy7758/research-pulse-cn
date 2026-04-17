@@ -12,6 +12,14 @@ export type GroupWorkspaceStatus = "active" | "archived";
 export type GroupWorkspaceMemberRole = "owner" | "editor" | "viewer";
 export type ResultShareGrantStatus = "active" | "revoked" | "expired";
 export type ResultShareKind = "digest_issue" | "paper_snapshot" | "workspace_board";
+export type ResultShareViewAccessMode = "share_token" | "alias" | "alias_redirect";
+export type ResultShareViewEventType =
+  | "bootstrap_view"
+  | "content_view"
+  | "redirect"
+  | "invite_handoff_redirect"
+  | "collect_handoff_redirect";
+export type ResultShareViewOutcome = "resolved" | "rejected";
 
 export type GroupWorkspaceRead = {
   id: string;
@@ -341,9 +349,9 @@ export type ConversionRecentShareEventRead = {
   result_share_grant_id: string | null;
   result_share_alias_id: string | null;
   share_kind: ResultShareKind;
-  access_mode: string;
-  event_type: string;
-  outcome: string;
+  access_mode: ResultShareViewAccessMode;
+  event_type: ResultShareViewEventType;
+  outcome: ResultShareViewOutcome;
   handoff_target_kind: string | null;
   occurred_at: string;
 };
@@ -419,6 +427,37 @@ export type ConversionMetricBucketViewModel = {
   key: string;
   label: string;
   count: number;
+};
+
+export type ConversionFilterInput = {
+  dateFrom: string | null;
+  dateTo: string | null;
+  shareKind: ResultShareKind | null;
+  accessMode: ResultShareViewAccessMode | null;
+  eventType: ResultShareViewEventType | null;
+  outcome: ResultShareViewOutcome | null;
+  limit: number | null;
+};
+
+export type ConversionFilterSupportViewModel = {
+  overviewSupportsDimensions: boolean;
+  overviewSupportsOutcome: boolean;
+  drilldownSupportsDimensions: boolean;
+  drilldownSupportsOutcome: boolean;
+  drilldownSupportsLimit: boolean;
+};
+
+export type ConversionFilterChipViewModel = {
+  key: string;
+  label: string;
+  value: string;
+};
+
+export type ConversionFilterSummaryViewModel = {
+  windowLabel: string;
+  chips: ConversionFilterChipViewModel[];
+  scopeNotes: string[];
+  hasActiveFilters: boolean;
 };
 
 export type ConversionMetricSectionViewModel = {

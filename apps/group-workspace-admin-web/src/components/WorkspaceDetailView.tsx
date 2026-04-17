@@ -1,7 +1,10 @@
 import { ConversionDrilldownPanel } from "./ConversionDrilldownPanel";
+import { ConversionFilterBar } from "./ConversionFilterBar";
 import { ConversionOverviewPanel } from "./ConversionOverviewPanel";
 import type {
   ApiErrorViewModel,
+  ConversionFilterInput,
+  ConversionFilterSummaryViewModel,
   GroupWorkspaceRead,
   GroupWorkspaceMemberRole,
   GroupWorkspaceStatus,
@@ -27,6 +30,9 @@ type WorkspaceDetailViewProps = {
   userOptions: LookupOption[];
   paperOptions: LookupOption[];
   shareGrants: ResultShareGrantRead[];
+  conversionFilters: ConversionFilterInput;
+  conversionFilterSummary: ConversionFilterSummaryViewModel;
+  conversionFilterDisabled: boolean;
   conversionOverview: WorkspaceConversionOverviewViewModel | null;
   conversionError: ApiErrorViewModel | null;
   conversionLoading: boolean;
@@ -35,6 +41,9 @@ type WorkspaceDetailViewProps = {
   conversionDrilldownLoading: boolean;
   actionLoading: boolean;
   oneTimeGrant: ShareGrantOneTimeDisplayModel | null;
+  onConversionFilterChange: (patch: Partial<ConversionFilterInput>) => void;
+  onApplyConversionFilters: () => void;
+  onResetConversionFilters: () => void;
   onUpdateInputChange: (patch: Partial<WorkspaceUpdateInput>) => void;
   onMemberInputChange: (patch: Partial<WorkspaceMemberAddInput>) => void;
   onPaperInputChange: (patch: Partial<WorkspacePaperAddInput>) => void;
@@ -62,6 +71,9 @@ export function WorkspaceDetailView({
   userOptions,
   paperOptions,
   shareGrants,
+  conversionFilters,
+  conversionFilterSummary,
+  conversionFilterDisabled,
   conversionOverview,
   conversionError,
   conversionLoading,
@@ -70,6 +82,9 @@ export function WorkspaceDetailView({
   conversionDrilldownLoading,
   actionLoading,
   oneTimeGrant,
+  onConversionFilterChange,
+  onApplyConversionFilters,
+  onResetConversionFilters,
   onUpdateInputChange,
   onMemberInputChange,
   onPaperInputChange,
@@ -158,6 +173,18 @@ export function WorkspaceDetailView({
           </button>
         </div>
       </section>
+
+      <ConversionFilterBar
+        eyebrow="Workspace filters"
+        title="Workspace conversion filters"
+        description="Read-only time-window and dimension filters scoped to the selected workspace overview and drilldown panels."
+        filters={conversionFilters}
+        summary={conversionFilterSummary}
+        disabled={conversionFilterDisabled}
+        onChange={onConversionFilterChange}
+        onApply={onApplyConversionFilters}
+        onReset={onResetConversionFilters}
+      />
 
       <ConversionOverviewPanel
         eyebrow="Workspace conversion"

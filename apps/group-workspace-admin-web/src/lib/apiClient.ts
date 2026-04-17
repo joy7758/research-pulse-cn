@@ -1,5 +1,6 @@
 import type {
   AdminApiErrorKind,
+  ConversionFilterInput,
   GroupWorkspaceAdminApiErrorShape,
   GroupWorkspaceBoardRead,
   GroupWorkspaceConversionDrilldownRead,
@@ -22,6 +23,7 @@ import type {
   WorkspacePaperAddInput,
   WorkspaceUpdateInput,
 } from "./types";
+import { buildConversionFilterQuery } from "./conversionFilters";
 
 export type GroupWorkspaceAdminApiClientConfig = {
   apiBaseUrl: string;
@@ -175,25 +177,59 @@ export function createGroupWorkspaceAdminApiClient(
         method: "GET",
         path: `/admin/group-workspaces/${encodeURIComponent(workspaceId)}/board`,
       }),
-    getConversionOverview: () =>
+    getConversionOverview: (filters?: Partial<ConversionFilterInput>) =>
       request<GroupWorkspaceConversionOverviewRead>({
         method: "GET",
         path: "/admin/group-workspace-conversion-overview",
+        query: filters
+          ? buildConversionFilterQuery(filters, {
+              includeDimensions: true,
+              includeOutcome: true,
+              includeLimit: false,
+            })
+          : undefined,
       }),
-    getConversionDrilldown: () =>
+    getConversionDrilldown: (filters?: Partial<ConversionFilterInput>) =>
       request<GroupWorkspaceConversionDrilldownRead>({
         method: "GET",
         path: "/admin/group-workspace-conversion-drilldown",
+        query: filters
+          ? buildConversionFilterQuery(filters, {
+              includeDimensions: true,
+              includeOutcome: true,
+              includeLimit: true,
+            })
+          : undefined,
       }),
-    getWorkspaceConversionOverview: (workspaceId: string) =>
+    getWorkspaceConversionOverview: (
+      workspaceId: string,
+      filters?: Partial<ConversionFilterInput>,
+    ) =>
       request<GroupWorkspaceWorkspaceConversionOverviewRead>({
         method: "GET",
         path: `/admin/group-workspaces/${encodeURIComponent(workspaceId)}/conversion-overview`,
+        query: filters
+          ? buildConversionFilterQuery(filters, {
+              includeDimensions: true,
+              includeOutcome: true,
+              includeLimit: false,
+            })
+          : undefined,
       }),
-    getWorkspaceConversionDrilldown: (workspaceId: string) =>
+    getWorkspaceConversionDrilldown: (
+      workspaceId: string,
+      filters?: Partial<ConversionFilterInput>,
+    ) =>
       request<GroupWorkspaceWorkspaceConversionDrilldownRead>({
         method: "GET",
         path: `/admin/group-workspaces/${encodeURIComponent(workspaceId)}/conversion-drilldown`,
+        query: filters
+          ? buildConversionFilterQuery(filters, {
+              includeDimensions: true,
+              includeOutcome: true,
+              includeLimit: true,
+            })
+          : undefined,
       }),
     addWorkspaceMember: (workspaceId: string, payload: WorkspaceMemberAddInput) =>
       request<GroupWorkspaceMemberRead>({

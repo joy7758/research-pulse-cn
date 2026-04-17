@@ -61,7 +61,7 @@
 - No AI attribution or analysis copy
 
 ## Future Work
-- The existing `apps/group-workspace-admin-web` shell now consumes these reserve reads through a minimal read-only dashboard without changing the backend boundary
+- The existing `apps/group-workspace-admin-web` shell now consumes these reserve reads through a minimal read-only dashboard plus compact time-window and dimension filters without changing the backend boundary
 - Richer operator dashboard UI for those drilldown reads
 - Time-series charting if later justified
 - Share-grant drilldown if later justified by operator need

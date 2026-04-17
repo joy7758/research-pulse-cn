@@ -147,8 +147,21 @@ The shell lives under `apps/group-workspace-admin-web` and uses:
 - `GET /admin/result-share-aliases/{alias_id}`
 - `POST /admin/result-share-aliases/{alias_id}/revoke`
 - plus existing `GET /users` and `GET /papers` reads as internal lookup sources
+- plus read-only conversion dashboards over:
+  - `GET /admin/group-workspace-conversion-overview`
+  - `GET /admin/group-workspace-conversion-drilldown`
+  - `GET /admin/group-workspaces/{workspace_id}/conversion-overview`
+  - `GET /admin/group-workspaces/{workspace_id}/conversion-drilldown`
+- plus compact read-only filter controls for:
+  - `date_from`
+  - `date_to`
+  - `share_kind`
+  - `access_mode`
+  - `event_type`
+  - `outcome`
+  - `limit` on drilldown recent/top sections only
 
-The shell is internal/admin-only, keeps bearer tokens in memory only, and does not introduce end-user login or source-file sharing.
+The shell is internal/admin-only, keeps bearer tokens in memory only, and does not introduce end-user login or source-file sharing. Filter controls narrow overview/drilldown reads only and do not change attribution semantics.
 
 ## User workbench admin web shell
 - Install user-workbench dependencies:

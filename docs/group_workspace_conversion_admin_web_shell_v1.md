@@ -13,6 +13,14 @@
   - grouped count sections
   - attribution notes
   - safe window and last-activity metadata
+- The same admin shell now also exposes shared filter bars so operators can narrow overview reads by:
+  - `date_from`
+  - `date_to`
+  - `share_kind`
+  - `access_mode`
+  - `event_type`
+  - `outcome`
+- When no date window is entered, the shell reuses the backend default analytics window instead of guessing a client-only window.
 
 ## Direct Vs Aggregate Attribution Notes
 - The shell shows attribution notes from backend read models instead of inventing new conversion claims.
@@ -41,7 +49,7 @@
 - No AI attribution or operator-facing narrative copy
 
 ## Future Work
-- Richer operator dashboard layout and filtering
+- Richer operator dashboard layout and saved filter presets
 - Time-series slices when they are justified
 - Drilldown panels backed by the separate conversion-drilldown reserve now live in the same admin shell and should stay read-only
 - Share-grant-level drilldown if later needed
