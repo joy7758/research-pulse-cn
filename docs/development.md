@@ -100,7 +100,7 @@ Admin-only aggregate reads now also reuse those persisted records for:
 - `GET /admin/group-workspaces/{workspace_id}/conversion-drilldown`
 - direct share/collect attribution where persisted links exist
 - workspace-level invite aggregates without claiming strict per-share causality
- - daily buckets, recent safe rows, and top workspace/share-grant lists now live in the drilldown reserve
+- daily buckets, recent safe rows, and top workspace/share-grant lists now live in the drilldown reserve
 The internal `apps/group-workspace-admin-web` shell now also renders those aggregates as:
 - a global conversion overview panel
 - a workspace conversion overview panel inside workspace detail
