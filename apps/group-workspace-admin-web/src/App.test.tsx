@@ -12,6 +12,8 @@ import type {
   GroupWorkspaceWorkspaceConversionDrilldownRead,
   GroupWorkspaceWorkspaceConversionOverviewRead,
   PaperProfileRead,
+  ResultShareAliasConversionDrilldownRead,
+  ResultShareGrantConversionDrilldownRead,
   ResultShareGrantIssueResponse,
   ResultShareGrantRead,
   UserProfileRead,
@@ -399,6 +401,142 @@ function workspaceConversionDrilldownFixture(): GroupWorkspaceWorkspaceConversio
   };
 }
 
+function resultShareGrantDrilldownFixture(): ResultShareGrantConversionDrilldownRead {
+  return {
+    share_grant: {
+      grant_id: "grant-1",
+      share_kind: "workspace_board",
+      workspace_id: "workspace-1",
+      digest_issue_id: null,
+      paper_id: null,
+      status: "active",
+      display_label: "Board share",
+      expires_at: null,
+      last_used_at: "2026-04-17T08:00:00Z",
+      created_at: "2026-04-16T06:10:00Z",
+    },
+    window_start: "2026-03-18T00:00:00Z",
+    window_end: null,
+    total_events: 5,
+    bootstrap_view_count: 2,
+    content_view_count: 2,
+    redirect_count: 1,
+    invite_handoff_redirect_count: 0,
+    collect_handoff_redirect_count: 1,
+    resolved_event_count: 5,
+    rejected_event_count: 0,
+    by_access_mode: {
+      share_token: 2,
+      alias: 2,
+      alias_redirect: 1,
+    },
+    by_event_type: {
+      bootstrap_view: 2,
+      content_view: 2,
+      redirect: 1,
+    },
+    by_outcome: {
+      resolved: 5,
+    },
+    active_alias_count: 1,
+    aliases: [
+      {
+        alias_id: "alias-1",
+        result_share_grant_id: "grant-1",
+        share_kind: "workspace_board",
+        alias_prefix: "abc123",
+        status: "active",
+        display_label: "Board alias",
+        expires_at: null,
+        last_used_at: "2026-04-17T08:00:00Z",
+        created_at: "2026-04-16T06:11:00Z",
+      },
+    ],
+    recent_events: [
+      {
+        id: "event-1",
+        result_share_grant_id: "grant-1",
+        result_share_alias_id: "alias-1",
+        share_kind: "workspace_board",
+        access_mode: "alias",
+        event_type: "content_view",
+        outcome: "resolved",
+        handoff_target_kind: "result_share_collect_entry",
+        occurred_at: "2026-04-17T08:00:00Z",
+      },
+    ],
+    direct_collect_records: [
+      {
+        id: "collect-1",
+        workspace_id: "workspace-1",
+        user_id: "user-1",
+        result_share_grant_id: "grant-1",
+        share_kind: "workspace_board",
+        collected_paper_id: "paper-1",
+        status: "collected",
+        reason_codes: [],
+        created_at: "2026-04-17T08:10:00Z",
+      },
+    ],
+    direct_collect_collected_count: 1,
+    direct_collect_already_present_count: 0,
+    direct_collect_rejected_count: 0,
+    unique_collecting_user_count: 1,
+    last_activity_at: "2026-04-17T08:10:00Z",
+    attribution_scope: {
+      direct_event_metrics: ["total_events", "by_access_mode", "recent_events"],
+      direct_collect_metrics: ["direct_collect_records", "direct_collect_collected_count"],
+      non_attribution_fields: ["share_grant", "aliases", "notes"],
+      notes: ["Collect linkage remains direct only when result_share_grant_id is present."],
+    },
+    notes: ["Safe read model excludes plaintext tokens and aliases."],
+  };
+}
+
+function resultShareAliasDrilldownFixture(): ResultShareAliasConversionDrilldownRead {
+  return {
+    alias: {
+      alias_id: "alias-1",
+      result_share_grant_id: "grant-1",
+      share_kind: "workspace_board",
+      alias_prefix: "abc123",
+      status: "active",
+      display_label: "Board alias",
+      expires_at: null,
+      last_used_at: "2026-04-17T08:00:00Z",
+      created_at: "2026-04-16T06:11:00Z",
+    },
+    result_share_grant: resultShareGrantDrilldownFixture().share_grant,
+    window_start: "2026-03-18T00:00:00Z",
+    window_end: null,
+    total_events: 3,
+    bootstrap_view_count: 1,
+    content_view_count: 1,
+    redirect_count: 1,
+    invite_handoff_redirect_count: 0,
+    collect_handoff_redirect_count: 1,
+    resolved_event_count: 3,
+    rejected_event_count: 0,
+    by_event_type: {
+      bootstrap_view: 1,
+      content_view: 1,
+      redirect: 1,
+    },
+    by_outcome: {
+      resolved: 3,
+    },
+    recent_events: resultShareGrantDrilldownFixture().recent_events,
+    last_activity_at: "2026-04-17T08:00:00Z",
+    attribution_scope: {
+      direct_event_metrics: ["total_events", "recent_events"],
+      direct_collect_metrics: [],
+      non_attribution_fields: ["alias", "result_share_grant", "notes"],
+      notes: ["Alias drilldown is access-path scoped only."],
+    },
+    notes: ["Collect linkage remains grant-level unless alias-linked persistence exists."],
+  };
+}
+
 function buildApiClient() {
   return {
     listWorkspaces: vi.fn().mockResolvedValue([workspaceFixture()]),
@@ -410,6 +548,12 @@ function buildApiClient() {
     getConversionDrilldown: vi.fn().mockResolvedValue(globalConversionDrilldownFixture()),
     getWorkspaceConversionOverview: vi.fn().mockResolvedValue(workspaceConversionFixture()),
     getWorkspaceConversionDrilldown: vi.fn().mockResolvedValue(workspaceConversionDrilldownFixture()),
+    getResultShareGrantConversionDrilldown: vi
+      .fn()
+      .mockResolvedValue(resultShareGrantDrilldownFixture()),
+    getResultShareAliasConversionDrilldown: vi
+      .fn()
+      .mockResolvedValue(resultShareAliasDrilldownFixture()),
     addWorkspaceMember: vi.fn().mockResolvedValue(undefined),
     removeWorkspaceMember: vi.fn().mockResolvedValue(undefined),
     addWorkspacePaper: vi.fn().mockResolvedValue(undefined),
@@ -466,6 +610,7 @@ describe("group workspace admin shell", () => {
     expect(screen.getByRole("heading", { name: "Global conversion drilldown" })).toBeVisible();
     expect(screen.getByRole("heading", { name: "Workspace conversion overview" })).toBeVisible();
     expect(screen.getByRole("heading", { name: "Workspace conversion drilldown" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Share grant and alias drilldown" })).toBeVisible();
     expect(screen.getByRole("heading", { name: "Top workspaces" })).toBeVisible();
     expect(screen.getByRole("heading", { name: "Active share-grant snapshot" })).toBeVisible();
     expect(screen.getAllByText("Invite handoffs").length).toBeGreaterThan(0);
@@ -709,6 +854,140 @@ describe("group workspace admin shell", () => {
     ).toBeVisible();
     expect(
       screen.getByText("No workspace drilldown activity has been recorded in this window."),
+    ).toBeVisible();
+  });
+
+  it("opens share grant drilldown from the existing share-grant list", async () => {
+    const client = buildApiClient();
+    const user = userEvent.setup();
+
+    render(<GroupWorkspaceAdminShell apiClientFactory={() => client} />);
+
+    await user.type(screen.getByLabelText(/admin bearer token/i), "manual-token");
+    await user.click(screen.getByRole("button", { name: /open workspace shell/i }));
+    await user.click(screen.getByRole("button", { name: "Open drilldown" }));
+
+    await waitFor(() => {
+      expect(client.getResultShareGrantConversionDrilldown).toHaveBeenLastCalledWith(
+        "grant-1",
+        DEFAULT_CONVERSION_FILTER_INPUT,
+      );
+    });
+
+    expect(await screen.findByRole("heading", { name: "Direct collect records" })).toBeVisible();
+    const aliasSection = screen.getByRole("heading", { name: "Aliases" }).closest("section");
+    expect(aliasSection).not.toBeNull();
+    const aliasScoped = within(aliasSection as HTMLElement);
+    expect(aliasScoped.getByRole("button", { name: "Open alias drilldown" })).toBeVisible();
+    expect(aliasScoped.getByText("Board alias")).toBeVisible();
+  });
+
+  it("opens alias drilldown from grant aliases without adding collect linkage", async () => {
+    const client = buildApiClient();
+    const user = userEvent.setup();
+
+    render(<GroupWorkspaceAdminShell apiClientFactory={() => client} />);
+
+    await user.type(screen.getByLabelText(/admin bearer token/i), "manual-token");
+    await user.click(screen.getByRole("button", { name: /open workspace shell/i }));
+    await user.click(screen.getByRole("button", { name: "Open drilldown" }));
+    const aliasSection = await screen.findByRole("heading", { name: "Aliases" });
+    await user.click(
+      within(aliasSection.closest("section") as HTMLElement).getByRole("button", {
+        name: "Open alias drilldown",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(client.getResultShareAliasConversionDrilldown).toHaveBeenLastCalledWith(
+        "alias-1",
+        DEFAULT_CONVERSION_FILTER_INPUT,
+      );
+    });
+
+    expect(await screen.findByRole("heading", { name: "Underlying grant summary" })).toBeVisible();
+    expect(
+      screen.getByText(
+        "Alias-scoped access behavior only. Grant-level collect linkage remains separate.",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("heading", { name: "Direct collect records" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("applies per-share drilldown filters without exposing share-kind controls", async () => {
+    const client = buildApiClient();
+    const user = userEvent.setup();
+
+    render(<GroupWorkspaceAdminShell apiClientFactory={() => client} />);
+
+    await user.type(screen.getByLabelText(/admin bearer token/i), "manual-token");
+    await user.click(screen.getByRole("button", { name: /open workspace shell/i }));
+    await user.click(screen.getByRole("button", { name: "Open drilldown" }));
+
+    const perShareFilterCard = screen
+      .getByRole("heading", { name: "Per-share drilldown filters" })
+      .closest("section");
+    expect(perShareFilterCard).not.toBeNull();
+    const scoped = within(perShareFilterCard as HTMLElement);
+
+    expect(scoped.queryByLabelText("Share kind")).not.toBeInTheDocument();
+    await user.selectOptions(scoped.getByLabelText("Access mode"), "alias");
+    await user.selectOptions(scoped.getByLabelText("Event type"), "content_view");
+    await user.selectOptions(scoped.getByLabelText("Outcome"), "resolved");
+    await user.selectOptions(scoped.getByLabelText("Recent rows limit"), "10");
+    await user.click(scoped.getByRole("button", { name: "Apply filters" }));
+
+    await waitFor(() => {
+      expect(client.getResultShareGrantConversionDrilldown).toHaveBeenLastCalledWith("grant-1", {
+        dateFrom: null,
+        dateTo: null,
+        shareKind: null,
+        accessMode: "alias",
+        eventType: "content_view",
+        outcome: "resolved",
+        limit: 10,
+      });
+    });
+  });
+
+  it("renders a graceful empty per-share drilldown state", async () => {
+    const client = buildApiClient();
+    client.getResultShareGrantConversionDrilldown.mockResolvedValue({
+      ...resultShareGrantDrilldownFixture(),
+      total_events: 0,
+      bootstrap_view_count: 0,
+      content_view_count: 0,
+      redirect_count: 0,
+      invite_handoff_redirect_count: 0,
+      collect_handoff_redirect_count: 0,
+      resolved_event_count: 0,
+      rejected_event_count: 0,
+      by_access_mode: {},
+      by_event_type: {},
+      by_outcome: {},
+      active_alias_count: 0,
+      aliases: [],
+      recent_events: [],
+      direct_collect_records: [],
+      direct_collect_collected_count: 0,
+      direct_collect_already_present_count: 0,
+      direct_collect_rejected_count: 0,
+      unique_collecting_user_count: 0,
+    });
+    const user = userEvent.setup();
+
+    render(<GroupWorkspaceAdminShell apiClientFactory={() => client} />);
+
+    await user.type(screen.getByLabelText(/admin bearer token/i), "manual-token");
+    await user.click(screen.getByRole("button", { name: /open workspace shell/i }));
+    await user.click(screen.getByRole("button", { name: "Open drilldown" }));
+
+    expect(
+      await screen.findByText(
+        "No events, aliases, or direct collect records were returned for this share grant.",
+      ),
     ).toBeVisible();
   });
 });

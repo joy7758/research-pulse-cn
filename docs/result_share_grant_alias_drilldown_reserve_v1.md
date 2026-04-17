@@ -61,7 +61,7 @@
 - No AI attribution or AI-generated analysis copy
 
 ## Future Work
-- Admin per-share drilldown UI inside the existing `apps/group-workspace-admin-web` shell
+- The existing `apps/group-workspace-admin-web` shell now consumes this reserve through a minimal read-only per-share dashboard
 - Richer time-series drilldown and comparison controls
 - Alias comparison views if later justified
 - Still no source-file sharing by default

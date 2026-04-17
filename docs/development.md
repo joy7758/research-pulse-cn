@@ -164,8 +164,16 @@ The shell lives under `apps/group-workspace-admin-web` and uses:
   - `outcome`
   - `limit` on drilldown recent/top sections only
 - plus backend-only per-share drilldown reserve routes for future admin UI work:
+- plus backend-only per-share drilldown reserve routes now consumed by the same shell:
   - `GET /admin/result-share-grants/{grant_id}/conversion-drilldown`
   - `GET /admin/result-share-aliases/{alias_id}/conversion-drilldown`
+
+The shell now also includes a minimal read-only per-share dashboard:
+- open a grant drilldown from the existing workspace share-grant list when practical
+- open an alias drilldown from alias rows returned by a grant drilldown
+- manual `grant_id` / `alias_id` launcher fields for operator lookup when needed
+- a dedicated per-share filter bar for `date_from`, `date_to`, `access_mode`, `event_type`, `outcome`, and `limit`
+- direct collect linkage stays visible only on grant drilldown; alias drilldown stays access-path scoped
 
 The shell is internal/admin-only, keeps bearer tokens in memory only, and does not introduce end-user login or source-file sharing. Filter controls narrow overview/drilldown reads only and do not change attribution semantics.
 

@@ -4,6 +4,7 @@ import {
   DEFAULT_CONVERSION_FILTER_INPUT,
   DEFAULT_CONVERSION_FILTER_LIMIT,
   GLOBAL_CONVERSION_FILTER_SUPPORT,
+  PER_SHARE_DRILLDOWN_FILTER_SUPPORT,
   normalizeConversionFilterInput,
 } from "./conversionFilters";
 
@@ -94,5 +95,33 @@ describe("conversion filter helpers", () => {
       hasActiveFilters: false,
     });
     expect(DEFAULT_CONVERSION_FILTER_LIMIT).toBe(20);
+  });
+
+  it("builds per-share filter summaries without share-kind messaging", () => {
+    expect(
+      buildConversionFilterSummaryViewModel(
+        {
+          ...DEFAULT_CONVERSION_FILTER_INPUT,
+          accessMode: "alias_redirect",
+          eventType: "redirect",
+          limit: 10,
+        },
+        PER_SHARE_DRILLDOWN_FILTER_SUPPORT,
+      ),
+    ).toEqual({
+      windowLabel: "Default analytics window",
+      chips: [
+        { key: "accessMode", label: "Access mode", value: "Alias redirect" },
+        { key: "eventType", label: "Event type", value: "Redirect" },
+        { key: "limit", label: "Recent rows", value: "10" },
+      ],
+      scopeNotes: [
+        "Date window applies to drilldown.",
+        "Access mode and event type apply to drilldown.",
+        "Outcome applies to drilldown.",
+        "Recent rows limit applies to drilldown recent and top sections.",
+      ],
+      hasActiveFilters: true,
+    });
   });
 });

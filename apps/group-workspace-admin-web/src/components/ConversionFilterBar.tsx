@@ -8,6 +8,7 @@ import {
 } from "../lib/conversionFilters";
 import type {
   ConversionFilterInput,
+  ConversionFilterSupportViewModel,
   ConversionFilterSummaryViewModel,
   ResultShareKind,
   ResultShareViewAccessMode,
@@ -20,6 +21,7 @@ type ConversionFilterBarProps = {
   title: string;
   description: string;
   filters: ConversionFilterInput;
+  support?: ConversionFilterSupportViewModel;
   summary: ConversionFilterSummaryViewModel;
   disabled: boolean;
   onChange: (patch: Partial<ConversionFilterInput>) => void;
@@ -32,12 +34,17 @@ export function ConversionFilterBar({
   title,
   description,
   filters,
+  support,
   summary,
   disabled,
   onChange,
   onApply,
   onReset,
 }: ConversionFilterBarProps) {
+  const showShareKind = support?.showShareKind ?? true;
+  const showAccessMode = support?.showAccessMode ?? true;
+  const showEventType = support?.showEventType ?? true;
+
   return (
     <section className="panel-card filter-bar-card">
       <div className="panel-card-header">
@@ -76,58 +83,64 @@ export function ConversionFilterBar({
             onChange={(event) => onChange({ dateTo: event.target.value || null })}
           />
         </label>
-        <label className="field-stack">
-          <span>Share kind</span>
-          <select
-            value={filters.shareKind ?? ""}
-            onChange={(event) =>
-              onChange({ shareKind: (event.target.value || null) as ResultShareKind | null })
-            }
-          >
-            <option value="">All share kinds</option>
-            {SHARE_KIND_FILTER_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="field-stack">
-          <span>Access mode</span>
-          <select
-            value={filters.accessMode ?? ""}
-            onChange={(event) =>
-              onChange({
-                accessMode: (event.target.value || null) as ResultShareViewAccessMode | null,
-              })
-            }
-          >
-            <option value="">All access modes</option>
-            {ACCESS_MODE_FILTER_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="field-stack">
-          <span>Event type</span>
-          <select
-            value={filters.eventType ?? ""}
-            onChange={(event) =>
-              onChange({
-                eventType: (event.target.value || null) as ResultShareViewEventType | null,
-              })
-            }
-          >
-            <option value="">All event types</option>
-            {EVENT_TYPE_FILTER_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
+        {showShareKind ? (
+          <label className="field-stack">
+            <span>Share kind</span>
+            <select
+              value={filters.shareKind ?? ""}
+              onChange={(event) =>
+                onChange({ shareKind: (event.target.value || null) as ResultShareKind | null })
+              }
+            >
+              <option value="">All share kinds</option>
+              {SHARE_KIND_FILTER_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+        {showAccessMode ? (
+          <label className="field-stack">
+            <span>Access mode</span>
+            <select
+              value={filters.accessMode ?? ""}
+              onChange={(event) =>
+                onChange({
+                  accessMode: (event.target.value || null) as ResultShareViewAccessMode | null,
+                })
+              }
+            >
+              <option value="">All access modes</option>
+              {ACCESS_MODE_FILTER_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+        {showEventType ? (
+          <label className="field-stack">
+            <span>Event type</span>
+            <select
+              value={filters.eventType ?? ""}
+              onChange={(event) =>
+                onChange({
+                  eventType: (event.target.value || null) as ResultShareViewEventType | null,
+                })
+              }
+            >
+              <option value="">All event types</option>
+              {EVENT_TYPE_FILTER_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
         <label className="field-stack">
           <span>Outcome</span>
           <select

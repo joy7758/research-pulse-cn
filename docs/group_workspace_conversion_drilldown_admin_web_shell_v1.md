@@ -66,5 +66,6 @@
 ## Future Work
 - Saved filter presets and richer comparison controls
 - Time-series charting when it becomes justified
-- Share-grant drilldown UI if later operator usage warrants it
+- The same shell now also hosts a minimal per-share grant/alias drilldown panel over the separate reserve
+- Richer per-share operator drilldown UI if later usage warrants it
 - Still no source-file sharing by default

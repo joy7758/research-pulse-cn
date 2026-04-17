@@ -11,6 +11,7 @@ export type AdminApiErrorKind =
 export type GroupWorkspaceStatus = "active" | "archived";
 export type GroupWorkspaceMemberRole = "owner" | "editor" | "viewer";
 export type ResultShareGrantStatus = "active" | "revoked" | "expired";
+export type ResultShareAliasStatus = "active" | "revoked" | "expired";
 export type ResultShareKind = "digest_issue" | "paper_snapshot" | "workspace_board";
 export type ResultShareViewAccessMode = "share_token" | "alias" | "alias_redirect";
 export type ResultShareViewEventType =
@@ -20,6 +21,9 @@ export type ResultShareViewEventType =
   | "invite_handoff_redirect"
   | "collect_handoff_redirect";
 export type ResultShareViewOutcome = "resolved" | "rejected";
+export type ResultShareHandoffTargetKind =
+  | "group_workspace_invite_entry"
+  | "result_share_collect_entry";
 
 export type GroupWorkspaceRead = {
   id: string;
@@ -126,6 +130,111 @@ export type ResultShareGrantIssueResponse = {
 export type ResultShareGrantRevokeResponse = {
   grant: ResultShareGrantRead;
   revoked_at: string;
+};
+
+export type ResultShareGrantSummaryRead = {
+  grant_id: string;
+  share_kind: ResultShareKind;
+  workspace_id: string | null;
+  digest_issue_id: string | null;
+  paper_id: string | null;
+  status: ResultShareGrantStatus;
+  display_label: string | null;
+  expires_at: string | null;
+  last_used_at: string | null;
+  created_at: string;
+};
+
+export type ResultShareAliasSummaryRead = {
+  alias_id: string;
+  result_share_grant_id: string;
+  share_kind: ResultShareKind;
+  alias_prefix: string | null;
+  status: ResultShareAliasStatus;
+  display_label: string | null;
+  expires_at: string | null;
+  last_used_at: string | null;
+  created_at: string;
+};
+
+export type ResultShareRecentEventRead = {
+  id: string;
+  result_share_grant_id: string | null;
+  result_share_alias_id: string | null;
+  share_kind: ResultShareKind;
+  access_mode: ResultShareViewAccessMode;
+  event_type: ResultShareViewEventType;
+  outcome: ResultShareViewOutcome;
+  handoff_target_kind: ResultShareHandoffTargetKind | null;
+  occurred_at: string;
+};
+
+export type ResultShareDirectCollectRecordRead = {
+  id: string;
+  workspace_id: string;
+  user_id: string;
+  result_share_grant_id: string;
+  share_kind: ResultShareKind;
+  collected_paper_id: string;
+  status: GroupWorkspaceResultCollectStatus;
+  reason_codes: string[];
+  created_at: string;
+};
+
+export type ResultShareAttributionScopeRead = {
+  direct_event_metrics: string[];
+  direct_collect_metrics: string[];
+  non_attribution_fields: string[];
+  notes: string[];
+};
+
+export type ResultShareGrantConversionDrilldownRead = {
+  share_grant: ResultShareGrantSummaryRead;
+  window_start: string | null;
+  window_end: string | null;
+  total_events: number;
+  bootstrap_view_count: number;
+  content_view_count: number;
+  redirect_count: number;
+  invite_handoff_redirect_count: number;
+  collect_handoff_redirect_count: number;
+  resolved_event_count: number;
+  rejected_event_count: number;
+  by_access_mode: Record<string, number>;
+  by_event_type: Record<string, number>;
+  by_outcome: Record<string, number>;
+  active_alias_count: number;
+  aliases: ResultShareAliasSummaryRead[];
+  recent_events: ResultShareRecentEventRead[];
+  direct_collect_records: ResultShareDirectCollectRecordRead[];
+  direct_collect_collected_count: number;
+  direct_collect_already_present_count: number;
+  direct_collect_rejected_count: number;
+  unique_collecting_user_count: number;
+  last_activity_at: string | null;
+  attribution_scope: ResultShareAttributionScopeRead;
+  notes: string[];
+};
+
+export type ResultShareAliasConversionDrilldownRead = {
+  alias: ResultShareAliasSummaryRead;
+  result_share_grant: ResultShareGrantSummaryRead;
+  window_start: string | null;
+  window_end: string | null;
+  total_events: number;
+  bootstrap_view_count: number;
+  content_view_count: number;
+  redirect_count: number;
+  invite_handoff_redirect_count: number;
+  collect_handoff_redirect_count: number;
+  resolved_event_count: number;
+  rejected_event_count: number;
+  by_event_type: Record<string, number>;
+  by_outcome: Record<string, number>;
+  recent_events: ResultShareRecentEventRead[];
+  last_activity_at: string | null;
+  attribution_scope: ResultShareAttributionScopeRead;
+  notes: string[];
 };
 
 export type UserProfileRead = {
@@ -445,6 +554,10 @@ export type ConversionFilterSupportViewModel = {
   drilldownSupportsDimensions: boolean;
   drilldownSupportsOutcome: boolean;
   drilldownSupportsLimit: boolean;
+  dimensionScopeLabel?: string;
+  showShareKind?: boolean;
+  showAccessMode?: boolean;
+  showEventType?: boolean;
 };
 
 export type ConversionFilterChipViewModel = {
@@ -585,5 +698,85 @@ export type WorkspaceConversionOverviewViewModel = {
   windowEnd: string | null;
   lastActivityAt: string | null;
   attributionScope: ConversionAttributionScopeViewModel;
+  empty: boolean;
+};
+
+export type ResultShareAttributionScopeViewModel = {
+  directEventMetrics: string[];
+  directCollectMetrics: string[];
+  nonAttributionFields: string[];
+  notes: string[];
+};
+
+export type ResultShareGrantSummaryViewModel = {
+  grantId: string;
+  title: string;
+  subtitle: string;
+  shareKind: ResultShareKind;
+  status: ResultShareGrantStatus;
+  displayLabel: string | null;
+  expiresAt: string | null;
+  lastUsedAt: string | null;
+  createdAt: string;
+};
+
+export type ResultShareAliasSummaryViewModel = {
+  aliasId: string;
+  title: string;
+  subtitle: string;
+  shareKind: ResultShareKind;
+  status: ResultShareAliasStatus;
+  displayLabel: string | null;
+  aliasPrefix: string | null;
+  expiresAt: string | null;
+  lastUsedAt: string | null;
+  createdAt: string;
+};
+
+export type ResultShareRecentEventViewModel = {
+  id: string;
+  title: string;
+  subtitle: string;
+  occurredAt: string;
+  detailRows: ConversionDetailRowViewModel[];
+};
+
+export type ResultShareDirectCollectRecordViewModel = {
+  id: string;
+  title: string;
+  subtitle: string;
+  occurredAt: string;
+  detailRows: ConversionDetailRowViewModel[];
+};
+
+export type ResultShareGrantDrilldownViewModel = {
+  shareGrant: ResultShareGrantSummaryViewModel;
+  summaryMetrics: ConversionSummaryMetricViewModel[];
+  windowStart: string | null;
+  windowEnd: string | null;
+  lastActivityAt: string | null;
+  byAccessModeRows: ConversionMetricBucketViewModel[];
+  byEventTypeRows: ConversionMetricBucketViewModel[];
+  byOutcomeRows: ConversionMetricBucketViewModel[];
+  aliases: ResultShareAliasSummaryViewModel[];
+  recentEvents: ResultShareRecentEventViewModel[];
+  directCollectRecords: ResultShareDirectCollectRecordViewModel[];
+  attributionScope: ResultShareAttributionScopeViewModel;
+  notes: string[];
+  empty: boolean;
+};
+
+export type ResultShareAliasDrilldownViewModel = {
+  alias: ResultShareAliasSummaryViewModel;
+  resultShareGrant: ResultShareGrantSummaryViewModel;
+  summaryMetrics: ConversionSummaryMetricViewModel[];
+  windowStart: string | null;
+  windowEnd: string | null;
+  lastActivityAt: string | null;
+  byEventTypeRows: ConversionMetricBucketViewModel[];
+  byOutcomeRows: ConversionMetricBucketViewModel[];
+  recentEvents: ResultShareRecentEventViewModel[];
+  attributionScope: ResultShareAttributionScopeViewModel;
+  notes: string[];
   empty: boolean;
 };

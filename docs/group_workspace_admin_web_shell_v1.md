@@ -97,6 +97,15 @@ The shell now also includes a minimal read-only drilldown consumer on top of tho
 - reset-to-default filtering that reuses the backend default analytics window and keeps recent rows compact
 - no new write paths, auth surfaces, or source-file semantics
 
+The same shell now also includes a minimal read-only per-share dashboard over the existing reserve:
+
+- open one `ResultShareGrant` drilldown from the selected workspace share-grant list or by manual `grant_id`
+- open one `ResultShareAlias` drilldown by manual `alias_id` or from alias rows returned by a grant drilldown
+- render direct event counts grouped by access mode, event type, and outcome
+- render direct collect records only on grant drilldown
+- keep alias drilldown explicitly access-path scoped with no invented collect attribution
+- reuse the same in-memory admin bearer-token flow and compact filter-bar pattern
+
 ## Safety Exclusions
 
 The shell must not expose or reconstruct:
@@ -128,5 +137,6 @@ This phase does not add:
 - richer internal admin UX for search, filtering presets, and validation
 - user-managed workspace membership and invitation flows
 - digest-issue and paper-snapshot share management UI
+- richer per-share operator dashboard and comparison controls
 - richer time-series charting and comparison controls if operator demand justifies it
 - later invite/handoff flows if justified

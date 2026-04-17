@@ -1,14 +1,18 @@
 import { ConversionDrilldownPanel } from "./ConversionDrilldownPanel";
 import { ConversionFilterBar } from "./ConversionFilterBar";
 import { ConversionOverviewPanel } from "./ConversionOverviewPanel";
+import { ResultShareDrilldownPanel } from "./ResultShareDrilldownPanel";
 import type {
   ApiErrorViewModel,
   ConversionFilterInput,
+  ConversionFilterSupportViewModel,
   ConversionFilterSummaryViewModel,
   GroupWorkspaceRead,
   GroupWorkspaceMemberRole,
   GroupWorkspaceStatus,
   LookupOption,
+  ResultShareAliasDrilldownViewModel,
+  ResultShareGrantDrilldownViewModel,
   ResultShareGrantRead,
   ShareGrantOneTimeDisplayModel,
   WorkspaceConversionDrilldownViewModel,
@@ -39,15 +43,34 @@ type WorkspaceDetailViewProps = {
   conversionDrilldown: WorkspaceConversionDrilldownViewModel | null;
   conversionDrilldownError: ApiErrorViewModel | null;
   conversionDrilldownLoading: boolean;
+  shareDrilldownGrantLookupId: string;
+  shareDrilldownAliasLookupId: string;
+  shareDrilldownCurrentTargetLabel: string | null;
+  shareDrilldownFilters: ConversionFilterInput;
+  shareDrilldownFilterSummary: ConversionFilterSummaryViewModel;
+  shareDrilldownFilterSupport: ConversionFilterSupportViewModel;
+  shareDrilldownFilterDisabled: boolean;
+  shareGrantDrilldown: ResultShareGrantDrilldownViewModel | null;
+  shareAliasDrilldown: ResultShareAliasDrilldownViewModel | null;
+  shareDrilldownError: ApiErrorViewModel | null;
+  shareDrilldownLoading: boolean;
   actionLoading: boolean;
   oneTimeGrant: ShareGrantOneTimeDisplayModel | null;
   onConversionFilterChange: (patch: Partial<ConversionFilterInput>) => void;
   onApplyConversionFilters: () => void;
   onResetConversionFilters: () => void;
+  onShareDrilldownGrantLookupIdChange: (value: string) => void;
+  onShareDrilldownAliasLookupIdChange: (value: string) => void;
+  onShareDrilldownFilterChange: (patch: Partial<ConversionFilterInput>) => void;
+  onApplyShareDrilldownFilters: () => void;
+  onResetShareDrilldownFilters: () => void;
   onUpdateInputChange: (patch: Partial<WorkspaceUpdateInput>) => void;
   onMemberInputChange: (patch: Partial<WorkspaceMemberAddInput>) => void;
   onPaperInputChange: (patch: Partial<WorkspacePaperAddInput>) => void;
   onShareInputChange: (patch: Partial<WorkspaceBoardShareCreateInput>) => void;
+  onOpenShareGrantDrilldown: (grantId?: string) => void;
+  onOpenShareAliasDrilldown: (aliasId?: string) => void;
+  onClearShareDrilldown: () => void;
   onSaveWorkspace: () => void;
   onAddMember: () => void;
   onRemoveMember: (memberId: string) => void;
@@ -80,15 +103,34 @@ export function WorkspaceDetailView({
   conversionDrilldown,
   conversionDrilldownError,
   conversionDrilldownLoading,
+  shareDrilldownGrantLookupId,
+  shareDrilldownAliasLookupId,
+  shareDrilldownCurrentTargetLabel,
+  shareDrilldownFilters,
+  shareDrilldownFilterSummary,
+  shareDrilldownFilterSupport,
+  shareDrilldownFilterDisabled,
+  shareGrantDrilldown,
+  shareAliasDrilldown,
+  shareDrilldownError,
+  shareDrilldownLoading,
   actionLoading,
   oneTimeGrant,
   onConversionFilterChange,
   onApplyConversionFilters,
   onResetConversionFilters,
+  onShareDrilldownGrantLookupIdChange,
+  onShareDrilldownAliasLookupIdChange,
+  onShareDrilldownFilterChange,
+  onApplyShareDrilldownFilters,
+  onResetShareDrilldownFilters,
   onUpdateInputChange,
   onMemberInputChange,
   onPaperInputChange,
   onShareInputChange,
+  onOpenShareGrantDrilldown,
+  onOpenShareAliasDrilldown,
+  onClearShareDrilldown,
   onSaveWorkspace,
   onAddMember,
   onRemoveMember,
@@ -418,19 +460,53 @@ export function WorkspaceDetailView({
                     {grant.expires_at ? ` · expires ${grant.expires_at}` : ""}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  className="button-danger"
-                  disabled={actionLoading || grant.status === "revoked"}
-                  onClick={() => onRevokeShareGrant(grant.id)}
-                >
-                  {grant.status === "revoked" ? "Revoked" : "Revoke"}
-                </button>
+                <div className="button-row">
+                  <button
+                    type="button"
+                    className="button-secondary"
+                    disabled={actionLoading}
+                    onClick={() => onOpenShareGrantDrilldown(grant.id)}
+                  >
+                    Open drilldown
+                  </button>
+                  <button
+                    type="button"
+                    className="button-danger"
+                    disabled={actionLoading || grant.status === "revoked"}
+                    onClick={() => onRevokeShareGrant(grant.id)}
+                  >
+                    {grant.status === "revoked" ? "Revoked" : "Revoke"}
+                  </button>
+                </div>
               </li>
             ))}
           </ul>
         )}
       </section>
+
+      <ResultShareDrilldownPanel
+        grantLookupId={shareDrilldownGrantLookupId}
+        aliasLookupId={shareDrilldownAliasLookupId}
+        currentTargetLabel={shareDrilldownCurrentTargetLabel}
+        filters={shareDrilldownFilters}
+        filterSummary={shareDrilldownFilterSummary}
+        filterSupport={shareDrilldownFilterSupport}
+        filterDisabled={shareDrilldownFilterDisabled}
+        grantDrilldown={shareGrantDrilldown}
+        aliasDrilldown={shareAliasDrilldown}
+        loading={shareDrilldownLoading}
+        error={shareDrilldownError}
+        onGrantLookupIdChange={onShareDrilldownGrantLookupIdChange}
+        onAliasLookupIdChange={onShareDrilldownAliasLookupIdChange}
+        onOpenGrantDrilldown={() => onOpenShareGrantDrilldown()}
+        onOpenAliasDrilldown={() => onOpenShareAliasDrilldown()}
+        onClearDrilldown={onClearShareDrilldown}
+        onFilterChange={onShareDrilldownFilterChange}
+        onApplyFilters={onApplyShareDrilldownFilters}
+        onResetFilters={onResetShareDrilldownFilters}
+        onOpenAliasFromGrant={(aliasId) => onOpenShareAliasDrilldown(aliasId)}
+        onOpenGrantFromAlias={(grantId) => onOpenShareGrantDrilldown(grantId)}
+      />
     </section>
   );
 }

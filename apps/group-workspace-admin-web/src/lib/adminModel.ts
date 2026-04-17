@@ -30,7 +30,21 @@ import type {
   GlobalConversionOverviewViewModel,
   LookupOption,
   PaperProfileRead,
+  ResultShareAliasConversionDrilldownRead,
+  ResultShareAliasDrilldownViewModel,
+  ResultShareAliasSummaryRead,
+  ResultShareAliasSummaryViewModel,
+  ResultShareAttributionScopeRead,
+  ResultShareAttributionScopeViewModel,
+  ResultShareDirectCollectRecordRead,
+  ResultShareDirectCollectRecordViewModel,
+  ResultShareGrantConversionDrilldownRead,
+  ResultShareGrantDrilldownViewModel,
+  ResultShareGrantSummaryRead,
+  ResultShareGrantSummaryViewModel,
   ResultShareGrantIssueResponse,
+  ResultShareRecentEventRead,
+  ResultShareRecentEventViewModel,
   UserProfileRead,
   WorkspaceConversionOverviewViewModel,
   WorkspaceListItemViewModel,
@@ -366,6 +380,95 @@ function buildConversionRecentCollectRecordViewModel(
       buildDetailRow("Grant", row.result_share_grant_id ?? "Aggregate-only record"),
       buildDetailRow("Reason codes", formatReasonCodes(row.reason_codes)),
     ],
+  };
+}
+
+function buildResultShareGrantSummaryViewModel(
+  summary: ResultShareGrantSummaryRead,
+): ResultShareGrantSummaryViewModel {
+  const scopeLabel =
+    summary.workspace_id !== null
+      ? `Workspace ${summary.workspace_id}`
+      : summary.digest_issue_id !== null
+        ? `Digest ${summary.digest_issue_id}`
+        : summary.paper_id !== null
+          ? `Paper ${summary.paper_id}`
+          : "Safe grant summary";
+
+  return {
+    grantId: summary.grant_id,
+    title: summary.display_label ?? `${humanizeMetricKey(summary.share_kind)} grant`,
+    subtitle: `${scopeLabel} · ${summary.status}`,
+    shareKind: summary.share_kind,
+    status: summary.status,
+    displayLabel: summary.display_label,
+    expiresAt: summary.expires_at,
+    lastUsedAt: summary.last_used_at,
+    createdAt: summary.created_at,
+  };
+}
+
+function buildResultShareAliasSummaryViewModel(
+  summary: ResultShareAliasSummaryRead,
+): ResultShareAliasSummaryViewModel {
+  return {
+    aliasId: summary.alias_id,
+    title: summary.display_label ?? `Alias ${summary.alias_prefix ?? summary.alias_id}`,
+    subtitle: `${humanizeMetricKey(summary.share_kind)} · ${summary.status}`,
+    shareKind: summary.share_kind,
+    status: summary.status,
+    displayLabel: summary.display_label,
+    aliasPrefix: summary.alias_prefix,
+    expiresAt: summary.expires_at,
+    lastUsedAt: summary.last_used_at,
+    createdAt: summary.created_at,
+  };
+}
+
+function buildResultShareRecentEventViewModel(
+  row: ResultShareRecentEventRead,
+): ResultShareRecentEventViewModel {
+  return {
+    id: row.id,
+    title: `${humanizeLabel(row.event_type)} · ${humanizeLabel(row.access_mode)}`,
+    subtitle: `${humanizeLabel(row.outcome)} · ${humanizeMetricKey(row.share_kind)}`,
+    occurredAt: row.occurred_at,
+    detailRows: [
+      buildDetailRow("Grant", row.result_share_grant_id ?? "Unlinked"),
+      buildDetailRow("Alias", row.result_share_alias_id ?? "Not used"),
+      buildDetailRow(
+        "Handoff target",
+        row.handoff_target_kind ? humanizeLabel(row.handoff_target_kind) : "None",
+      ),
+    ],
+  };
+}
+
+function buildResultShareDirectCollectRecordViewModel(
+  row: ResultShareDirectCollectRecordRead,
+): ResultShareDirectCollectRecordViewModel {
+  return {
+    id: row.id,
+    title: `${humanizeLabel(row.status)} collect record`,
+    subtitle: `${humanizeMetricKey(row.share_kind)} · Paper ${row.collected_paper_id}`,
+    occurredAt: row.created_at,
+    detailRows: [
+      buildDetailRow("Workspace", row.workspace_id),
+      buildDetailRow("User", row.user_id),
+      buildDetailRow("Grant", row.result_share_grant_id),
+      buildDetailRow("Reason codes", formatReasonCodes(row.reason_codes)),
+    ],
+  };
+}
+
+export function buildResultShareAttributionScopeViewModel(
+  scope: ResultShareAttributionScopeRead,
+): ResultShareAttributionScopeViewModel {
+  return {
+    directEventMetrics: scope.direct_event_metrics.map(humanizeAttributionMetric),
+    directCollectMetrics: scope.direct_collect_metrics.map(humanizeAttributionMetric),
+    nonAttributionFields: scope.non_attribution_fields.map(humanizeAttributionMetric),
+    notes: scope.notes,
   };
 }
 
@@ -718,6 +821,88 @@ export function buildWorkspaceConversionDrilldownViewModel(
     activeShareGrantSnapshotRows,
     activeInviteGrantSnapshotRows,
     attributionScope: buildDrilldownAttributionScopeViewModel(drilldown.attribution_scope),
+    notes: drilldown.notes,
+    empty,
+  };
+}
+
+export function buildResultShareGrantDrilldownViewModel(
+  drilldown: ResultShareGrantConversionDrilldownRead,
+): ResultShareGrantDrilldownViewModel {
+  const byAccessModeRows = buildMetricBuckets(drilldown.by_access_mode);
+  const byEventTypeRows = buildMetricBuckets(drilldown.by_event_type);
+  const byOutcomeRows = buildMetricBuckets(drilldown.by_outcome);
+  const aliases = drilldown.aliases.map(buildResultShareAliasSummaryViewModel);
+  const recentEvents = drilldown.recent_events.map(buildResultShareRecentEventViewModel);
+  const directCollectRecords = drilldown.direct_collect_records.map(
+    buildResultShareDirectCollectRecordViewModel,
+  );
+  const empty =
+    drilldown.total_events === 0 &&
+    drilldown.active_alias_count === 0 &&
+    drilldown.aliases.length === 0 &&
+    drilldown.direct_collect_records.length === 0;
+
+  return {
+    shareGrant: buildResultShareGrantSummaryViewModel(drilldown.share_grant),
+    summaryMetrics: [
+      buildSummaryMetric("Total events", drilldown.total_events),
+      buildSummaryMetric("Bootstrap views", drilldown.bootstrap_view_count),
+      buildSummaryMetric("Content views", drilldown.content_view_count),
+      buildSummaryMetric("Redirects", drilldown.redirect_count),
+      buildSummaryMetric("Active aliases", drilldown.active_alias_count),
+      buildSummaryMetric("Collect collected", drilldown.direct_collect_collected_count),
+      buildSummaryMetric(
+        "Collect already present",
+        drilldown.direct_collect_already_present_count,
+      ),
+      buildSummaryMetric("Collect rejected", drilldown.direct_collect_rejected_count),
+      buildSummaryMetric("Unique collecting users", drilldown.unique_collecting_user_count),
+    ],
+    windowStart: drilldown.window_start,
+    windowEnd: drilldown.window_end,
+    lastActivityAt: drilldown.last_activity_at,
+    byAccessModeRows,
+    byEventTypeRows,
+    byOutcomeRows,
+    aliases,
+    recentEvents,
+    directCollectRecords,
+    attributionScope: buildResultShareAttributionScopeViewModel(drilldown.attribution_scope),
+    notes: drilldown.notes,
+    empty,
+  };
+}
+
+export function buildResultShareAliasDrilldownViewModel(
+  drilldown: ResultShareAliasConversionDrilldownRead,
+): ResultShareAliasDrilldownViewModel {
+  const byEventTypeRows = buildMetricBuckets(drilldown.by_event_type);
+  const byOutcomeRows = buildMetricBuckets(drilldown.by_outcome);
+  const recentEvents = drilldown.recent_events.map(buildResultShareRecentEventViewModel);
+  const empty = drilldown.total_events === 0 && drilldown.recent_events.length === 0;
+
+  return {
+    alias: buildResultShareAliasSummaryViewModel(drilldown.alias),
+    resultShareGrant: buildResultShareGrantSummaryViewModel(drilldown.result_share_grant),
+    summaryMetrics: [
+      buildSummaryMetric("Total events", drilldown.total_events),
+      buildSummaryMetric("Bootstrap views", drilldown.bootstrap_view_count),
+      buildSummaryMetric("Content views", drilldown.content_view_count),
+      buildSummaryMetric("Redirects", drilldown.redirect_count),
+      buildSummaryMetric("Invite handoffs", drilldown.invite_handoff_redirect_count),
+      buildSummaryMetric("Collect handoffs", drilldown.collect_handoff_redirect_count),
+      buildSummaryMetric("Resolved events", drilldown.resolved_event_count),
+      buildSummaryMetric("Rejected events", drilldown.rejected_event_count),
+      buildSummaryMetric("Recent events", drilldown.recent_events.length),
+    ],
+    windowStart: drilldown.window_start,
+    windowEnd: drilldown.window_end,
+    lastActivityAt: drilldown.last_activity_at,
+    byEventTypeRows,
+    byOutcomeRows,
+    recentEvents,
+    attributionScope: buildResultShareAttributionScopeViewModel(drilldown.attribution_scope),
     notes: drilldown.notes,
     empty,
   };

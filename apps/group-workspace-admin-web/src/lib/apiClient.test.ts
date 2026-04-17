@@ -94,4 +94,46 @@ describe("group workspace admin api client conversion filter queries", () => {
       }),
     );
   });
+
+  it("shapes share grant drilldown filter queries without share_kind", async () => {
+    const fetchImpl = buildFetchMock();
+    const client = createGroupWorkspaceAdminApiClient({
+      apiBaseUrl: "http://127.0.0.1:8000",
+      accessToken: "token",
+      fetchImpl,
+    });
+
+    await client.getResultShareGrantConversionDrilldown("grant-1", {
+      ...baseFilters,
+      shareKind: null,
+    });
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://127.0.0.1:8000/admin/result-share-grants/grant-1/conversion-drilldown?date_from=2026-04-01T00%3A00%3A00.000Z&date_to=2026-04-17T23%3A59%3A59.999Z&access_mode=alias&event_type=content_view&outcome=resolved&limit=50",
+      expect.objectContaining({
+        method: "GET",
+      }),
+    );
+  });
+
+  it("shapes alias drilldown filter queries without share_kind", async () => {
+    const fetchImpl = buildFetchMock();
+    const client = createGroupWorkspaceAdminApiClient({
+      apiBaseUrl: "http://127.0.0.1:8000",
+      accessToken: "token",
+      fetchImpl,
+    });
+
+    await client.getResultShareAliasConversionDrilldown("alias-1", {
+      ...baseFilters,
+      shareKind: null,
+    });
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://127.0.0.1:8000/admin/result-share-aliases/alias-1/conversion-drilldown?date_from=2026-04-01T00%3A00%3A00.000Z&date_to=2026-04-17T23%3A59%3A59.999Z&access_mode=alias&event_type=content_view&outcome=resolved&limit=50",
+      expect.objectContaining({
+        method: "GET",
+      }),
+    );
+  });
 });

@@ -348,6 +348,11 @@ button {
   color: #4e5f81;
 }
 
+.data-list-item .button-row {
+  justify-content: flex-end;
+  align-self: flex-start;
+}
+
 .empty-state {
   padding: 18px;
   border-radius: 16px;
@@ -511,6 +516,25 @@ button {
   margin-bottom: 12px;
 }
 
+.attribution-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.attribution-block {
+  padding: 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.84);
+  border: 1px solid rgba(23, 32, 51, 0.08);
+}
+
+.attribution-block strong {
+  display: block;
+  color: #20345e;
+}
+
 .note-list {
   margin: 8px 0 0;
   padding-left: 18px;
@@ -623,6 +647,7 @@ button {
   .split-grid,
   .conversion-section-grid,
   .conversion-notes-grid,
+  .attribution-grid,
   .filter-grid,
   .field-grid,
   .stat-grid {
