@@ -334,6 +334,11 @@ Tie-break order is deterministic:
   - `GET /admin/group-workspaces/{workspace_id}/conversion-overview`
   - they aggregate only persisted view events, invite claims, and collect records
   - they explicitly separate direct share/collect links from workspace-level invite aggregates
+- Admin conversion-drilldown reads extend the same reserve without changing public boundaries:
+  - `GET /admin/group-workspace-conversion-drilldown`
+  - `GET /admin/group-workspaces/{workspace_id}/conversion-drilldown`
+  - they reuse the same persisted records for daily buckets, recent safe rows, and top workspace/share-grant lists
+  - they keep invite claims labeled as workspace-level aggregate signals instead of strict per-share attribution
 - The existing internal `apps/group-workspace-admin-web` shell can render those read-only conversion aggregates:
   - a global overview panel
   - a workspace-specific overview block in workspace detail

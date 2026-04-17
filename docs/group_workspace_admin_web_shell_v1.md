@@ -81,6 +81,14 @@ It does not add:
 - probabilistic attribution
 - source-file semantics
 
+The same backend reserve now also exposes deeper read-only drilldown APIs for a later shell phase:
+
+- `GET /admin/group-workspace-conversion-drilldown`
+- `GET /admin/group-workspaces/{workspace_id}/conversion-drilldown`
+- daily buckets
+- recent share / invite / collect rows
+- top workspaces and top result-share grants
+
 ## Safety Exclusions
 
 The shell must not expose or reconstruct:

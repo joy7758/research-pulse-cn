@@ -43,5 +43,6 @@
 ## Future Work
 - Richer operator dashboard layout and filtering
 - Time-series slices when they are justified
+- Drilldown panels backed by the separate conversion-drilldown reserve
 - Share-grant-level drilldown if later needed
 - Still no source-file sharing by default

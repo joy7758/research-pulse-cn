@@ -386,6 +386,110 @@ class GroupWorkspaceConversionWorkspaceOverviewRead(BaseModel):
     attribution_scope: GroupWorkspaceConversionAttributionRead
 
 
+class ConversionDailyBucketRead(BaseModel):
+    day: date
+    share_view_count: int
+    invite_handoff_redirect_count: int
+    collect_handoff_redirect_count: int
+    invite_claimed_count: int
+    invite_already_member_count: int
+    collect_collected_count: int
+    collect_already_present_count: int
+
+
+class ConversionTopWorkspaceRead(BaseModel):
+    workspace: GroupWorkspaceSafeSummaryRead
+    workspace_board_view_count: int
+    invite_handoff_redirect_count: int
+    collect_handoff_redirect_count: int
+    invite_claimed_count: int
+    collect_collected_count: int
+    last_activity_at: datetime | None = None
+
+
+class ConversionTopResultShareGrantRead(BaseModel):
+    result_share_grant_id: UUID
+    share_kind: ResultShareKind
+    bootstrap_view_count: int
+    content_view_count: int
+    invite_handoff_redirect_count: int
+    collect_handoff_redirect_count: int
+    collect_collected_count: int
+    last_activity_at: datetime | None = None
+
+
+class ConversionRecentShareEventRead(BaseModel):
+    id: UUID
+    result_share_grant_id: UUID | None = None
+    result_share_alias_id: UUID | None = None
+    share_kind: ResultShareKind
+    access_mode: ResultShareViewAccessMode
+    event_type: ResultShareViewEventType
+    outcome: ResultShareViewOutcome
+    handoff_target_kind: ResultShareHandoffTargetKind | None = None
+    occurred_at: datetime
+
+
+class ConversionRecentInviteClaimRead(BaseModel):
+    id: UUID
+    invite_grant_id: UUID
+    workspace_id: UUID
+    user_id: UUID
+    claim_status: GroupWorkspaceInviteClaimStatus
+    role_assigned: GroupWorkspaceMemberRole | None = None
+    claimed_at: datetime | None = None
+    reason_codes: list[str] = Field(default_factory=list)
+
+
+class ConversionRecentCollectRecordRead(BaseModel):
+    id: UUID
+    workspace_id: UUID
+    user_id: UUID
+    result_share_grant_id: UUID | None = None
+    share_kind: ResultShareKind
+    collected_paper_id: UUID
+    status: GroupWorkspaceResultCollectStatus
+    reason_codes: list[str] = Field(default_factory=list)
+    created_at: datetime
+
+
+class ConversionActiveShareGrantSnapshotRead(BaseModel):
+    active_workspace_board_share_grant_count: int
+    active_digest_issue_share_grant_count: int
+    active_paper_snapshot_share_grant_count: int
+
+
+class ConversionActiveInviteGrantSnapshotRead(BaseModel):
+    active_invite_grant_count: int
+
+
+class GroupWorkspaceConversionDrilldownRead(BaseModel):
+    window_start: datetime | None = None
+    window_end: datetime | None = None
+    daily_buckets: list[ConversionDailyBucketRead] = Field(default_factory=list)
+    top_workspaces: list[ConversionTopWorkspaceRead] = Field(default_factory=list)
+    top_result_share_grants: list[ConversionTopResultShareGrantRead] = Field(default_factory=list)
+    recent_share_events: list[ConversionRecentShareEventRead] = Field(default_factory=list)
+    recent_invite_claims: list[ConversionRecentInviteClaimRead] = Field(default_factory=list)
+    recent_collect_records: list[ConversionRecentCollectRecordRead] = Field(default_factory=list)
+    attribution_scope: GroupWorkspaceConversionAttributionRead
+    notes: list[str] = Field(default_factory=list)
+
+
+class GroupWorkspaceConversionWorkspaceDrilldownRead(BaseModel):
+    window_start: datetime | None = None
+    window_end: datetime | None = None
+    workspace: GroupWorkspaceSafeSummaryRead
+    daily_buckets: list[ConversionDailyBucketRead] = Field(default_factory=list)
+    recent_share_events: list[ConversionRecentShareEventRead] = Field(default_factory=list)
+    recent_invite_claims: list[ConversionRecentInviteClaimRead] = Field(default_factory=list)
+    recent_collect_records: list[ConversionRecentCollectRecordRead] = Field(default_factory=list)
+    active_share_grant_snapshot: ConversionActiveShareGrantSnapshotRead
+    active_invite_grant_snapshot: ConversionActiveInviteGrantSnapshotRead
+    attribution_scope: GroupWorkspaceConversionAttributionRead
+    notes: list[str] = Field(default_factory=list)
+
+
 class ResultShareViewEventRead(ORMModel):
     id: UUID
     result_share_grant_id: UUID | None = None

@@ -25,7 +25,9 @@ from research_pulse_cn.domain.enums import (
 )
 from research_pulse_cn.schemas.group_workspace import (
     GroupWorkspaceBoardRead,
+    GroupWorkspaceConversionDrilldownRead,
     GroupWorkspaceConversionOverviewRead,
+    GroupWorkspaceConversionWorkspaceDrilldownRead,
     GroupWorkspaceConversionWorkspaceOverviewRead,
     GroupWorkspaceCreateRequest,
     GroupWorkspaceMemberCreateRequest,
@@ -533,6 +535,66 @@ def get_group_workspace_workspace_conversion_overview(
             workspace_id=workspace_id,
             date_from=date_from,
             date_to=date_to,
+        )
+    )
+
+
+@router.get(
+    "/group-workspace-conversion-drilldown",
+    response_model=GroupWorkspaceConversionDrilldownRead,
+)
+def get_group_workspace_conversion_drilldown(
+    _actor: ViewerDep,
+    service: WorkspaceServiceDep,
+    workspace_id: Annotated[UUID | None, Query()] = None,
+    share_kind: Annotated[ResultShareKind | None, Query()] = None,
+    access_mode: Annotated[ResultShareViewAccessMode | None, Query()] = None,
+    event_type: Annotated[ResultShareViewEventType | None, Query()] = None,
+    outcome: Annotated[ResultShareViewOutcome | None, Query()] = None,
+    date_from: Annotated[datetime | None, Query()] = None,
+    date_to: Annotated[datetime | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+) -> GroupWorkspaceConversionDrilldownRead:
+    return GroupWorkspaceConversionDrilldownRead(
+        **service.summarize_group_workspace_conversion_drilldown(
+            workspace_id=workspace_id,
+            share_kind=share_kind,
+            access_mode=access_mode,
+            event_type=event_type,
+            outcome=outcome,
+            date_from=date_from,
+            date_to=date_to,
+            limit=limit,
+        )
+    )
+
+
+@router.get(
+    "/group-workspaces/{workspace_id}/conversion-drilldown",
+    response_model=GroupWorkspaceConversionWorkspaceDrilldownRead,
+)
+def get_group_workspace_workspace_conversion_drilldown(
+    workspace_id: UUID,
+    _actor: ViewerDep,
+    service: WorkspaceServiceDep,
+    share_kind: Annotated[ResultShareKind | None, Query()] = None,
+    access_mode: Annotated[ResultShareViewAccessMode | None, Query()] = None,
+    event_type: Annotated[ResultShareViewEventType | None, Query()] = None,
+    outcome: Annotated[ResultShareViewOutcome | None, Query()] = None,
+    date_from: Annotated[datetime | None, Query()] = None,
+    date_to: Annotated[datetime | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+) -> GroupWorkspaceConversionWorkspaceDrilldownRead:
+    return GroupWorkspaceConversionWorkspaceDrilldownRead(
+        **service.summarize_workspace_conversion_drilldown(
+            workspace_id=workspace_id,
+            share_kind=share_kind,
+            access_mode=access_mode,
+            event_type=event_type,
+            outcome=outcome,
+            date_from=date_from,
+            date_to=date_to,
+            limit=limit,
         )
     )
 
