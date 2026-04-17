@@ -25,6 +25,8 @@ from research_pulse_cn.domain.enums import (
 )
 from research_pulse_cn.schemas.group_workspace import (
     GroupWorkspaceBoardRead,
+    GroupWorkspaceConversionOverviewRead,
+    GroupWorkspaceConversionWorkspaceOverviewRead,
     GroupWorkspaceCreateRequest,
     GroupWorkspaceMemberCreateRequest,
     GroupWorkspaceMemberRead,
@@ -483,6 +485,52 @@ def get_result_share_analytics_summary(
             access_mode=access_mode,
             event_type=event_type,
             outcome=outcome,
+            date_from=date_from,
+            date_to=date_to,
+        )
+    )
+
+
+@router.get(
+    "/group-workspace-conversion-overview",
+    response_model=GroupWorkspaceConversionOverviewRead,
+)
+def get_group_workspace_conversion_overview(
+    _actor: ViewerDep,
+    service: WorkspaceServiceDep,
+    workspace_id: Annotated[UUID | None, Query()] = None,
+    share_kind: Annotated[ResultShareKind | None, Query()] = None,
+    access_mode: Annotated[ResultShareViewAccessMode | None, Query()] = None,
+    event_type: Annotated[ResultShareViewEventType | None, Query()] = None,
+    date_from: Annotated[datetime | None, Query()] = None,
+    date_to: Annotated[datetime | None, Query()] = None,
+) -> GroupWorkspaceConversionOverviewRead:
+    return GroupWorkspaceConversionOverviewRead(
+        **service.summarize_group_workspace_conversion_overview(
+            workspace_id=workspace_id,
+            share_kind=share_kind,
+            access_mode=access_mode,
+            event_type=event_type,
+            date_from=date_from,
+            date_to=date_to,
+        )
+    )
+
+
+@router.get(
+    "/group-workspaces/{workspace_id}/conversion-overview",
+    response_model=GroupWorkspaceConversionWorkspaceOverviewRead,
+)
+def get_group_workspace_workspace_conversion_overview(
+    workspace_id: UUID,
+    _actor: ViewerDep,
+    service: WorkspaceServiceDep,
+    date_from: Annotated[datetime | None, Query()] = None,
+    date_to: Annotated[datetime | None, Query()] = None,
+) -> GroupWorkspaceConversionWorkspaceOverviewRead:
+    return GroupWorkspaceConversionWorkspaceOverviewRead(
+        **service.summarize_workspace_conversion_overview(
+            workspace_id=workspace_id,
             date_from=date_from,
             date_to=date_to,
         )

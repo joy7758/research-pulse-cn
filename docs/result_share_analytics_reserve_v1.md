@@ -66,6 +66,13 @@
 - Admin read routes:
   - `GET /admin/result-share-analytics/summary`
   - `GET /admin/result-share-analytics/events`
+- The same persisted records now also feed aggregate conversion overview reads:
+  - `GET /admin/group-workspace-conversion-overview`
+  - `GET /admin/group-workspaces/{workspace_id}/conversion-overview`
+- Those overview reads stay explicit about attribution boundaries:
+  - view/handoff signals are direct persisted event counts
+  - invite claims stay workspace-level aggregate signals in v1
+  - collect records are direct only when `result_share_grant_id` is present
 - These routes expose only safe event summaries:
   - no plaintext share tokens
   - no plaintext aliases

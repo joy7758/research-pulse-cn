@@ -262,12 +262,13 @@ def test_preview_endpoint_exposes_yesterday_summary_details(
         email="yesterday-preview-api@example.com",
         headers=operator_headers,
     )
+    _preview_date, started_at, _ended_at = WorkActivityService(session).previous_day_window()
     WorkActivityService(session).record_event(
         user_id=UUID(user["id"]),
         paper_id=None,
         activity_type=WorkActivityType.NOTE_SAVED,
         summary="Saved a local draft note.",
-        happened_at=utcnow() - timedelta(days=1, hours=1),
+        happened_at=started_at + timedelta(hours=2),
         source=WorkActivitySource.API,
     )
     session.commit()

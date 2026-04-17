@@ -808,6 +808,316 @@ class GroupWorkspaceService:
             "created_at": event.created_at,
         }
 
+    def summarize_group_workspace_conversion_overview(
+        self,
+        *,
+        workspace_id: UUID | None = None,
+        share_kind: ResultShareKind | None = None,
+        access_mode: ResultShareViewAccessMode | None = None,
+        event_type: ResultShareViewEventType | None = None,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
+    ) -> dict[str, Any]:
+        normalized_from, normalized_to = self._normalize_result_share_analytics_window(
+            date_from=date_from,
+            date_to=date_to,
+        )
+        events = self.list_result_share_view_events(
+            share_kind=share_kind,
+            access_mode=access_mode,
+            event_type=event_type,
+            date_from=normalized_from,
+            date_to=normalized_to,
+        )
+        if workspace_id is not None:
+            events = [
+                event
+                for event in events
+                if self._result_share_event_workspace_id(event) == workspace_id
+            ]
+
+        claims = [
+            claim
+            for claim in self.list_invite_claims(workspace_id=workspace_id)
+            if self._timestamp_in_window(
+                self._invite_claim_activity_at(claim),
+                date_from=normalized_from,
+                date_to=normalized_to,
+            )
+        ]
+        collects = [
+            record
+            for record in self.list_result_collect_records(workspace_id=workspace_id)
+            if self._result_collect_record_matches_share_kind(record, share_kind=share_kind)
+            and self._timestamp_in_window(
+                record.created_at,
+                date_from=normalized_from,
+                date_to=normalized_to,
+            )
+        ]
+
+        by_share_kind: dict[str, int] = {}
+        by_access_mode: dict[str, int] = {}
+        by_handoff_target: dict[str, int] = {}
+        unique_grant_ids: set[UUID] = set()
+        unique_workspace_ids: set[UUID] = set()
+        last_activity_at: datetime | None = None
+
+        for event in events:
+            by_share_kind[event.share_kind.value] = by_share_kind.get(event.share_kind.value, 0) + 1
+            by_access_mode[event.access_mode.value] = (
+                by_access_mode.get(event.access_mode.value, 0) + 1
+            )
+            if event.handoff_target_kind is not None:
+                by_handoff_target[event.handoff_target_kind.value] = (
+                    by_handoff_target.get(event.handoff_target_kind.value, 0) + 1
+                )
+            if event.result_share_grant_id is not None:
+                unique_grant_ids.add(event.result_share_grant_id)
+            workspace_ref = self._result_share_event_workspace_id(event)
+            if workspace_ref is not None:
+                unique_workspace_ids.add(workspace_ref)
+            if last_activity_at is None or event.occurred_at > last_activity_at:
+                last_activity_at = event.occurred_at
+
+        for claim in claims:
+            unique_workspace_ids.add(claim.workspace_id)
+            activity_at = self._invite_claim_activity_at(claim)
+            if last_activity_at is None or activity_at > last_activity_at:
+                last_activity_at = activity_at
+
+        for record in collects:
+            unique_workspace_ids.add(record.workspace_id)
+            if record.result_share_grant_id is not None:
+                unique_grant_ids.add(record.result_share_grant_id)
+            if last_activity_at is None or record.created_at > last_activity_at:
+                last_activity_at = record.created_at
+
+        return {
+            "window_start": normalized_from,
+            "window_end": normalized_to,
+            "total_share_view_events": len(events),
+            "bootstrap_view_count": sum(
+                1 for event in events if event.event_type == ResultShareViewEventType.BOOTSTRAP_VIEW
+            ),
+            "content_view_count": sum(
+                1 for event in events if event.event_type == ResultShareViewEventType.CONTENT_VIEW
+            ),
+            "redirect_count": sum(
+                1 for event in events if event.event_type == ResultShareViewEventType.REDIRECT
+            ),
+            "invite_handoff_redirect_count": sum(
+                1
+                for event in events
+                if event.event_type == ResultShareViewEventType.INVITE_HANDOFF_REDIRECT
+            ),
+            "collect_handoff_redirect_count": sum(
+                1
+                for event in events
+                if event.event_type == ResultShareViewEventType.COLLECT_HANDOFF_REDIRECT
+            ),
+            "resolved_event_count": sum(
+                1 for event in events if event.outcome == ResultShareViewOutcome.RESOLVED
+            ),
+            "rejected_event_count": sum(
+                1 for event in events if event.outcome == ResultShareViewOutcome.REJECTED
+            ),
+            "by_share_kind": by_share_kind,
+            "by_access_mode": by_access_mode,
+            "by_handoff_target": by_handoff_target,
+            "invite_claimed_count": sum(
+                1
+                for claim in claims
+                if claim.claim_status == GroupWorkspaceInviteClaimStatus.CLAIMED
+            ),
+            "invite_already_member_count": sum(
+                1
+                for claim in claims
+                if claim.claim_status == GroupWorkspaceInviteClaimStatus.ALREADY_MEMBER
+            ),
+            "invite_rejected_count": sum(
+                1
+                for claim in claims
+                if claim.claim_status == GroupWorkspaceInviteClaimStatus.REJECTED
+            ),
+            "collect_collected_count": sum(
+                1
+                for record in collects
+                if record.status == GroupWorkspaceResultCollectStatus.COLLECTED
+            ),
+            "collect_already_present_count": sum(
+                1
+                for record in collects
+                if record.status == GroupWorkspaceResultCollectStatus.ALREADY_PRESENT
+            ),
+            "collect_rejected_count": sum(
+                1
+                for record in collects
+                if record.status == GroupWorkspaceResultCollectStatus.REJECTED
+            ),
+            "unique_result_share_grant_count": len(unique_grant_ids),
+            "unique_workspace_count": len(unique_workspace_ids),
+            "last_activity_at": last_activity_at,
+            "attribution_scope": self._conversion_attribution_scope_summary(
+                workspace_overview=False,
+                include_inventory_metrics=False,
+                include_workspace_metrics=False,
+                share_filter_applied=share_kind is not None,
+                event_filters_applied=access_mode is not None or event_type is not None,
+            ),
+        }
+
+    def summarize_workspace_conversion_overview(
+        self,
+        *,
+        workspace_id: UUID,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
+    ) -> dict[str, Any]:
+        workspace = self.get_workspace(workspace_id)
+        normalized_from, normalized_to = self._normalize_result_share_analytics_window(
+            date_from=date_from,
+            date_to=date_to,
+        )
+
+        events = [
+            event
+            for event in self.list_result_share_view_events(
+                date_from=normalized_from,
+                date_to=normalized_to,
+            )
+            if self._result_share_event_workspace_id(event) == workspace.id
+        ]
+        claims = [
+            claim
+            for claim in self.list_invite_claims(workspace_id=workspace.id)
+            if self._timestamp_in_window(
+                self._invite_claim_activity_at(claim),
+                date_from=normalized_from,
+                date_to=normalized_to,
+            )
+        ]
+        all_workspace_collects = self.list_result_collect_records(workspace_id=workspace.id)
+        collects = [
+            record
+            for record in all_workspace_collects
+            if self._timestamp_in_window(
+                record.created_at,
+                date_from=normalized_from,
+                date_to=normalized_to,
+            )
+        ]
+        active_board_grants = self.list_result_share_grants(
+            workspace_id=workspace.id,
+            share_kind=ResultShareKind.WORKSPACE_BOARD,
+            status=ResultShareGrantStatus.ACTIVE,
+        )
+        active_invite_grants = self.list_invite_grants(
+            workspace_id=workspace.id,
+            status=GroupWorkspaceInviteGrantStatus.ACTIVE,
+        )
+        active_digest_issue_share_grant_ids = {
+            record.result_share_grant_id
+            for record in all_workspace_collects
+            if record.result_share_grant_id is not None
+            and record.share_kind == ResultShareKind.DIGEST_ISSUE
+            and record.result_share_grant is not None
+            and record.result_share_grant.status == ResultShareGrantStatus.ACTIVE
+        }
+        active_paper_snapshot_share_grant_ids = {
+            record.result_share_grant_id
+            for record in all_workspace_collects
+            if record.result_share_grant_id is not None
+            and record.share_kind == ResultShareKind.PAPER_SNAPSHOT
+            and record.result_share_grant is not None
+            and record.result_share_grant.status == ResultShareGrantStatus.ACTIVE
+        }
+
+        last_activity_at: datetime | None = None
+        for event in events:
+            if last_activity_at is None or event.occurred_at > last_activity_at:
+                last_activity_at = event.occurred_at
+        for claim in claims:
+            activity_at = self._invite_claim_activity_at(claim)
+            if last_activity_at is None or activity_at > last_activity_at:
+                last_activity_at = activity_at
+        for record in collects:
+            if last_activity_at is None or record.created_at > last_activity_at:
+                last_activity_at = record.created_at
+
+        non_rejected_collects = [
+            record
+            for record in collects
+            if record.status
+            in {
+                GroupWorkspaceResultCollectStatus.COLLECTED,
+                GroupWorkspaceResultCollectStatus.ALREADY_PRESENT,
+            }
+        ]
+        return {
+            "window_start": normalized_from,
+            "window_end": normalized_to,
+            "workspace": self._workspace_safe_summary(workspace),
+            "active_workspace_board_share_grant_count": len(active_board_grants),
+            "active_digest_issue_share_grant_count": len(active_digest_issue_share_grant_ids),
+            "active_paper_snapshot_share_grant_count": len(active_paper_snapshot_share_grant_ids),
+            "active_invite_grant_count": len(active_invite_grants),
+            "workspace_board_view_count": sum(
+                1
+                for event in events
+                if event.share_kind == ResultShareKind.WORKSPACE_BOARD
+                and event.event_type
+                in {
+                    ResultShareViewEventType.BOOTSTRAP_VIEW,
+                    ResultShareViewEventType.CONTENT_VIEW,
+                }
+            ),
+            "invite_handoff_redirect_count": sum(
+                1
+                for event in events
+                if event.event_type == ResultShareViewEventType.INVITE_HANDOFF_REDIRECT
+            ),
+            "collect_handoff_redirect_count": sum(
+                1
+                for event in events
+                if event.event_type == ResultShareViewEventType.COLLECT_HANDOFF_REDIRECT
+            ),
+            "invite_claimed_count": sum(
+                1
+                for claim in claims
+                if claim.claim_status == GroupWorkspaceInviteClaimStatus.CLAIMED
+            ),
+            "invite_already_member_count": sum(
+                1
+                for claim in claims
+                if claim.claim_status == GroupWorkspaceInviteClaimStatus.ALREADY_MEMBER
+            ),
+            "collect_collected_count": sum(
+                1
+                for record in collects
+                if record.status == GroupWorkspaceResultCollectStatus.COLLECTED
+            ),
+            "collect_already_present_count": sum(
+                1
+                for record in collects
+                if record.status == GroupWorkspaceResultCollectStatus.ALREADY_PRESENT
+            ),
+            "unique_collected_paper_count": len(
+                {record.collected_paper_id for record in non_rejected_collects}
+            ),
+            "unique_collecting_user_count": len(
+                {record.user_id for record in non_rejected_collects}
+            ),
+            "last_activity_at": last_activity_at,
+            "attribution_scope": self._conversion_attribution_scope_summary(
+                workspace_overview=True,
+                include_inventory_metrics=False,
+                include_workspace_metrics=True,
+                share_filter_applied=False,
+                event_filters_applied=False,
+            ),
+        }
+
     def serialize_result_collect_record(
         self,
         record: GroupWorkspaceResultCollectRecord,
@@ -1285,6 +1595,143 @@ class GroupWorkspaceService:
         if not payload.replace("|", ""):
             return None
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+    def _result_share_event_workspace_id(self, event: ResultShareViewEvent) -> UUID | None:
+        if event.result_share_grant is not None:
+            return event.result_share_grant.workspace_id
+        if event.result_share_grant_id is None:
+            return None
+        grant = self.repository.get_result_share_grant(event.result_share_grant_id)
+        return None if grant is None else grant.workspace_id
+
+    def _invite_claim_activity_at(self, claim: GroupWorkspaceInviteClaim) -> datetime:
+        return claim.claimed_at or claim.updated_at or claim.created_at
+
+    def _timestamp_in_window(
+        self,
+        timestamp: datetime,
+        *,
+        date_from: datetime | None,
+        date_to: datetime | None,
+    ) -> bool:
+        normalized_timestamp = self._normalize_utc_timestamp(timestamp)
+        normalized_from = None if date_from is None else self._normalize_utc_timestamp(date_from)
+        normalized_to = None if date_to is None else self._normalize_utc_timestamp(date_to)
+        if normalized_from is not None and normalized_timestamp < normalized_from:
+            return False
+        if normalized_to is not None and normalized_timestamp > normalized_to:
+            return False
+        return True
+
+    def _normalize_utc_timestamp(self, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            return value.replace(tzinfo=UTC)
+        return value.astimezone(UTC)
+
+    def _result_collect_record_matches_share_kind(
+        self,
+        record: GroupWorkspaceResultCollectRecord,
+        *,
+        share_kind: ResultShareKind | None,
+    ) -> bool:
+        return share_kind is None or record.share_kind == share_kind
+
+    def _conversion_attribution_scope_summary(
+        self,
+        *,
+        workspace_overview: bool,
+        include_inventory_metrics: bool,
+        include_workspace_metrics: bool,
+        share_filter_applied: bool,
+        event_filters_applied: bool,
+    ) -> dict[str, Any]:
+        if workspace_overview:
+            direct_metrics = [
+                "active_workspace_board_share_grant_count",
+                "active_digest_issue_share_grant_count",
+                "active_paper_snapshot_share_grant_count",
+                "active_invite_grant_count",
+                "workspace_board_view_count",
+                "invite_handoff_redirect_count",
+                "collect_handoff_redirect_count",
+                "collect_collected_count",
+                "collect_already_present_count",
+            ]
+            workspace_level_metrics = [
+                "invite_claimed_count",
+                "invite_already_member_count",
+            ]
+        else:
+            direct_metrics = [
+                "total_share_view_events",
+                "bootstrap_view_count",
+                "content_view_count",
+                "redirect_count",
+                "invite_handoff_redirect_count",
+                "collect_handoff_redirect_count",
+                "resolved_event_count",
+                "rejected_event_count",
+                "by_share_kind",
+                "by_access_mode",
+                "by_handoff_target",
+                "collect_collected_count",
+                "collect_already_present_count",
+                "collect_rejected_count",
+                "unique_result_share_grant_count",
+            ]
+            workspace_level_metrics = [
+                "invite_claimed_count",
+                "invite_already_member_count",
+                "invite_rejected_count",
+                "unique_workspace_count",
+            ]
+        notes = [
+            (
+                "Invite claim metrics are workspace-level aggregate signals in v1 and are not "
+                "strict per-share causal attribution."
+            ),
+            (
+                "Collect metrics are directly linked when result_share_grant_id is present; "
+                "records without that link remain aggregate-only signals."
+            ),
+        ]
+        if workspace_overview:
+            notes.append(
+                "workspace digest_issue and paper_snapshot share-grant counts are derived "
+                "from active share grants linked through collect records into this "
+                "workspace."
+            )
+        if share_filter_applied:
+            notes.append(
+                "share_kind filters scope view-event metrics and collect records; invite "
+                "claims remain workspace-level aggregates."
+            )
+        if event_filters_applied:
+            notes.append(
+                "access_mode and event_type filters scope only "
+                "ResultShareViewEvent-derived metrics."
+            )
+        if include_inventory_metrics:
+            direct_metrics.extend(
+                [
+                    "active_workspace_board_share_grant_count",
+                    "active_digest_issue_share_grant_count",
+                    "active_paper_snapshot_share_grant_count",
+                    "active_invite_grant_count",
+                ]
+            )
+        if include_workspace_metrics:
+            workspace_level_metrics.extend(
+                [
+                    "unique_collected_paper_count",
+                    "unique_collecting_user_count",
+                ]
+            )
+        return {
+            "direct_attribution_metrics": direct_metrics,
+            "workspace_level_aggregate_metrics": workspace_level_metrics,
+            "notes": notes,
+        }
 
     def _normalize_result_share_analytics_window(
         self,

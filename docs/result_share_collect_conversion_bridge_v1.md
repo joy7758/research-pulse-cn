@@ -34,6 +34,7 @@
   - no full referrer URL storage
   - no raw full user-agent storage
   - analytics failures must not block the redirect
+- These redirect events now also feed admin-only aggregate conversion overview reads; collect counts remain direct only when `GroupWorkspaceResultCollectRecord.result_share_grant_id` is present.
 
 ## Bootstrap Handoff URL Enrichment
 - `workspace_board` share bootstrap now extends `result_collect_handoff_reserve` with:

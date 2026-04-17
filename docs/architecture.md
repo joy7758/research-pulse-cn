@@ -329,6 +329,11 @@ Tie-break order is deterministic:
 - Admin analytics reads stay inside the admin boundary:
   - `GET /admin/result-share-analytics/summary`
   - `GET /admin/result-share-analytics/events`
+- Admin conversion-overview reads also stay inside the admin boundary:
+  - `GET /admin/group-workspace-conversion-overview`
+  - `GET /admin/group-workspaces/{workspace_id}/conversion-overview`
+  - they aggregate only persisted view events, invite claims, and collect records
+  - they explicitly separate direct share/collect links from workspace-level invite aggregates
 
 ### Result collect reserve boundary
 - `GroupWorkspaceResultCollectRecord` records one audit-friendly collect outcome per:

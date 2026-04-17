@@ -333,6 +333,59 @@ class ResultShareAnalyticsSummaryRead(BaseModel):
     last_event_at: datetime | None = None
 
 
+class GroupWorkspaceConversionAttributionRead(BaseModel):
+    direct_attribution_metrics: list[str] = Field(default_factory=list)
+    workspace_level_aggregate_metrics: list[str] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
+
+
+class GroupWorkspaceConversionOverviewRead(BaseModel):
+    window_start: datetime | None = None
+    window_end: datetime | None = None
+    total_share_view_events: int
+    bootstrap_view_count: int
+    content_view_count: int
+    redirect_count: int
+    invite_handoff_redirect_count: int
+    collect_handoff_redirect_count: int
+    resolved_event_count: int
+    rejected_event_count: int
+    by_share_kind: dict[str, int] = Field(default_factory=dict)
+    by_access_mode: dict[str, int] = Field(default_factory=dict)
+    by_handoff_target: dict[str, int] = Field(default_factory=dict)
+    invite_claimed_count: int
+    invite_already_member_count: int
+    invite_rejected_count: int
+    collect_collected_count: int
+    collect_already_present_count: int
+    collect_rejected_count: int
+    unique_result_share_grant_count: int
+    unique_workspace_count: int
+    last_activity_at: datetime | None = None
+    attribution_scope: GroupWorkspaceConversionAttributionRead
+
+
+class GroupWorkspaceConversionWorkspaceOverviewRead(BaseModel):
+    window_start: datetime | None = None
+    window_end: datetime | None = None
+    workspace: GroupWorkspaceSafeSummaryRead
+    active_workspace_board_share_grant_count: int
+    active_digest_issue_share_grant_count: int
+    active_paper_snapshot_share_grant_count: int
+    active_invite_grant_count: int
+    workspace_board_view_count: int
+    invite_handoff_redirect_count: int
+    collect_handoff_redirect_count: int
+    invite_claimed_count: int
+    invite_already_member_count: int
+    collect_collected_count: int
+    collect_already_present_count: int
+    unique_collected_paper_count: int
+    unique_collecting_user_count: int
+    last_activity_at: datetime | None = None
+    attribution_scope: GroupWorkspaceConversionAttributionRead
+
+
 class ResultShareViewEventRead(ORMModel):
     id: UUID
     result_share_grant_id: UUID | None = None

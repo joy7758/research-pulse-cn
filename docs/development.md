@@ -93,6 +93,11 @@ Backend-only analytics reserve may now also observe those public share routes fo
 - `invite_handoff_redirect`
 - `collect_handoff_redirect`
 No browser tracker or third-party analytics script is added in this phase.
+Admin-only aggregate reads now also reuse those persisted records for:
+- `GET /admin/group-workspace-conversion-overview`
+- `GET /admin/group-workspaces/{workspace_id}/conversion-overview`
+- direct share/collect attribution where persisted links exist
+- workspace-level invite aggregates without claiming strict per-share causality
 `workspace_board` share pages now also render a manual invite/join handoff summary:
 - the page stays read-only
 - joining still requires a separate invite token
