@@ -3,6 +3,8 @@ import {
   buildGlobalConversionDrilldownViewModel,
   buildGlobalConversionOverviewViewModel,
   buildPaperLookupOptions,
+  buildResultShareAliasDrilldownViewModel,
+  buildResultShareGrantDrilldownViewModel,
   buildShareGrantIssueViewModel,
   buildUserLookupOptions,
   buildWorkspaceBoardViewModel,
@@ -18,6 +20,8 @@ import type {
   GroupWorkspaceWorkspaceConversionDrilldownRead,
   GroupWorkspaceWorkspaceConversionOverviewRead,
   PaperProfileRead,
+  ResultShareAliasConversionDrilldownRead,
+  ResultShareGrantConversionDrilldownRead,
   UserProfileRead,
 } from "./types";
 
@@ -261,6 +265,138 @@ const workspaceConversionDrilldown: GroupWorkspaceWorkspaceConversionDrilldownRe
     notes: ["Invite claims stay explicitly separate from direct per-share attribution."],
   },
   notes: ["Active share-grant inventory is a snapshot, not a time-series count."],
+};
+
+const resultShareGrantDrilldown: ResultShareGrantConversionDrilldownRead = {
+  share_grant: {
+    grant_id: "grant-1",
+    share_kind: "workspace_board",
+    workspace_id: "workspace-1",
+    digest_issue_id: null,
+    paper_id: null,
+    status: "active",
+    display_label: "Board share",
+    expires_at: null,
+    last_used_at: "2026-04-17T08:00:00Z",
+    created_at: "2026-04-16T06:10:00Z",
+  },
+  window_start: "2026-03-18T00:00:00Z",
+  window_end: null,
+  total_events: 5,
+  bootstrap_view_count: 2,
+  content_view_count: 2,
+  redirect_count: 1,
+  invite_handoff_redirect_count: 0,
+  collect_handoff_redirect_count: 1,
+  resolved_event_count: 5,
+  rejected_event_count: 0,
+  by_access_mode: {
+    share_token: 2,
+    alias: 2,
+    alias_redirect: 1,
+  },
+  by_event_type: {
+    bootstrap_view: 2,
+    content_view: 2,
+    redirect: 1,
+  },
+  by_outcome: {
+    resolved: 5,
+  },
+  active_alias_count: 1,
+  aliases: [
+    {
+      alias_id: "alias-1",
+      result_share_grant_id: "grant-1",
+      share_kind: "workspace_board",
+      alias_prefix: "abc123",
+      status: "active",
+      display_label: "Board alias",
+      expires_at: null,
+      last_used_at: "2026-04-17T08:00:00Z",
+      created_at: "2026-04-16T06:11:00Z",
+    },
+  ],
+  recent_events: [
+    {
+      id: "event-1",
+      result_share_grant_id: "grant-1",
+      result_share_alias_id: "alias-1",
+      share_kind: "workspace_board",
+      access_mode: "alias",
+      event_type: "content_view",
+      outcome: "resolved",
+      handoff_target_kind: "result_share_collect_entry",
+      occurred_at: "2026-04-17T08:00:00Z",
+    },
+  ],
+  direct_collect_records: [
+    {
+      id: "collect-1",
+      workspace_id: "workspace-1",
+      user_id: "user-1",
+      result_share_grant_id: "grant-1",
+      share_kind: "workspace_board",
+      collected_paper_id: "paper-1",
+      status: "collected",
+      reason_codes: [],
+      created_at: "2026-04-17T08:10:00Z",
+    },
+  ],
+  direct_collect_collected_count: 1,
+  direct_collect_already_present_count: 0,
+  direct_collect_rejected_count: 0,
+  unique_collecting_user_count: 1,
+  last_activity_at: "2026-04-17T08:10:00Z",
+  attribution_scope: {
+    direct_event_metrics: ["total_events", "by_access_mode", "recent_events"],
+    direct_collect_metrics: ["direct_collect_records", "direct_collect_collected_count"],
+    non_attribution_fields: ["share_grant", "aliases", "notes"],
+    notes: ["Collect linkage remains direct only when result_share_grant_id is present."],
+  },
+  notes: ["Safe read model excludes plaintext tokens and aliases."],
+};
+
+const resultShareAliasDrilldown: ResultShareAliasConversionDrilldownRead = {
+  alias: {
+    alias_id: "alias-1",
+    result_share_grant_id: "grant-1",
+    share_kind: "workspace_board",
+    alias_prefix: "abc123",
+    status: "active",
+    display_label: "Board alias",
+    expires_at: null,
+    last_used_at: "2026-04-17T08:00:00Z",
+    created_at: "2026-04-16T06:11:00Z",
+  },
+  result_share_grant: resultShareGrantDrilldown.share_grant,
+  window_start: "2026-03-18T00:00:00Z",
+  window_end: null,
+  total_events: 3,
+  bootstrap_view_count: 1,
+  content_view_count: 1,
+  redirect_count: 1,
+  invite_handoff_redirect_count: 0,
+  collect_handoff_redirect_count: 1,
+  resolved_event_count: 3,
+  rejected_event_count: 0,
+  by_event_type: {
+    bootstrap_view: 1,
+    content_view: 1,
+    redirect: 1,
+  },
+  by_outcome: {
+    resolved: 3,
+  },
+  recent_events: resultShareGrantDrilldown.recent_events,
+  last_activity_at: "2026-04-17T08:00:00Z",
+  attribution_scope: {
+    direct_event_metrics: ["total_events", "recent_events"],
+    direct_collect_metrics: [],
+    non_attribution_fields: ["alias", "result_share_grant", "notes"],
+    notes: ["Alias drilldown is access-path scoped only."],
+  },
+  notes: ["Collect linkage remains grant-level unless alias-linked persistence exists."],
 };
 
 describe("group workspace admin model helpers", () => {
@@ -509,6 +645,98 @@ describe("group workspace admin model helpers", () => {
         active_invite_grant_snapshot: {
           active_invite_grant_count: 0,
         },
+      }).empty,
+    ).toBe(true);
+  });
+
+  it("shapes share grant drilldowns for dashboard rendering", () => {
+    expect(buildResultShareGrantDrilldownViewModel(resultShareGrantDrilldown)).toMatchObject({
+      empty: false,
+      shareGrant: expect.objectContaining({
+        grantId: "grant-1",
+        title: "Board share",
+      }),
+      summaryMetrics: expect.arrayContaining([
+        expect.objectContaining({ label: "Total events", value: 5 }),
+        expect.objectContaining({ label: "Collect collected", value: 1 }),
+      ]),
+      byAccessModeRows: expect.arrayContaining([
+        expect.objectContaining({ label: "Alias", count: 2 }),
+      ]),
+      aliases: expect.arrayContaining([
+        expect.objectContaining({ aliasId: "alias-1", title: "Board alias" }),
+      ]),
+      directCollectRecords: expect.arrayContaining([
+        expect.objectContaining({
+          title: "Collected collect record",
+          subtitle: "Workspace board · Paper paper-1",
+        }),
+      ]),
+      attributionScope: expect.objectContaining({
+        directCollectMetrics: expect.arrayContaining(["Direct Collect Records"]),
+        nonAttributionFields: expect.arrayContaining(["Share Grant"]),
+      }),
+    });
+  });
+
+  it("shapes alias drilldowns without inventing collect linkage", () => {
+    expect(buildResultShareAliasDrilldownViewModel(resultShareAliasDrilldown)).toMatchObject({
+      empty: false,
+      alias: expect.objectContaining({
+        aliasId: "alias-1",
+        title: "Board alias",
+      }),
+      resultShareGrant: expect.objectContaining({
+        grantId: "grant-1",
+      }),
+      byEventTypeRows: expect.arrayContaining([
+        expect.objectContaining({ label: "Content View", count: 1 }),
+      ]),
+      recentEvents: expect.arrayContaining([
+        expect.objectContaining({
+          title: "Content View · Alias",
+          subtitle: "Resolved · Workspace board",
+        }),
+      ]),
+      attributionScope: expect.objectContaining({
+        directCollectMetrics: [],
+        notes: expect.arrayContaining(["Alias drilldown is access-path scoped only."]),
+      }),
+    });
+  });
+
+  it("marks zeroed per-share drilldowns as empty", () => {
+    expect(
+      buildResultShareGrantDrilldownViewModel({
+        ...resultShareGrantDrilldown,
+        total_events: 0,
+        active_alias_count: 0,
+        aliases: [],
+        recent_events: [],
+        direct_collect_records: [],
+        direct_collect_collected_count: 0,
+        direct_collect_already_present_count: 0,
+        direct_collect_rejected_count: 0,
+        unique_collecting_user_count: 0,
+        by_access_mode: {},
+        by_event_type: {},
+        by_outcome: {},
+      }).empty,
+    ).toBe(true);
+    expect(
+      buildResultShareAliasDrilldownViewModel({
+        ...resultShareAliasDrilldown,
+        total_events: 0,
+        bootstrap_view_count: 0,
+        content_view_count: 0,
+        redirect_count: 0,
+        invite_handoff_redirect_count: 0,
+        collect_handoff_redirect_count: 0,
+        resolved_event_count: 0,
+        rejected_event_count: 0,
+        by_event_type: {},
+        by_outcome: {},
+        recent_events: [],
       }).empty,
     ).toBe(true);
   });

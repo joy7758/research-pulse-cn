@@ -11,7 +11,9 @@ import type {
   GroupWorkspaceWorkspaceConversionDrilldownRead,
   GroupWorkspaceWorkspaceConversionOverviewRead,
   PaperProfileRead,
+  ResultShareAliasConversionDrilldownRead,
   ResultShareGrantIssueResponse,
+  ResultShareGrantConversionDrilldownRead,
   ResultShareGrantRead,
   ResultShareGrantRevokeResponse,
   ResultShareGrantStatus,
@@ -223,6 +225,36 @@ export function createGroupWorkspaceAdminApiClient(
       request<GroupWorkspaceWorkspaceConversionDrilldownRead>({
         method: "GET",
         path: `/admin/group-workspaces/${encodeURIComponent(workspaceId)}/conversion-drilldown`,
+        query: filters
+          ? buildConversionFilterQuery(filters, {
+              includeDimensions: true,
+              includeOutcome: true,
+            includeLimit: true,
+          })
+          : undefined,
+      }),
+    getResultShareGrantConversionDrilldown: (
+      grantId: string,
+      filters?: Partial<ConversionFilterInput>,
+    ) =>
+      request<ResultShareGrantConversionDrilldownRead>({
+        method: "GET",
+        path: `/admin/result-share-grants/${encodeURIComponent(grantId)}/conversion-drilldown`,
+        query: filters
+          ? buildConversionFilterQuery(filters, {
+              includeDimensions: true,
+              includeOutcome: true,
+              includeLimit: true,
+            })
+          : undefined,
+      }),
+    getResultShareAliasConversionDrilldown: (
+      aliasId: string,
+      filters?: Partial<ConversionFilterInput>,
+    ) =>
+      request<ResultShareAliasConversionDrilldownRead>({
+        method: "GET",
+        path: `/admin/result-share-aliases/${encodeURIComponent(aliasId)}/conversion-drilldown`,
         query: filters
           ? buildConversionFilterQuery(filters, {
               includeDimensions: true,

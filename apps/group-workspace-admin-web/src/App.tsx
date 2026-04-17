@@ -12,6 +12,7 @@ import {
   DEFAULT_CONVERSION_FILTER_INPUT,
   GLOBAL_CONVERSION_FILTER_SUPPORT,
   normalizeConversionFilterInput,
+  PER_SHARE_DRILLDOWN_FILTER_SUPPORT,
   WORKSPACE_CONVERSION_FILTER_SUPPORT,
 } from "./lib/conversionFilters";
 import {
@@ -19,6 +20,8 @@ import {
   buildGlobalConversionDrilldownViewModel,
   buildGlobalConversionOverviewViewModel,
   buildPaperLookupOptions,
+  buildResultShareAliasDrilldownViewModel,
+  buildResultShareGrantDrilldownViewModel,
   buildShareGrantIssueViewModel,
   buildUserLookupOptions,
   buildWorkspaceBoardViewModel,
@@ -45,6 +48,8 @@ import type {
   GroupWorkspaceWorkspaceConversionDrilldownRead,
   GroupWorkspaceWorkspaceConversionOverviewRead,
   PaperProfileRead,
+  ResultShareAliasConversionDrilldownRead,
+  ResultShareGrantConversionDrilldownRead,
   ResultShareGrantRead,
   ShareGrantOneTimeDisplayModel,
   UserProfileRead,
@@ -57,6 +62,16 @@ import type {
 
 const DEFAULT_API_BASE_URL =
   import.meta.env.VITE_GROUP_WORKSPACE_ADMIN_API_BASE_URL?.trim() || "http://127.0.0.1:8000";
+
+type ShareDrilldownTarget =
+  | {
+      kind: "grant";
+      id: string;
+    }
+  | {
+      kind: "alias";
+      id: string;
+    };
 
 type GroupWorkspaceAdminShellProps = {
   initialApiBaseUrl?: string;
@@ -104,6 +119,13 @@ export function GroupWorkspaceAdminShell({
     useState<GroupWorkspaceWorkspaceConversionOverviewRead | null>(null);
   const [workspaceConversionDrilldown, setWorkspaceConversionDrilldown] =
     useState<GroupWorkspaceWorkspaceConversionDrilldownRead | null>(null);
+  const [shareGrantDrilldown, setShareGrantDrilldown] =
+    useState<ResultShareGrantConversionDrilldownRead | null>(null);
+  const [shareAliasDrilldown, setShareAliasDrilldown] =
+    useState<ResultShareAliasConversionDrilldownRead | null>(null);
+  const [shareDrilldownTarget, setShareDrilldownTarget] = useState<ShareDrilldownTarget | null>(
+    null,
+  );
   const [boardCache, setBoardCache] = useState<Record<string, GroupWorkspaceBoardRead | undefined>>(
     {},
   );
@@ -113,6 +135,7 @@ export function GroupWorkspaceAdminShell({
   const [workspaceConversionLoading, setWorkspaceConversionLoading] = useState(false);
   const [workspaceConversionDrilldownLoading, setWorkspaceConversionDrilldownLoading] =
     useState(false);
+  const [shareDrilldownLoading, setShareDrilldownLoading] = useState(false);
   const [connectError, setConnectError] = useState<ApiErrorViewModel | null>(null);
   const [actionError, setActionError] = useState<ApiErrorViewModel | null>(null);
   const [globalConversionError, setGlobalConversionError] = useState<ApiErrorViewModel | null>(null);
@@ -122,6 +145,7 @@ export function GroupWorkspaceAdminShell({
     useState<ApiErrorViewModel | null>(null);
   const [workspaceConversionDrilldownError, setWorkspaceConversionDrilldownError] =
     useState<ApiErrorViewModel | null>(null);
+  const [shareDrilldownError, setShareDrilldownError] = useState<ApiErrorViewModel | null>(null);
   const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
   const [oneTimeGrant, setOneTimeGrant] = useState<ShareGrantOneTimeDisplayModel | null>(null);
   const [globalConversionFilters, setGlobalConversionFilters] = useState<ConversionFilterInput>(
@@ -133,6 +157,13 @@ export function GroupWorkspaceAdminShell({
     useState<ConversionFilterInput>(DEFAULT_CONVERSION_FILTER_INPUT);
   const [workspaceConversionFilterDraft, setWorkspaceConversionFilterDraft] =
     useState<ConversionFilterInput>(DEFAULT_CONVERSION_FILTER_INPUT);
+  const [shareDrilldownFilters, setShareDrilldownFilters] = useState<ConversionFilterInput>(
+    DEFAULT_CONVERSION_FILTER_INPUT,
+  );
+  const [shareDrilldownFilterDraft, setShareDrilldownFilterDraft] =
+    useState<ConversionFilterInput>(DEFAULT_CONVERSION_FILTER_INPUT);
+  const [shareGrantLookupId, setShareGrantLookupId] = useState("");
+  const [shareAliasLookupId, setShareAliasLookupId] = useState("");
   const [createInput, setCreateInput] = useState<WorkspaceCreateInput>({
     slug: "",
     name: "",
@@ -169,15 +200,23 @@ export function GroupWorkspaceAdminShell({
     setGlobalConversionDrilldown(null);
     setWorkspaceConversionOverview(null);
     setWorkspaceConversionDrilldown(null);
+    setShareGrantDrilldown(null);
+    setShareAliasDrilldown(null);
+    setShareDrilldownTarget(null);
     setBoardCache({});
     setGlobalConversionError(null);
     setGlobalConversionDrilldownError(null);
     setWorkspaceConversionError(null);
     setWorkspaceConversionDrilldownError(null);
+    setShareDrilldownError(null);
     setGlobalConversionFilters(DEFAULT_CONVERSION_FILTER_INPUT);
     setGlobalConversionFilterDraft(DEFAULT_CONVERSION_FILTER_INPUT);
     setWorkspaceConversionFilters(DEFAULT_CONVERSION_FILTER_INPUT);
     setWorkspaceConversionFilterDraft(DEFAULT_CONVERSION_FILTER_INPUT);
+    setShareDrilldownFilters(DEFAULT_CONVERSION_FILTER_INPUT);
+    setShareDrilldownFilterDraft(DEFAULT_CONVERSION_FILTER_INPUT);
+    setShareGrantLookupId("");
+    setShareAliasLookupId("");
     setOneTimeGrant(null);
   }, []);
 
@@ -270,6 +309,41 @@ export function GroupWorkspaceAdminShell({
       } finally {
         setWorkspaceConversionLoading(false);
         setWorkspaceConversionDrilldownLoading(false);
+      }
+    },
+    [toApiErrorViewModel],
+  );
+
+  const loadShareDrilldown = useCallback(
+    async (
+      client: GroupWorkspaceAdminApiClient,
+      target: ShareDrilldownTarget,
+      filters: ConversionFilterInput,
+    ) => {
+      setShareDrilldownTarget(target);
+      setShareDrilldownLoading(true);
+      setShareDrilldownError(null);
+      try {
+        if (target.kind === "grant") {
+          const drilldown = await client.getResultShareGrantConversionDrilldown(
+            target.id,
+            filters,
+          );
+          setShareGrantDrilldown(drilldown);
+          setShareAliasDrilldown(null);
+          setShareGrantLookupId(target.id);
+        } else {
+          const drilldown = await client.getResultShareAliasConversionDrilldown(target.id, filters);
+          setShareAliasDrilldown(drilldown);
+          setShareGrantDrilldown(null);
+          setShareAliasLookupId(target.id);
+        }
+      } catch (error) {
+        setShareGrantDrilldown(null);
+        setShareAliasDrilldown(null);
+        setShareDrilldownError(toApiErrorViewModel(error));
+      } finally {
+        setShareDrilldownLoading(false);
       }
     },
     [toApiErrorViewModel],
@@ -508,6 +582,40 @@ export function GroupWorkspaceAdminShell({
       ),
     [workspaceConversionFilters],
   );
+  const shareDrilldownGrantViewModel = useMemo(
+    () =>
+      shareGrantDrilldown
+        ? buildResultShareGrantDrilldownViewModel(shareGrantDrilldown)
+        : null,
+    [shareGrantDrilldown],
+  );
+  const shareDrilldownAliasViewModel = useMemo(
+    () =>
+      shareAliasDrilldown
+        ? buildResultShareAliasDrilldownViewModel(shareAliasDrilldown)
+        : null,
+    [shareAliasDrilldown],
+  );
+  const shareDrilldownFilterSummary = useMemo(
+    () =>
+      buildConversionFilterSummaryViewModel(
+        shareDrilldownFilters,
+        PER_SHARE_DRILLDOWN_FILTER_SUPPORT,
+      ),
+    [shareDrilldownFilters],
+  );
+  const shareDrilldownCurrentTargetLabel = useMemo(() => {
+    if (shareDrilldownGrantViewModel) {
+      return `Grant · ${shareDrilldownGrantViewModel.shareGrant.title}`;
+    }
+    if (shareDrilldownAliasViewModel) {
+      return `Alias · ${shareDrilldownAliasViewModel.alias.title}`;
+    }
+    if (shareDrilldownTarget) {
+      return `${shareDrilldownTarget.kind === "grant" ? "Grant" : "Alias"} · ${shareDrilldownTarget.id}`;
+    }
+    return null;
+  }, [shareDrilldownAliasViewModel, shareDrilldownGrantViewModel, shareDrilldownTarget]);
 
   const patchGlobalFilterDraft = useCallback((patch: Partial<ConversionFilterInput>) => {
     setGlobalConversionFilterDraft((current) =>
@@ -523,6 +631,16 @@ export function GroupWorkspaceAdminShell({
       normalizeConversionFilterInput({
         ...current,
         ...patch,
+      }),
+    );
+  }, []);
+
+  const patchShareDrilldownFilterDraft = useCallback((patch: Partial<ConversionFilterInput>) => {
+    setShareDrilldownFilterDraft((current) =>
+      normalizeConversionFilterInput({
+        ...current,
+        ...patch,
+        shareKind: null,
       }),
     );
   }, []);
@@ -604,6 +722,89 @@ export function GroupWorkspaceAdminShell({
       DEFAULT_CONVERSION_FILTER_INPUT,
     );
   }, [loadWorkspaceConversionPanels, selectedWorkspaceId, session]);
+
+  const handleOpenShareGrantDrilldown = useCallback(
+    (grantId?: string) => {
+      if (!session) {
+        return;
+      }
+      const resolvedGrantId = (grantId ?? shareGrantLookupId).trim();
+      if (!resolvedGrantId) {
+        return;
+      }
+      const nextFilters = normalizeConversionFilterInput({
+        ...shareDrilldownFilterDraft,
+        shareKind: null,
+      });
+      setShareDrilldownFilterDraft(nextFilters);
+      setShareDrilldownFilters(nextFilters);
+      setShareGrantLookupId(resolvedGrantId);
+      void loadShareDrilldown(
+        session.client,
+        { kind: "grant", id: resolvedGrantId },
+        nextFilters,
+      );
+    },
+    [loadShareDrilldown, session, shareDrilldownFilterDraft, shareGrantLookupId],
+  );
+
+  const handleOpenShareAliasDrilldown = useCallback(
+    (aliasId?: string) => {
+      if (!session) {
+        return;
+      }
+      const resolvedAliasId = (aliasId ?? shareAliasLookupId).trim();
+      if (!resolvedAliasId) {
+        return;
+      }
+      const nextFilters = normalizeConversionFilterInput({
+        ...shareDrilldownFilterDraft,
+        shareKind: null,
+      });
+      setShareDrilldownFilterDraft(nextFilters);
+      setShareDrilldownFilters(nextFilters);
+      setShareAliasLookupId(resolvedAliasId);
+      void loadShareDrilldown(
+        session.client,
+        { kind: "alias", id: resolvedAliasId },
+        nextFilters,
+      );
+    },
+    [loadShareDrilldown, session, shareAliasLookupId, shareDrilldownFilterDraft],
+  );
+
+  const handleApplyShareDrilldownFilters = useCallback(() => {
+    if (!session || !shareDrilldownTarget) {
+      return;
+    }
+    const nextFilters = normalizeConversionFilterInput({
+      ...shareDrilldownFilterDraft,
+      shareKind: null,
+    });
+    setShareDrilldownFilterDraft(nextFilters);
+    setShareDrilldownFilters(nextFilters);
+    void loadShareDrilldown(session.client, shareDrilldownTarget, nextFilters);
+  }, [loadShareDrilldown, session, shareDrilldownFilterDraft, shareDrilldownTarget]);
+
+  const handleResetShareDrilldownFilters = useCallback(() => {
+    if (!session || !shareDrilldownTarget) {
+      return;
+    }
+    setShareDrilldownFilterDraft(DEFAULT_CONVERSION_FILTER_INPUT);
+    setShareDrilldownFilters(DEFAULT_CONVERSION_FILTER_INPUT);
+    void loadShareDrilldown(
+      session.client,
+      shareDrilldownTarget,
+      DEFAULT_CONVERSION_FILTER_INPUT,
+    );
+  }, [loadShareDrilldown, session, shareDrilldownTarget]);
+
+  const handleClearShareDrilldown = useCallback(() => {
+    setShareDrilldownTarget(null);
+    setShareGrantDrilldown(null);
+    setShareAliasDrilldown(null);
+    setShareDrilldownError(null);
+  }, []);
 
   const handleCreateWorkspace = useCallback(() => {
     if (!session) {
@@ -780,6 +981,7 @@ export function GroupWorkspaceAdminShell({
         title="Global conversion filters"
         description="Read-only time-window and dimension filters for the global overview and drilldown panels. Recent-row limit applies to drilldown sections only."
         filters={globalConversionFilterDraft}
+        support={GLOBAL_CONVERSION_FILTER_SUPPORT}
         summary={globalConversionFilterSummary}
         disabled={globalConversionLoading || globalConversionDrilldownLoading}
         onChange={patchGlobalFilterDraft}
@@ -858,6 +1060,13 @@ export function GroupWorkspaceAdminShell({
           shareGrants={selectedShareGrants}
           conversionFilters={workspaceConversionFilterDraft}
           conversionFilterSummary={workspaceConversionFilterSummary}
+          shareDrilldownGrantLookupId={shareGrantLookupId}
+          shareDrilldownAliasLookupId={shareAliasLookupId}
+          shareDrilldownCurrentTargetLabel={shareDrilldownCurrentTargetLabel}
+          shareDrilldownFilters={shareDrilldownFilterDraft}
+          shareDrilldownFilterSummary={shareDrilldownFilterSummary}
+          shareDrilldownFilterSupport={PER_SHARE_DRILLDOWN_FILTER_SUPPORT}
+          shareDrilldownFilterDisabled={shareDrilldownLoading}
           conversionFilterDisabled={
             workspaceConversionLoading || workspaceConversionDrilldownLoading
           }
@@ -867,10 +1076,19 @@ export function GroupWorkspaceAdminShell({
           conversionDrilldown={workspaceConversionDrilldownViewModel}
           conversionDrilldownError={workspaceConversionDrilldownError}
           conversionDrilldownLoading={workspaceConversionDrilldownLoading}
+          shareGrantDrilldown={shareDrilldownGrantViewModel}
+          shareAliasDrilldown={shareDrilldownAliasViewModel}
+          shareDrilldownError={shareDrilldownError}
+          shareDrilldownLoading={shareDrilldownLoading}
           actionLoading={loadingMessage !== null}
           onConversionFilterChange={patchWorkspaceFilterDraft}
           onApplyConversionFilters={handleApplyWorkspaceFilters}
           onResetConversionFilters={handleResetWorkspaceFilters}
+          onShareDrilldownGrantLookupIdChange={setShareGrantLookupId}
+          onShareDrilldownAliasLookupIdChange={setShareAliasLookupId}
+          onShareDrilldownFilterChange={patchShareDrilldownFilterDraft}
+          onApplyShareDrilldownFilters={handleApplyShareDrilldownFilters}
+          onResetShareDrilldownFilters={handleResetShareDrilldownFilters}
           oneTimeGrant={oneTimeGrant}
           onUpdateInputChange={(patch) =>
             setUpdateInput((current) => ({
@@ -896,6 +1114,9 @@ export function GroupWorkspaceAdminShell({
               ...patch,
             }))
           }
+          onOpenShareGrantDrilldown={handleOpenShareGrantDrilldown}
+          onOpenShareAliasDrilldown={handleOpenShareAliasDrilldown}
+          onClearShareDrilldown={handleClearShareDrilldown}
           onSaveWorkspace={handleSaveWorkspace}
           onAddMember={handleAddMember}
           onRemoveMember={handleRemoveMember}

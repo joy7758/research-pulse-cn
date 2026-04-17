@@ -64,6 +64,10 @@ export const GLOBAL_CONVERSION_FILTER_SUPPORT: ConversionFilterSupportViewModel 
   drilldownSupportsDimensions: true,
   drilldownSupportsOutcome: true,
   drilldownSupportsLimit: true,
+  dimensionScopeLabel: "Share kind, access mode, and event type",
+  showShareKind: true,
+  showAccessMode: true,
+  showEventType: true,
 };
 
 export const WORKSPACE_CONVERSION_FILTER_SUPPORT: ConversionFilterSupportViewModel = {
@@ -72,6 +76,22 @@ export const WORKSPACE_CONVERSION_FILTER_SUPPORT: ConversionFilterSupportViewMod
   drilldownSupportsDimensions: true,
   drilldownSupportsOutcome: true,
   drilldownSupportsLimit: true,
+  dimensionScopeLabel: "Share kind, access mode, and event type",
+  showShareKind: true,
+  showAccessMode: true,
+  showEventType: true,
+};
+
+export const PER_SHARE_DRILLDOWN_FILTER_SUPPORT: ConversionFilterSupportViewModel = {
+  overviewSupportsDimensions: false,
+  overviewSupportsOutcome: false,
+  drilldownSupportsDimensions: true,
+  drilldownSupportsOutcome: true,
+  drilldownSupportsLimit: true,
+  dimensionScopeLabel: "Access mode and event type",
+  showShareKind: false,
+  showAccessMode: true,
+  showEventType: true,
 };
 
 export const SHARE_KIND_FILTER_OPTIONS: FilterOption<ResultShareKind>[] = [
@@ -204,6 +224,9 @@ export function buildConversionFilterSummaryViewModel(
 ): ConversionFilterSummaryViewModel {
   const filters = normalizeConversionFilterInput(input);
   const chips = [];
+  const showShareKind = support.showShareKind ?? true;
+  const dimensionScopeLabel =
+    support.dimensionScopeLabel ?? "Share kind, access mode, and event type";
 
   if (filters.dateFrom) {
     chips.push({ key: "dateFrom", label: "Date from", value: filters.dateFrom });
@@ -211,7 +234,7 @@ export function buildConversionFilterSummaryViewModel(
   if (filters.dateTo) {
     chips.push({ key: "dateTo", label: "Date to", value: filters.dateTo });
   }
-  if (filters.shareKind) {
+  if (showShareKind && filters.shareKind) {
     chips.push({
       key: "shareKind",
       label: "Share kind",
@@ -251,11 +274,16 @@ export function buildConversionFilterSummaryViewModel(
     });
   }
 
-  const scopeNotes = ["Date window applies to overview and drilldown."];
+  const scopeNotes = [];
+  if (support.overviewSupportsDimensions || support.overviewSupportsOutcome) {
+    scopeNotes.push("Date window applies to overview and drilldown.");
+  } else {
+    scopeNotes.push("Date window applies to drilldown.");
+  }
   if (support.overviewSupportsDimensions && support.drilldownSupportsDimensions) {
-    scopeNotes.push("Share kind, access mode, and event type apply to overview and drilldown.");
+    scopeNotes.push(`${dimensionScopeLabel} apply to overview and drilldown.`);
   } else if (support.drilldownSupportsDimensions) {
-    scopeNotes.push("Share kind, access mode, and event type apply to drilldown.");
+    scopeNotes.push(`${dimensionScopeLabel} apply to drilldown.`);
   }
   if (support.overviewSupportsOutcome && support.drilldownSupportsOutcome) {
     scopeNotes.push("Outcome applies to overview and drilldown.");
