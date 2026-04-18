@@ -46,6 +46,7 @@ type WorkspaceDetailViewProps = {
   shareDrilldownGrantLookupId: string;
   shareDrilldownAliasLookupId: string;
   shareDrilldownCurrentTargetLabel: string | null;
+  shareDrilldownContextLabel: string;
   shareDrilldownFilters: ConversionFilterInput;
   shareDrilldownFilterSummary: ConversionFilterSummaryViewModel;
   shareDrilldownFilterSupport: ConversionFilterSupportViewModel;
@@ -106,6 +107,7 @@ export function WorkspaceDetailView({
   shareDrilldownGrantLookupId,
   shareDrilldownAliasLookupId,
   shareDrilldownCurrentTargetLabel,
+  shareDrilldownContextLabel,
   shareDrilldownFilters,
   shareDrilldownFilterSummary,
   shareDrilldownFilterSupport,
@@ -488,6 +490,7 @@ export function WorkspaceDetailView({
         grantLookupId={shareDrilldownGrantLookupId}
         aliasLookupId={shareDrilldownAliasLookupId}
         currentTargetLabel={shareDrilldownCurrentTargetLabel}
+        drilldownContextLabel={shareDrilldownContextLabel}
         filters={shareDrilldownFilters}
         filterSummary={shareDrilldownFilterSummary}
         filterSupport={shareDrilldownFilterSupport}

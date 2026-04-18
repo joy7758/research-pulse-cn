@@ -57,4 +57,5 @@
 - Time-series per-share views when justified
 - Alias comparison UI if later justified
 - Filterable/sortable registry shortcuts so common drilldown entry no longer starts from manual ID entry
+- Local registry presets that can optionally carry safe per-share drilldown filter context
 - Still no source-file sharing by default

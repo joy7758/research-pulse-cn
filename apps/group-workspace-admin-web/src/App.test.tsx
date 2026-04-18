@@ -1207,7 +1207,7 @@ describe("group workspace admin shell", () => {
     expect(scoped.queryByText("Board triage")).not.toBeInTheDocument();
 
     await user.clear(scoped.getByLabelText("Workspace ID"));
-    await user.click(scoped.getByRole("button", { name: "Apply preset" }));
+    await user.click(scoped.getByRole("button", { name: "Apply registry only" }));
 
     await waitFor(() => {
       expect(scoped.getByLabelText("Workspace ID")).toHaveValue("workspace-2");
@@ -1222,6 +1222,69 @@ describe("group workspace admin shell", () => {
     expect(
       await within(grantSavedViewSection as HTMLElement).findByText("No saved views yet."),
     ).toBeVisible();
+  });
+
+  it("applies saved drilldown context to quick-opened grant drilldown when requested", async () => {
+    const client = buildApiClient();
+    const user = userEvent.setup();
+
+    render(<GroupWorkspaceAdminShell apiClientFactory={() => client} />);
+
+    await user.type(screen.getByLabelText(/admin bearer token/i), "manual-token");
+    await user.click(screen.getByRole("button", { name: /open workspace shell/i }));
+
+    await user.click(screen.getByRole("button", { name: "Open drilldown" }));
+
+    const perShareFilterCard = screen
+      .getByRole("heading", { name: "Per-share drilldown filters" })
+      .closest("section");
+    expect(perShareFilterCard).not.toBeNull();
+    const perShareScoped = within(perShareFilterCard as HTMLElement);
+    await user.type(perShareScoped.getByLabelText("Date from"), "2026-04-01");
+    await user.selectOptions(perShareScoped.getByLabelText("Event type"), "content_view");
+    await user.selectOptions(perShareScoped.getByLabelText("Recent rows limit"), "10");
+    await user.click(perShareScoped.getByRole("button", { name: "Apply filters" }));
+
+    const registryPanel = screen.getByRole("heading", { name: "Result share registry" }).closest("section");
+    expect(registryPanel).not.toBeNull();
+    const registryScoped = within(registryPanel as HTMLElement);
+    const grantSavedViewSection = registryScoped
+      .getByRole("heading", { name: "Grant saved views" })
+      .closest("section");
+    expect(grantSavedViewSection).not.toBeNull();
+    const grantPresetScoped = within(grantSavedViewSection as HTMLElement);
+
+    await user.type(registryScoped.getByLabelText("Grant preset name"), "Board drilldown preset");
+    await user.click(grantPresetScoped.getByLabelText("Include current per-share drilldown filters"));
+    await user.click(registryScoped.getByRole("button", { name: "Save current grant view" }));
+
+    expect(await registryScoped.findByText("Board drilldown preset")).toBeVisible();
+    expect(registryScoped.getByText("Linked per-share drilldown context")).toBeVisible();
+    expect(registryScoped.getByText("Date from: 2026-04-01")).toBeVisible();
+
+    await user.click(registryScoped.getByRole("button", { name: "Reset drilldown context" }));
+    expect(
+      registryScoped.getByText("Manual / current per-share drilldown filters"),
+    ).toBeVisible();
+
+    await user.click(registryScoped.getByRole("button", { name: "Apply registry + drilldown" }));
+
+    expect(
+      await screen.findAllByText("Saved view drilldown context · Board drilldown preset"),
+    ).not.toHaveLength(0);
+    await user.click(registryScoped.getByRole("button", { name: "Open grant drilldown" }));
+
+    await waitFor(() => {
+      expect(client.getResultShareGrantConversionDrilldown).toHaveBeenLastCalledWith("grant-1", {
+        dateFrom: "2026-04-01",
+        dateTo: null,
+        shareKind: null,
+        accessMode: null,
+        eventType: "content_view",
+        outcome: null,
+        limit: 10,
+      });
+    });
   });
 
   it("restores the default local registry preset on shell load", async () => {

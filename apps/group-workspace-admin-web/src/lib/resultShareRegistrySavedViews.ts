@@ -1,4 +1,10 @@
 import {
+  buildConversionFilterSummaryViewModel,
+  DEFAULT_CONVERSION_FILTER_INPUT,
+  normalizeConversionFilterInput,
+  PER_SHARE_DRILLDOWN_FILTER_SUPPORT,
+} from "./conversionFilters";
+import {
   DEFAULT_RESULT_SHARE_REGISTRY_FILTER_INPUT,
   DEFAULT_RESULT_SHARE_REGISTRY_SORT_INPUT,
   formatResultShareRegistrySectionSortLabel,
@@ -7,8 +13,11 @@ import {
   normalizeResultShareRegistrySortInput,
 } from "./resultShareRegistryFilters";
 import type {
+  ConversionFilterInput,
   ResultShareRegistryFilterInput,
+  ResultShareRegistrySavedViewApplyMode,
   ResultShareRegistrySavedView,
+  ResultShareRegistrySavedViewDrilldownContext,
   ResultShareRegistrySavedViewDraft,
   ResultShareRegistrySavedViewScope,
   ResultShareRegistrySavedViewStoreState,
@@ -55,11 +64,41 @@ function normalizeFiltersForScope(
   };
 }
 
+function normalizeDrilldownContext(
+  value:
+    | Partial<ResultShareRegistrySavedViewDrilldownContext>
+    | ConversionFilterInput
+    | ResultShareRegistrySavedViewDrilldownContext
+    | null
+    | undefined,
+): ResultShareRegistrySavedViewDrilldownContext | null {
+  if (!value) {
+    return null;
+  }
+  const normalized = normalizeConversionFilterInput({
+    ...DEFAULT_CONVERSION_FILTER_INPUT,
+    ...value,
+    shareKind: null,
+  });
+  return {
+    dateFrom: normalized.dateFrom,
+    dateTo: normalized.dateTo,
+    accessMode: normalized.accessMode,
+    eventType: normalized.eventType,
+    outcome: normalized.outcome,
+    limit: normalized.limit,
+  };
+}
+
 export function buildResultShareRegistrySavedViewDraft(
   scope: ResultShareRegistrySavedViewScope,
   name: string,
   filters: ResultShareRegistryFilterInput,
   sorts: ResultShareRegistrySortInput,
+  options?: {
+    includeDrilldownContext?: boolean;
+    drilldownFilters?: ConversionFilterInput;
+  },
 ): ResultShareRegistrySavedViewDraft | null {
   const trimmedName = name.trim();
   if (!trimmedName) {
@@ -73,6 +112,9 @@ export function buildResultShareRegistrySavedViewDraft(
     sort: normalizeResultShareRegistrySectionSortInput(
       scope === "grant_registry" ? normalizedSorts.grants : normalizedSorts.aliases,
     ),
+    drilldownContext: options?.includeDrilldownContext
+      ? normalizeDrilldownContext(options.drilldownFilters ?? DEFAULT_CONVERSION_FILTER_INPUT)
+      : null,
   };
 }
 
@@ -90,6 +132,7 @@ export function createResultShareRegistrySavedView(
     scope: draft.scope,
     filters: normalizeFiltersForScope(draft.scope, draft.filters),
     sort: normalizeResultShareRegistrySectionSortInput(draft.sort),
+    drilldownContext: normalizeDrilldownContext(draft.drilldownContext),
     createdAt: timestamp,
     updatedAt: timestamp,
   };
@@ -125,6 +168,7 @@ function normalizeSavedView(
           ? DEFAULT_RESULT_SHARE_REGISTRY_SORT_INPUT.grants
           : DEFAULT_RESULT_SHARE_REGISTRY_SORT_INPUT.aliases),
     ),
+    drilldownContext: normalizeDrilldownContext(candidate.drilldownContext),
     createdAt,
     updatedAt,
   };
@@ -305,13 +349,30 @@ export function setResultShareRegistryDefaultPresetId(
 export function applyResultShareRegistrySavedView(
   currentFilters: ResultShareRegistryFilterInput,
   currentSorts: ResultShareRegistrySortInput,
+  currentDrilldownFilters: ConversionFilterInput,
   preset: ResultShareRegistrySavedView,
+  mode: ResultShareRegistrySavedViewApplyMode = "registry_only",
 ): {
   filters: ResultShareRegistryFilterInput;
   sorts: ResultShareRegistrySortInput;
+  drilldownFilters: ConversionFilterInput;
+  didApplyDrilldownContext: boolean;
 } {
   const normalizedFilters = normalizeResultShareRegistryFilterInput(currentFilters);
   const normalizedSorts = normalizeResultShareRegistrySortInput(currentSorts);
+  const normalizedDrilldownFilters = normalizeConversionFilterInput({
+    ...currentDrilldownFilters,
+    shareKind: null,
+  });
+  const didApplyDrilldownContext =
+    mode === "registry_and_drilldown" && preset.drilldownContext !== null;
+  const drilldownFilters = didApplyDrilldownContext
+    ? normalizeConversionFilterInput({
+        ...normalizedDrilldownFilters,
+        ...preset.drilldownContext,
+        shareKind: null,
+      })
+    : normalizedDrilldownFilters;
 
   if (preset.scope === "grant_registry") {
     return {
@@ -325,6 +386,8 @@ export function applyResultShareRegistrySavedView(
         ...normalizedSorts,
         grants: preset.sort,
       }),
+      drilldownFilters,
+      didApplyDrilldownContext,
     };
   }
 
@@ -339,6 +402,8 @@ export function applyResultShareRegistrySavedView(
       ...normalizedSorts,
       aliases: preset.sort,
     }),
+    drilldownFilters,
+    didApplyDrilldownContext,
   };
 }
 
@@ -347,6 +412,7 @@ export function buildInitialResultShareRegistrySavedViewState(
 ): {
   filters: ResultShareRegistryFilterInput;
   sorts: ResultShareRegistrySortInput;
+  drilldownFilters: ConversionFilterInput;
   defaultPreset: ResultShareRegistrySavedView | null;
 } {
   const defaultPreset = findSavedViewById(store, store.defaultPresetId);
@@ -354,17 +420,21 @@ export function buildInitialResultShareRegistrySavedViewState(
     return {
       filters: DEFAULT_RESULT_SHARE_REGISTRY_FILTER_INPUT,
       sorts: DEFAULT_RESULT_SHARE_REGISTRY_SORT_INPUT,
+      drilldownFilters: DEFAULT_CONVERSION_FILTER_INPUT,
       defaultPreset: null,
     };
   }
   const applied = applyResultShareRegistrySavedView(
     DEFAULT_RESULT_SHARE_REGISTRY_FILTER_INPUT,
     DEFAULT_RESULT_SHARE_REGISTRY_SORT_INPUT,
+    DEFAULT_CONVERSION_FILTER_INPUT,
     defaultPreset,
+    defaultPreset.drilldownContext ? "registry_and_drilldown" : "registry_only",
   );
   return {
     filters: applied.filters,
     sorts: applied.sorts,
+    drilldownFilters: applied.drilldownFilters,
     defaultPreset,
   };
 }
@@ -376,6 +446,26 @@ export function buildResultShareRegistrySavedViewSummaries(
   aliasPresets: ResultShareRegistrySavedViewSummary[];
   defaultPreset: ResultShareRegistrySavedViewSummary | null;
 } {
+  const buildDrilldownSummaryItems = (
+    drilldownContext: ResultShareRegistrySavedViewDrilldownContext | null,
+  ): string[] => {
+    if (!drilldownContext) {
+      return [];
+    }
+    const summary = buildConversionFilterSummaryViewModel(
+      {
+        ...DEFAULT_CONVERSION_FILTER_INPUT,
+        ...drilldownContext,
+        shareKind: null,
+      },
+      PER_SHARE_DRILLDOWN_FILTER_SUPPORT,
+    );
+    if (summary.chips.length === 0) {
+      return ["Default per-share drilldown filters"];
+    }
+    return summary.chips.map((chip) => `${chip.label}: ${chip.value}`);
+  };
+
   const buildSummary = (
     preset: ResultShareRegistrySavedView,
   ): ResultShareRegistrySavedViewSummary => {
@@ -401,6 +491,8 @@ export function buildResultShareRegistrySavedViewSummaries(
       name: preset.name,
       scope: preset.scope,
       summaryItems: summaryItems.filter((item): item is string => item !== null),
+      drilldownSummaryItems: buildDrilldownSummaryItems(preset.drilldownContext),
+      hasDrilldownContext: preset.drilldownContext !== null,
       createdAt: preset.createdAt,
       updatedAt: preset.updatedAt,
       isDefault: store.defaultPresetId === preset.id,

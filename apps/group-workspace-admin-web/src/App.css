@@ -456,6 +456,13 @@ button {
   align-items: end;
 }
 
+.checkbox-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.95rem;
+}
+
 .saved-view-default-chip {
   margin-bottom: 18px;
 }

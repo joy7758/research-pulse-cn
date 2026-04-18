@@ -1,3 +1,4 @@
+import { DEFAULT_CONVERSION_FILTER_INPUT } from "./conversionFilters";
 import {
   DEFAULT_RESULT_SHARE_REGISTRY_FILTER_INPUT,
   DEFAULT_RESULT_SHARE_REGISTRY_SORT_INPUT,
@@ -104,6 +105,7 @@ describe("result share registry saved views", () => {
         field: "createdAt",
         direction: "asc",
       },
+      drilldownContext: null,
     });
     expect(aliasDraft).toEqual({
       name: "Alias follow-up",
@@ -118,7 +120,93 @@ describe("result share registry saved views", () => {
         field: "status",
         direction: "desc",
       },
+      drilldownContext: null,
     });
+  });
+
+  it("serializes and restores safe drilldown context when requested", () => {
+    const draft = buildResultShareRegistrySavedViewDraft(
+      "grant_registry",
+      "Board review with drilldown",
+      {
+        ...DEFAULT_RESULT_SHARE_REGISTRY_FILTER_INPUT,
+        shareKind: "workspace_board",
+        workspaceId: "workspace-1",
+      },
+      DEFAULT_RESULT_SHARE_REGISTRY_SORT_INPUT,
+      {
+        includeDrilldownContext: true,
+        drilldownFilters: {
+          ...DEFAULT_CONVERSION_FILTER_INPUT,
+          dateFrom: "2026-04-01",
+          dateTo: "2026-04-18",
+          accessMode: "alias",
+          eventType: "content_view",
+          outcome: "resolved",
+          limit: 10,
+        },
+      },
+    );
+    expect(draft).not.toBeNull();
+    expect(draft?.drilldownContext).toEqual({
+      dateFrom: "2026-04-01",
+      dateTo: "2026-04-18",
+      accessMode: "alias",
+      eventType: "content_view",
+      outcome: "resolved",
+      limit: 10,
+    });
+
+    const preset = createResultShareRegistrySavedView(draft!, {
+      id: "preset-drilldown",
+      now: "2026-04-18T08:00:00Z",
+    });
+    persistResultShareRegistrySavedViewStore(window.localStorage, {
+      grantPresets: [preset],
+      aliasPresets: [],
+      defaultPresetId: null,
+    });
+    const loaded = loadResultShareRegistrySavedViewStore(window.localStorage);
+
+    expect(loaded.grantPresets[0].drilldownContext).toEqual({
+      dateFrom: "2026-04-01",
+      dateTo: "2026-04-18",
+      accessMode: "alias",
+      eventType: "content_view",
+      outcome: "resolved",
+      limit: 10,
+    });
+  });
+
+  it("loads legacy saved views that have no drilldown context", () => {
+    window.localStorage.setItem(
+      "resultShareRegistryGrantPresets",
+      JSON.stringify([
+        {
+          id: "legacy-grant",
+          name: "Legacy grant preset",
+          scope: "grant_registry",
+          filters: {
+            shareKind: "workspace_board",
+            grantStatus: "active",
+            aliasStatus: null,
+            workspaceId: "workspace-1",
+            resultShareGrantId: null,
+          },
+          sort: {
+            field: "createdAt",
+            direction: "asc",
+          },
+          createdAt: "2026-04-18T08:00:00Z",
+          updatedAt: "2026-04-18T08:00:00Z",
+        },
+      ]),
+    );
+    window.localStorage.setItem("resultShareRegistryAliasPresets", JSON.stringify([]));
+
+    const loaded = loadResultShareRegistrySavedViewStore(window.localStorage);
+    expect(loaded.grantPresets).toHaveLength(1);
+    expect(loaded.grantPresets[0].drilldownContext).toBeNull();
   });
 
   it("saves, overwrites, deletes, and serializes local presets", () => {
@@ -244,7 +332,13 @@ describe("result share registry saved views", () => {
           direction: "asc",
         },
       },
+      {
+        ...DEFAULT_CONVERSION_FILTER_INPUT,
+        accessMode: "share_token",
+        limit: 50,
+      },
       preset,
+      "registry_only",
     );
 
     expect(applied.filters).toEqual({
@@ -264,6 +358,79 @@ describe("result share registry saved views", () => {
         direction: "asc",
       },
     });
+    expect(applied.drilldownFilters).toEqual({
+      ...DEFAULT_CONVERSION_FILTER_INPUT,
+      accessMode: "share_token",
+      limit: 50,
+    });
+    expect(applied.didApplyDrilldownContext).toBe(false);
+  });
+
+  it("applies linked drilldown context only when explicitly requested", () => {
+    const preset = createResultShareRegistrySavedView(
+      buildResultShareRegistrySavedViewDraft(
+        "alias_registry",
+        "Alias follow-up",
+        {
+          ...DEFAULT_RESULT_SHARE_REGISTRY_FILTER_INPUT,
+          shareKind: "workspace_board",
+          aliasStatus: "active",
+          resultShareGrantId: "grant-1",
+        },
+        DEFAULT_RESULT_SHARE_REGISTRY_SORT_INPUT,
+        {
+          includeDrilldownContext: true,
+          drilldownFilters: {
+            ...DEFAULT_CONVERSION_FILTER_INPUT,
+            dateFrom: "2026-04-01",
+            eventType: "redirect",
+            limit: 10,
+          },
+        },
+      )!,
+      {
+        id: "alias-preset",
+        now: "2026-04-18T08:00:00Z",
+      },
+    );
+
+    const registryOnly = applyResultShareRegistrySavedView(
+      DEFAULT_RESULT_SHARE_REGISTRY_FILTER_INPUT,
+      DEFAULT_RESULT_SHARE_REGISTRY_SORT_INPUT,
+      {
+        ...DEFAULT_CONVERSION_FILTER_INPUT,
+        accessMode: "alias",
+        limit: 50,
+      },
+      preset,
+      "registry_only",
+    );
+    expect(registryOnly.drilldownFilters).toEqual({
+      ...DEFAULT_CONVERSION_FILTER_INPUT,
+      accessMode: "alias",
+      limit: 50,
+    });
+    expect(registryOnly.didApplyDrilldownContext).toBe(false);
+
+    const registryAndDrilldown = applyResultShareRegistrySavedView(
+      DEFAULT_RESULT_SHARE_REGISTRY_FILTER_INPUT,
+      DEFAULT_RESULT_SHARE_REGISTRY_SORT_INPUT,
+      {
+        ...DEFAULT_CONVERSION_FILTER_INPUT,
+        accessMode: "alias",
+        limit: 50,
+      },
+      preset,
+      "registry_and_drilldown",
+    );
+    expect(registryAndDrilldown.drilldownFilters).toEqual({
+      ...DEFAULT_CONVERSION_FILTER_INPUT,
+      dateFrom: "2026-04-01",
+      accessMode: null,
+      eventType: "redirect",
+      limit: 10,
+    });
+    expect(registryAndDrilldown.didApplyDrilldownContext).toBe(true);
   });
 
   it("restores the default preset into the initial registry state", () => {
@@ -317,6 +484,56 @@ describe("result share registry saved views", () => {
         field: "status",
         direction: "desc",
       },
+    });
+    expect(initialState.drilldownFilters).toEqual(DEFAULT_CONVERSION_FILTER_INPUT);
+  });
+
+  it("restores default preset drilldown context into the initial shell state", () => {
+    const grantPreset = createResultShareRegistrySavedView(
+      buildResultShareRegistrySavedViewDraft(
+        "grant_registry",
+        "Grant default with drilldown",
+        {
+          ...DEFAULT_RESULT_SHARE_REGISTRY_FILTER_INPUT,
+          shareKind: "workspace_board",
+          grantStatus: "active",
+          workspaceId: "workspace-1",
+        },
+        DEFAULT_RESULT_SHARE_REGISTRY_SORT_INPUT,
+        {
+          includeDrilldownContext: true,
+          drilldownFilters: {
+            ...DEFAULT_CONVERSION_FILTER_INPUT,
+            dateFrom: "2026-04-05",
+            outcome: "resolved",
+            limit: 10,
+          },
+        },
+      )!,
+      {
+        id: "grant-default",
+        now: "2026-04-18T10:00:00Z",
+      },
+    );
+    const store = setResultShareRegistryDefaultPresetId(
+      saveResultShareRegistrySavedView(
+        {
+          grantPresets: [],
+          aliasPresets: [],
+          defaultPresetId: null,
+        },
+        grantPreset,
+      ),
+      "grant-default",
+    );
+
+    const initialState = buildInitialResultShareRegistrySavedViewState(store);
+    expect(initialState.defaultPreset?.id).toBe("grant-default");
+    expect(initialState.drilldownFilters).toEqual({
+      ...DEFAULT_CONVERSION_FILTER_INPUT,
+      dateFrom: "2026-04-05",
+      outcome: "resolved",
+      limit: 10,
     });
   });
 });
