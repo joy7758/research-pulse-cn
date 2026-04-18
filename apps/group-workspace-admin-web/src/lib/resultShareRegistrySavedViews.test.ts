@@ -10,8 +10,12 @@ import {
   appendResultShareRegistryPresetAuditEvent,
   buildResultShareRegistryPresetAuditSummary,
   buildResultShareRegistryPresetExport,
+  buildResultShareRegistryPresetWorkspaceViewModel,
   buildInitialResultShareRegistrySavedViewState,
+  buildResultShareRegistrySavedViewSummaries,
   buildResultShareRegistrySavedViewDraft,
+  cleanStaleResultShareRegistryPresetWorkspacePins,
+  clearAllResultShareRegistryPresetWorkspacePins,
   clearResultShareRegistryPresetAuditEvents,
   createPresetAuditEvent,
   createResultShareRegistryPresetBackup,
@@ -19,12 +23,17 @@ import {
   deleteResultShareRegistrySavedView,
   inspectResultShareRegistryPresetStorage,
   loadResultShareRegistryPresetAuditEvents,
+  loadResultShareRegistryPresetWorkspaceState,
+  movePinnedResultShareRegistryPresetWorkspacePreset,
   loadResultShareRegistrySavedViewStore,
   overwriteResultShareRegistrySavedView,
   parseResultShareRegistryPresetImport,
+  persistResultShareRegistryPresetWorkspaceState,
   persistResultShareRegistrySavedViewStore,
   persistResultShareRegistryPresetBackup,
+  pinResultShareRegistryPresetWorkspacePreset,
   redactUnsafeImportIssueDetails,
+  resetResultShareRegistryPresetWorkspaceState,
   restoreResultShareRegistryPresetBackup,
   RESULT_SHARE_REGISTRY_ALIAS_PRESETS_STORAGE_KEY,
   RESULT_SHARE_REGISTRY_DEFAULT_PRESET_ID_STORAGE_KEY,
@@ -32,9 +41,13 @@ import {
   RESULT_SHARE_REGISTRY_LAST_GOOD_BACKUP_STORAGE_KEY,
   RESULT_SHARE_REGISTRY_LOCAL_AUDIT_STORAGE_KEY,
   RESULT_SHARE_REGISTRY_PRESET_EXPORT_SCHEMA_VERSION,
+  RESULT_SHARE_REGISTRY_WORKSPACE_STATE_STORAGE_KEY,
   saveResultShareRegistryPresetAuditEvents,
   saveResultShareRegistrySavedView,
+  setResultShareRegistryPresetWorkspaceLastActive,
   setResultShareRegistryDefaultPresetId,
+  syncResultShareRegistryPresetWorkspaceStateWithStore,
+  unpinResultShareRegistryPresetWorkspacePreset,
 } from "./resultShareRegistrySavedViews";
 import type { ResultShareRegistryPresetLocalAuditLoadResult } from "./types";
 
@@ -1304,5 +1317,233 @@ describe("result share registry saved views", () => {
 
     clearResultShareRegistryPresetAuditEvents(window.localStorage);
     expect(window.localStorage.getItem(RESULT_SHARE_REGISTRY_LOCAL_AUDIT_STORAGE_KEY)).toBeNull();
+  });
+
+  it("serializes and restores local preset workspace state safely", () => {
+    const persisted = persistResultShareRegistryPresetWorkspaceState(window.localStorage, {
+      pinnedGrantPresetIds: ["grant-a", "grant-b"],
+      pinnedAliasPresetIds: ["alias-a"],
+      lastActivePresetScope: "grant_registry",
+      lastActivePresetId: "grant-a",
+      collapsedSections: null,
+      updatedAt: "2026-04-19T02:00:00Z",
+    });
+
+    expect(persisted.pinnedGrantPresetIds).toEqual(["grant-a", "grant-b"]);
+    expect(window.localStorage.getItem(RESULT_SHARE_REGISTRY_WORKSPACE_STATE_STORAGE_KEY)).toContain(
+      "grant-a",
+    );
+
+    const loaded = loadResultShareRegistryPresetWorkspaceState(window.localStorage);
+    expect(loaded.keyPresent).toBe(true);
+    expect(loaded.storageWarning).toBeNull();
+    expect(loaded.state.lastActivePresetScope).toBe("grant_registry");
+    expect(loaded.state.lastActivePresetId).toBe("grant-a");
+  });
+
+  it("falls back safely when workspace state is corrupted", () => {
+    window.localStorage.setItem(RESULT_SHARE_REGISTRY_WORKSPACE_STATE_STORAGE_KEY, "{oops");
+
+    const loaded = loadResultShareRegistryPresetWorkspaceState(window.localStorage);
+
+    expect(loaded.keyPresent).toBe(true);
+    expect(loaded.state.pinnedGrantPresetIds).toEqual([]);
+    expect(loaded.state.pinnedAliasPresetIds).toEqual([]);
+    expect(loaded.storageWarning).toMatch(/not valid JSON/i);
+  });
+
+  it("pins, unpins, moves, and cleans stale workspace preset ids without touching saved presets", () => {
+    const grantPreset = createResultShareRegistrySavedView(
+      buildResultShareRegistrySavedViewDraft(
+        "grant_registry",
+        "Pinned grant",
+        {
+          ...DEFAULT_RESULT_SHARE_REGISTRY_FILTER_INPUT,
+          shareKind: "workspace_board",
+          grantStatus: "active",
+          workspaceId: "workspace-1",
+        },
+        DEFAULT_RESULT_SHARE_REGISTRY_SORT_INPUT,
+      )!,
+      {
+        id: "grant-preset",
+        now: "2026-04-19T02:01:00Z",
+      },
+    );
+    const aliasPreset = createResultShareRegistrySavedView(
+      buildResultShareRegistrySavedViewDraft(
+        "alias_registry",
+        "Pinned alias",
+        {
+          ...DEFAULT_RESULT_SHARE_REGISTRY_FILTER_INPUT,
+          shareKind: "workspace_board",
+          aliasStatus: "active",
+          resultShareGrantId: "grant-1",
+        },
+        DEFAULT_RESULT_SHARE_REGISTRY_SORT_INPUT,
+      )!,
+      {
+        id: "alias-preset",
+        now: "2026-04-19T02:02:00Z",
+      },
+    );
+    const store = {
+      grantPresets: [grantPreset],
+      aliasPresets: [aliasPreset],
+      defaultPresetId: null,
+    };
+
+    let workspaceState = resetResultShareRegistryPresetWorkspaceState({
+      now: "2026-04-19T02:03:00Z",
+    });
+    workspaceState = pinResultShareRegistryPresetWorkspacePreset(
+      workspaceState,
+      "grant_registry",
+      "grant-preset",
+    );
+    workspaceState = pinResultShareRegistryPresetWorkspacePreset(
+      workspaceState,
+      "grant_registry",
+      "grant-stale",
+    );
+    workspaceState = pinResultShareRegistryPresetWorkspacePreset(
+      workspaceState,
+      "alias_registry",
+      "alias-preset",
+    );
+    workspaceState = setResultShareRegistryPresetWorkspaceLastActive(
+      workspaceState,
+      "grant_registry",
+      "grant-preset",
+    );
+    workspaceState = movePinnedResultShareRegistryPresetWorkspacePreset(
+      workspaceState,
+      "grant_registry",
+      "grant-stale",
+      "up",
+    );
+
+    expect(workspaceState.pinnedGrantPresetIds[0]).toBe("grant-stale");
+
+    const cleaned = cleanStaleResultShareRegistryPresetWorkspacePins(workspaceState, store);
+    expect(cleaned.removedGrantPinIds).toEqual(["grant-stale"]);
+    expect(cleaned.state.pinnedGrantPresetIds).toEqual(["grant-preset"]);
+    expect(cleaned.state.pinnedAliasPresetIds).toEqual(["alias-preset"]);
+
+    const unpinned = unpinResultShareRegistryPresetWorkspacePreset(
+      cleaned.state,
+      "alias_registry",
+      "alias-preset",
+    );
+    expect(unpinned.pinnedAliasPresetIds).toEqual([]);
+
+    const cleared = clearAllResultShareRegistryPresetWorkspacePins(unpinned);
+    expect(cleared.pinnedGrantPresetIds).toEqual([]);
+
+    const synced = syncResultShareRegistryPresetWorkspaceStateWithStore(
+      {
+        ...workspaceState,
+        lastActivePresetScope: "grant_registry",
+        lastActivePresetId: "missing-preset",
+      },
+      store,
+    );
+    expect(synced.lastActivePresetId).toBeNull();
+    expect(synced.lastActivePresetScope).toBeNull();
+  });
+
+  it("builds a preset workspace overview from saved views, diagnostics, backup, and audit state", () => {
+    const grantPreset = createResultShareRegistrySavedView(
+      buildResultShareRegistrySavedViewDraft(
+        "grant_registry",
+        "Grant workspace preset",
+        {
+          ...DEFAULT_RESULT_SHARE_REGISTRY_FILTER_INPUT,
+          shareKind: "workspace_board",
+          workspaceId: "workspace-1",
+        },
+        DEFAULT_RESULT_SHARE_REGISTRY_SORT_INPUT,
+        {
+          includeDrilldownContext: true,
+          drilldownFilters: {
+            ...DEFAULT_CONVERSION_FILTER_INPUT,
+            eventType: "content_view",
+            limit: 10,
+          },
+        },
+      )!,
+      {
+        id: "grant-workspace",
+        now: "2026-04-19T02:05:00Z",
+      },
+    );
+    const aliasPreset = createResultShareRegistrySavedView(
+      buildResultShareRegistrySavedViewDraft(
+        "alias_registry",
+        "Alias workspace preset",
+        {
+          ...DEFAULT_RESULT_SHARE_REGISTRY_FILTER_INPUT,
+          shareKind: "workspace_board",
+          aliasStatus: "active",
+          resultShareGrantId: "grant-1",
+        },
+        DEFAULT_RESULT_SHARE_REGISTRY_SORT_INPUT,
+      )!,
+      {
+        id: "alias-workspace",
+        now: "2026-04-19T02:06:00Z",
+      },
+    );
+    const store = {
+      grantPresets: [grantPreset],
+      aliasPresets: [aliasPreset],
+      defaultPresetId: "grant-workspace",
+    };
+    const workspaceState = persistResultShareRegistryPresetWorkspaceState(window.localStorage, {
+      pinnedGrantPresetIds: ["grant-workspace", "missing-grant"],
+      pinnedAliasPresetIds: ["alias-workspace"],
+      lastActivePresetScope: "grant_registry",
+      lastActivePresetId: "grant-workspace",
+      collapsedSections: null,
+      updatedAt: "2026-04-19T02:07:00Z",
+    });
+    const summaries = buildResultShareRegistrySavedViewSummaries(store, workspaceState);
+    const auditSummary = buildResultShareRegistryPresetAuditSummary([
+      createPresetAuditEvent("preset_pinned", "success", "Pinned preset.", {
+        scope: "grant_registry",
+        id: "audit-pinned",
+        occurredAt: "2026-04-19T02:08:00Z",
+      }),
+      createPresetAuditEvent("backup_created", "warning", "Created backup.", {
+        scope: "storage",
+        id: "audit-backup",
+        occurredAt: "2026-04-19T02:09:00Z",
+      }),
+    ]);
+    const diagnostics = inspectResultShareRegistryPresetStorage(window.localStorage, {
+      now: "2026-04-19T02:10:00Z",
+    }).diagnostics;
+    const backup = createResultShareRegistryPresetBackup(store, "workspace_test", {
+      now: "2026-04-19T02:11:00Z",
+    });
+
+    const workspaceViewModel = buildResultShareRegistryPresetWorkspaceViewModel(
+      summaries,
+      workspaceState,
+      auditSummary,
+      diagnostics,
+      backup,
+    );
+
+    expect(workspaceViewModel.pinnedGrantPresets).toHaveLength(1);
+    expect(workspaceViewModel.pinnedGrantPresets[0].name).toBe("Grant workspace preset");
+    expect(workspaceViewModel.staleGrantPinIds).toEqual(["missing-grant"]);
+    expect(workspaceViewModel.pinnedAliasPresets[0].name).toBe("Alias workspace preset");
+    expect(workspaceViewModel.lastActivePresetLabel).toContain("Grant preset");
+    expect(workspaceViewModel.storageHealth.lastBackupLabel).toContain("workspace_test");
+    expect(workspaceViewModel.recentActivity).toHaveLength(2);
+    expect(
+      workspaceViewModel.overviewSummary.some((item) => item.label === "Pinned grants" && item.value === 1),
+    ).toBe(true);
   });
 });

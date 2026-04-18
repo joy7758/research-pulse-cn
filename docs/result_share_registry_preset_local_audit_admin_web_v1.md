@@ -76,6 +76,7 @@
 - No source-file, attachment, or note sharing
 
 ## Future Work
+- A local preset workspace was added in the next phase so operators can pin presets, quick-apply recent views, and organize preset reuse without changing the same local-only audit boundary.
 - Backend or team audit only if later justified
 - Richer operator preset workspace history only if later justified
 - Signed preset packages only if later justified

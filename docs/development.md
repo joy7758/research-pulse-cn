@@ -190,6 +190,7 @@ The same shell now also includes a minimal read-only result-share registry:
 - local-only preset JSON export/import with schema-version validation, unsafe-field rejection, preview-before-apply, and merge/replace scope handling
 - local-only preset diagnostics and recovery, including corrupted-storage checks, validation-only dry-run preview, last-good backup snapshots, and scope-safe reset actions
 - local-only preset activity history with safe action summaries, recent operations, and clear-audit controls for this browser only
+- local-only preset workspace organization with pinned grant/alias presets, recent preset snippets, storage-health summary, stale pin cleanup, and organization-only reset controls
 - no admin bearer token, raw share token, or raw alias is stored in those presets
 
 The shell is internal/admin-only, keeps bearer tokens in memory only, and does not introduce end-user login or source-file sharing. Filter controls narrow overview/drilldown reads only and do not change attribution semantics.

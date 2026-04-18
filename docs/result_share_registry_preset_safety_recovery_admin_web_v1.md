@@ -97,6 +97,7 @@
 
 ## Future Work
 - Local-only preset activity history and audit summary was added in the next phase without changing the same safety boundary or adding backend storage.
+- A local preset workspace organization layer was added later so operators can pin and quick-apply presets without changing the same diagnostics/recovery boundary or adding backend persistence.
 - Team preset management only if later justified
 - Signed preset packages only if later justified
 - Richer operator workspace recovery tools only if later justified

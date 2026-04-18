@@ -864,6 +864,7 @@ export type ResultShareRegistrySavedViewSummary = {
   createdAt: string;
   updatedAt: string;
   isDefault: boolean;
+  isPinned: boolean;
 };
 
 export type ResultShareRegistrySavedViewStoreState = {
@@ -975,6 +976,7 @@ export type ResultShareRegistryPresetStorageDiagnostics = {
     aliasPresets: boolean;
     defaultPresetId: boolean;
     lastGoodBackup: boolean;
+    workspaceState: boolean;
   };
   grantPresetCount: number;
   aliasPresetCount: number;
@@ -982,6 +984,8 @@ export type ResultShareRegistryPresetStorageDiagnostics = {
   invalidPresetCount: number;
   defaultPresetIdPresent: boolean;
   lastBackupPresent: boolean;
+  workspaceStatePresent: boolean;
+  workspaceStateWarning: string | null;
   latestValidationAt: string | null;
   warningCount: number;
   errorCount: number;
@@ -993,6 +997,8 @@ export type ResultShareRegistryPresetLocalAuditActionType =
   | "preset_applied"
   | "preset_overwritten"
   | "preset_deleted"
+  | "preset_pinned"
+  | "preset_unpinned"
   | "default_set"
   | "default_cleared"
   | "import_dry_run"
@@ -1007,7 +1013,9 @@ export type ResultShareRegistryPresetLocalAuditActionType =
   | "backup_created"
   | "backup_restored"
   | "recovery_failed"
-  | "validation_failed";
+  | "validation_failed"
+  | "preset_workspace_reset"
+  | "stale_pins_cleaned";
 
 export type ResultShareRegistryPresetLocalAuditStatus =
   | "success"
@@ -1050,6 +1058,47 @@ export type ResultShareRegistryPresetLocalAuditSummary = {
 export type ResultShareRegistryPresetLocalAuditLoadResult = {
   events: ResultShareRegistryPresetLocalAuditEvent[];
   storageWarning: string | null;
+};
+
+export type ResultShareRegistryPresetWorkspaceState = {
+  pinnedGrantPresetIds: string[];
+  pinnedAliasPresetIds: string[];
+  lastActivePresetScope: ResultShareRegistrySavedViewScope | null;
+  lastActivePresetId: string | null;
+  collapsedSections: {
+    pinnedGrantPresets: boolean;
+    pinnedAliasPresets: boolean;
+    recentGrantPresets: boolean;
+    recentAliasPresets: boolean;
+    recentActivity: boolean;
+    storageHealth: boolean;
+  } | null;
+  updatedAt: string;
+};
+
+export type ResultShareRegistryPresetWorkspaceLoadResult = {
+  state: ResultShareRegistryPresetWorkspaceState;
+  storageWarning: string | null;
+  keyPresent: boolean;
+};
+
+export type ResultShareRegistryPresetWorkspaceViewModel = {
+  overviewSummary: ResultShareRegistrySummaryViewModel[];
+  lastActivePresetLabel: string | null;
+  pinnedGrantPresets: ResultShareRegistrySavedViewSummary[];
+  pinnedAliasPresets: ResultShareRegistrySavedViewSummary[];
+  recentGrantPresets: ResultShareRegistrySavedViewSummary[];
+  recentAliasPresets: ResultShareRegistrySavedViewSummary[];
+  staleGrantPinIds: string[];
+  staleAliasPinIds: string[];
+  recentActivity: ResultShareRegistryPresetLocalAuditEvent[];
+  storageHealth: {
+    issueCount: number;
+    lastBackupLabel: string;
+    auditWarning: string | null;
+    workspaceWarning: string | null;
+    latestValidationAt: string | null;
+  };
 };
 
 export type ResultShareRegistryFilterChipViewModel = {
