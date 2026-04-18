@@ -4,17 +4,27 @@ import {
   DEFAULT_RESULT_SHARE_REGISTRY_SORT_INPUT,
 } from "./resultShareRegistryFilters";
 import {
+  applyResultShareRegistryPresetRecoveryAction,
   applyResultShareRegistryPresetImport,
   applyResultShareRegistrySavedView,
   buildResultShareRegistryPresetExport,
   buildInitialResultShareRegistrySavedViewState,
   buildResultShareRegistrySavedViewDraft,
+  createResultShareRegistryPresetBackup,
   createResultShareRegistrySavedView,
   deleteResultShareRegistrySavedView,
+  inspectResultShareRegistryPresetStorage,
   loadResultShareRegistrySavedViewStore,
   overwriteResultShareRegistrySavedView,
   parseResultShareRegistryPresetImport,
   persistResultShareRegistrySavedViewStore,
+  persistResultShareRegistryPresetBackup,
+  redactUnsafeImportIssueDetails,
+  restoreResultShareRegistryPresetBackup,
+  RESULT_SHARE_REGISTRY_ALIAS_PRESETS_STORAGE_KEY,
+  RESULT_SHARE_REGISTRY_DEFAULT_PRESET_ID_STORAGE_KEY,
+  RESULT_SHARE_REGISTRY_GRANT_PRESETS_STORAGE_KEY,
+  RESULT_SHARE_REGISTRY_LAST_GOOD_BACKUP_STORAGE_KEY,
   RESULT_SHARE_REGISTRY_PRESET_EXPORT_SCHEMA_VERSION,
   saveResultShareRegistrySavedView,
   setResultShareRegistryDefaultPresetId,
@@ -908,5 +918,266 @@ describe("result share registry saved views", () => {
     expect(result.store.aliasPresets[0].id).toBe("alias-keep");
     expect(result.store.defaultPresetId).toBeNull();
     expect(result.defaultPresetCleared).toBe(true);
+  });
+
+  it("builds an integrity report for valid local preset storage", () => {
+    const grantPreset = createResultShareRegistrySavedView(
+      buildResultShareRegistrySavedViewDraft(
+        "grant_registry",
+        "Grant valid",
+        {
+          ...DEFAULT_RESULT_SHARE_REGISTRY_FILTER_INPUT,
+          shareKind: "workspace_board",
+          grantStatus: "active",
+          workspaceId: "workspace-1",
+        },
+        DEFAULT_RESULT_SHARE_REGISTRY_SORT_INPUT,
+      )!,
+      {
+        id: "grant-valid",
+        now: "2026-04-18T08:00:00Z",
+      },
+    );
+    persistResultShareRegistrySavedViewStore(window.localStorage, {
+      grantPresets: [grantPreset],
+      aliasPresets: [],
+      defaultPresetId: "grant-valid",
+    });
+
+    const inspection = inspectResultShareRegistryPresetStorage(window.localStorage, {
+      now: "2026-04-18T09:00:00Z",
+    });
+
+    expect(inspection.report.errorCount).toBe(0);
+    expect(inspection.report.warningCount).toBe(0);
+    expect(inspection.report.validPresetCount).toBe(1);
+    expect(inspection.diagnostics.defaultPresetIdPresent).toBe(true);
+  });
+
+  it("detects invalid JSON and non-array storage keys safely", () => {
+    window.localStorage.setItem(RESULT_SHARE_REGISTRY_GRANT_PRESETS_STORAGE_KEY, "{not-json");
+    window.localStorage.setItem(
+      RESULT_SHARE_REGISTRY_ALIAS_PRESETS_STORAGE_KEY,
+      JSON.stringify({ bad: true }),
+    );
+
+    const inspection = inspectResultShareRegistryPresetStorage(window.localStorage);
+
+    expect(inspection.report.errorCount).toBeGreaterThanOrEqual(2);
+    expect(inspection.report.issues.map((issue) => issue.code)).toContain("invalid_json");
+    expect(inspection.report.issues.map((issue) => issue.code)).toContain(
+      "storage_key_not_array",
+    );
+    expect(inspection.store.grantPresets).toEqual([]);
+    expect(inspection.store.aliasPresets).toEqual([]);
+  });
+
+  it("redacts unsafe field names and detects duplicate preset ids with dangling defaults", () => {
+    window.localStorage.setItem(
+      RESULT_SHARE_REGISTRY_GRANT_PRESETS_STORAGE_KEY,
+      JSON.stringify([
+        {
+          id: "duplicate-id",
+          name: "Grant one",
+          scope: "grant_registry",
+          filters: {
+            shareKind: "workspace_board",
+            grantStatus: "active",
+            aliasStatus: null,
+            workspaceId: "workspace-1",
+            resultShareGrantId: null,
+          },
+          sort: {
+            field: "createdAt",
+            direction: "asc",
+          },
+          createdAt: "2026-04-18T08:00:00Z",
+          updatedAt: "2026-04-18T08:00:00Z",
+        },
+      ]),
+    );
+    window.localStorage.setItem(
+      RESULT_SHARE_REGISTRY_ALIAS_PRESETS_STORAGE_KEY,
+      JSON.stringify([
+        {
+          id: "duplicate-id",
+          name: "Alias duplicate",
+          scope: "alias_registry",
+          filters: {
+            shareKind: "workspace_board",
+            grantStatus: null,
+            aliasStatus: "active",
+            workspaceId: null,
+            resultShareGrantId: "grant-1",
+          },
+          sort: {
+            field: "status",
+            direction: "desc",
+          },
+          createdAt: "2026-04-18T08:00:00Z",
+          updatedAt: "2026-04-18T08:00:00Z",
+          sourceFile: "/tmp/unsafe.json",
+        },
+      ]),
+    );
+    window.localStorage.setItem(RESULT_SHARE_REGISTRY_DEFAULT_PRESET_ID_STORAGE_KEY, "missing-id");
+
+    const inspection = inspectResultShareRegistryPresetStorage(window.localStorage);
+
+    expect(redactUnsafeImportIssueDetails("sourceFile")).toBe("[redacted]");
+    expect(inspection.report.issues.map((issue) => issue.code)).toContain(
+      "unsafe_field_detected",
+    );
+    expect(inspection.report.issues.map((issue) => issue.code)).toContain(
+      "dangling_default_preset",
+    );
+    expect(inspection.store.defaultPresetId).toBeNull();
+    expect(inspection.store.grantPresets).toHaveLength(1);
+    expect(inspection.store.aliasPresets).toHaveLength(0);
+  });
+
+  it("creates and restores a last-good backup snapshot", () => {
+    const grantPreset = createResultShareRegistrySavedView(
+      buildResultShareRegistrySavedViewDraft(
+        "grant_registry",
+        "Grant backup",
+        {
+          ...DEFAULT_RESULT_SHARE_REGISTRY_FILTER_INPUT,
+          shareKind: "workspace_board",
+          grantStatus: "active",
+          workspaceId: "workspace-1",
+        },
+        DEFAULT_RESULT_SHARE_REGISTRY_SORT_INPUT,
+      )!,
+      {
+        id: "grant-backup",
+        now: "2026-04-18T08:00:00Z",
+      },
+    );
+    const backup = createResultShareRegistryPresetBackup(
+      {
+        grantPresets: [grantPreset],
+        aliasPresets: [],
+        defaultPresetId: "grant-backup",
+      },
+      "before_replace",
+      {
+        now: "2026-04-18T09:00:00Z",
+      },
+    );
+    persistResultShareRegistryPresetBackup(window.localStorage, backup);
+
+    const loadedBackup = inspectResultShareRegistryPresetStorage(window.localStorage).lastGoodBackup;
+    const restored = restoreResultShareRegistryPresetBackup(loadedBackup);
+
+    expect(window.localStorage.getItem(RESULT_SHARE_REGISTRY_LAST_GOOD_BACKUP_STORAGE_KEY)).not.toBeNull();
+    expect(restored).toEqual({
+      grantPresets: [grantPreset],
+      aliasPresets: [],
+      defaultPresetId: "grant-backup",
+    });
+  });
+
+  it("supports scope reset and backup restore recovery actions", () => {
+    const grantPreset = createResultShareRegistrySavedView(
+      buildResultShareRegistrySavedViewDraft(
+        "grant_registry",
+        "Grant reset",
+        {
+          ...DEFAULT_RESULT_SHARE_REGISTRY_FILTER_INPUT,
+          shareKind: "workspace_board",
+          grantStatus: "active",
+          workspaceId: "workspace-1",
+        },
+        DEFAULT_RESULT_SHARE_REGISTRY_SORT_INPUT,
+      )!,
+      {
+        id: "grant-reset",
+        now: "2026-04-18T08:00:00Z",
+      },
+    );
+    const aliasPreset = createResultShareRegistrySavedView(
+      buildResultShareRegistrySavedViewDraft(
+        "alias_registry",
+        "Alias reset",
+        {
+          ...DEFAULT_RESULT_SHARE_REGISTRY_FILTER_INPUT,
+          shareKind: "workspace_board",
+          aliasStatus: "active",
+          resultShareGrantId: "grant-1",
+        },
+        DEFAULT_RESULT_SHARE_REGISTRY_SORT_INPUT,
+      )!,
+      {
+        id: "alias-reset",
+        now: "2026-04-18T08:00:00Z",
+      },
+    );
+    const store = {
+      grantPresets: [grantPreset],
+      aliasPresets: [aliasPreset],
+      defaultPresetId: "grant-reset",
+    };
+    const backup = createResultShareRegistryPresetBackup(store, "before_reset");
+    const report = inspectResultShareRegistryPresetStorage(window.localStorage).report;
+
+    const resetGrant = applyResultShareRegistryPresetRecoveryAction(
+      store,
+      report,
+      "reset_grant_scope",
+      backup,
+    );
+    expect(resetGrant.store.grantPresets).toEqual([]);
+    expect(resetGrant.store.aliasPresets).toEqual([aliasPreset]);
+    expect(resetGrant.store.defaultPresetId).toBeNull();
+
+    const restored = applyResultShareRegistryPresetRecoveryAction(
+      resetGrant.store,
+      report,
+      "restore_last_good_backup",
+      backup,
+    );
+    expect(restored.restoredBackup).toBe(true);
+    expect(restored.store).toEqual(store);
+  });
+
+  it("keeps dry-run import validation from mutating local storage", () => {
+    const beforeGrant = window.localStorage.getItem(RESULT_SHARE_REGISTRY_GRANT_PRESETS_STORAGE_KEY);
+    const beforeAlias = window.localStorage.getItem(RESULT_SHARE_REGISTRY_ALIAS_PRESETS_STORAGE_KEY);
+
+    const preview = parseResultShareRegistryPresetImport(
+      JSON.stringify({
+        schemaVersion: RESULT_SHARE_REGISTRY_PRESET_EXPORT_SCHEMA_VERSION,
+        exportedAt: "2026-04-18T10:00:00Z",
+        app: "research-pulse-cn",
+        source: "group-workspace-admin-web",
+        presets: {
+          grantRegistry: [
+            {
+              id: "grant-dry-run",
+              name: "Grant dry run",
+              scope: "grant_registry",
+              filters: {
+                shareKind: "workspace_board",
+                grantStatus: "active",
+                aliasStatus: null,
+                workspaceId: "workspace-1",
+                resultShareGrantId: null,
+              },
+              sort: {
+                field: "createdAt",
+                direction: "asc",
+              },
+              createdAt: "2026-04-18T08:00:00Z",
+              updatedAt: "2026-04-18T08:00:00Z",
+            },
+          ],
+        },
+      }),
+    );
+
+    expect(preview.canApply).toBe(true);
+    expect(window.localStorage.getItem(RESULT_SHARE_REGISTRY_GRANT_PRESETS_STORAGE_KEY)).toBe(beforeGrant);
+    expect(window.localStorage.getItem(RESULT_SHARE_REGISTRY_ALIAS_PRESETS_STORAGE_KEY)).toBe(beforeAlias);
   });
 });

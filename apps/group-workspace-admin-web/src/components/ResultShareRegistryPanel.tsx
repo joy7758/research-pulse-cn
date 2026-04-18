@@ -8,11 +8,16 @@ import {
 } from "../lib/resultShareRegistryFilters";
 import type {
   ApiErrorViewModel,
+  ResultShareRegistryPresetBackupSnapshot,
   ResultShareAliasRegistryItemViewModel,
   ResultShareGrantRegistryItemViewModel,
   ResultShareRegistryFilterInput,
   ResultShareRegistryPresetImportMode,
   ResultShareRegistryPresetImportPreview,
+  ResultShareRegistryPresetIntegrityIssue,
+  ResultShareRegistryPresetIntegrityReport,
+  ResultShareRegistryPresetRecoveryAction,
+  ResultShareRegistryPresetStorageDiagnostics,
   ResultShareRegistryFilterSummaryViewModel,
   ResultShareRegistrySavedViewApplyMode,
   ResultShareRegistrySavedViewScope,
@@ -40,6 +45,11 @@ type ResultShareRegistryPanelProps = {
   presetTransfer: {
     importMode: ResultShareRegistryPresetImportMode;
     preview: ResultShareRegistryPresetImportPreview | null;
+  };
+  presetSafety: {
+    integrityReport: ResultShareRegistryPresetIntegrityReport;
+    diagnostics: ResultShareRegistryPresetStorageDiagnostics;
+    lastGoodBackup: ResultShareRegistryPresetBackupSnapshot | null;
   };
   registry: ResultShareRegistryViewModel | null;
   currentTargetLabel: string | null;
@@ -73,6 +83,8 @@ type ResultShareRegistryPanelProps = {
   onApplyPresetImport: () => void;
   onClearPresetImportPreview: () => void;
   onExportPresets: () => void;
+  onValidatePresetStorage: () => void;
+  onRunPresetRecoveryAction: (action: ResultShareRegistryPresetRecoveryAction) => void;
   onOpenGrantDrilldown: (grantId: string) => void;
   onOpenAliasDrilldown: (aliasId: string) => void;
   onFilterAliasesForGrant: (grantId: string, shareKind: ResultShareGrantRegistryItemViewModel["shareKind"]) => void;
@@ -385,6 +397,214 @@ function SavedViewList({
   );
 }
 
+function hasScopeIssue(
+  issues: ResultShareRegistryPresetIntegrityIssue[],
+  scope: ResultShareRegistrySavedViewScope,
+): boolean {
+  const keyName =
+    scope === "grant_registry"
+      ? "resultShareRegistryGrantPresets"
+      : "resultShareRegistryAliasPresets";
+  return issues.some(
+    (issue) =>
+      issue.scope === scope ||
+      (issue.scope === "storage" && issue.safeDetails === keyName),
+  );
+}
+
+function PresetDiagnosticsPanel({
+  integrityReport,
+  diagnostics,
+  lastGoodBackup,
+  onValidate,
+  onRecover,
+}: {
+  integrityReport: ResultShareRegistryPresetIntegrityReport;
+  diagnostics: ResultShareRegistryPresetStorageDiagnostics;
+  lastGoodBackup: ResultShareRegistryPresetBackupSnapshot | null;
+  onValidate: () => void;
+  onRecover: (action: ResultShareRegistryPresetRecoveryAction) => void;
+}) {
+  const hasGrantIssues = hasScopeIssue(integrityReport.issues, "grant_registry");
+  const hasAliasIssues = hasScopeIssue(integrityReport.issues, "alias_registry");
+  const hasDanglingDefault = integrityReport.issues.some(
+    (issue) => issue.code === "dangling_default_preset",
+  );
+
+  return (
+    <section className="conversion-section-card saved-view-card">
+      <div className="conversion-section-header">
+        <div>
+          <h3>Preset storage diagnostics</h3>
+          <p className="section-subtle-copy">
+            Local-only integrity checks over browser preset storage. This does not touch backend
+            data, share payloads, or admin bearer tokens.
+          </p>
+        </div>
+        <div className="button-row">
+          <button type="button" className="button-secondary" onClick={onValidate}>
+            Run integrity check
+          </button>
+          <button
+            type="button"
+            className="button-secondary"
+            onClick={() => onRecover("restore_last_good_backup")}
+            disabled={lastGoodBackup === null}
+          >
+            Restore last-good backup
+          </button>
+        </div>
+      </div>
+
+      <SummaryCardList
+        items={[
+          { label: "Grant presets", value: diagnostics.grantPresetCount, hint: null },
+          { label: "Alias presets", value: diagnostics.aliasPresetCount, hint: null },
+          { label: "Valid presets", value: diagnostics.validPresetCount, hint: null },
+          { label: "Invalid presets", value: diagnostics.invalidPresetCount, hint: null },
+          { label: "Warnings", value: diagnostics.warningCount, hint: null },
+          { label: "Errors", value: diagnostics.errorCount, hint: null },
+        ]}
+      />
+
+      <ul className="filter-chip-list">
+        <li className="filter-chip">
+          <span>Grant key</span>
+          <strong>{diagnostics.storageKeysPresent.grantPresets ? "Present" : "Missing"}</strong>
+        </li>
+        <li className="filter-chip">
+          <span>Alias key</span>
+          <strong>{diagnostics.storageKeysPresent.aliasPresets ? "Present" : "Missing"}</strong>
+        </li>
+        <li className="filter-chip">
+          <span>Default marker</span>
+          <strong>{diagnostics.defaultPresetIdPresent ? "Present" : "Missing"}</strong>
+        </li>
+        <li className="filter-chip">
+          <span>Last backup</span>
+          <strong>{diagnostics.lastBackupPresent ? "Available" : "Not stored"}</strong>
+        </li>
+        <li className="filter-chip">
+          <span>Validated at</span>
+          <strong>{diagnostics.latestValidationAt ?? diagnostics.checkedAt}</strong>
+        </li>
+      </ul>
+
+      {lastGoodBackup ? (
+        <div className="inline-banner info">
+          <strong>Last-good backup</strong>
+          <span>
+            {lastGoodBackup.createdAt} · {lastGoodBackup.reason}
+          </span>
+        </div>
+      ) : null}
+
+      {integrityReport.issues.length > 0 ? (
+        <ul className="data-list">
+          {integrityReport.issues.map((issue, index) => (
+            <li
+              key={`${issue.code}-${issue.scope}-${issue.presetId ?? "none"}-${index}`}
+              className="data-list-item"
+            >
+              <div className="registry-item-stack">
+                <div className="registry-item-header">
+                  <div>
+                    <strong>{issue.message}</strong>
+                    <p>
+                      {issue.scope} · {issue.code}
+                      {issue.presetName ? ` · ${issue.presetName}` : ""}
+                    </p>
+                  </div>
+                  <span className={`status-pill ${issue.severity === "error" ? "revoked" : "active"}`}>
+                    {issue.severity}
+                  </span>
+                </div>
+                {issue.safeDetails ? (
+                  <p className="section-subtle-copy">Details: {issue.safeDetails}</p>
+                ) : null}
+              </div>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <div className="empty-state">
+          <strong>No integrity issues detected.</strong>
+          <p>Current browser preset storage passed the latest local validation run.</p>
+        </div>
+      )}
+
+      <div className="button-row">
+        <button
+          type="button"
+          className="button-secondary"
+          onClick={() => onRecover("discard_invalid_grant_presets")}
+          disabled={!hasGrantIssues}
+        >
+          Discard invalid grant presets
+        </button>
+        <button
+          type="button"
+          className="button-secondary"
+          onClick={() => onRecover("discard_invalid_alias_presets")}
+          disabled={!hasAliasIssues}
+        >
+          Discard invalid alias presets
+        </button>
+        <button
+          type="button"
+          className="button-secondary"
+          onClick={() => onRecover("clear_dangling_default_preset")}
+          disabled={!hasDanglingDefault}
+        >
+          Clear dangling default
+        </button>
+      </div>
+
+      <div className="button-row">
+        <button
+          type="button"
+          className="button-danger"
+          onClick={() => onRecover("reset_grant_scope")}
+          disabled={!integrityReport.canResetGrantScope}
+        >
+          Reset grant preset scope
+        </button>
+        <button
+          type="button"
+          className="button-danger"
+          onClick={() => onRecover("reset_alias_scope")}
+          disabled={!integrityReport.canResetAliasScope}
+        >
+          Reset alias preset scope
+        </button>
+        <button
+          type="button"
+          className="button-danger"
+          onClick={() => onRecover("reset_all_presets")}
+          disabled={
+            diagnostics.grantPresetCount === 0 &&
+            diagnostics.aliasPresetCount === 0 &&
+            !hasGrantIssues &&
+            !hasAliasIssues &&
+            !hasDanglingDefault
+          }
+        >
+          Reset all registry presets
+        </button>
+      </div>
+
+      <ul className="note-list">
+        {diagnostics.notes.map((note) => (
+          <li key={note}>{note}</li>
+        ))}
+        {integrityReport.notes.map((note) => (
+          <li key={note}>{note}</li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 function GrantRegistryList({
   items,
   emptyState,
@@ -554,6 +774,7 @@ export function ResultShareRegistryPanel({
   savedViewDrafts,
   savedViews,
   presetTransfer,
+  presetSafety,
   registry,
   currentTargetLabel,
   activePresetLabel,
@@ -579,6 +800,8 @@ export function ResultShareRegistryPanel({
   onApplyPresetImport,
   onClearPresetImportPreview,
   onExportPresets,
+  onValidatePresetStorage,
+  onRunPresetRecoveryAction,
   onOpenGrantDrilldown,
   onOpenAliasDrilldown,
   onFilterAliasesForGrant,
@@ -871,7 +1094,9 @@ export function ResultShareRegistryPanel({
             <div>
               <h3>Preset import / export</h3>
               <p className="section-subtle-copy">
-                Local JSON only. No backend sync, no team sharing, no bearer token persistence.
+                Local JSON only. Selecting a file is validation-only until you explicitly apply a
+                merge or replace action. No backend sync, no team sharing, no bearer token
+                persistence.
               </p>
             </div>
           </div>
@@ -891,6 +1116,14 @@ export function ResultShareRegistryPanel({
             onClear={onClearPresetImportPreview}
           />
         </section>
+
+        <PresetDiagnosticsPanel
+          integrityReport={presetSafety.integrityReport}
+          diagnostics={presetSafety.diagnostics}
+          lastGoodBackup={presetSafety.lastGoodBackup}
+          onValidate={onValidatePresetStorage}
+          onRecover={onRunPresetRecoveryAction}
+        />
       </section>
 
       {error ? (

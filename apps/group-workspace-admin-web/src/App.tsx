@@ -44,19 +44,25 @@ import {
   normalizeResultShareRegistrySortInput,
 } from "./lib/resultShareRegistryFilters";
 import {
+  buildResultShareRegistryPresetIntegrityReport,
   applyResultShareRegistryPresetImport,
   applyResultShareRegistrySavedView,
   buildInitialResultShareRegistrySavedViewState,
   buildResultShareRegistryPresetExport,
   buildResultShareRegistrySavedViewDraft,
   buildResultShareRegistrySavedViewSummaries,
+  createResultShareRegistryPresetBackup,
   createResultShareRegistrySavedView,
   deleteResultShareRegistrySavedView,
-  loadResultShareRegistrySavedViewStore,
+  inspectResultShareRegistryPresetStorage,
   overwriteResultShareRegistrySavedView,
   parseResultShareRegistryPresetImport,
   persistResultShareRegistrySavedViewStore,
+  persistResultShareRegistryPresetBackup,
+  RESULT_SHARE_REGISTRY_ALIAS_PRESETS_STORAGE_KEY,
+  RESULT_SHARE_REGISTRY_DEFAULT_PRESET_ID_STORAGE_KEY,
   RESULT_SHARE_REGISTRY_PRESET_EXPORT_SCHEMA_VERSION,
+  RESULT_SHARE_REGISTRY_GRANT_PRESETS_STORAGE_KEY,
   saveResultShareRegistrySavedView,
   setResultShareRegistryDefaultPresetId,
 } from "./lib/resultShareRegistrySavedViews";
@@ -79,12 +85,16 @@ import type {
   ResultShareGrantConversionDrilldownRead,
   ResultShareGrantRead,
   ResultShareRegistryFilterInput,
+  ResultShareRegistryPresetBackupSnapshot,
+  ResultShareRegistryPresetIntegrityReport,
   ResultShareRegistryPresetImportMode,
   ResultShareRegistryPresetImportPreview,
+  ResultShareRegistryPresetRecoveryAction,
   ResultShareRegistrySavedViewApplyMode,
   ResultShareRegistrySavedView,
   ResultShareRegistrySavedViewScope,
   ResultShareRegistrySavedViewStoreState,
+  ResultShareRegistryPresetStorageDiagnostics,
   ResultShareRegistrySortInput,
   ShareGrantOneTimeDisplayModel,
   UserProfileRead,
@@ -198,6 +208,48 @@ function buildShareDrilldownContextSourceState(
   };
 }
 
+function buildFallbackPresetStorageDiagnostics(
+  store: ResultShareRegistrySavedViewStoreState,
+  backup: ResultShareRegistryPresetBackupSnapshot | null,
+  checkedAt: string,
+): {
+  report: ResultShareRegistryPresetIntegrityReport;
+  diagnostics: ResultShareRegistryPresetStorageDiagnostics;
+} {
+  const report = buildResultShareRegistryPresetIntegrityReport(store, [], {
+    checkedAt,
+    rawGrantPresetCount: store.grantPresets.length,
+    rawAliasPresetCount: store.aliasPresets.length,
+  });
+  return {
+    report,
+    diagnostics: {
+      checkedAt,
+      storageKeysPresent: {
+        grantPresets: store.grantPresets.length > 0,
+        aliasPresets: store.aliasPresets.length > 0,
+        defaultPresetId: Boolean(store.defaultPresetId),
+        lastGoodBackup: backup !== null,
+      },
+      grantPresetCount: report.grantPresetCount,
+      aliasPresetCount: report.aliasPresetCount,
+      validPresetCount: report.validPresetCount,
+      invalidPresetCount: report.invalidPresetCount,
+      defaultPresetIdPresent: Boolean(store.defaultPresetId),
+      lastBackupPresent: backup !== null,
+      latestValidationAt: report.checkedAt,
+      warningCount: report.warningCount,
+      errorCount: report.errorCount,
+      notes: [
+        "Diagnostics inspect browser-local preset storage only.",
+        backup
+          ? `Last-good backup available from ${backup.createdAt}.`
+          : "No last-good backup snapshot is stored yet.",
+      ],
+    },
+  };
+}
+
 type GroupWorkspaceAdminShellProps = {
   initialApiBaseUrl?: string;
   locationLike?: Pick<Location, "pathname" | "search" | "hash">;
@@ -219,8 +271,11 @@ export function GroupWorkspaceAdminShell({
     locationLike ?? (typeof window === "undefined" ? undefined : window.location);
   const resolvedHistory =
     historyLike ?? (typeof window === "undefined" ? undefined : window.history);
+  const initialPresetInspectionRef = useRef(
+    inspectResultShareRegistryPresetStorage(getLocalStorageSafe()),
+  );
   const initialSavedViewStoreRef = useRef<ResultShareRegistrySavedViewStoreState>(
-    loadResultShareRegistrySavedViewStore(getLocalStorageSafe()),
+    initialPresetInspectionRef.current.store,
   );
   const initialSavedViewStateRef = useRef(
     buildInitialResultShareRegistrySavedViewState(initialSavedViewStoreRef.current),
@@ -330,6 +385,20 @@ export function GroupWorkspaceAdminShell({
     useState<ResultShareRegistryPresetImportMode>("merge");
   const [resultShareRegistryPresetImportPreview, setResultShareRegistryPresetImportPreview] =
     useState<ResultShareRegistryPresetImportPreview | null>(null);
+  const [resultShareRegistryPresetIntegrityReport, setResultShareRegistryPresetIntegrityReport] =
+    useState<ResultShareRegistryPresetIntegrityReport>(
+      initialPresetInspectionRef.current.report,
+    );
+  const [
+    resultShareRegistryPresetStorageDiagnostics,
+    setResultShareRegistryPresetStorageDiagnostics,
+  ] = useState<ResultShareRegistryPresetStorageDiagnostics>(
+    initialPresetInspectionRef.current.diagnostics,
+  );
+  const [resultShareRegistryPresetLastGoodBackup, setResultShareRegistryPresetLastGoodBackup] =
+    useState<ResultShareRegistryPresetBackupSnapshot | null>(
+      initialPresetInspectionRef.current.lastGoodBackup,
+    );
   const [shareGrantLookupId, setShareGrantLookupId] = useState("");
   const [shareAliasLookupId, setShareAliasLookupId] = useState("");
   const [createInput, setCreateInput] = useState<WorkspaceCreateInput>({
@@ -892,13 +961,6 @@ export function GroupWorkspaceAdminShell({
     return null;
   }, [shareDrilldownAliasViewModel, shareDrilldownGrantViewModel, shareDrilldownTarget]);
 
-  useEffect(() => {
-    persistResultShareRegistrySavedViewStore(
-      getLocalStorageSafe(),
-      resultShareRegistrySavedViews,
-    );
-  }, [resultShareRegistrySavedViews]);
-
   const findSavedView = useCallback(
     (scope: ResultShareRegistrySavedViewScope, presetId: string): ResultShareRegistrySavedView | null => {
       const presets =
@@ -953,6 +1015,152 @@ export function GroupWorkspaceAdminShell({
     },
     [],
   );
+
+  const applyPresetStorageInspection = useCallback(
+    (
+      store: ResultShareRegistrySavedViewStoreState,
+      report: ResultShareRegistryPresetIntegrityReport,
+      diagnostics: ResultShareRegistryPresetStorageDiagnostics,
+      lastGoodBackup: ResultShareRegistryPresetBackupSnapshot | null,
+    ) => {
+      setResultShareRegistrySavedViews(store);
+      setResultShareRegistryPresetIntegrityReport(report);
+      setResultShareRegistryPresetStorageDiagnostics(diagnostics);
+      setResultShareRegistryPresetLastGoodBackup(lastGoodBackup);
+      syncPresetReferencesWithStore(store);
+    },
+    [syncPresetReferencesWithStore],
+  );
+
+  const commitResultShareRegistrySavedViewStore = useCallback(
+    (
+      nextStore: ResultShareRegistrySavedViewStoreState,
+      options?: {
+        backup?: ResultShareRegistryPresetBackupSnapshot | null;
+      },
+    ) => {
+      const storage = getLocalStorageSafe();
+      if (storage) {
+        persistResultShareRegistrySavedViewStore(storage, nextStore);
+        if (Object.prototype.hasOwnProperty.call(options ?? {}, "backup")) {
+          persistResultShareRegistryPresetBackup(storage, options?.backup ?? null);
+        }
+        const inspection = inspectResultShareRegistryPresetStorage(storage);
+        applyPresetStorageInspection(
+          inspection.store,
+          inspection.report,
+          inspection.diagnostics,
+          inspection.lastGoodBackup,
+        );
+        return inspection;
+      }
+
+      const checkedAt = new Date().toISOString();
+      const backup =
+        Object.prototype.hasOwnProperty.call(options ?? {}, "backup")
+          ? options?.backup ?? null
+          : resultShareRegistryPresetLastGoodBackup;
+      const fallback = buildFallbackPresetStorageDiagnostics(nextStore, backup, checkedAt);
+      applyPresetStorageInspection(nextStore, fallback.report, fallback.diagnostics, backup);
+      return {
+        store: nextStore,
+        report: fallback.report,
+        diagnostics: fallback.diagnostics,
+        lastGoodBackup: backup,
+      };
+    },
+    [
+      applyPresetStorageInspection,
+      resultShareRegistryPresetLastGoodBackup,
+    ],
+  );
+
+  const refreshResultShareRegistryPresetDiagnostics = useCallback(() => {
+    const storage = getLocalStorageSafe();
+    if (storage) {
+      const inspection = inspectResultShareRegistryPresetStorage(storage);
+      applyPresetStorageInspection(
+        inspection.store,
+        inspection.report,
+        inspection.diagnostics,
+        inspection.lastGoodBackup,
+      );
+      return inspection;
+    }
+    const checkedAt = new Date().toISOString();
+    const fallback = buildFallbackPresetStorageDiagnostics(
+      resultShareRegistrySavedViews,
+      resultShareRegistryPresetLastGoodBackup,
+      checkedAt,
+    );
+    applyPresetStorageInspection(
+      resultShareRegistrySavedViews,
+      fallback.report,
+      fallback.diagnostics,
+      resultShareRegistryPresetLastGoodBackup,
+    );
+    return {
+      store: resultShareRegistrySavedViews,
+      report: fallback.report,
+      diagnostics: fallback.diagnostics,
+      lastGoodBackup: resultShareRegistryPresetLastGoodBackup,
+    };
+  }, [
+    applyPresetStorageInspection,
+    resultShareRegistryPresetLastGoodBackup,
+    resultShareRegistrySavedViews,
+  ]);
+
+  const mutateResultShareRegistryPresetStorage = useCallback(
+    (
+      mutate: (storage: Storage) => void,
+      options?: {
+        backupReason?: string;
+        fallbackStore?: ResultShareRegistrySavedViewStoreState;
+      },
+    ) => {
+      const storage = getLocalStorageSafe();
+      const backup =
+        options?.backupReason
+          ? createResultShareRegistryPresetBackup(
+              resultShareRegistrySavedViews,
+              options.backupReason,
+            )
+          : undefined;
+      if (storage) {
+        if (backup) {
+          persistResultShareRegistryPresetBackup(storage, backup);
+        }
+        mutate(storage);
+        const inspection = inspectResultShareRegistryPresetStorage(storage);
+        applyPresetStorageInspection(
+          inspection.store,
+          inspection.report,
+          inspection.diagnostics,
+          inspection.lastGoodBackup,
+        );
+        return inspection;
+      }
+      return commitResultShareRegistrySavedViewStore(
+        options?.fallbackStore ?? resultShareRegistrySavedViews,
+        Object.prototype.hasOwnProperty.call(options ?? {}, "backupReason")
+          ? { backup: backup ?? null }
+          : undefined,
+      );
+    },
+    [
+      applyPresetStorageInspection,
+      commitResultShareRegistrySavedViewStore,
+      resultShareRegistrySavedViews,
+    ],
+  );
+
+  const confirmPresetRecoveryAction = useCallback((message: string) => {
+    if (typeof window === "undefined" || typeof window.confirm !== "function") {
+      return true;
+    }
+    return window.confirm(message);
+  }, []);
 
   const patchGlobalFilterDraft = useCallback((patch: Partial<ConversionFilterInput>) => {
     setGlobalConversionFilterDraft((current) =>
@@ -1255,8 +1463,8 @@ export function GroupWorkspaceAdminShell({
         return;
       }
       const preset = createResultShareRegistrySavedView(draft);
-      setResultShareRegistrySavedViews((current) =>
-        saveResultShareRegistrySavedView(current, preset),
+      commitResultShareRegistrySavedViewStore(
+        saveResultShareRegistrySavedView(resultShareRegistrySavedViews, preset),
       );
       if (scope === "grant_registry") {
         setGrantSavedViewName("");
@@ -1270,8 +1478,10 @@ export function GroupWorkspaceAdminShell({
       aliasSavedViewIncludesDrilldown,
       grantSavedViewIncludesDrilldown,
       grantSavedViewName,
+      commitResultShareRegistrySavedViewStore,
       resultShareRegistryFilterDraft,
       resultShareRegistrySortDraft,
+      resultShareRegistrySavedViews,
       shareDrilldownFilterDraft,
     ],
   );
@@ -1301,8 +1511,12 @@ export function GroupWorkspaceAdminShell({
       if (!draft) {
         return;
       }
-      setResultShareRegistrySavedViews((current) =>
-        overwriteResultShareRegistrySavedView(current, presetId, draft),
+      commitResultShareRegistrySavedViewStore(
+        overwriteResultShareRegistrySavedView(
+          resultShareRegistrySavedViews,
+          presetId,
+          draft,
+        ),
       );
       if (scope === "grant_registry") {
         setGrantSavedViewName("");
@@ -1314,11 +1528,13 @@ export function GroupWorkspaceAdminShell({
     [
       aliasSavedViewName,
       aliasSavedViewIncludesDrilldown,
+      commitResultShareRegistrySavedViewStore,
       findSavedView,
       grantSavedViewIncludesDrilldown,
       grantSavedViewName,
       resultShareRegistryFilterDraft,
       resultShareRegistrySortDraft,
+      resultShareRegistrySavedViews,
       shareDrilldownFilterDraft,
     ],
   );
@@ -1377,33 +1593,29 @@ export function GroupWorkspaceAdminShell({
   const handleDeleteRegistrySavedView = useCallback(
     (scope: ResultShareRegistrySavedViewScope, presetId: string) => {
       const preset = findSavedView(scope, presetId);
-      setResultShareRegistrySavedViews((current) =>
-        deleteResultShareRegistrySavedView(current, scope, presetId),
-      );
-      setActiveRegistryPreset((current) =>
-        current?.presetId === presetId ? null : current,
-      );
-      setShareDrilldownContextSource((current) =>
-        current.presetId === presetId
-          ? {
-              kind: "manual",
-              presetId: null,
-              presetName: null,
-            }
-          : current,
+      commitResultShareRegistrySavedViewStore(
+        deleteResultShareRegistrySavedView(
+          resultShareRegistrySavedViews,
+          scope,
+          presetId,
+        ),
       );
       if (preset) {
         setNoticeMessage(`Deleted local preset ${preset.name}.`);
       }
     },
-    [findSavedView],
+    [
+      commitResultShareRegistrySavedViewStore,
+      findSavedView,
+      resultShareRegistrySavedViews,
+    ],
   );
 
   const handleSetDefaultRegistrySavedView = useCallback(
     (scope: ResultShareRegistrySavedViewScope, presetId: string) => {
       const preset = findSavedView(scope, presetId);
-      setResultShareRegistrySavedViews((current) =>
-        setResultShareRegistryDefaultPresetId(current, presetId),
+      commitResultShareRegistrySavedViewStore(
+        setResultShareRegistryDefaultPresetId(resultShareRegistrySavedViews, presetId),
       );
       setActiveRegistryPreset((current) =>
         current?.presetId === presetId && preset
@@ -1423,12 +1635,12 @@ export function GroupWorkspaceAdminShell({
         setNoticeMessage(`Marked ${preset.name} as the default local registry view.`);
       }
     },
-    [findSavedView],
+    [commitResultShareRegistrySavedViewStore, findSavedView, resultShareRegistrySavedViews],
   );
 
   const handleClearDefaultRegistrySavedView = useCallback(() => {
-    setResultShareRegistrySavedViews((current) =>
-      setResultShareRegistryDefaultPresetId(current, null),
+    commitResultShareRegistrySavedViewStore(
+      setResultShareRegistryDefaultPresetId(resultShareRegistrySavedViews, null),
     );
     setActiveRegistryPreset((current) =>
       current?.source === "default_preset"
@@ -1447,7 +1659,7 @@ export function GroupWorkspaceAdminShell({
         : current,
     );
     setNoticeMessage("Cleared the default local registry view.");
-  }, []);
+  }, [commitResultShareRegistrySavedViewStore, resultShareRegistrySavedViews]);
 
   const handleRestoreDefaultRegistrySavedView = useCallback(() => {
     const defaultPreset = defaultRegistrySavedViewState.defaultPreset;
@@ -1527,7 +1739,7 @@ export function GroupWorkspaceAdminShell({
         setResultShareRegistryPresetImportPreview(preview);
         setNoticeMessage(
           preview.canApply
-            ? `Validated ${preview.validPresetCount} preset(s) for local import preview.`
+            ? `Validated ${preview.validPresetCount} preset(s) for local import dry-run preview.`
             : "Import preview found validation errors. Existing local presets were not changed.",
         );
       } catch (error) {
@@ -1561,13 +1773,18 @@ export function GroupWorkspaceAdminShell({
     if (!resultShareRegistryPresetImportPreview?.canApply) {
       return;
     }
+    const backup = createResultShareRegistryPresetBackup(
+      resultShareRegistrySavedViews,
+      `import_${resultShareRegistryPresetImportMode}`,
+    );
     const importResult = applyResultShareRegistryPresetImport(
       resultShareRegistrySavedViews,
       resultShareRegistryPresetImportPreview,
       resultShareRegistryPresetImportMode,
     );
-    setResultShareRegistrySavedViews(importResult.store);
-    syncPresetReferencesWithStore(importResult.store);
+    commitResultShareRegistrySavedViewStore(importResult.store, {
+      backup,
+    });
     setResultShareRegistryPresetImportPreview(null);
     setResultShareRegistryPresetImportMode("merge");
     setNoticeMessage(
@@ -1584,13 +1801,203 @@ export function GroupWorkspaceAdminShell({
     resultShareRegistryPresetImportMode,
     resultShareRegistryPresetImportPreview,
     resultShareRegistrySavedViews,
-    syncPresetReferencesWithStore,
+    commitResultShareRegistrySavedViewStore,
   ]);
 
   const handleClearResultShareRegistryPresetImportPreview = useCallback(() => {
     setResultShareRegistryPresetImportPreview(null);
     setResultShareRegistryPresetImportMode("merge");
   }, []);
+
+  const handleValidateResultShareRegistryPresetStorage = useCallback(() => {
+    const inspection = refreshResultShareRegistryPresetDiagnostics();
+    setNoticeMessage(
+      inspection.report.errorCount > 0 || inspection.report.warningCount > 0
+        ? `Preset integrity check found ${inspection.report.errorCount} error(s) and ${inspection.report.warningCount} warning(s).`
+        : "Preset integrity check passed for current local storage.",
+    );
+  }, [refreshResultShareRegistryPresetDiagnostics]);
+
+  const handleRunResultShareRegistryPresetRecoveryAction = useCallback(
+    (action: ResultShareRegistryPresetRecoveryAction) => {
+      const messages: Record<ResultShareRegistryPresetRecoveryAction, string> = {
+        discard_invalid_grant_presets:
+          "Discard invalid grant presets from local storage? This only affects browser-local preset data.",
+        discard_invalid_alias_presets:
+          "Discard invalid alias presets from local storage? This only affects browser-local preset data.",
+        clear_dangling_default_preset:
+          "Clear the dangling default preset marker from local storage?",
+        reset_grant_scope:
+          "Reset all grant registry presets in local storage?",
+        reset_alias_scope:
+          "Reset all alias registry presets in local storage?",
+        reset_all_presets:
+          "Reset all share registry presets in local storage?",
+        restore_last_good_backup:
+          "Restore the last-good local backup snapshot for share registry presets?",
+      };
+      if (!confirmPresetRecoveryAction(messages[action])) {
+        return;
+      }
+
+      if (action === "restore_last_good_backup") {
+        const restored = mutateResultShareRegistryPresetStorage(
+          (safeStorage) => {
+            if (!resultShareRegistryPresetLastGoodBackup) {
+              return;
+            }
+            persistResultShareRegistrySavedViewStore(safeStorage, {
+              grantPresets: resultShareRegistryPresetLastGoodBackup.grantRegistry,
+              aliasPresets: resultShareRegistryPresetLastGoodBackup.aliasRegistry,
+              defaultPresetId: resultShareRegistryPresetLastGoodBackup.defaultPresetId,
+            });
+          },
+          {
+            fallbackStore: resultShareRegistryPresetLastGoodBackup
+              ? {
+                  grantPresets: resultShareRegistryPresetLastGoodBackup.grantRegistry,
+                  aliasPresets: resultShareRegistryPresetLastGoodBackup.aliasRegistry,
+                  defaultPresetId: resultShareRegistryPresetLastGoodBackup.defaultPresetId,
+                }
+              : resultShareRegistrySavedViews,
+          },
+        );
+        setNoticeMessage(
+          restored.lastGoodBackup
+            ? "Restored the last-good local preset backup."
+            : "No restorable local backup snapshot was available.",
+        );
+        return;
+      }
+
+      if (action === "discard_invalid_grant_presets") {
+        mutateResultShareRegistryPresetStorage(
+          (safeStorage) => {
+            safeStorage.setItem(
+              RESULT_SHARE_REGISTRY_GRANT_PRESETS_STORAGE_KEY,
+              JSON.stringify(resultShareRegistrySavedViews.grantPresets),
+            );
+          },
+          {
+            backupReason: action,
+          },
+        );
+        setNoticeMessage("Discarded invalid local grant presets and refreshed diagnostics.");
+        return;
+      }
+
+      if (action === "discard_invalid_alias_presets") {
+        mutateResultShareRegistryPresetStorage(
+          (safeStorage) => {
+            safeStorage.setItem(
+              RESULT_SHARE_REGISTRY_ALIAS_PRESETS_STORAGE_KEY,
+              JSON.stringify(resultShareRegistrySavedViews.aliasPresets),
+            );
+          },
+          {
+            backupReason: action,
+          },
+        );
+        setNoticeMessage("Discarded invalid local alias presets and refreshed diagnostics.");
+        return;
+      }
+
+      if (action === "clear_dangling_default_preset") {
+        mutateResultShareRegistryPresetStorage((safeStorage) => {
+          safeStorage.removeItem(RESULT_SHARE_REGISTRY_DEFAULT_PRESET_ID_STORAGE_KEY);
+        });
+        setNoticeMessage("Cleared the dangling default preset marker.");
+        return;
+      }
+
+      if (action === "reset_grant_scope") {
+        mutateResultShareRegistryPresetStorage(
+          (safeStorage) => {
+            safeStorage.setItem(RESULT_SHARE_REGISTRY_GRANT_PRESETS_STORAGE_KEY, JSON.stringify([]));
+            if (
+              resultShareRegistrySavedViews.defaultPresetId &&
+              resultShareRegistrySavedViews.grantPresets.some(
+                (preset) => preset.id === resultShareRegistrySavedViews.defaultPresetId,
+              )
+            ) {
+              safeStorage.removeItem(RESULT_SHARE_REGISTRY_DEFAULT_PRESET_ID_STORAGE_KEY);
+            }
+          },
+          {
+            backupReason: action,
+            fallbackStore: {
+              ...resultShareRegistrySavedViews,
+              grantPresets: [],
+              defaultPresetId:
+                resultShareRegistrySavedViews.defaultPresetId &&
+                resultShareRegistrySavedViews.grantPresets.some(
+                  (preset) => preset.id === resultShareRegistrySavedViews.defaultPresetId,
+                )
+                  ? null
+                  : resultShareRegistrySavedViews.defaultPresetId,
+            },
+          },
+        );
+        setNoticeMessage("Reset local grant preset storage and refreshed diagnostics.");
+        return;
+      }
+
+      if (action === "reset_alias_scope") {
+        mutateResultShareRegistryPresetStorage(
+          (safeStorage) => {
+            safeStorage.setItem(RESULT_SHARE_REGISTRY_ALIAS_PRESETS_STORAGE_KEY, JSON.stringify([]));
+            if (
+              resultShareRegistrySavedViews.defaultPresetId &&
+              resultShareRegistrySavedViews.aliasPresets.some(
+                (preset) => preset.id === resultShareRegistrySavedViews.defaultPresetId,
+              )
+            ) {
+              safeStorage.removeItem(RESULT_SHARE_REGISTRY_DEFAULT_PRESET_ID_STORAGE_KEY);
+            }
+          },
+          {
+            backupReason: action,
+            fallbackStore: {
+              ...resultShareRegistrySavedViews,
+              aliasPresets: [],
+              defaultPresetId:
+                resultShareRegistrySavedViews.defaultPresetId &&
+                resultShareRegistrySavedViews.aliasPresets.some(
+                  (preset) => preset.id === resultShareRegistrySavedViews.defaultPresetId,
+                )
+                  ? null
+                  : resultShareRegistrySavedViews.defaultPresetId,
+            },
+          },
+        );
+        setNoticeMessage("Reset local alias preset storage and refreshed diagnostics.");
+        return;
+      }
+
+      mutateResultShareRegistryPresetStorage(
+        (safeStorage) => {
+          safeStorage.removeItem(RESULT_SHARE_REGISTRY_GRANT_PRESETS_STORAGE_KEY);
+          safeStorage.removeItem(RESULT_SHARE_REGISTRY_ALIAS_PRESETS_STORAGE_KEY);
+          safeStorage.removeItem(RESULT_SHARE_REGISTRY_DEFAULT_PRESET_ID_STORAGE_KEY);
+        },
+        {
+          backupReason: action,
+          fallbackStore: {
+            grantPresets: [],
+            aliasPresets: [],
+            defaultPresetId: null,
+          },
+        },
+      );
+      setNoticeMessage("Reset all local share registry presets and refreshed diagnostics.");
+    },
+    [
+      confirmPresetRecoveryAction,
+      mutateResultShareRegistryPresetStorage,
+      resultShareRegistryPresetLastGoodBackup,
+      resultShareRegistrySavedViews,
+    ],
+  );
 
   const handleClearShareDrilldown = useCallback(() => {
     setShareDrilldownTarget(null);
@@ -1838,6 +2245,11 @@ export function GroupWorkspaceAdminShell({
           importMode: resultShareRegistryPresetImportMode,
           preview: resultShareRegistryPresetImportPreview,
         }}
+        presetSafety={{
+          integrityReport: resultShareRegistryPresetIntegrityReport,
+          diagnostics: resultShareRegistryPresetStorageDiagnostics,
+          lastGoodBackup: resultShareRegistryPresetLastGoodBackup,
+        }}
         savedViewDrafts={{
           grantName: grantSavedViewName,
           aliasName: aliasSavedViewName,
@@ -1888,6 +2300,8 @@ export function GroupWorkspaceAdminShell({
         onApplyPresetImport={handleApplyResultShareRegistryPresetImport}
         onClearPresetImportPreview={handleClearResultShareRegistryPresetImportPreview}
         onExportPresets={handleExportResultShareRegistryPresets}
+        onValidatePresetStorage={handleValidateResultShareRegistryPresetStorage}
+        onRunPresetRecoveryAction={handleRunResultShareRegistryPresetRecoveryAction}
         onOpenGrantDrilldown={handleOpenShareGrantDrilldown}
         onOpenAliasDrilldown={handleOpenShareAliasDrilldown}
         onFilterAliasesForGrant={handleFilterAliasesForGrant}

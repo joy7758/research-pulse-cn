@@ -50,6 +50,7 @@
 - No source-file, attachment, or note sharing
 
 ## Future Work
+- Local preset diagnostics, last-good backup snapshots, and validation-only recovery UX was added later without changing the same safe drilldown-context model.
 - Backend/team presets only if later justified
 - Shared operator workspaces only if later justified
 - Preset signing or provenance checks only if later justified

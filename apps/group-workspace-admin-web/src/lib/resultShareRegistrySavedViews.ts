@@ -15,10 +15,15 @@ import {
 import type {
   ConversionFilterInput,
   ResultShareRegistryFilterInput,
+  ResultShareRegistryPresetBackupSnapshot,
   ResultShareRegistryPresetExportPayload,
+  ResultShareRegistryPresetIntegrityIssue,
+  ResultShareRegistryPresetIntegrityIssueCode,
+  ResultShareRegistryPresetIntegrityReport,
   ResultShareRegistryPresetImportApplyResult,
   ResultShareRegistryPresetImportMode,
   ResultShareRegistryPresetImportPreview,
+  ResultShareRegistryPresetRecoveryAction,
   ResultShareRegistrySavedViewApplyMode,
   ResultShareRegistrySavedView,
   ResultShareRegistrySavedViewDrilldownContext,
@@ -26,6 +31,7 @@ import type {
   ResultShareRegistrySavedViewScope,
   ResultShareRegistrySavedViewStoreState,
   ResultShareRegistrySavedViewSummary,
+  ResultShareRegistryPresetStorageDiagnostics,
   ResultShareRegistrySortInput,
 } from "./types";
 
@@ -33,8 +39,12 @@ export const RESULT_SHARE_REGISTRY_GRANT_PRESETS_STORAGE_KEY = "resultShareRegis
 export const RESULT_SHARE_REGISTRY_ALIAS_PRESETS_STORAGE_KEY = "resultShareRegistryAliasPresets";
 export const RESULT_SHARE_REGISTRY_DEFAULT_PRESET_ID_STORAGE_KEY =
   "resultShareRegistryDefaultPresetId";
+export const RESULT_SHARE_REGISTRY_LAST_GOOD_BACKUP_STORAGE_KEY =
+  "resultShareRegistryPresetLastGoodBackup";
 export const RESULT_SHARE_REGISTRY_PRESET_EXPORT_SCHEMA_VERSION =
   "result-share-registry-presets.v1";
+export const RESULT_SHARE_REGISTRY_PRESET_BACKUP_SCHEMA_VERSION =
+  "result-share-registry-presets-backup.v1";
 
 const presetTopLevelAllowedKeys = new Set([
   "schemaVersion",
@@ -73,6 +83,32 @@ const presetDrilldownAllowedKeys = new Set([
 ]);
 const unsafeFieldPattern =
   /(^|_)(token|secret|password|hash|rawalias|rawsharetoken|localpath|absolutepath|sourcefile)(_|$)|rawAlias|rawShareToken|localPath|absolutePath|sourceFile|alias_hash|token_hash/i;
+
+type StorageInspectionScopeResult = {
+  keyPresent: boolean;
+  rawCount: number;
+  validPresets: ResultShareRegistrySavedView[];
+};
+
+export type ResultShareRegistryPresetStorageInspection = {
+  store: ResultShareRegistrySavedViewStoreState;
+  report: ResultShareRegistryPresetIntegrityReport;
+  diagnostics: ResultShareRegistryPresetStorageDiagnostics;
+  lastGoodBackup: ResultShareRegistryPresetBackupSnapshot | null;
+};
+
+function buildIssue(
+  issue: ResultShareRegistryPresetIntegrityIssue,
+): ResultShareRegistryPresetIntegrityIssue {
+  return issue;
+}
+
+function pushIssue(
+  issues: ResultShareRegistryPresetIntegrityIssue[],
+  issue: ResultShareRegistryPresetIntegrityIssue,
+): void {
+  issues.push(buildIssue(issue));
+}
 
 function createSavedViewId(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -566,26 +602,6 @@ export function applyResultShareRegistryPresetImport(
   };
 }
 
-function parseSavedViewList(
-  raw: string | null,
-  scope: ResultShareRegistrySavedViewScope,
-): ResultShareRegistrySavedView[] {
-  if (!raw) {
-    return [];
-  }
-  try {
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-    return parsed
-      .map((item) => normalizeSavedView(item, scope))
-      .filter((item): item is ResultShareRegistrySavedView => item !== null);
-  } catch {
-    return [];
-  }
-}
-
 function findSavedViewById(
   store: ResultShareRegistrySavedViewStoreState,
   presetId: string | null,
@@ -609,6 +625,17 @@ function replaceSavedView(
 
 function looksUnsafeFieldName(key: string): boolean {
   return unsafeFieldPattern.test(key);
+}
+
+export function hasUnsafePresetFieldName(key: string): boolean {
+  return looksUnsafeFieldName(key);
+}
+
+export function redactUnsafeImportIssueDetails(detail: string | null | undefined): string | null {
+  if (!detail) {
+    return null;
+  }
+  return looksUnsafeFieldName(detail) ? "[redacted]" : detail;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -674,35 +701,681 @@ function generateImportedPresetName(
   return candidate;
 }
 
-export function loadResultShareRegistrySavedViewStore(
+function readStorageItemSafely(
   storage: Storage | null | undefined,
-): ResultShareRegistrySavedViewStoreState {
+  key: string,
+  issues: ResultShareRegistryPresetIntegrityIssue[],
+): string | null {
   if (!storage) {
+    return null;
+  }
+  try {
+    return storage.getItem(key);
+  } catch {
+    pushIssue(issues, {
+      severity: "error",
+      scope: "storage",
+      presetId: null,
+      presetName: null,
+      code: "storage_key_unreadable",
+      message: `Local preset storage key "${key}" could not be read.`,
+      safeDetails: key,
+    });
+    return null;
+  }
+}
+
+function inspectUnexpectedStoredKeys(
+  value: Record<string, unknown>,
+  allowedKeys: Set<string>,
+  issueCode: ResultShareRegistryPresetIntegrityIssueCode,
+  issues: ResultShareRegistryPresetIntegrityIssue[],
+  options: {
+    scope: ResultShareRegistrySavedViewScope | "storage";
+    presetId?: string | null;
+    presetName?: string | null;
+    path: string;
+    severity?: "warning" | "error";
+  },
+): boolean {
+  let hasUnsafeKey = false;
+  for (const key of Object.keys(value)) {
+    if (allowedKeys.has(key)) {
+      continue;
+    }
+    if (looksUnsafeFieldName(key)) {
+      pushIssue(issues, {
+        severity: "error",
+        scope: options.scope,
+        presetId: options.presetId ?? null,
+        presetName: options.presetName ?? null,
+        code: "unsafe_field_detected",
+        message: `${options.path} contains an unsafe field name and was quarantined.`,
+        safeDetails: redactUnsafeImportIssueDetails(key),
+      });
+      hasUnsafeKey = true;
+      continue;
+    }
+    pushIssue(issues, {
+      severity: options.severity ?? "warning",
+      scope: options.scope,
+      presetId: options.presetId ?? null,
+      presetName: options.presetName ?? null,
+      code: issueCode,
+      message: `${options.path} contains an unsupported field and it will be ignored.`,
+      safeDetails: key,
+    });
+  }
+  return hasUnsafeKey;
+}
+
+function validateStoredSavedView(
+  value: unknown,
+  scope: ResultShareRegistrySavedViewScope,
+  issues: ResultShareRegistryPresetIntegrityIssue[],
+  path: string,
+): ResultShareRegistrySavedView | null {
+  if (!isRecord(value)) {
+    pushIssue(issues, {
+      severity: "error",
+      scope,
+      presetId: null,
+      presetName: null,
+      code: "missing_required_field",
+      message: `${path} is not a valid preset object.`,
+      safeDetails: null,
+    });
+    return null;
+  }
+
+  const presetId = typeof value.id === "string" ? value.id.trim() : null;
+  const presetName = typeof value.name === "string" ? value.name.trim() : null;
+
+  if (
+    inspectUnexpectedStoredKeys(value, presetAllowedKeys, "missing_required_field", issues, {
+      scope,
+      presetId,
+      presetName,
+      path,
+    })
+  ) {
+    return null;
+  }
+
+  const missingFields = ["id", "name", "createdAt", "updatedAt"].filter((field) => {
+    const candidate = value[field];
+    return typeof candidate !== "string" || candidate.trim().length === 0;
+  });
+  if (missingFields.length > 0) {
+    pushIssue(issues, {
+      severity: "error",
+      scope,
+      presetId,
+      presetName,
+      code: "missing_required_field",
+      message: `${path} is missing required preset fields.`,
+      safeDetails: missingFields.join(", "),
+    });
+    return null;
+  }
+
+  if (value.scope !== scope) {
+    pushIssue(issues, {
+      severity: "error",
+      scope,
+      presetId,
+      presetName,
+      code: "invalid_scope",
+      message: `${path} has an invalid preset scope.`,
+      safeDetails: typeof value.scope === "string" ? value.scope : null,
+    });
+    return null;
+  }
+
+  if (!isRecord(value.filters)) {
+    pushIssue(issues, {
+      severity: "error",
+      scope,
+      presetId,
+      presetName,
+      code: "invalid_filter_shape",
+      message: `${path}.filters must be an object.`,
+      safeDetails: null,
+    });
+    return null;
+  }
+  if (
+    inspectUnexpectedStoredKeys(value.filters, presetFilterAllowedKeys, "invalid_filter_shape", issues, {
+      scope,
+      presetId,
+      presetName,
+      path: `${path}.filters`,
+    })
+  ) {
+    return null;
+  }
+
+  if (!isRecord(value.sort)) {
+    pushIssue(issues, {
+      severity: "error",
+      scope,
+      presetId,
+      presetName,
+      code: "invalid_sort_shape",
+      message: `${path}.sort must be an object.`,
+      safeDetails: null,
+    });
+    return null;
+  }
+  if (
+    inspectUnexpectedStoredKeys(value.sort, presetSortAllowedKeys, "invalid_sort_shape", issues, {
+      scope,
+      presetId,
+      presetName,
+      path: `${path}.sort`,
+    })
+  ) {
+    return null;
+  }
+
+  if (value.drilldownContext !== undefined && value.drilldownContext !== null) {
+    if (!isRecord(value.drilldownContext)) {
+      pushIssue(issues, {
+        severity: "error",
+        scope,
+        presetId,
+        presetName,
+        code: "invalid_drilldown_context",
+        message: `${path}.drilldownContext must be an object or null.`,
+        safeDetails: null,
+      });
+      return null;
+    }
+    if (
+      inspectUnexpectedStoredKeys(
+        value.drilldownContext,
+        presetDrilldownAllowedKeys,
+        "invalid_drilldown_context",
+        issues,
+        {
+          scope,
+          presetId,
+          presetName,
+          path: `${path}.drilldownContext`,
+        },
+      )
+    ) {
+      return null;
+    }
+  }
+
+  const normalized = normalizeSavedView(value, scope);
+  if (!normalized) {
+    pushIssue(issues, {
+      severity: "error",
+      scope,
+      presetId,
+      presetName,
+      code: "missing_required_field",
+      message: `${path} does not match the expected preset shape.`,
+      safeDetails: null,
+    });
+    return null;
+  }
+  return normalized;
+}
+
+function inspectStoredSavedViewList(
+  raw: string | null,
+  scope: ResultShareRegistrySavedViewScope,
+  issues: ResultShareRegistryPresetIntegrityIssue[],
+  storageKey: string,
+): StorageInspectionScopeResult {
+  if (!raw) {
     return {
+      keyPresent: false,
+      rawCount: 0,
+      validPresets: [],
+    };
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    pushIssue(issues, {
+      severity: "error",
+      scope: "storage",
+      presetId: null,
+      presetName: null,
+      code: "invalid_json",
+      message: `Local preset storage key "${storageKey}" is not valid JSON.`,
+      safeDetails: storageKey,
+    });
+    return {
+      keyPresent: true,
+      rawCount: 0,
+      validPresets: [],
+    };
+  }
+  if (!Array.isArray(parsed)) {
+    pushIssue(issues, {
+      severity: "error",
+      scope: "storage",
+      presetId: null,
+      presetName: null,
+      code: "storage_key_not_array",
+      message: `Local preset storage key "${storageKey}" must contain an array.`,
+      safeDetails: storageKey,
+    });
+    return {
+      keyPresent: true,
+      rawCount: 0,
+      validPresets: [],
+    };
+  }
+  return {
+    keyPresent: true,
+    rawCount: parsed.length,
+    validPresets: parsed
+      .map((item, index) =>
+        validateStoredSavedView(item, scope, issues, `${storageKey}[${index}]`),
+      )
+      .filter((item): item is ResultShareRegistrySavedView => item !== null),
+  };
+}
+
+function normalizeBackupSnapshot(
+  value: unknown,
+): ResultShareRegistryPresetBackupSnapshot | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  if (value.schemaVersion !== RESULT_SHARE_REGISTRY_PRESET_BACKUP_SCHEMA_VERSION) {
+    return null;
+  }
+  if (typeof value.createdAt !== "string" || typeof value.reason !== "string") {
+    return null;
+  }
+  if (!Array.isArray(value.grantRegistry) || !Array.isArray(value.aliasRegistry)) {
+    return null;
+  }
+  const grantRegistry = value.grantRegistry
+    .map((preset) => normalizeSavedView(preset, "grant_registry"))
+    .filter((preset): preset is ResultShareRegistrySavedView => preset !== null);
+  const aliasRegistry = value.aliasRegistry
+    .map((preset) => normalizeSavedView(preset, "alias_registry"))
+    .filter((preset): preset is ResultShareRegistrySavedView => preset !== null);
+  if (
+    grantRegistry.length !== value.grantRegistry.length ||
+    aliasRegistry.length !== value.aliasRegistry.length
+  ) {
+    return null;
+  }
+  return {
+    schemaVersion: RESULT_SHARE_REGISTRY_PRESET_BACKUP_SCHEMA_VERSION,
+    createdAt: value.createdAt,
+    reason: value.reason,
+    grantRegistry,
+    aliasRegistry,
+    defaultPresetId: typeof value.defaultPresetId === "string" ? value.defaultPresetId : null,
+  };
+}
+
+function deduplicatePresets(
+  store: ResultShareRegistrySavedViewStoreState,
+  issues: ResultShareRegistryPresetIntegrityIssue[],
+): ResultShareRegistrySavedViewStoreState {
+  const seenIds = new Set<string>();
+  const dedupe = (
+    presets: ResultShareRegistrySavedView[],
+    scope: ResultShareRegistrySavedViewScope,
+  ) =>
+    presets.filter((preset) => {
+      if (seenIds.has(preset.id)) {
+        pushIssue(issues, {
+          severity: "error",
+          scope,
+          presetId: preset.id,
+          presetName: preset.name,
+          code: "duplicate_preset_id",
+          message: `Preset ID "${preset.id}" is duplicated and later copies were quarantined.`,
+          safeDetails: preset.id,
+        });
+        return false;
+      }
+      seenIds.add(preset.id);
+      return true;
+    });
+
+  return {
+    grantPresets: dedupe(store.grantPresets, "grant_registry"),
+    aliasPresets: dedupe(store.aliasPresets, "alias_registry"),
+    defaultPresetId: store.defaultPresetId,
+  };
+}
+
+export function buildResultShareRegistryPresetIntegrityReport(
+  store: ResultShareRegistrySavedViewStoreState,
+  issues: ResultShareRegistryPresetIntegrityIssue[],
+  options?: {
+    checkedAt?: string;
+    rawGrantPresetCount?: number;
+    rawAliasPresetCount?: number;
+  },
+): ResultShareRegistryPresetIntegrityReport {
+  const checkedAt = options?.checkedAt ?? new Date().toISOString();
+  const warningCount = issues.filter((issue) => issue.severity === "warning").length;
+  const errorCount = issues.filter((issue) => issue.severity === "error").length;
+  const validPresetCount = store.grantPresets.length + store.aliasPresets.length;
+  const invalidPresetCount = issues.filter(
+    (issue) =>
+      issue.severity === "error" &&
+      issue.scope !== "storage" &&
+      issue.code !== "dangling_default_preset",
+  ).length;
+
+  return {
+    checkedAt,
+    grantPresetCount: options?.rawGrantPresetCount ?? store.grantPresets.length,
+    aliasPresetCount: options?.rawAliasPresetCount ?? store.aliasPresets.length,
+    validPresetCount,
+    invalidPresetCount,
+    warningCount,
+    errorCount,
+    issues,
+    canAutoRepair: issues.some((issue) =>
+      [
+        "invalid_json",
+        "storage_key_not_array",
+        "duplicate_preset_id",
+        "dangling_default_preset",
+        "unsafe_field_detected",
+        "missing_required_field",
+        "invalid_filter_shape",
+        "invalid_sort_shape",
+        "invalid_drilldown_context",
+        "invalid_scope",
+      ].includes(issue.code),
+    ),
+    canResetGrantScope: (options?.rawGrantPresetCount ?? store.grantPresets.length) > 0,
+    canResetAliasScope: (options?.rawAliasPresetCount ?? store.aliasPresets.length) > 0,
+    notes: [
+      "Diagnostics are local-only and inspect browser preset storage only.",
+      invalidPresetCount > 0
+        ? "Invalid presets stay quarantined from active shell state until you discard them or reset a scope."
+        : "All currently loaded presets passed local integrity checks.",
+    ],
+  };
+}
+
+export function createResultShareRegistryPresetBackup(
+  store: ResultShareRegistrySavedViewStoreState,
+  reason: string,
+  options?: {
+    now?: string;
+  },
+): ResultShareRegistryPresetBackupSnapshot {
+  return {
+    schemaVersion: RESULT_SHARE_REGISTRY_PRESET_BACKUP_SCHEMA_VERSION,
+    createdAt: options?.now ?? new Date().toISOString(),
+    reason,
+    grantRegistry: store.grantPresets,
+    aliasRegistry: store.aliasPresets,
+    defaultPresetId: store.defaultPresetId,
+  };
+}
+
+export function loadResultShareRegistryPresetBackup(
+  storage: Storage | null | undefined,
+): ResultShareRegistryPresetBackupSnapshot | null {
+  if (!storage) {
+    return null;
+  }
+  const raw = storage.getItem(RESULT_SHARE_REGISTRY_LAST_GOOD_BACKUP_STORAGE_KEY);
+  if (!raw) {
+    return null;
+  }
+  try {
+    return normalizeBackupSnapshot(JSON.parse(raw));
+  } catch {
+    return null;
+  }
+}
+
+export function persistResultShareRegistryPresetBackup(
+  storage: Storage | null | undefined,
+  backup: ResultShareRegistryPresetBackupSnapshot | null,
+): void {
+  if (!storage) {
+    return;
+  }
+  if (!backup) {
+    storage.removeItem(RESULT_SHARE_REGISTRY_LAST_GOOD_BACKUP_STORAGE_KEY);
+    return;
+  }
+  storage.setItem(RESULT_SHARE_REGISTRY_LAST_GOOD_BACKUP_STORAGE_KEY, JSON.stringify(backup));
+}
+
+export function restoreResultShareRegistryPresetBackup(
+  backup: ResultShareRegistryPresetBackupSnapshot | null,
+): ResultShareRegistrySavedViewStoreState | null {
+  if (!backup) {
+    return null;
+  }
+  const restoredStore: ResultShareRegistrySavedViewStoreState = {
+    grantPresets: backup.grantRegistry,
+    aliasPresets: backup.aliasRegistry,
+    defaultPresetId: backup.defaultPresetId,
+  };
+  return {
+    ...restoredStore,
+    defaultPresetId: findSavedViewById(restoredStore, restoredStore.defaultPresetId)
+      ? restoredStore.defaultPresetId
+      : null,
+  };
+}
+
+export function applyResultShareRegistryPresetRecoveryAction(
+  store: ResultShareRegistrySavedViewStoreState,
+  report: ResultShareRegistryPresetIntegrityReport,
+  action: ResultShareRegistryPresetRecoveryAction,
+  backup: ResultShareRegistryPresetBackupSnapshot | null,
+): {
+  store: ResultShareRegistrySavedViewStoreState;
+  restoredBackup: boolean;
+  defaultPresetCleared: boolean;
+} {
+  if (action === "restore_last_good_backup") {
+    const restored = restoreResultShareRegistryPresetBackup(backup);
+    return {
+      store: restored ?? store,
+      restoredBackup: restored !== null,
+      defaultPresetCleared: false,
+    };
+  }
+
+  let nextStore = store;
+  if (action === "reset_grant_scope") {
+    nextStore = {
+      ...store,
+      grantPresets: [],
+      defaultPresetId:
+        store.defaultPresetId && store.grantPresets.some((preset) => preset.id === store.defaultPresetId)
+          ? null
+          : store.defaultPresetId,
+    };
+  } else if (action === "reset_alias_scope") {
+    nextStore = {
+      ...store,
+      aliasPresets: [],
+      defaultPresetId:
+        store.defaultPresetId && store.aliasPresets.some((preset) => preset.id === store.defaultPresetId)
+          ? null
+          : store.defaultPresetId,
+    };
+  } else if (action === "reset_all_presets") {
+    nextStore = {
       grantPresets: [],
       aliasPresets: [],
       defaultPresetId: null,
     };
+  } else if (
+    action === "clear_dangling_default_preset" ||
+    report.issues.some((issue) => issue.code === "dangling_default_preset")
+  ) {
+    nextStore = {
+      ...store,
+      defaultPresetId: null,
+    };
   }
 
+  return {
+    store: nextStore,
+    restoredBackup: false,
+    defaultPresetCleared: nextStore.defaultPresetId !== store.defaultPresetId,
+  };
+}
+
+export function inspectResultShareRegistryPresetStorage(
+  storage: Storage | null | undefined,
+  options?: {
+    now?: string;
+  },
+): ResultShareRegistryPresetStorageInspection {
+  const checkedAt = options?.now ?? new Date().toISOString();
+  const issues: ResultShareRegistryPresetIntegrityIssue[] = [];
+  const grantRaw = readStorageItemSafely(
+    storage,
+    RESULT_SHARE_REGISTRY_GRANT_PRESETS_STORAGE_KEY,
+    issues,
+  );
+  const aliasRaw = readStorageItemSafely(
+    storage,
+    RESULT_SHARE_REGISTRY_ALIAS_PRESETS_STORAGE_KEY,
+    issues,
+  );
+  const defaultPresetId = readStorageItemSafely(
+    storage,
+    RESULT_SHARE_REGISTRY_DEFAULT_PRESET_ID_STORAGE_KEY,
+    issues,
+  );
+
+  const grantScope = inspectStoredSavedViewList(
+    grantRaw,
+    "grant_registry",
+    issues,
+    RESULT_SHARE_REGISTRY_GRANT_PRESETS_STORAGE_KEY,
+  );
+  const aliasScope = inspectStoredSavedViewList(
+    aliasRaw,
+    "alias_registry",
+    issues,
+    RESULT_SHARE_REGISTRY_ALIAS_PRESETS_STORAGE_KEY,
+  );
+
+  const deduplicatedStore = deduplicatePresets(
+    {
+      grantPresets: grantScope.validPresets,
+      aliasPresets: aliasScope.validPresets,
+      defaultPresetId,
+    },
+    issues,
+  );
+  const defaultPresetStillExists = Boolean(
+    deduplicatedStore.defaultPresetId &&
+      findSavedViewById(deduplicatedStore, deduplicatedStore.defaultPresetId),
+  );
+  if (deduplicatedStore.defaultPresetId && !defaultPresetStillExists) {
+    pushIssue(issues, {
+      severity: "warning",
+      scope: "storage",
+      presetId: deduplicatedStore.defaultPresetId,
+      presetName: null,
+      code: "dangling_default_preset",
+      message: "The local default preset marker no longer points to a valid preset.",
+      safeDetails: deduplicatedStore.defaultPresetId,
+    });
+  }
   const store: ResultShareRegistrySavedViewStoreState = {
-    grantPresets: parseSavedViewList(
-      storage.getItem(RESULT_SHARE_REGISTRY_GRANT_PRESETS_STORAGE_KEY),
-      "grant_registry",
-    ),
-    aliasPresets: parseSavedViewList(
-      storage.getItem(RESULT_SHARE_REGISTRY_ALIAS_PRESETS_STORAGE_KEY),
-      "alias_registry",
-    ),
-    defaultPresetId: storage.getItem(RESULT_SHARE_REGISTRY_DEFAULT_PRESET_ID_STORAGE_KEY),
+    ...deduplicatedStore,
+    defaultPresetId: defaultPresetStillExists ? deduplicatedStore.defaultPresetId : null,
   };
 
-  return findSavedViewById(store, store.defaultPresetId)
-    ? store
-    : {
-        ...store,
-        defaultPresetId: null,
-      };
+  let lastGoodBackup: ResultShareRegistryPresetBackupSnapshot | null = null;
+  const rawBackup = readStorageItemSafely(
+    storage,
+    RESULT_SHARE_REGISTRY_LAST_GOOD_BACKUP_STORAGE_KEY,
+    issues,
+  );
+  if (rawBackup) {
+    try {
+      lastGoodBackup = normalizeBackupSnapshot(JSON.parse(rawBackup));
+      if (!lastGoodBackup) {
+        pushIssue(issues, {
+          severity: "warning",
+          scope: "storage",
+          presetId: null,
+          presetName: null,
+          code: "invalid_schema_version",
+          message: "The last-good preset backup could not be validated and cannot be restored.",
+          safeDetails: RESULT_SHARE_REGISTRY_LAST_GOOD_BACKUP_STORAGE_KEY,
+        });
+      }
+    } catch {
+      pushIssue(issues, {
+        severity: "warning",
+        scope: "storage",
+        presetId: null,
+        presetName: null,
+        code: "invalid_json",
+        message: "The last-good preset backup is not valid JSON and cannot be restored.",
+        safeDetails: RESULT_SHARE_REGISTRY_LAST_GOOD_BACKUP_STORAGE_KEY,
+      });
+    }
+  }
+
+  const report = buildResultShareRegistryPresetIntegrityReport(store, issues, {
+    checkedAt,
+    rawGrantPresetCount: grantScope.rawCount,
+    rawAliasPresetCount: aliasScope.rawCount,
+  });
+  const diagnostics: ResultShareRegistryPresetStorageDiagnostics = {
+    checkedAt,
+    storageKeysPresent: {
+      grantPresets: grantScope.keyPresent,
+      aliasPresets: aliasScope.keyPresent,
+      defaultPresetId: defaultPresetId !== null,
+      lastGoodBackup: rawBackup !== null,
+    },
+    grantPresetCount: report.grantPresetCount,
+    aliasPresetCount: report.aliasPresetCount,
+    validPresetCount: report.validPresetCount,
+    invalidPresetCount: report.invalidPresetCount,
+    defaultPresetIdPresent: defaultPresetId !== null,
+    lastBackupPresent: lastGoodBackup !== null,
+    latestValidationAt: report.checkedAt,
+    warningCount: report.warningCount,
+    errorCount: report.errorCount,
+    notes: [
+      "Diagnostics inspect browser-local preset storage only.",
+      lastGoodBackup
+        ? `Last-good backup available from ${lastGoodBackup.createdAt}.`
+        : "No last-good backup snapshot is stored yet.",
+    ],
+  };
+
+  return {
+    store,
+    report,
+    diagnostics,
+    lastGoodBackup,
+  };
+}
+
+export function loadResultShareRegistrySavedViewStore(
+  storage: Storage | null | undefined,
+): ResultShareRegistrySavedViewStoreState {
+  return inspectResultShareRegistryPresetStorage(storage).store;
 }
 
 export function persistResultShareRegistrySavedViewStore(
