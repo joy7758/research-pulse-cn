@@ -117,6 +117,7 @@ The same shell now also includes a minimal read-only result-share registry layer
 - local-only saved views over safe registry filter/sort state, with optional safe per-share drilldown context
 - optional drilldown-linked preset application so quick-opened grant/alias rows can reuse safe per-share time-window and event filters
 - local-only preset JSON export/import with schema validation, merge-or-replace preview, and no backend/team preset sync
+- local-only preset diagnostics, last-good backup snapshots, validation-only import preview, and safe recovery/reset actions for corrupted browser storage
 - no new create/revoke/bulk actions in the registry itself
 
 ## Safety Exclusions

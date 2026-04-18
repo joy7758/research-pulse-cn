@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { vi } from "vitest";
 
 import { GroupWorkspaceAdminShell } from "./App";
 import { GroupWorkspaceAdminApiError } from "./lib/apiClient";
@@ -1347,6 +1348,127 @@ describe("group workspace admin shell", () => {
     expect(scoped.getByRole("alert")).toHaveTextContent(/validation errors/i);
     expect(scoped.getByRole("alert")).toHaveTextContent(/unsafe field/i);
     expect(scoped.getByRole("button", { name: "Apply import" })).toBeDisabled();
+  });
+
+  it("renders local preset diagnostics for corrupted storage", async () => {
+    window.localStorage.setItem("resultShareRegistryGrantPresets", "{not-json");
+    window.localStorage.setItem(
+      "resultShareRegistryAliasPresets",
+      JSON.stringify({ broken: true }),
+    );
+
+    const client = buildApiClient();
+    const user = userEvent.setup();
+
+    render(<GroupWorkspaceAdminShell apiClientFactory={() => client} />);
+
+    await user.type(screen.getByLabelText(/admin bearer token/i), "manual-token");
+    await user.click(screen.getByRole("button", { name: /open workspace shell/i }));
+
+    const registryPanel = await screen.findByRole("heading", { name: "Result share registry" });
+    const scoped = within(registryPanel.closest("section") as HTMLElement);
+
+    expect(scoped.getByRole("heading", { name: "Preset storage diagnostics" })).toBeVisible();
+    expect(
+      scoped.getByText(/resultShareRegistryGrantPresets.+not valid JSON/i),
+    ).toBeVisible();
+    expect(
+      scoped.getByText(/resultShareRegistryAliasPresets.+must contain an array/i),
+    ).toBeVisible();
+    expect(scoped.getByRole("button", { name: "Run integrity check" })).toBeVisible();
+  });
+
+  it("keeps import preview in validation-only mode until apply is clicked", async () => {
+    const client = buildApiClient();
+    const user = userEvent.setup();
+
+    render(<GroupWorkspaceAdminShell apiClientFactory={() => client} />);
+
+    await user.type(screen.getByLabelText(/admin bearer token/i), "manual-token");
+    await user.click(screen.getByRole("button", { name: /open workspace shell/i }));
+
+    const registryPanel = await screen.findByRole("heading", { name: "Result share registry" });
+    const scoped = within(registryPanel.closest("section") as HTMLElement);
+    await user.type(scoped.getByLabelText("Grant preset name"), "Existing grant preset");
+    await user.click(scoped.getByRole("button", { name: "Save current grant view" }));
+    const beforeGrant = window.localStorage.getItem("resultShareRegistryGrantPresets");
+    const beforeAlias = window.localStorage.getItem("resultShareRegistryAliasPresets");
+
+    const importFile = new File(
+      [
+        JSON.stringify({
+          schemaVersion: "result-share-registry-presets.v1",
+          exportedAt: "2026-04-18T10:00:00Z",
+          app: "research-pulse-cn",
+          source: "group-workspace-admin-web",
+          presets: {
+            aliasRegistry: [
+              {
+                id: "alias-dry-run",
+                name: "Alias dry run",
+                scope: "alias_registry",
+                filters: {
+                  shareKind: "workspace_board",
+                  grantStatus: null,
+                  aliasStatus: "active",
+                  workspaceId: null,
+                  resultShareGrantId: "grant-1",
+                },
+                sort: {
+                  field: "status",
+                  direction: "desc",
+                },
+                createdAt: "2026-04-18T08:00:00Z",
+                updatedAt: "2026-04-18T08:00:00Z",
+              },
+            ],
+          },
+        }),
+      ],
+      "dry-run-presets.json",
+      { type: "application/json" },
+    );
+
+    fireEvent.change(scoped.getByLabelText("Import preset JSON file"), {
+      target: {
+        files: [importFile],
+      },
+    });
+
+    expect(await scoped.findByRole("heading", { name: "Import preview" })).toBeVisible();
+    expect(
+      scoped.getByText(/Selecting a file is validation-only until you explicitly apply/i),
+    ).toBeVisible();
+    expect(window.localStorage.getItem("resultShareRegistryGrantPresets")).toBe(beforeGrant);
+    expect(window.localStorage.getItem("resultShareRegistryAliasPresets")).toBe(beforeAlias);
+    expect(window.localStorage.getItem("resultShareRegistryPresetLastGoodBackup")).toBeNull();
+  });
+
+  it("creates a backup before reset and restores it on demand", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const client = buildApiClient();
+    const user = userEvent.setup();
+
+    render(<GroupWorkspaceAdminShell apiClientFactory={() => client} />);
+
+    await user.type(screen.getByLabelText(/admin bearer token/i), "manual-token");
+    await user.click(screen.getByRole("button", { name: /open workspace shell/i }));
+
+    const registryPanel = await screen.findByRole("heading", { name: "Result share registry" });
+    const scoped = within(registryPanel.closest("section") as HTMLElement);
+    await user.type(scoped.getByLabelText("Grant preset name"), "Backupable preset");
+    await user.click(scoped.getByRole("button", { name: "Save current grant view" }));
+    expect(await scoped.findByText("Backupable preset")).toBeVisible();
+
+    await user.click(scoped.getByRole("button", { name: "Reset all registry presets" }));
+    expect(confirmSpy).toHaveBeenCalled();
+    expect(await scoped.findAllByText("No saved views yet.")).toHaveLength(2);
+    expect(window.localStorage.getItem("resultShareRegistryPresetLastGoodBackup")).not.toBeNull();
+
+    await user.click(scoped.getByRole("button", { name: "Restore last-good backup" }));
+    expect(await scoped.findAllByText("Backupable preset")).not.toHaveLength(0);
+
+    confirmSpy.mockRestore();
   });
 
   it("merges imported presets without deleting existing local presets", async () => {

@@ -67,6 +67,7 @@
 - No source-file, attachment, or note sharing
 
 ## Future Work
+- Local diagnostics and last-good recovery was added in the next phase without changing the export schema or adding backend preset storage.
 - Backend/team presets only if later justified
 - Preset signing or provenance metadata if later justified
 - Shared operator workspaces only if later justified

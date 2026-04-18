@@ -911,6 +911,83 @@ export type ResultShareRegistryPresetImportApplyResult = {
   defaultPresetCleared: boolean;
 };
 
+export type ResultShareRegistryPresetIntegrityIssueCode =
+  | "invalid_json"
+  | "invalid_schema_version"
+  | "invalid_scope"
+  | "unsafe_field_detected"
+  | "invalid_filter_shape"
+  | "invalid_sort_shape"
+  | "invalid_drilldown_context"
+  | "missing_required_field"
+  | "duplicate_preset_id"
+  | "dangling_default_preset"
+  | "storage_key_unreadable"
+  | "storage_key_not_array";
+
+export type ResultShareRegistryPresetIntegrityIssue = {
+  severity: "warning" | "error";
+  scope: ResultShareRegistrySavedViewScope | "storage";
+  presetId: string | null;
+  presetName: string | null;
+  code: ResultShareRegistryPresetIntegrityIssueCode;
+  message: string;
+  safeDetails: string | null;
+};
+
+export type ResultShareRegistryPresetIntegrityReport = {
+  checkedAt: string;
+  grantPresetCount: number;
+  aliasPresetCount: number;
+  validPresetCount: number;
+  invalidPresetCount: number;
+  warningCount: number;
+  errorCount: number;
+  issues: ResultShareRegistryPresetIntegrityIssue[];
+  canAutoRepair: boolean;
+  canResetGrantScope: boolean;
+  canResetAliasScope: boolean;
+  notes: string[];
+};
+
+export type ResultShareRegistryPresetRecoveryAction =
+  | "discard_invalid_grant_presets"
+  | "discard_invalid_alias_presets"
+  | "clear_dangling_default_preset"
+  | "reset_grant_scope"
+  | "reset_alias_scope"
+  | "reset_all_presets"
+  | "restore_last_good_backup";
+
+export type ResultShareRegistryPresetBackupSnapshot = {
+  schemaVersion: "result-share-registry-presets-backup.v1";
+  createdAt: string;
+  reason: string;
+  grantRegistry: ResultShareRegistrySavedView[];
+  aliasRegistry: ResultShareRegistrySavedView[];
+  defaultPresetId: string | null;
+};
+
+export type ResultShareRegistryPresetStorageDiagnostics = {
+  checkedAt: string;
+  storageKeysPresent: {
+    grantPresets: boolean;
+    aliasPresets: boolean;
+    defaultPresetId: boolean;
+    lastGoodBackup: boolean;
+  };
+  grantPresetCount: number;
+  aliasPresetCount: number;
+  validPresetCount: number;
+  invalidPresetCount: number;
+  defaultPresetIdPresent: boolean;
+  lastBackupPresent: boolean;
+  latestValidationAt: string | null;
+  warningCount: number;
+  errorCount: number;
+  notes: string[];
+};
+
 export type ResultShareRegistryFilterChipViewModel = {
   key: string;
   label: string;
