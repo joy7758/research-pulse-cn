@@ -4,14 +4,18 @@ import {
   DEFAULT_RESULT_SHARE_REGISTRY_SORT_INPUT,
 } from "./resultShareRegistryFilters";
 import {
+  applyResultShareRegistryPresetImport,
   applyResultShareRegistrySavedView,
+  buildResultShareRegistryPresetExport,
   buildInitialResultShareRegistrySavedViewState,
   buildResultShareRegistrySavedViewDraft,
   createResultShareRegistrySavedView,
   deleteResultShareRegistrySavedView,
   loadResultShareRegistrySavedViewStore,
   overwriteResultShareRegistrySavedView,
+  parseResultShareRegistryPresetImport,
   persistResultShareRegistrySavedViewStore,
+  RESULT_SHARE_REGISTRY_PRESET_EXPORT_SCHEMA_VERSION,
   saveResultShareRegistrySavedView,
   setResultShareRegistryDefaultPresetId,
 } from "./resultShareRegistrySavedViews";
@@ -535,5 +539,374 @@ describe("result share registry saved views", () => {
       outcome: "resolved",
       limit: 10,
     });
+  });
+
+  it("exports only safe preset fields in the v1 JSON model", () => {
+    const grantPreset = createResultShareRegistrySavedView(
+      buildResultShareRegistrySavedViewDraft(
+        "grant_registry",
+        "Grant export",
+        {
+          ...DEFAULT_RESULT_SHARE_REGISTRY_FILTER_INPUT,
+          shareKind: "workspace_board",
+          grantStatus: "active",
+          workspaceId: "workspace-1",
+        },
+        DEFAULT_RESULT_SHARE_REGISTRY_SORT_INPUT,
+        {
+          includeDrilldownContext: true,
+          drilldownFilters: {
+            ...DEFAULT_CONVERSION_FILTER_INPUT,
+            dateFrom: "2026-04-01",
+            eventType: "content_view",
+            limit: 10,
+          },
+        },
+      )!,
+      {
+        id: "grant-export",
+        now: "2026-04-18T08:00:00Z",
+      },
+    );
+
+    const payload = buildResultShareRegistryPresetExport(
+      {
+        grantPresets: [grantPreset],
+        aliasPresets: [],
+        defaultPresetId: "grant-export",
+      },
+      {
+        now: "2026-04-18T09:00:00Z",
+      },
+    );
+
+    expect(payload).toEqual({
+      schemaVersion: RESULT_SHARE_REGISTRY_PRESET_EXPORT_SCHEMA_VERSION,
+      exportedAt: "2026-04-18T09:00:00Z",
+      app: "research-pulse-cn",
+      source: "group-workspace-admin-web",
+      presets: {
+        grantRegistry: [
+          {
+            id: "grant-export",
+            name: "Grant export",
+            scope: "grant_registry",
+            filters: {
+              ...DEFAULT_RESULT_SHARE_REGISTRY_FILTER_INPUT,
+              shareKind: "workspace_board",
+              grantStatus: "active",
+              workspaceId: "workspace-1",
+            },
+            sort: {
+              field: "lastUsedAt",
+              direction: "desc",
+            },
+            drilldownContext: {
+              dateFrom: "2026-04-01",
+              dateTo: null,
+              accessMode: null,
+              eventType: "content_view",
+              outcome: null,
+              limit: 10,
+            },
+            createdAt: "2026-04-18T08:00:00Z",
+            updatedAt: "2026-04-18T08:00:00Z",
+          },
+        ],
+        aliasRegistry: [],
+      },
+    });
+    expect(JSON.stringify(payload)).not.toContain("sourceFile");
+    expect(JSON.stringify(payload)).not.toContain("rawShareToken");
+  });
+
+  it("accepts a valid v1 preset export payload", () => {
+    const payload = buildResultShareRegistryPresetExport(
+      {
+        grantPresets: [],
+        aliasPresets: [
+          createResultShareRegistrySavedView(
+            buildResultShareRegistrySavedViewDraft(
+              "alias_registry",
+              "Alias import",
+              {
+                ...DEFAULT_RESULT_SHARE_REGISTRY_FILTER_INPUT,
+                shareKind: "workspace_board",
+                aliasStatus: "active",
+                resultShareGrantId: "grant-1",
+              },
+              DEFAULT_RESULT_SHARE_REGISTRY_SORT_INPUT,
+              {
+                includeDrilldownContext: true,
+                drilldownFilters: {
+                  ...DEFAULT_CONVERSION_FILTER_INPUT,
+                  dateFrom: "2026-04-05",
+                  outcome: "resolved",
+                  limit: 20,
+                },
+              },
+            )!,
+            {
+              id: "alias-import",
+              now: "2026-04-18T08:00:00Z",
+            },
+          ),
+        ],
+        defaultPresetId: null,
+      },
+      {
+        now: "2026-04-18T10:00:00Z",
+      },
+    );
+
+    const preview = parseResultShareRegistryPresetImport(JSON.stringify(payload));
+
+    expect(preview.canApply).toBe(true);
+    expect(preview.validPresetCount).toBe(1);
+    expect(preview.invalidPresetCount).toBe(0);
+    expect(preview.aliasPresetCount).toBe(1);
+    expect(preview.presets.aliasRegistry[0]).toMatchObject({
+      id: "alias-import",
+      drilldownContext: {
+        dateFrom: "2026-04-05",
+        outcome: "resolved",
+        limit: 20,
+      },
+    });
+  });
+
+  it("accepts older imports that omit drilldown context", () => {
+    const preview = parseResultShareRegistryPresetImport(
+      JSON.stringify({
+        schemaVersion: RESULT_SHARE_REGISTRY_PRESET_EXPORT_SCHEMA_VERSION,
+        exportedAt: "2026-04-18T10:00:00Z",
+        app: "research-pulse-cn",
+        source: "group-workspace-admin-web",
+        presets: {
+          grantRegistry: [
+            {
+              id: "legacy-grant",
+              name: "Legacy grant",
+              scope: "grant_registry",
+              filters: {
+                shareKind: "workspace_board",
+                grantStatus: "active",
+                aliasStatus: null,
+                workspaceId: "workspace-1",
+                resultShareGrantId: null,
+              },
+              sort: {
+                field: "createdAt",
+                direction: "asc",
+              },
+              createdAt: "2026-04-18T08:00:00Z",
+              updatedAt: "2026-04-18T08:00:00Z",
+            },
+          ],
+          aliasRegistry: [],
+        },
+      }),
+    );
+
+    expect(preview.canApply).toBe(true);
+    expect(preview.grantPresetCount).toBe(1);
+    expect(preview.presets.grantRegistry[0].drilldownContext).toBeNull();
+  });
+
+  it("rejects unsafe import fields without mutating local storage state", () => {
+    persistResultShareRegistrySavedViewStore(window.localStorage, {
+      grantPresets: [],
+      aliasPresets: [],
+      defaultPresetId: null,
+    });
+    const before = window.localStorage.getItem("resultShareRegistryGrantPresets");
+
+    const preview = parseResultShareRegistryPresetImport(
+      JSON.stringify({
+        schemaVersion: RESULT_SHARE_REGISTRY_PRESET_EXPORT_SCHEMA_VERSION,
+        exportedAt: "2026-04-18T10:00:00Z",
+        app: "research-pulse-cn",
+        source: "group-workspace-admin-web",
+        secret: "blocked",
+        presets: {
+          grantRegistry: [
+            {
+              id: "unsafe-grant",
+              name: "Unsafe grant",
+              scope: "grant_registry",
+              filters: {
+                shareKind: "workspace_board",
+                grantStatus: "active",
+                aliasStatus: null,
+                workspaceId: "workspace-1",
+                resultShareGrantId: null,
+              },
+              sort: {
+                field: "createdAt",
+                direction: "asc",
+              },
+              sourceFile: "/tmp/preset.json",
+              createdAt: "2026-04-18T08:00:00Z",
+              updatedAt: "2026-04-18T08:00:00Z",
+            },
+          ],
+          aliasRegistry: [],
+        },
+      }),
+    );
+
+    expect(preview.canApply).toBe(false);
+    expect(preview.errors.join(" ")).toMatch(/unsafe field/i);
+    expect(window.localStorage.getItem("resultShareRegistryGrantPresets")).toBe(before);
+  });
+
+  it("merges valid imports without losing existing presets and resolves id collisions", () => {
+    const existingPreset = createResultShareRegistrySavedView(
+      buildResultShareRegistrySavedViewDraft(
+        "grant_registry",
+        "Board grant",
+        {
+          ...DEFAULT_RESULT_SHARE_REGISTRY_FILTER_INPUT,
+          shareKind: "workspace_board",
+          grantStatus: "active",
+          workspaceId: "workspace-1",
+        },
+        DEFAULT_RESULT_SHARE_REGISTRY_SORT_INPUT,
+      )!,
+      {
+        id: "grant-duplicate",
+        now: "2026-04-18T08:00:00Z",
+      },
+    );
+    const preview = parseResultShareRegistryPresetImport(
+      JSON.stringify({
+        schemaVersion: RESULT_SHARE_REGISTRY_PRESET_EXPORT_SCHEMA_VERSION,
+        exportedAt: "2026-04-18T10:00:00Z",
+        app: "research-pulse-cn",
+        source: "group-workspace-admin-web",
+        presets: {
+          grantRegistry: [
+            {
+              id: "grant-duplicate",
+              name: "Board grant",
+              scope: "grant_registry",
+              filters: {
+                shareKind: "digest_issue",
+                grantStatus: "revoked",
+                aliasStatus: null,
+                workspaceId: null,
+                resultShareGrantId: null,
+              },
+              sort: {
+                field: "createdAt",
+                direction: "asc",
+              },
+              createdAt: "2026-04-18T09:00:00Z",
+              updatedAt: "2026-04-18T09:00:00Z",
+            },
+          ],
+          aliasRegistry: [],
+        },
+      }),
+    );
+
+    const result = applyResultShareRegistryPresetImport(
+      {
+        grantPresets: [existingPreset],
+        aliasPresets: [],
+        defaultPresetId: null,
+      },
+      preview,
+      "merge",
+    );
+
+    expect(result.store.grantPresets).toHaveLength(2);
+    expect(result.store.grantPresets[0].id).toBe("grant-duplicate");
+    expect(result.store.grantPresets[1].id).not.toBe("grant-duplicate");
+    expect(result.store.grantPresets[1].name).toContain("Imported copy");
+  });
+
+  it("replaces only imported scopes and clears the default marker when its preset disappears", () => {
+    const grantPreset = createResultShareRegistrySavedView(
+      buildResultShareRegistrySavedViewDraft(
+        "grant_registry",
+        "Grant default",
+        {
+          ...DEFAULT_RESULT_SHARE_REGISTRY_FILTER_INPUT,
+          shareKind: "workspace_board",
+          grantStatus: "active",
+          workspaceId: "workspace-1",
+        },
+        DEFAULT_RESULT_SHARE_REGISTRY_SORT_INPUT,
+      )!,
+      {
+        id: "grant-default",
+        now: "2026-04-18T08:00:00Z",
+      },
+    );
+    const aliasPreset = createResultShareRegistrySavedView(
+      buildResultShareRegistrySavedViewDraft(
+        "alias_registry",
+        "Alias keep",
+        {
+          ...DEFAULT_RESULT_SHARE_REGISTRY_FILTER_INPUT,
+          shareKind: "workspace_board",
+          aliasStatus: "active",
+          resultShareGrantId: "grant-1",
+        },
+        DEFAULT_RESULT_SHARE_REGISTRY_SORT_INPUT,
+      )!,
+      {
+        id: "alias-keep",
+        now: "2026-04-18T08:00:00Z",
+      },
+    );
+    const preview = parseResultShareRegistryPresetImport(
+      JSON.stringify({
+        schemaVersion: RESULT_SHARE_REGISTRY_PRESET_EXPORT_SCHEMA_VERSION,
+        exportedAt: "2026-04-18T10:00:00Z",
+        app: "research-pulse-cn",
+        source: "group-workspace-admin-web",
+        presets: {
+          grantRegistry: [
+            {
+              id: "grant-imported",
+              name: "Imported grant",
+              scope: "grant_registry",
+              filters: {
+                shareKind: "digest_issue",
+                grantStatus: "revoked",
+                aliasStatus: null,
+                workspaceId: null,
+                resultShareGrantId: null,
+              },
+              sort: {
+                field: "status",
+                direction: "desc",
+              },
+              createdAt: "2026-04-18T09:00:00Z",
+              updatedAt: "2026-04-18T09:00:00Z",
+            },
+          ],
+        },
+      }),
+    );
+
+    const result = applyResultShareRegistryPresetImport(
+      {
+        grantPresets: [grantPreset],
+        aliasPresets: [aliasPreset],
+        defaultPresetId: "grant-default",
+      },
+      preview,
+      "replace",
+    );
+
+    expect(result.store.grantPresets).toHaveLength(1);
+    expect(result.store.grantPresets[0].id).toBe("grant-imported");
+    expect(result.store.aliasPresets).toHaveLength(1);
+    expect(result.store.aliasPresets[0].id).toBe("alias-keep");
+    expect(result.store.defaultPresetId).toBeNull();
+    expect(result.defaultPresetCleared).toBe(true);
   });
 });

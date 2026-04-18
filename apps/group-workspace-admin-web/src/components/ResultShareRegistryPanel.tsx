@@ -11,6 +11,8 @@ import type {
   ResultShareAliasRegistryItemViewModel,
   ResultShareGrantRegistryItemViewModel,
   ResultShareRegistryFilterInput,
+  ResultShareRegistryPresetImportMode,
+  ResultShareRegistryPresetImportPreview,
   ResultShareRegistryFilterSummaryViewModel,
   ResultShareRegistrySavedViewApplyMode,
   ResultShareRegistrySavedViewScope,
@@ -34,6 +36,10 @@ type ResultShareRegistryPanelProps = {
     grantPresets: ResultShareRegistrySavedViewSummary[];
     aliasPresets: ResultShareRegistrySavedViewSummary[];
     defaultPreset: ResultShareRegistrySavedViewSummary | null;
+  };
+  presetTransfer: {
+    importMode: ResultShareRegistryPresetImportMode;
+    preview: ResultShareRegistryPresetImportPreview | null;
   };
   registry: ResultShareRegistryViewModel | null;
   currentTargetLabel: string | null;
@@ -62,6 +68,11 @@ type ResultShareRegistryPanelProps = {
   onClearDefaultSavedView: () => void;
   onRestoreDefaultSavedView: () => void;
   onResetDrilldownContext: () => void;
+  onPresetImportModeChange: (mode: ResultShareRegistryPresetImportMode) => void;
+  onImportPresetFile: (file: File | null) => void;
+  onApplyPresetImport: () => void;
+  onClearPresetImportPreview: () => void;
+  onExportPresets: () => void;
   onOpenGrantDrilldown: (grantId: string) => void;
   onOpenAliasDrilldown: (aliasId: string) => void;
   onFilterAliasesForGrant: (grantId: string, shareKind: ResultShareGrantRegistryItemViewModel["shareKind"]) => void;
@@ -78,6 +89,129 @@ function SummaryCardList({ items }: { items: ResultShareRegistrySummaryViewModel
         </article>
       ))}
     </div>
+  );
+}
+
+function ImportPreviewPanel({
+  preview,
+  importMode,
+  onImportModeChange,
+  onApply,
+  onClear,
+}: {
+  preview: ResultShareRegistryPresetImportPreview | null;
+  importMode: ResultShareRegistryPresetImportMode;
+  onImportModeChange: (mode: ResultShareRegistryPresetImportMode) => void;
+  onApply: () => void;
+  onClear: () => void;
+}) {
+  if (!preview) {
+    return (
+      <div className="empty-state">
+        <strong>No import preview yet.</strong>
+        <p>Select a local preset JSON file to validate it before applying merge or replace.</p>
+      </div>
+    );
+  }
+
+  return (
+    <section className="conversion-section-card">
+      <div className="conversion-section-header">
+        <div>
+          <h3>Import preview</h3>
+          <p className="section-subtle-copy">
+            Validation runs before local preset storage is changed. Invalid files do not mutate browser state.
+          </p>
+        </div>
+      </div>
+
+      <div className="stat-grid">
+        <article className="stat-card">
+          <span>Schema</span>
+          <strong>{preview.schemaVersion ?? "Missing"}</strong>
+        </article>
+        <article className="stat-card">
+          <span>Valid presets</span>
+          <strong>{preview.validPresetCount}</strong>
+        </article>
+        <article className="stat-card">
+          <span>Invalid presets</span>
+          <strong>{preview.invalidPresetCount}</strong>
+        </article>
+        <article className="stat-card">
+          <span>Grant presets</span>
+          <strong>{preview.grantPresetCount}</strong>
+        </article>
+        <article className="stat-card">
+          <span>Alias presets</span>
+          <strong>{preview.aliasPresetCount}</strong>
+        </article>
+      </div>
+
+      <div className="button-row">
+        <label className="field-stack">
+          <span>Import mode</span>
+          <select
+            value={importMode}
+            onChange={(event) =>
+              onImportModeChange(event.target.value as ResultShareRegistryPresetImportMode)
+            }
+          >
+            <option value="merge">Merge imported presets</option>
+            <option value="replace">Replace imported scopes</option>
+          </select>
+        </label>
+      </div>
+
+      <ul className="filter-chip-list">
+        <li className="filter-chip">
+          <strong>
+            {preview.importedScopes.grantRegistry ? "Grant scope present" : "Grant scope absent"}
+          </strong>
+        </li>
+        <li className="filter-chip">
+          <strong>
+            {preview.importedScopes.aliasRegistry ? "Alias scope present" : "Alias scope absent"}
+          </strong>
+        </li>
+      </ul>
+
+      {preview.warnings.length > 0 ? (
+        <div className="inline-banner info">
+          <strong>Validation warnings</strong>
+          <ul className="note-list">
+            {preview.warnings.map((warning) => (
+              <li key={warning}>{warning}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {preview.errors.length > 0 ? (
+        <div className="inline-banner error" role="alert">
+          <strong>Validation errors</strong>
+          <ul className="note-list">
+            {preview.errors.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      <div className="button-row">
+        <button
+          type="button"
+          className="button-primary"
+          disabled={!preview.canApply}
+          onClick={onApply}
+        >
+          Apply import
+        </button>
+        <button type="button" className="button-secondary" onClick={onClear}>
+          Clear import preview
+        </button>
+      </div>
+    </section>
   );
 }
 
@@ -419,6 +553,7 @@ export function ResultShareRegistryPanel({
   filterSummary,
   savedViewDrafts,
   savedViews,
+  presetTransfer,
   registry,
   currentTargetLabel,
   activePresetLabel,
@@ -439,6 +574,11 @@ export function ResultShareRegistryPanel({
   onClearDefaultSavedView,
   onRestoreDefaultSavedView,
   onResetDrilldownContext,
+  onPresetImportModeChange,
+  onImportPresetFile,
+  onApplyPresetImport,
+  onClearPresetImportPreview,
+  onExportPresets,
   onOpenGrantDrilldown,
   onOpenAliasDrilldown,
   onFilterAliasesForGrant,
@@ -462,9 +602,9 @@ export function ResultShareRegistryPanel({
         ) : null}
       </div>
 
-      <div className="button-row">
-        {activePresetLabel ? (
-          <div className="meta-chip">
+        <div className="button-row">
+          {activePresetLabel ? (
+            <div className="meta-chip">
             <span>Active registry preset</span>
             <strong>{activePresetLabel}</strong>
           </div>
@@ -648,10 +788,17 @@ export function ResultShareRegistryPanel({
             <h3>Saved views</h3>
             <p className="section-subtle-copy">
               Local-only presets for safe registry filters and sorts. These views never include
-              admin bearer tokens or share payloads.
+              admin bearer tokens or share payloads. Import/export only touches local preset JSON.
             </p>
           </div>
           <div className="button-row">
+            <button
+              type="button"
+              className="button-secondary"
+              onClick={onExportPresets}
+            >
+              Export presets JSON
+            </button>
             <button
               type="button"
               className="button-secondary"
@@ -718,6 +865,32 @@ export function ResultShareRegistryPanel({
             onSetDefault={(presetId) => onSetDefaultSavedView("alias_registry", presetId)}
           />
         </div>
+
+        <section className="conversion-section-card saved-view-card">
+          <div className="conversion-section-header">
+            <div>
+              <h3>Preset import / export</h3>
+              <p className="section-subtle-copy">
+                Local JSON only. No backend sync, no team sharing, no bearer token persistence.
+              </p>
+            </div>
+          </div>
+          <label className="field-stack">
+            <span>Import preset JSON file</span>
+            <input
+              type="file"
+              accept=".json,application/json"
+              onChange={(event) => onImportPresetFile(event.target.files?.[0] ?? null)}
+            />
+          </label>
+          <ImportPreviewPanel
+            preview={presetTransfer.preview}
+            importMode={presetTransfer.importMode}
+            onImportModeChange={onPresetImportModeChange}
+            onApply={onApplyPresetImport}
+            onClear={onClearPresetImportPreview}
+          />
+        </section>
       </section>
 
       {error ? (

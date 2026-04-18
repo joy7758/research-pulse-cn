@@ -44,15 +44,19 @@ import {
   normalizeResultShareRegistrySortInput,
 } from "./lib/resultShareRegistryFilters";
 import {
+  applyResultShareRegistryPresetImport,
   applyResultShareRegistrySavedView,
   buildInitialResultShareRegistrySavedViewState,
+  buildResultShareRegistryPresetExport,
   buildResultShareRegistrySavedViewDraft,
   buildResultShareRegistrySavedViewSummaries,
   createResultShareRegistrySavedView,
   deleteResultShareRegistrySavedView,
   loadResultShareRegistrySavedViewStore,
   overwriteResultShareRegistrySavedView,
+  parseResultShareRegistryPresetImport,
   persistResultShareRegistrySavedViewStore,
+  RESULT_SHARE_REGISTRY_PRESET_EXPORT_SCHEMA_VERSION,
   saveResultShareRegistrySavedView,
   setResultShareRegistryDefaultPresetId,
 } from "./lib/resultShareRegistrySavedViews";
@@ -75,6 +79,8 @@ import type {
   ResultShareGrantConversionDrilldownRead,
   ResultShareGrantRead,
   ResultShareRegistryFilterInput,
+  ResultShareRegistryPresetImportMode,
+  ResultShareRegistryPresetImportPreview,
   ResultShareRegistrySavedViewApplyMode,
   ResultShareRegistrySavedView,
   ResultShareRegistrySavedViewScope,
@@ -103,6 +109,18 @@ function getLocalStorageSafe(): Storage | null {
   }
 }
 
+async function readLocalFileText(file: File): Promise<string> {
+  if (typeof file.text === "function") {
+    return file.text();
+  }
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Failed to read local preset JSON file."));
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.readAsText(file);
+  });
+}
+
 type ShareDrilldownTarget =
   | {
       kind: "grant";
@@ -125,6 +143,27 @@ type ShareDrilldownContextSourceState = {
   presetId: string | null;
   presetName: string | null;
 };
+
+function findSavedViewInStore(
+  store: ResultShareRegistrySavedViewStoreState,
+  presetId: string | null,
+  scope?: ResultShareRegistrySavedViewScope,
+): ResultShareRegistrySavedView | null {
+  if (!presetId) {
+    return null;
+  }
+  if (scope === "grant_registry") {
+    return store.grantPresets.find((preset) => preset.id === presetId) ?? null;
+  }
+  if (scope === "alias_registry") {
+    return store.aliasPresets.find((preset) => preset.id === presetId) ?? null;
+  }
+  return (
+    store.grantPresets.find((preset) => preset.id === presetId) ??
+    store.aliasPresets.find((preset) => preset.id === presetId) ??
+    null
+  );
+}
 
 function buildActiveRegistryPresetState(
   preset: ResultShareRegistrySavedView | null,
@@ -287,6 +326,10 @@ export function GroupWorkspaceAdminShell({
   );
   const [shareDrilldownContextSource, setShareDrilldownContextSource] =
     useState<ShareDrilldownContextSourceState>(initialShareDrilldownContextSourceRef.current);
+  const [resultShareRegistryPresetImportMode, setResultShareRegistryPresetImportMode] =
+    useState<ResultShareRegistryPresetImportMode>("merge");
+  const [resultShareRegistryPresetImportPreview, setResultShareRegistryPresetImportPreview] =
+    useState<ResultShareRegistryPresetImportPreview | null>(null);
   const [shareGrantLookupId, setShareGrantLookupId] = useState("");
   const [shareAliasLookupId, setShareAliasLookupId] = useState("");
   const [createInput, setCreateInput] = useState<WorkspaceCreateInput>({
@@ -355,6 +398,8 @@ export function GroupWorkspaceAdminShell({
     setAliasSavedViewName("");
     setGrantSavedViewIncludesDrilldown(false);
     setAliasSavedViewIncludesDrilldown(false);
+    setResultShareRegistryPresetImportMode("merge");
+    setResultShareRegistryPresetImportPreview(null);
     setActiveRegistryPreset(
       buildActiveRegistryPresetState(
         defaultRegistrySavedViewState.defaultPreset,
@@ -863,6 +908,50 @@ export function GroupWorkspaceAdminShell({
       return presets.find((preset) => preset.id === presetId) ?? null;
     },
     [resultShareRegistrySavedViews],
+  );
+
+  const syncPresetReferencesWithStore = useCallback(
+    (nextStore: ResultShareRegistrySavedViewStoreState) => {
+      setActiveRegistryPreset((current) => {
+        if (!current) {
+          return null;
+        }
+        const preset = findSavedViewInStore(nextStore, current.presetId, current.scope);
+        if (!preset) {
+          return null;
+        }
+        return {
+          ...current,
+          presetName: preset.name,
+          source:
+            current.source === "default_preset" && nextStore.defaultPresetId !== preset.id
+              ? "saved_view"
+              : current.source,
+        };
+      });
+      setShareDrilldownContextSource((current) => {
+        if (current.kind === "manual") {
+          return current;
+        }
+        const preset = findSavedViewInStore(nextStore, current.presetId);
+        if (!preset?.drilldownContext) {
+          return {
+            kind: "manual",
+            presetId: null,
+            presetName: null,
+          };
+        }
+        return {
+          kind:
+            current.kind === "default_preset" && nextStore.defaultPresetId === preset.id
+              ? "default_preset"
+              : "saved_view",
+          presetId: preset.id,
+          presetName: preset.name,
+        };
+      });
+    },
+    [],
   );
 
   const patchGlobalFilterDraft = useCallback((patch: Partial<ConversionFilterInput>) => {
@@ -1411,6 +1500,98 @@ export function GroupWorkspaceAdminShell({
     shareDrilldownFilterDraft,
   ]);
 
+  const handleExportResultShareRegistryPresets = useCallback(() => {
+    const payload = buildResultShareRegistryPresetExport(resultShareRegistrySavedViews);
+    const content = JSON.stringify(payload, null, 2);
+    const blob = new Blob([content], { type: "application/json" });
+    const safeTimestamp = payload.exportedAt.replace(/[:.]/g, "-");
+    const downloadUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = downloadUrl;
+    link.download = `result-share-registry-presets-${safeTimestamp}.json`;
+    link.click();
+    URL.revokeObjectURL(downloadUrl);
+    setNoticeMessage(
+      `Exported local preset JSON (${RESULT_SHARE_REGISTRY_PRESET_EXPORT_SCHEMA_VERSION}).`,
+    );
+  }, [resultShareRegistrySavedViews]);
+
+  const handleImportResultShareRegistryPresetFile = useCallback(
+    async (file: File | null) => {
+      if (!file) {
+        setResultShareRegistryPresetImportPreview(null);
+        return;
+      }
+      try {
+        const preview = parseResultShareRegistryPresetImport(await readLocalFileText(file));
+        setResultShareRegistryPresetImportPreview(preview);
+        setNoticeMessage(
+          preview.canApply
+            ? `Validated ${preview.validPresetCount} preset(s) for local import preview.`
+            : "Import preview found validation errors. Existing local presets were not changed.",
+        );
+      } catch (error) {
+        setResultShareRegistryPresetImportPreview({
+          schemaVersion: null,
+          validPresetCount: 0,
+          invalidPresetCount: 0,
+          grantPresetCount: 0,
+          aliasPresetCount: 0,
+          warnings: [],
+          errors: [
+            error instanceof Error ? error.message : "Failed to read local preset JSON file.",
+          ],
+          canApply: false,
+          importedScopes: {
+            grantRegistry: false,
+            aliasRegistry: false,
+          },
+          presets: {
+            grantRegistry: [],
+            aliasRegistry: [],
+          },
+        });
+        setNoticeMessage("Failed to read local preset JSON file.");
+      }
+    },
+    [],
+  );
+
+  const handleApplyResultShareRegistryPresetImport = useCallback(() => {
+    if (!resultShareRegistryPresetImportPreview?.canApply) {
+      return;
+    }
+    const importResult = applyResultShareRegistryPresetImport(
+      resultShareRegistrySavedViews,
+      resultShareRegistryPresetImportPreview,
+      resultShareRegistryPresetImportMode,
+    );
+    setResultShareRegistrySavedViews(importResult.store);
+    syncPresetReferencesWithStore(importResult.store);
+    setResultShareRegistryPresetImportPreview(null);
+    setResultShareRegistryPresetImportMode("merge");
+    setNoticeMessage(
+      [
+        `Imported ${importResult.importedGrantCount} grant preset(s) and ${importResult.importedAliasCount} alias preset(s) via ${resultShareRegistryPresetImportMode}.`,
+        importResult.defaultPresetCleared
+          ? "The default preset marker was cleared because its preset no longer exists."
+          : null,
+      ]
+        .filter(Boolean)
+        .join(" "),
+    );
+  }, [
+    resultShareRegistryPresetImportMode,
+    resultShareRegistryPresetImportPreview,
+    resultShareRegistrySavedViews,
+    syncPresetReferencesWithStore,
+  ]);
+
+  const handleClearResultShareRegistryPresetImportPreview = useCallback(() => {
+    setResultShareRegistryPresetImportPreview(null);
+    setResultShareRegistryPresetImportMode("merge");
+  }, []);
+
   const handleClearShareDrilldown = useCallback(() => {
     setShareDrilldownTarget(null);
     setShareGrantDrilldown(null);
@@ -1653,6 +1834,10 @@ export function GroupWorkspaceAdminShell({
         filters={resultShareRegistryFilterDraft}
         sorts={resultShareRegistrySortDraft}
         filterSummary={resultShareRegistryFilterSummary}
+        presetTransfer={{
+          importMode: resultShareRegistryPresetImportMode,
+          preview: resultShareRegistryPresetImportPreview,
+        }}
         savedViewDrafts={{
           grantName: grantSavedViewName,
           aliasName: aliasSavedViewName,
@@ -1698,6 +1883,11 @@ export function GroupWorkspaceAdminShell({
         onClearDefaultSavedView={handleClearDefaultRegistrySavedView}
         onRestoreDefaultSavedView={handleRestoreDefaultRegistrySavedView}
         onResetDrilldownContext={handleResetShareDrilldownFilters}
+        onPresetImportModeChange={setResultShareRegistryPresetImportMode}
+        onImportPresetFile={handleImportResultShareRegistryPresetFile}
+        onApplyPresetImport={handleApplyResultShareRegistryPresetImport}
+        onClearPresetImportPreview={handleClearResultShareRegistryPresetImportPreview}
+        onExportPresets={handleExportResultShareRegistryPresets}
         onOpenGrantDrilldown={handleOpenShareGrantDrilldown}
         onOpenAliasDrilldown={handleOpenShareAliasDrilldown}
         onFilterAliasesForGrant={handleFilterAliasesForGrant}

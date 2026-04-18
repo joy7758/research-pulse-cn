@@ -872,6 +872,45 @@ export type ResultShareRegistrySavedViewStoreState = {
   defaultPresetId: string | null;
 };
 
+export type ResultShareRegistryPresetImportMode = "merge" | "replace";
+
+export type ResultShareRegistryPresetExportPayload = {
+  schemaVersion: "result-share-registry-presets.v1";
+  exportedAt: string;
+  app: "research-pulse-cn";
+  source: "group-workspace-admin-web";
+  presets: {
+    grantRegistry: ResultShareRegistrySavedView[];
+    aliasRegistry: ResultShareRegistrySavedView[];
+  };
+};
+
+export type ResultShareRegistryPresetImportPreview = {
+  schemaVersion: string | null;
+  validPresetCount: number;
+  invalidPresetCount: number;
+  grantPresetCount: number;
+  aliasPresetCount: number;
+  warnings: string[];
+  errors: string[];
+  canApply: boolean;
+  importedScopes: {
+    grantRegistry: boolean;
+    aliasRegistry: boolean;
+  };
+  presets: {
+    grantRegistry: ResultShareRegistrySavedView[];
+    aliasRegistry: ResultShareRegistrySavedView[];
+  };
+};
+
+export type ResultShareRegistryPresetImportApplyResult = {
+  store: ResultShareRegistrySavedViewStoreState;
+  importedGrantCount: number;
+  importedAliasCount: number;
+  defaultPresetCleared: boolean;
+};
+
 export type ResultShareRegistryFilterChipViewModel = {
   key: string;
   label: string;
