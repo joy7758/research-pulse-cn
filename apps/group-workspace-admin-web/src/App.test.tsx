@@ -1375,7 +1375,7 @@ describe("group workspace admin shell", () => {
     expect(
       scoped.getByText(/resultShareRegistryAliasPresets.+must contain an array/i),
     ).toBeVisible();
-    expect(scoped.getByRole("button", { name: "Run integrity check" })).toBeVisible();
+    expect(scoped.getAllByRole("button", { name: "Run integrity check" }).length).toBeGreaterThan(0);
   });
 
   it("keeps import preview in validation-only mode until apply is clicked", async () => {
@@ -1841,7 +1841,7 @@ describe("group workspace admin shell", () => {
     expect(workspaceScoped.getAllByText("Stale pins detected").length).toBe(2);
     expect(workspaceScoped.getByText("missing-grant")).toBeVisible();
 
-    await user.click(workspaceScoped.getByRole("button", { name: "Clean stale pins" }));
+    await user.click(workspaceScoped.getAllByRole("button", { name: "Clean stale pins" })[0]);
 
     await waitFor(() => {
       expect(
@@ -1858,6 +1858,71 @@ describe("group workspace admin shell", () => {
     expect(window.localStorage.getItem("resultShareRegistryGrantPresets")).toContain(
       "Grant default",
     );
+  });
+
+  it("renders a deterministic workspace health score and supports manual recalculation", async () => {
+    window.localStorage.setItem(
+      "resultShareRegistryGrantPresets",
+      JSON.stringify([
+        {
+          id: "grant-default",
+          name: "Grant default",
+          scope: "grant_registry",
+          filters: {
+            shareKind: "workspace_board",
+            grantStatus: "active",
+            aliasStatus: null,
+            workspaceId: "workspace-1",
+            resultShareGrantId: null,
+          },
+          sort: {
+            field: "createdAt",
+            direction: "asc",
+          },
+          createdAt: "2026-04-18T08:00:00Z",
+          updatedAt: "2026-04-18T08:00:00Z",
+        },
+      ]),
+    );
+    window.localStorage.setItem(
+      "resultShareRegistryPresetWorkspaceState",
+      JSON.stringify({
+        pinnedGrantPresetIds: ["grant-default", "missing-grant"],
+        pinnedAliasPresetIds: [],
+        lastActivePresetScope: "grant_registry",
+        lastActivePresetId: "grant-default",
+        collapsedSections: null,
+        updatedAt: "2026-04-19T04:20:00Z",
+      }),
+    );
+
+    const client = buildApiClient();
+    const user = userEvent.setup();
+
+    render(<GroupWorkspaceAdminShell apiClientFactory={() => client} />);
+
+    await user.type(screen.getByLabelText(/admin bearer token/i), "manual-token");
+    await user.click(screen.getByRole("button", { name: /open workspace shell/i }));
+
+    const registryPanel = await screen.findByRole("heading", { name: "Result share registry" });
+    const scoped = within(registryPanel.closest("section") as HTMLElement);
+    const workspaceSection = scoped.getByRole("heading", { name: "Preset workspace" }).closest("section");
+    expect(workspaceSection).not.toBeNull();
+    const workspaceScoped = within(workspaceSection as HTMLElement);
+
+    expect(workspaceScoped.getByRole("heading", { name: "Workspace health score" })).toBeVisible();
+    expect(workspaceScoped.getByText("attention")).toBeVisible();
+    expect(workspaceScoped.getAllByText("Clean stale pins").length).toBeGreaterThan(0);
+    expect(workspaceScoped.getByText("Create a backup before risky changes")).toBeVisible();
+    expect(workspaceScoped.getByText(/local operator hygiene only/i)).toBeVisible();
+
+    await user.click(workspaceScoped.getByRole("button", { name: "Recalculate health" }));
+
+    expect(
+      (
+        await screen.findAllByText("Recalculated the local preset workspace health score.")
+      ).length,
+    ).toBeGreaterThan(0);
   });
 
   it("validates and merges workspace-state import with stale pin preview", async () => {

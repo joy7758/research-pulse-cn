@@ -46,6 +46,7 @@ import {
 import {
   appendResultShareRegistryPresetAuditEvent,
   buildResultShareRegistryPresetWorkspaceViewModel,
+  buildResultShareRegistryPresetWorkspaceHealthScore,
   buildResultShareRegistryPresetIntegrityReport,
   buildResultShareRegistryPresetAuditSummary,
   applyResultShareRegistryPresetImport,
@@ -117,6 +118,7 @@ import type {
   ResultShareRegistryPresetLocalAuditSummary,
   ResultShareRegistryPresetRecoveryAction,
   ResultShareRegistryPresetWorkspaceBackupSnapshot,
+  ResultShareRegistryPresetWorkspaceHealthScore,
   ResultShareRegistryPresetWorkspaceImportPreview,
   ResultShareRegistrySavedViewApplyMode,
   ResultShareRegistrySavedView,
@@ -442,6 +444,10 @@ export function GroupWorkspaceAdminShell({
     useState<ResultShareRegistryPresetImportMode>("merge");
   const [resultShareRegistryPresetWorkspaceImportPreview, setResultShareRegistryPresetWorkspaceImportPreview] =
     useState<ResultShareRegistryPresetWorkspaceImportPreview | null>(null);
+  const [
+    resultShareRegistryPresetWorkspaceHealthCheckedAt,
+    setResultShareRegistryPresetWorkspaceHealthCheckedAt,
+  ] = useState<string>(() => new Date().toISOString());
   const [resultShareRegistryPresetLocalAuditEvents, setResultShareRegistryPresetLocalAuditEvents] =
     useState<ResultShareRegistryPresetLocalAuditEvent[]>(initialPresetAuditRef.current.events);
   const [
@@ -1047,6 +1053,32 @@ export function GroupWorkspaceAdminShell({
         resultShareRegistrySavedViewSummaries,
       ],
     );
+  const resultShareRegistryPresetWorkspaceHealthScore =
+    useMemo<ResultShareRegistryPresetWorkspaceHealthScore>(
+      () =>
+        buildResultShareRegistryPresetWorkspaceHealthScore({
+          store: resultShareRegistrySavedViews,
+          integrityReport: resultShareRegistryPresetIntegrityReport,
+          diagnostics: resultShareRegistryPresetStorageDiagnostics,
+          lastGoodBackup: resultShareRegistryPresetLastGoodBackup,
+          workspaceBackup: resultShareRegistryPresetWorkspaceLastGoodBackup,
+          workspaceState: resultShareRegistryPresetWorkspaceState,
+          auditSummary: resultShareRegistryPresetLocalAuditSummary,
+          workspaceImportPreview: resultShareRegistryPresetWorkspaceImportPreview,
+          checkedAt: resultShareRegistryPresetWorkspaceHealthCheckedAt,
+        }),
+      [
+        resultShareRegistryPresetIntegrityReport,
+        resultShareRegistryPresetLastGoodBackup,
+        resultShareRegistryPresetLocalAuditSummary,
+        resultShareRegistryPresetStorageDiagnostics,
+        resultShareRegistryPresetWorkspaceHealthCheckedAt,
+        resultShareRegistryPresetWorkspaceImportPreview,
+        resultShareRegistryPresetWorkspaceLastGoodBackup,
+        resultShareRegistryPresetWorkspaceState,
+        resultShareRegistrySavedViews,
+      ],
+    );
   const activeRegistryPresetLabel = useMemo(() => {
     if (!activeRegistryPreset) {
       return null;
@@ -1278,6 +1310,21 @@ export function GroupWorkspaceAdminShell({
     setResultShareRegistryPresetLocalAuditEvents([]);
     setResultShareRegistryPresetLocalAuditStorageWarning(null);
   }, []);
+
+  const handleRecalculateResultShareRegistryPresetWorkspaceHealth = useCallback(() => {
+    setResultShareRegistryPresetWorkspaceHealthCheckedAt(new Date().toISOString());
+    recordResultShareRegistryPresetAuditEvent(
+      createPresetAuditEvent(
+        "preset_workspace_health_checked",
+        "success",
+        "Recalculated the local preset workspace health score.",
+        {
+          scope: "storage",
+        },
+      ),
+    );
+    setNoticeMessage("Recalculated the local preset workspace health score.");
+  }, [recordResultShareRegistryPresetAuditEvent]);
 
   const commitResultShareRegistryPresetWorkspaceState = useCallback(
     (
@@ -3289,6 +3336,7 @@ export function GroupWorkspaceAdminShell({
         savedViews={resultShareRegistrySavedViewSummaries}
         presetWorkspace={{
           viewModel: resultShareRegistryPresetWorkspaceViewModel,
+          healthScore: resultShareRegistryPresetWorkspaceHealthScore,
           transfer: {
             importMode: resultShareRegistryPresetWorkspaceImportMode,
             preview: resultShareRegistryPresetWorkspaceImportPreview,
@@ -3347,6 +3395,7 @@ export function GroupWorkspaceAdminShell({
         onClearPresetWorkspaceImportPreview={handleClearResultShareRegistryPresetWorkspaceImportPreview}
         onExportPresetWorkspace={handleExportResultShareRegistryPresetWorkspace}
         onRestorePresetWorkspaceBackup={handleRestoreResultShareRegistryPresetWorkspaceBackup}
+        onRecalculatePresetWorkspaceHealth={handleRecalculateResultShareRegistryPresetWorkspaceHealth}
         onPinSavedView={handlePinRegistrySavedView}
         onUnpinSavedView={handleUnpinRegistrySavedView}
         onMovePinnedSavedView={handleMovePinnedRegistrySavedView}

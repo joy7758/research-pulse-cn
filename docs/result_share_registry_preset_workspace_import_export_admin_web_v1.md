@@ -104,7 +104,7 @@
 - No generic login surface
 
 ## Future Work
-- Local workspace health scoring only if later justified
+- Local workspace health scoring was added in the next phase without changing the same workspace-state JSON boundary into backend or compliance semantics.
 - Shared/team workspace settings only if later justified
 - Shared operator dashboards only if later justified
 - Richer preset grouping only if later justified

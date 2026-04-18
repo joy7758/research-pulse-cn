@@ -40,6 +40,10 @@ import type {
   ResultShareRegistryPresetWorkspaceLoadResult,
   ResultShareRegistryPresetWorkspaceBackupSnapshot,
   ResultShareRegistryPresetWorkspaceExportPayload,
+  ResultShareRegistryPresetWorkspaceHealthFinding,
+  ResultShareRegistryPresetWorkspaceHealthRecommendation,
+  ResultShareRegistryPresetWorkspaceHealthScore,
+  ResultShareRegistryPresetWorkspaceHealthStatus,
   ResultShareRegistryPresetWorkspaceImportApplyResult,
   ResultShareRegistryPresetWorkspaceImportPreview,
   ResultShareRegistryPresetWorkspaceState,
@@ -138,6 +142,7 @@ const presetLocalAuditActionTypes: ResultShareRegistryPresetLocalAuditActionType
   "preset_deleted",
   "preset_pinned",
   "preset_unpinned",
+  "preset_workspace_health_checked",
   "preset_workspace_export_created",
   "preset_workspace_import_dry_run",
   "preset_workspace_import_merge",
@@ -1821,6 +1826,379 @@ export function buildResultShareRegistryPresetWorkspaceViewModel(
       workspaceWarning: diagnostics.workspaceStateWarning,
       latestValidationAt: diagnostics.latestValidationAt,
     },
+  };
+}
+
+function clampScore(value: number): number {
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function hasIntegrityIssue(
+  report: ResultShareRegistryPresetIntegrityReport,
+  code: ResultShareRegistryPresetIntegrityIssueCode,
+): boolean {
+  return report.issues.some((issue) => issue.code === code);
+}
+
+function countRecentFailedAuditEvents(
+  summary: ResultShareRegistryPresetLocalAuditSummary,
+  actionTypes: ResultShareRegistryPresetLocalAuditActionType[],
+): number {
+  const actionTypeSet = new Set(actionTypes);
+  return summary.recentEvents.filter(
+    (event) => event.status === "failed" && actionTypeSet.has(event.actionType),
+  ).length;
+}
+
+export function formatPresetWorkspaceHealthStatus(
+  status: ResultShareRegistryPresetWorkspaceHealthStatus,
+): string {
+  if (status === "healthy") {
+    return "Healthy";
+  }
+  if (status === "attention") {
+    return "Attention";
+  }
+  if (status === "risk") {
+    return "Risk";
+  }
+  return "Critical";
+}
+
+export function buildResultShareRegistryPresetWorkspaceHealthScore(input: {
+  store: ResultShareRegistrySavedViewStoreState;
+  integrityReport: ResultShareRegistryPresetIntegrityReport;
+  diagnostics: ResultShareRegistryPresetStorageDiagnostics;
+  lastGoodBackup: ResultShareRegistryPresetBackupSnapshot | null;
+  workspaceBackup: ResultShareRegistryPresetWorkspaceBackupSnapshot | null;
+  workspaceState: ResultShareRegistryPresetWorkspaceState;
+  auditSummary: ResultShareRegistryPresetLocalAuditSummary;
+  workspaceImportPreview: ResultShareRegistryPresetWorkspaceImportPreview | null;
+  checkedAt?: string;
+}): ResultShareRegistryPresetWorkspaceHealthScore {
+  const checkedAt = input.checkedAt ?? new Date().toISOString();
+  const classification = classifyWorkspaceStateAgainstStore(input.workspaceState, input.store);
+  const totalPresetCount =
+    input.store.grantPresets.length + input.store.aliasPresets.length;
+  const totalPinnedCount =
+    input.workspaceState.pinnedGrantPresetIds.length +
+    input.workspaceState.pinnedAliasPresetIds.length;
+  const stalePinnedCount =
+    classification.stalePinnedGrantPresetIds.length +
+    classification.stalePinnedAliasPresetIds.length;
+  const validPinnedCount = totalPinnedCount - stalePinnedCount;
+  const importFailureCount = countRecentFailedAuditEvents(input.auditSummary, [
+    "validation_failed",
+    "import_dry_run",
+    "import_merge",
+    "import_replace",
+    "preset_workspace_import_validation_failed",
+    "preset_workspace_import_dry_run",
+    "preset_workspace_import_merge",
+    "preset_workspace_import_replace",
+  ]);
+  const recoveryFailureCount = countRecentFailedAuditEvents(input.auditSummary, [
+    "recovery_failed",
+    "backup_restored",
+    "preset_workspace_backup_restored",
+  ]);
+  const breakdown = {
+    storageIntegrity: 100,
+    presetValidity: 100,
+    pinnedPresetHygiene: 100,
+    backupReadiness: 100,
+    auditReliability: 100,
+    importExportSafety: 100,
+    drilldownContextCompleteness: 100,
+  };
+  let score = 100;
+  const findings: ResultShareRegistryPresetWorkspaceHealthFinding[] = [];
+  const recommendations = new Map<
+    ResultShareRegistryPresetWorkspaceHealthRecommendation["kind"],
+    ResultShareRegistryPresetWorkspaceHealthRecommendation
+  >();
+
+  const applyPenalty = (
+    key: keyof typeof breakdown,
+    amount: number,
+  ): void => {
+    score -= amount;
+    breakdown[key] = clampScore(breakdown[key] - amount);
+  };
+
+  const addFinding = (
+    finding: ResultShareRegistryPresetWorkspaceHealthFinding,
+  ): void => {
+    if (
+      findings.some(
+        (existing) =>
+          existing.code === finding.code &&
+          existing.summary === finding.summary &&
+          existing.detail === finding.detail,
+      )
+    ) {
+      return;
+    }
+    findings.push(finding);
+  };
+
+  const addRecommendation = (
+    recommendation: ResultShareRegistryPresetWorkspaceHealthRecommendation,
+  ): void => {
+    recommendations.set(recommendation.kind, recommendation);
+  };
+
+  const storageInvalid =
+    hasIntegrityIssue(input.integrityReport, "invalid_json") ||
+    Boolean(input.diagnostics.workspaceStateWarning);
+  if (storageInvalid) {
+    applyPenalty("storageIntegrity", hasIntegrityIssue(input.integrityReport, "invalid_json") ? 40 : 15);
+    addFinding({
+      severity: hasIntegrityIssue(input.integrityReport, "invalid_json") ? "critical" : "warning",
+      code: "storage_invalid_json",
+      summary: "Local preset storage integrity needs attention.",
+      detail: hasIntegrityIssue(input.integrityReport, "invalid_json")
+        ? "At least one preset storage key contains invalid JSON."
+        : "Local preset workspace organization state fell back after a storage warning.",
+    });
+    addRecommendation({
+      kind: "run_integrity_check",
+      label: "Run integrity check",
+      detail: "Re-run the local preset integrity scan before applying more changes.",
+    });
+    if (input.diagnostics.workspaceStateWarning) {
+      addRecommendation({
+        kind: "reset_workspace_state",
+        label: "Reset workspace state",
+        detail: "Use the existing workspace reset control if local browser organization state continues to fall back after validation.",
+      });
+    }
+  }
+
+  if (hasIntegrityIssue(input.integrityReport, "unsafe_field_detected")) {
+    applyPenalty("storageIntegrity", 40);
+    addFinding({
+      severity: "critical",
+      code: "unsafe_field_detected",
+      summary: "Unsafe fields were detected in local preset storage.",
+      detail: "Unsafe preset keys were quarantined and should be discarded through the existing recovery flow.",
+    });
+    addRecommendation({
+      kind: "discard_invalid_presets",
+      label: "Discard invalid presets",
+      detail: "Use the existing recovery controls to remove unsafe or invalid preset entries.",
+    });
+  }
+
+  if (hasIntegrityIssue(input.integrityReport, "invalid_schema_version")) {
+    applyPenalty("storageIntegrity", 25);
+    addFinding({
+      severity: "error",
+      code: "invalid_schema_version",
+      summary: "Local preset storage includes an unsupported schema shape.",
+      detail: "At least one locally stored preset object does not match the expected schema version or normalized shape.",
+    });
+    addRecommendation({
+      kind: "run_integrity_check",
+      label: "Run integrity check",
+      detail: "Review the integrity diagnostics before importing or restoring more preset state.",
+    });
+  }
+
+  if (hasIntegrityIssue(input.integrityReport, "dangling_default_preset")) {
+    applyPenalty("presetValidity", 10);
+    addFinding({
+      severity: "warning",
+      code: "dangling_default_preset",
+      summary: "The local default preset marker is dangling.",
+      detail: "The default preset id no longer points to an existing saved preset.",
+    });
+  }
+
+  if (totalPresetCount === 0) {
+    applyPenalty("presetValidity", 5);
+    addFinding({
+      severity: "warning",
+      code: "no_saved_presets",
+      summary: "No local saved presets are available.",
+      detail: "The preset workspace can still function, but saved registry/drilldown reuse is not available until you save or import presets.",
+    });
+  }
+
+  if (stalePinnedCount > 0) {
+    applyPenalty("pinnedPresetHygiene", Math.min(20, stalePinnedCount * 5));
+    addFinding({
+      severity: stalePinnedCount >= 3 ? "error" : "warning",
+      code: "stale_pinned_presets",
+      summary: "One or more pinned presets no longer exist locally.",
+      detail: `Detected ${stalePinnedCount} stale pinned preset id(s) across the grant and alias workspace sections.`,
+    });
+    addRecommendation({
+      kind: "clean_stale_pins",
+      label: "Clean stale pins",
+      detail: "Use the existing stale-pin cleanup action to remove workspace pins that no longer match saved presets.",
+    });
+  }
+
+  if (totalPinnedCount > 0 && validPinnedCount === 0) {
+    applyPenalty("pinnedPresetHygiene", 15);
+    addFinding({
+      severity: "error",
+      code: "stale_pinned_presets",
+      summary: "All current pinned presets are stale.",
+      detail: "Every pinned preset id points to a missing saved preset, so quick-apply workspace shortcuts are no longer useful.",
+    });
+  } else if (totalPinnedCount === 0 && totalPresetCount > 0) {
+    addFinding({
+      severity: "info",
+      code: "no_pinned_presets",
+      summary: "No presets are pinned in the local workspace.",
+      detail: "Pinning is optional, but adding a few high-signal presets improves quick-apply workflows.",
+    });
+    addRecommendation({
+      kind: "add_pinned_presets",
+      label: "Add pinned presets",
+      detail: "Pin a few frequently used grant or alias presets for faster workspace navigation.",
+    });
+  }
+
+  const missingBackupPenalty =
+    (input.lastGoodBackup ? 0 : 5) + (input.workspaceBackup ? 0 : 5);
+  if (missingBackupPenalty > 0) {
+    applyPenalty("backupReadiness", missingBackupPenalty);
+    addFinding({
+      severity: missingBackupPenalty === 10 ? "warning" : "info",
+      code: "missing_last_good_backup",
+      summary: "One or more local backup snapshots are missing.",
+      detail:
+        missingBackupPenalty === 10
+          ? "Neither the saved preset store nor the preset workspace currently has a last-good backup snapshot."
+          : "One of the local preset backup layers is missing its last-good snapshot.",
+    });
+    addRecommendation({
+      kind: "create_backup",
+      label: "Create a backup before risky changes",
+      detail: "Run an import/export or another backup-creating workflow before larger local cleanup or replacement steps.",
+    });
+  }
+
+  if (input.auditSummary.storageWarning) {
+    applyPenalty("auditReliability", 10);
+    addFinding({
+      severity: "warning",
+      code: "corrupted_audit_history",
+      summary: "Local preset audit history is partially unavailable.",
+      detail: "The current audit history key had to fall back safely, so recent local activity summaries may be incomplete.",
+    });
+    addRecommendation({
+      kind: "review_recent_audit_failures",
+      label: "Review recent audit failures",
+      detail: "Check the local audit panel and diagnostics before relying on recent import or recovery summaries.",
+    });
+  }
+
+  if (importFailureCount > 0) {
+    applyPenalty("importExportSafety", Math.min(20, importFailureCount * 5));
+    addFinding({
+      severity: importFailureCount >= 2 ? "error" : "warning",
+      code: "recent_failed_import",
+      summary: "Recent local preset import activity includes failures.",
+      detail: `Detected ${importFailureCount} failed import or validation event(s) in recent local preset activity.`,
+    });
+    addRecommendation({
+      kind: "validate_import_before_apply",
+      label: "Validate import before apply",
+      detail: "Use the existing dry-run preview and validation flow before applying more preset or workspace imports.",
+    });
+    addRecommendation({
+      kind: "review_recent_audit_failures",
+      label: "Review recent audit failures",
+      detail: "Inspect recent local audit entries to understand which import step failed.",
+    });
+  }
+
+  if (recoveryFailureCount > 0) {
+    applyPenalty("auditReliability", Math.min(20, recoveryFailureCount * 5));
+    addFinding({
+      severity: recoveryFailureCount >= 2 ? "error" : "warning",
+      code: "recent_failed_recovery",
+      summary: "Recent local recovery activity includes failures.",
+      detail: `Detected ${recoveryFailureCount} failed recovery or restore event(s) in recent local preset activity.`,
+    });
+    addRecommendation({
+      kind: "review_recent_audit_failures",
+      label: "Review recent audit failures",
+      detail: "Inspect recent local audit entries before relying on additional restore or recovery operations.",
+    });
+    if (input.lastGoodBackup || input.workspaceBackup) {
+      addRecommendation({
+        kind: "restore_last_good_backup",
+        label: "Restore a last-good backup",
+        detail: "Use one of the existing backup restore controls if local state still looks inconsistent after recovery failures.",
+      });
+    }
+  }
+
+  if (hasIntegrityIssue(input.integrityReport, "invalid_drilldown_context")) {
+    applyPenalty("drilldownContextCompleteness", 10);
+    addFinding({
+      severity: "warning",
+      code: "invalid_drilldown_context",
+      summary: "Some saved drilldown-linked preset context is invalid.",
+      detail: "At least one saved preset has a drilldown context shape that did not normalize cleanly.",
+    });
+    addRecommendation({
+      kind: "discard_invalid_presets",
+      label: "Discard invalid presets",
+      detail: "Remove invalid saved presets before relying on drilldown-linked quick apply behavior.",
+    });
+  }
+
+  if (
+    input.workspaceImportPreview &&
+    !input.workspaceImportPreview.canApply &&
+    input.workspaceImportPreview.errors.length > 0
+  ) {
+    applyPenalty("importExportSafety", 15);
+    addFinding({
+      severity: "warning",
+      code: "import_preview_has_errors",
+      summary: "The current workspace import preview has blocking errors.",
+      detail: "Imported workspace organization state cannot be applied until the current preview errors are resolved.",
+    });
+    addRecommendation({
+      kind: "validate_import_before_apply",
+      label: "Validate import before apply",
+      detail: "Resolve the current workspace import preview errors before applying merge or replace.",
+    });
+  }
+
+  score = clampScore(score);
+  const status: ResultShareRegistryPresetWorkspaceHealthStatus =
+    score >= 90 ? "healthy" : score >= 70 ? "attention" : score >= 40 ? "risk" : "critical";
+
+  const summary =
+    status === "healthy"
+      ? "Local preset workspace hygiene looks healthy."
+      : status === "attention"
+        ? "Local preset workspace hygiene needs minor attention."
+        : status === "risk"
+          ? "Local preset workspace hygiene has several risks that should be reviewed."
+          : "Local preset workspace hygiene is in a critical state and needs recovery attention.";
+
+  return {
+    score,
+    status,
+    checkedAt,
+    summary,
+    breakdown,
+    findings,
+    recommendations: [...recommendations.values()],
+    notes: [
+      "This is a local operator hygiene score, not a security, compliance, or backend health score.",
+      "It derives only from browser-local preset storage, workspace state, audit history, backup presence, and current import preview state.",
+      "Score calculation never performs automatic repair; it only points to existing local tools.",
+    ],
   };
 }
 

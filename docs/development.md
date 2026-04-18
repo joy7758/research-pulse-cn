@@ -192,7 +192,9 @@ The same shell now also includes a minimal read-only result-share registry:
 - local-only preset activity history with safe action summaries, recent operations, and clear-audit controls for this browser only
 - local-only preset workspace organization with pinned grant/alias presets, recent preset snippets, storage-health summary, stale pin cleanup, and organization-only reset controls
 - local-only preset workspace JSON export/import for browser-local organization state only, with stale-pin preview, merge/replace handling, and workspace-only backup restore
+- a deterministic local preset workspace health score with breakdown cards, findings, and recommended local actions over integrity, stale pins, backups, audit history, and workspace import/export state
 - no admin bearer token, raw share token, or raw alias is stored in those presets
+- the health score is browser-local hygiene only, not backend health, security scoring, or compliance scoring
 
 The shell is internal/admin-only, keeps bearer tokens in memory only, and does not introduce end-user login or source-file sharing. Filter controls narrow overview/drilldown reads only and do not change attribution semantics.
 
