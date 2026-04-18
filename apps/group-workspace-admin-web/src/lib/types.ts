@@ -1000,6 +1000,9 @@ export type ResultShareRegistryPresetLocalAuditActionType =
   | "preset_pinned"
   | "preset_unpinned"
   | "preset_workspace_health_checked"
+  | "preset_workspace_health_thresholds_updated"
+  | "preset_workspace_health_thresholds_reset"
+  | "preset_workspace_health_threshold_validation_failed"
   | "preset_workspace_export_created"
   | "preset_workspace_import_dry_run"
   | "preset_workspace_import_merge"
@@ -1090,6 +1093,85 @@ export type ResultShareRegistryPresetWorkspaceLoadResult = {
   keyPresent: boolean;
 };
 
+export type ResultShareRegistryPresetWorkspaceHealthPenaltyOverrideKey =
+  | "storageInvalidJson"
+  | "workspaceStateWarning"
+  | "unsafeFieldDetected"
+  | "invalidSchemaVersion"
+  | "danglingDefaultPreset"
+  | "stalePinnedPreset"
+  | "allPinnedPresetsStale"
+  | "missingPresetBackup"
+  | "missingWorkspaceBackup"
+  | "corruptedAuditHistory"
+  | "recentFailedImport"
+  | "recentFailedRecovery"
+  | "noSavedPresets"
+  | "invalidDrilldownContext"
+  | "importPreviewHasErrors";
+
+export type ResultShareRegistryPresetWorkspaceHealthThresholdPreferences = {
+  statusThresholds: {
+    healthyMin: number;
+    attentionMin: number;
+    riskMin: number;
+    criticalMin: number;
+  };
+  findingPenaltyOverrides: Partial<
+    Record<ResultShareRegistryPresetWorkspaceHealthPenaltyOverrideKey, number>
+  >;
+  recommendationVisibility: {
+    showInfo: boolean;
+    showWarnings: boolean;
+    showErrors: boolean;
+    showCritical: boolean;
+  };
+  updatedAt: string;
+};
+
+export type ResultShareRegistryPresetWorkspaceHealthThresholdDraft = {
+  statusThresholds: {
+    healthyMin: string;
+    attentionMin: string;
+    riskMin: string;
+    criticalMin: string;
+  };
+  findingPenaltyOverrides: Partial<
+    Record<ResultShareRegistryPresetWorkspaceHealthPenaltyOverrideKey, string>
+  >;
+  recommendationVisibility: {
+    showInfo: boolean;
+    showWarnings: boolean;
+    showErrors: boolean;
+    showCritical: boolean;
+  };
+};
+
+export type ResultShareRegistryPresetWorkspaceHealthThresholdPreview = {
+  currentScore: number;
+  currentStatus: ResultShareRegistryPresetWorkspaceHealthStatus;
+  draftScore: number;
+  draftStatus: ResultShareRegistryPresetWorkspaceHealthStatus;
+  scoreChanged: boolean;
+  statusChanged: boolean;
+  summary: string;
+};
+
+export type ResultShareRegistryPresetWorkspaceHealthThresholdValidationResult = {
+  valid: boolean;
+  warnings: string[];
+  errors: string[];
+  normalizedPreferences: ResultShareRegistryPresetWorkspaceHealthThresholdPreferences | null;
+  previewStatusImpact: ResultShareRegistryPresetWorkspaceHealthThresholdPreview | null;
+};
+
+export type ResultShareRegistryPresetWorkspaceHealthThresholdLoadResult = {
+  preferences: ResultShareRegistryPresetWorkspaceHealthThresholdPreferences;
+  storageWarning: string | null;
+  keyPresent: boolean;
+  source: "default" | "local";
+};
+
 export type ResultShareRegistryPresetWorkspaceViewModel = {
   overviewSummary: ResultShareRegistrySummaryViewModel[];
   lastActivePresetLabel: string | null;
@@ -1176,6 +1258,9 @@ export type ResultShareRegistryPresetWorkspaceHealthScore = {
   status: ResultShareRegistryPresetWorkspaceHealthStatus;
   checkedAt: string;
   summary: string;
+  thresholdPreferenceSource: "default" | "local";
+  thresholdSummary: string[];
+  thresholdWarnings: string[];
   breakdown: ResultShareRegistryPresetWorkspaceHealthBreakdown;
   findings: ResultShareRegistryPresetWorkspaceHealthFinding[];
   recommendations: ResultShareRegistryPresetWorkspaceHealthRecommendation[];

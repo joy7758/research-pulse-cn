@@ -8,6 +8,7 @@ import {
   applyResultShareRegistryPresetImport,
   applyResultShareRegistrySavedView,
   appendResultShareRegistryPresetAuditEvent,
+  buildPresetWorkspaceHealthThresholdPreview,
   buildResultShareRegistryPresetAuditSummary,
   buildResultShareRegistryPresetExport,
   buildResultShareRegistryPresetWorkspaceHealthScore,
@@ -24,8 +25,10 @@ import {
   createResultShareRegistryPresetWorkspaceBackup,
   createResultShareRegistrySavedView,
   deleteResultShareRegistrySavedView,
+  getDefaultPresetWorkspaceHealthThresholdPreferences,
   inspectResultShareRegistryPresetStorage,
   loadResultShareRegistryPresetAuditEvents,
+  loadPresetWorkspaceHealthThresholdPreferences,
   loadResultShareRegistryPresetWorkspaceBackup,
   loadResultShareRegistryPresetWorkspaceState,
   movePinnedResultShareRegistryPresetWorkspacePreset,
@@ -51,14 +54,18 @@ import {
   RESULT_SHARE_REGISTRY_PRESET_EXPORT_SCHEMA_VERSION,
   RESULT_SHARE_REGISTRY_PRESET_WORKSPACE_EXPORT_SCHEMA_VERSION,
   RESULT_SHARE_REGISTRY_PRESET_WORKSPACE_BACKUP_SCHEMA_VERSION,
+  RESULT_SHARE_REGISTRY_WORKSPACE_HEALTH_THRESHOLD_PREFERENCES_STORAGE_KEY,
   RESULT_SHARE_REGISTRY_WORKSPACE_LAST_GOOD_BACKUP_STORAGE_KEY,
   RESULT_SHARE_REGISTRY_WORKSPACE_STATE_STORAGE_KEY,
+  resetPresetWorkspaceHealthThresholdPreferences,
   saveResultShareRegistryPresetAuditEvents,
   saveResultShareRegistrySavedView,
   setResultShareRegistryPresetWorkspaceLastActive,
   setResultShareRegistryDefaultPresetId,
   syncResultShareRegistryPresetWorkspaceStateWithStore,
   unpinResultShareRegistryPresetWorkspacePreset,
+  validatePresetWorkspaceHealthThresholdPreferences,
+  persistPresetWorkspaceHealthThresholdPreferences,
 } from "./resultShareRegistrySavedViews";
 import type { ResultShareRegistryPresetLocalAuditLoadResult } from "./types";
 
@@ -2102,5 +2109,342 @@ describe("result share registry saved views", () => {
       ),
     ).toBe(true);
     expect(health.recommendations.map((item) => item.kind)).toEqual(["create_backup"]);
+  });
+
+  it("preserves default status mapping and allows valid local thresholds to reclassify the same raw score", () => {
+    const defaults = getDefaultPresetWorkspaceHealthThresholdPreferences({
+      now: "2026-04-19T04:14:00Z",
+    });
+    const validation = validatePresetWorkspaceHealthThresholdPreferences({
+      statusThresholds: {
+        healthyMin: "80",
+        attentionMin: "60",
+        riskMin: "30",
+        criticalMin: "0",
+      },
+      findingPenaltyOverrides: {},
+      recommendationVisibility: defaults.recommendationVisibility,
+    });
+
+    expect(validation.valid).toBe(true);
+    expect(validation.normalizedPreferences).not.toBeNull();
+
+    const defaultHealth = buildResultShareRegistryPresetWorkspaceHealthScore({
+      store: {
+        grantPresets: [],
+        aliasPresets: [],
+        defaultPresetId: null,
+      },
+      integrityReport: {
+        checkedAt: "2026-04-19T04:14:00Z",
+        grantPresetCount: 0,
+        aliasPresetCount: 0,
+        validPresetCount: 0,
+        invalidPresetCount: 0,
+        warningCount: 0,
+        errorCount: 0,
+        issues: [],
+        canAutoRepair: false,
+        canResetGrantScope: false,
+        canResetAliasScope: false,
+        notes: [],
+      },
+      diagnostics: {
+        checkedAt: "2026-04-19T04:14:00Z",
+        storageKeysPresent: {
+          grantPresets: true,
+          aliasPresets: false,
+          defaultPresetId: false,
+          lastGoodBackup: false,
+          workspaceState: true,
+        },
+        grantPresetCount: 0,
+        aliasPresetCount: 0,
+        validPresetCount: 0,
+        invalidPresetCount: 0,
+        defaultPresetIdPresent: false,
+        lastBackupPresent: false,
+        workspaceStatePresent: true,
+        workspaceStateWarning: null,
+        latestValidationAt: "2026-04-19T04:14:00Z",
+        warningCount: 0,
+        errorCount: 0,
+        notes: [],
+      },
+      lastGoodBackup: null,
+      workspaceBackup: null,
+      workspaceState: {
+        pinnedGrantPresetIds: [],
+        pinnedAliasPresetIds: [],
+        lastActivePresetScope: null,
+        lastActivePresetId: null,
+        collapsedSections: null,
+        updatedAt: "2026-04-19T04:14:00Z",
+      },
+      auditSummary: buildResultShareRegistryPresetAuditSummary([]),
+      workspaceImportPreview: null,
+      checkedAt: "2026-04-19T04:14:00Z",
+    });
+    const customHealth = buildResultShareRegistryPresetWorkspaceHealthScore({
+      store: {
+        grantPresets: [],
+        aliasPresets: [],
+        defaultPresetId: null,
+      },
+      integrityReport: {
+        checkedAt: "2026-04-19T04:14:00Z",
+        grantPresetCount: 0,
+        aliasPresetCount: 0,
+        validPresetCount: 0,
+        invalidPresetCount: 0,
+        warningCount: 0,
+        errorCount: 0,
+        issues: [],
+        canAutoRepair: false,
+        canResetGrantScope: false,
+        canResetAliasScope: false,
+        notes: [],
+      },
+      diagnostics: {
+        checkedAt: "2026-04-19T04:14:00Z",
+        storageKeysPresent: {
+          grantPresets: true,
+          aliasPresets: false,
+          defaultPresetId: false,
+          lastGoodBackup: false,
+          workspaceState: true,
+        },
+        grantPresetCount: 0,
+        aliasPresetCount: 0,
+        validPresetCount: 0,
+        invalidPresetCount: 0,
+        defaultPresetIdPresent: false,
+        lastBackupPresent: false,
+        workspaceStatePresent: true,
+        workspaceStateWarning: null,
+        latestValidationAt: "2026-04-19T04:14:00Z",
+        warningCount: 0,
+        errorCount: 0,
+        notes: [],
+      },
+      lastGoodBackup: null,
+      workspaceBackup: null,
+      workspaceState: {
+        pinnedGrantPresetIds: [],
+        pinnedAliasPresetIds: [],
+        lastActivePresetScope: null,
+        lastActivePresetId: null,
+        collapsedSections: null,
+        updatedAt: "2026-04-19T04:14:00Z",
+      },
+      auditSummary: buildResultShareRegistryPresetAuditSummary([]),
+      workspaceImportPreview: null,
+      thresholdPreferences: validation.normalizedPreferences ?? undefined,
+      thresholdPreferenceSource: "local",
+      checkedAt: "2026-04-19T04:14:00Z",
+    });
+
+    expect(defaultHealth.score).toBe(85);
+    expect(defaultHealth.score).toBe(customHealth.score);
+    expect(defaultHealth.status).toBe("attention");
+    expect(customHealth.status).toBe("healthy");
+    expect(customHealth.thresholdPreferenceSource).toBe("local");
+  });
+
+  it("rejects invalid threshold ordering and out-of-range values", () => {
+    const invalidOrder = validatePresetWorkspaceHealthThresholdPreferences({
+      statusThresholds: {
+        healthyMin: "70",
+        attentionMin: "80",
+        riskMin: "40",
+        criticalMin: "0",
+      },
+      findingPenaltyOverrides: {},
+      recommendationVisibility: {
+        showInfo: true,
+        showWarnings: true,
+        showErrors: true,
+        showCritical: true,
+      },
+    });
+    const outOfRange = validatePresetWorkspaceHealthThresholdPreferences({
+      statusThresholds: {
+        healthyMin: "120",
+        attentionMin: "70",
+        riskMin: "40",
+        criticalMin: "0",
+      },
+      findingPenaltyOverrides: {},
+      recommendationVisibility: {
+        showInfo: true,
+        showWarnings: true,
+        showErrors: true,
+        showCritical: true,
+      },
+    });
+
+    expect(invalidOrder.valid).toBe(false);
+    expect(invalidOrder.errors.join(" ")).toMatch(/healthyMin > attentionMin > riskMin > criticalMin/i);
+    expect(outOfRange.valid).toBe(false);
+    expect(outOfRange.errors.join(" ")).toMatch(/within 0..100/i);
+  });
+
+  it("falls back to defaults when threshold preference storage is corrupted and resets only that key", () => {
+    const storage = createMemoryStorage();
+    storage.setItem(
+      RESULT_SHARE_REGISTRY_WORKSPACE_HEALTH_THRESHOLD_PREFERENCES_STORAGE_KEY,
+      "{not-json",
+    );
+    storage.setItem(RESULT_SHARE_REGISTRY_GRANT_PRESETS_STORAGE_KEY, "[]");
+
+    const loaded = loadPresetWorkspaceHealthThresholdPreferences(storage);
+    expect(loaded.source).toBe("default");
+    expect(loaded.storageWarning).toMatch(/fell back to defaults/i);
+    expect(loaded.preferences.statusThresholds.healthyMin).toBe(90);
+
+    const persisted = persistPresetWorkspaceHealthThresholdPreferences(
+      storage,
+      getDefaultPresetWorkspaceHealthThresholdPreferences({
+        now: "2026-04-19T04:15:00Z",
+      }),
+    );
+    expect(persisted.statusThresholds.attentionMin).toBe(70);
+
+    const reset = resetPresetWorkspaceHealthThresholdPreferences(storage);
+    expect(reset.statusThresholds.riskMin).toBe(40);
+    expect(storage.getItem(RESULT_SHARE_REGISTRY_WORKSPACE_HEALTH_THRESHOLD_PREFERENCES_STORAGE_KEY)).toBeNull();
+    expect(storage.getItem(RESULT_SHARE_REGISTRY_GRANT_PRESETS_STORAGE_KEY)).toBe("[]");
+  });
+
+  it("builds a deterministic threshold preview for before and after status impact", () => {
+    const currentHealth = buildResultShareRegistryPresetWorkspaceHealthScore({
+      store: {
+        grantPresets: [],
+        aliasPresets: [],
+        defaultPresetId: null,
+      },
+      integrityReport: {
+        checkedAt: "2026-04-19T04:16:00Z",
+        grantPresetCount: 0,
+        aliasPresetCount: 0,
+        validPresetCount: 0,
+        invalidPresetCount: 0,
+        warningCount: 0,
+        errorCount: 0,
+        issues: [],
+        canAutoRepair: false,
+        canResetGrantScope: false,
+        canResetAliasScope: false,
+        notes: [],
+      },
+      diagnostics: {
+        checkedAt: "2026-04-19T04:16:00Z",
+        storageKeysPresent: {
+          grantPresets: true,
+          aliasPresets: false,
+          defaultPresetId: false,
+          lastGoodBackup: false,
+          workspaceState: true,
+        },
+        grantPresetCount: 0,
+        aliasPresetCount: 0,
+        validPresetCount: 0,
+        invalidPresetCount: 0,
+        defaultPresetIdPresent: false,
+        lastBackupPresent: false,
+        workspaceStatePresent: true,
+        workspaceStateWarning: null,
+        latestValidationAt: "2026-04-19T04:16:00Z",
+        warningCount: 0,
+        errorCount: 0,
+        notes: [],
+      },
+      lastGoodBackup: null,
+      workspaceBackup: null,
+      workspaceState: resetResultShareRegistryPresetWorkspaceState({
+        now: "2026-04-19T04:16:00Z",
+      }),
+      auditSummary: buildResultShareRegistryPresetAuditSummary([]),
+      workspaceImportPreview: null,
+      checkedAt: "2026-04-19T04:16:00Z",
+    });
+    const validation = validatePresetWorkspaceHealthThresholdPreferences({
+      statusThresholds: {
+        healthyMin: "80",
+        attentionMin: "60",
+        riskMin: "30",
+        criticalMin: "0",
+      },
+      findingPenaltyOverrides: {},
+      recommendationVisibility: {
+        showInfo: true,
+        showWarnings: true,
+        showErrors: true,
+        showCritical: true,
+      },
+    });
+    const draftHealth = buildResultShareRegistryPresetWorkspaceHealthScore({
+      store: {
+        grantPresets: [],
+        aliasPresets: [],
+        defaultPresetId: null,
+      },
+      integrityReport: {
+        checkedAt: "2026-04-19T04:16:00Z",
+        grantPresetCount: 0,
+        aliasPresetCount: 0,
+        validPresetCount: 0,
+        invalidPresetCount: 0,
+        warningCount: 0,
+        errorCount: 0,
+        issues: [],
+        canAutoRepair: false,
+        canResetGrantScope: false,
+        canResetAliasScope: false,
+        notes: [],
+      },
+      diagnostics: {
+        checkedAt: "2026-04-19T04:16:00Z",
+        storageKeysPresent: {
+          grantPresets: true,
+          aliasPresets: false,
+          defaultPresetId: false,
+          lastGoodBackup: false,
+          workspaceState: true,
+        },
+        grantPresetCount: 0,
+        aliasPresetCount: 0,
+        validPresetCount: 0,
+        invalidPresetCount: 0,
+        defaultPresetIdPresent: false,
+        lastBackupPresent: false,
+        workspaceStatePresent: true,
+        workspaceStateWarning: null,
+        latestValidationAt: "2026-04-19T04:16:00Z",
+        warningCount: 0,
+        errorCount: 0,
+        notes: [],
+      },
+      lastGoodBackup: null,
+      workspaceBackup: null,
+      workspaceState: resetResultShareRegistryPresetWorkspaceState({
+        now: "2026-04-19T04:16:00Z",
+      }),
+      auditSummary: buildResultShareRegistryPresetAuditSummary([]),
+      workspaceImportPreview: null,
+      thresholdPreferences: validation.normalizedPreferences ?? undefined,
+      thresholdPreferenceSource: "local",
+      checkedAt: "2026-04-19T04:16:00Z",
+    });
+    const preview = buildPresetWorkspaceHealthThresholdPreview({
+      currentScore: currentHealth,
+      draftScore: draftHealth,
+    });
+
+    expect(preview.currentScore).toBe(85);
+    expect(preview.currentStatus).toBe("attention");
+    expect(preview.draftStatus).toBe("healthy");
+    expect(preview.statusChanged).toBe(true);
+    expect(preview.summary).toMatch(/to healthy/i);
   });
 });

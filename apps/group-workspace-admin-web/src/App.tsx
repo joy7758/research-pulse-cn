@@ -45,6 +45,7 @@ import {
 } from "./lib/resultShareRegistryFilters";
 import {
   appendResultShareRegistryPresetAuditEvent,
+  buildPresetWorkspaceHealthThresholdPreview,
   buildResultShareRegistryPresetWorkspaceViewModel,
   buildResultShareRegistryPresetWorkspaceHealthScore,
   buildResultShareRegistryPresetIntegrityReport,
@@ -64,7 +65,10 @@ import {
   createResultShareRegistryPresetWorkspaceBackup,
   createResultShareRegistrySavedView,
   deleteResultShareRegistrySavedView,
+  createPresetWorkspaceHealthThresholdDraft,
+  getDefaultPresetWorkspaceHealthThresholdPreferences,
   inspectResultShareRegistryPresetStorage,
+  loadPresetWorkspaceHealthThresholdPreferences,
   loadResultShareRegistryPresetAuditEvents,
   loadResultShareRegistryPresetWorkspaceBackup,
   loadResultShareRegistryPresetWorkspaceState,
@@ -74,6 +78,7 @@ import {
   parseResultShareRegistryPresetWorkspaceImport,
   persistResultShareRegistryPresetWorkspaceState,
   persistResultShareRegistryPresetWorkspaceBackup,
+  persistPresetWorkspaceHealthThresholdPreferences,
   persistResultShareRegistrySavedViewStore,
   persistResultShareRegistryPresetBackup,
   pinResultShareRegistryPresetWorkspacePreset,
@@ -82,6 +87,7 @@ import {
   RESULT_SHARE_REGISTRY_PRESET_EXPORT_SCHEMA_VERSION,
   RESULT_SHARE_REGISTRY_PRESET_WORKSPACE_EXPORT_SCHEMA_VERSION,
   RESULT_SHARE_REGISTRY_GRANT_PRESETS_STORAGE_KEY,
+  resetPresetWorkspaceHealthThresholdPreferences,
   resetResultShareRegistryPresetWorkspaceState,
   saveResultShareRegistrySavedView,
   setResultShareRegistryDefaultPresetId,
@@ -90,6 +96,7 @@ import {
   applyResultShareRegistryPresetWorkspaceImport,
   restoreResultShareRegistryPresetWorkspaceBackup,
   unpinResultShareRegistryPresetWorkspacePreset,
+  validatePresetWorkspaceHealthThresholdPreferences,
 } from "./lib/resultShareRegistrySavedViews";
 import {
   clearVisibleAdminTokenHints,
@@ -118,7 +125,10 @@ import type {
   ResultShareRegistryPresetLocalAuditSummary,
   ResultShareRegistryPresetRecoveryAction,
   ResultShareRegistryPresetWorkspaceBackupSnapshot,
+  ResultShareRegistryPresetWorkspaceHealthThresholdDraft,
+  ResultShareRegistryPresetWorkspaceHealthThresholdPreferences,
   ResultShareRegistryPresetWorkspaceHealthScore,
+  ResultShareRegistryPresetWorkspaceHealthThresholdValidationResult,
   ResultShareRegistryPresetWorkspaceImportPreview,
   ResultShareRegistrySavedViewApplyMode,
   ResultShareRegistrySavedView,
@@ -329,6 +339,9 @@ export function GroupWorkspaceAdminShell({
   const initialPresetWorkspaceBackupRef = useRef(
     loadResultShareRegistryPresetWorkspaceBackup(getLocalStorageSafe()),
   );
+  const initialPresetWorkspaceHealthThresholdPreferencesRef = useRef(
+    loadPresetWorkspaceHealthThresholdPreferences(getLocalStorageSafe()),
+  );
   const initialSavedViewStoreRef = useRef<ResultShareRegistrySavedViewStoreState>(
     initialPresetInspectionRef.current.store,
   );
@@ -448,6 +461,32 @@ export function GroupWorkspaceAdminShell({
     resultShareRegistryPresetWorkspaceHealthCheckedAt,
     setResultShareRegistryPresetWorkspaceHealthCheckedAt,
   ] = useState<string>(() => new Date().toISOString());
+  const [
+    resultShareRegistryPresetWorkspaceHealthThresholdPreferences,
+    setResultShareRegistryPresetWorkspaceHealthThresholdPreferences,
+  ] = useState<ResultShareRegistryPresetWorkspaceHealthThresholdPreferences>(
+    initialPresetWorkspaceHealthThresholdPreferencesRef.current.preferences,
+  );
+  const [
+    resultShareRegistryPresetWorkspaceHealthThresholdDraft,
+    setResultShareRegistryPresetWorkspaceHealthThresholdDraft,
+  ] = useState<ResultShareRegistryPresetWorkspaceHealthThresholdDraft>(
+    createPresetWorkspaceHealthThresholdDraft(
+      initialPresetWorkspaceHealthThresholdPreferencesRef.current.preferences,
+    ),
+  );
+  const [
+    resultShareRegistryPresetWorkspaceHealthThresholdStorageWarning,
+    setResultShareRegistryPresetWorkspaceHealthThresholdStorageWarning,
+  ] = useState<string | null>(
+    initialPresetWorkspaceHealthThresholdPreferencesRef.current.storageWarning,
+  );
+  const [
+    resultShareRegistryPresetWorkspaceHealthThresholdSource,
+    setResultShareRegistryPresetWorkspaceHealthThresholdSource,
+  ] = useState<"default" | "local">(
+    initialPresetWorkspaceHealthThresholdPreferencesRef.current.source,
+  );
   const [resultShareRegistryPresetLocalAuditEvents, setResultShareRegistryPresetLocalAuditEvents] =
     useState<ResultShareRegistryPresetLocalAuditEvent[]>(initialPresetAuditRef.current.events);
   const [
@@ -1053,6 +1092,14 @@ export function GroupWorkspaceAdminShell({
         resultShareRegistrySavedViewSummaries,
       ],
     );
+  const resultShareRegistryPresetWorkspaceHealthThresholdValidation =
+    useMemo<ResultShareRegistryPresetWorkspaceHealthThresholdValidationResult>(
+      () =>
+        validatePresetWorkspaceHealthThresholdPreferences(
+          resultShareRegistryPresetWorkspaceHealthThresholdDraft,
+        ),
+      [resultShareRegistryPresetWorkspaceHealthThresholdDraft],
+    );
   const resultShareRegistryPresetWorkspaceHealthScore =
     useMemo<ResultShareRegistryPresetWorkspaceHealthScore>(
       () =>
@@ -1065,6 +1112,9 @@ export function GroupWorkspaceAdminShell({
           workspaceState: resultShareRegistryPresetWorkspaceState,
           auditSummary: resultShareRegistryPresetLocalAuditSummary,
           workspaceImportPreview: resultShareRegistryPresetWorkspaceImportPreview,
+          thresholdPreferences: resultShareRegistryPresetWorkspaceHealthThresholdPreferences,
+          thresholdPreferenceSource: resultShareRegistryPresetWorkspaceHealthThresholdSource,
+          thresholdStorageWarning: resultShareRegistryPresetWorkspaceHealthThresholdStorageWarning,
           checkedAt: resultShareRegistryPresetWorkspaceHealthCheckedAt,
         }),
       [
@@ -1072,6 +1122,9 @@ export function GroupWorkspaceAdminShell({
         resultShareRegistryPresetLastGoodBackup,
         resultShareRegistryPresetLocalAuditSummary,
         resultShareRegistryPresetStorageDiagnostics,
+        resultShareRegistryPresetWorkspaceHealthThresholdSource,
+        resultShareRegistryPresetWorkspaceHealthThresholdPreferences,
+        resultShareRegistryPresetWorkspaceHealthThresholdStorageWarning,
         resultShareRegistryPresetWorkspaceHealthCheckedAt,
         resultShareRegistryPresetWorkspaceImportPreview,
         resultShareRegistryPresetWorkspaceLastGoodBackup,
@@ -1079,6 +1132,41 @@ export function GroupWorkspaceAdminShell({
         resultShareRegistrySavedViews,
       ],
     );
+  const resultShareRegistryPresetWorkspaceHealthThresholdPreview = useMemo(() => {
+    if (!resultShareRegistryPresetWorkspaceHealthThresholdValidation.valid) {
+      return null;
+    }
+    const draftHealthScore = buildResultShareRegistryPresetWorkspaceHealthScore({
+      store: resultShareRegistrySavedViews,
+      integrityReport: resultShareRegistryPresetIntegrityReport,
+      diagnostics: resultShareRegistryPresetStorageDiagnostics,
+      lastGoodBackup: resultShareRegistryPresetLastGoodBackup,
+      workspaceBackup: resultShareRegistryPresetWorkspaceLastGoodBackup,
+      workspaceState: resultShareRegistryPresetWorkspaceState,
+      auditSummary: resultShareRegistryPresetLocalAuditSummary,
+      workspaceImportPreview: resultShareRegistryPresetWorkspaceImportPreview,
+      thresholdPreferences:
+        resultShareRegistryPresetWorkspaceHealthThresholdValidation.normalizedPreferences ?? undefined,
+      thresholdPreferenceSource: "local",
+      checkedAt: resultShareRegistryPresetWorkspaceHealthCheckedAt,
+    });
+    return buildPresetWorkspaceHealthThresholdPreview({
+      currentScore: resultShareRegistryPresetWorkspaceHealthScore,
+      draftScore: draftHealthScore,
+    });
+  }, [
+    resultShareRegistryPresetIntegrityReport,
+    resultShareRegistryPresetLastGoodBackup,
+    resultShareRegistryPresetLocalAuditSummary,
+    resultShareRegistryPresetStorageDiagnostics,
+    resultShareRegistryPresetWorkspaceHealthCheckedAt,
+    resultShareRegistryPresetWorkspaceHealthThresholdValidation,
+    resultShareRegistryPresetWorkspaceImportPreview,
+    resultShareRegistryPresetWorkspaceLastGoodBackup,
+    resultShareRegistryPresetWorkspaceState,
+    resultShareRegistryPresetWorkspaceHealthScore,
+    resultShareRegistrySavedViews,
+  ]);
   const activeRegistryPresetLabel = useMemo(() => {
     if (!activeRegistryPreset) {
       return null;
@@ -1324,6 +1412,126 @@ export function GroupWorkspaceAdminShell({
       ),
     );
     setNoticeMessage("Recalculated the local preset workspace health score.");
+  }, [recordResultShareRegistryPresetAuditEvent]);
+
+  const handleResultShareRegistryPresetWorkspaceHealthThresholdDraftChange = useCallback(
+    (
+      field: "healthyMin" | "attentionMin" | "riskMin" | "criticalMin",
+      value: string,
+    ) => {
+      setResultShareRegistryPresetWorkspaceHealthThresholdDraft((current) => ({
+        ...current,
+        statusThresholds: {
+          ...current.statusThresholds,
+          [field]: value,
+        },
+      }));
+    },
+    [],
+  );
+
+  const handleResultShareRegistryPresetWorkspaceHealthPenaltyOverrideDraftChange = useCallback(
+    (
+      key:
+        | "stalePinnedPreset"
+        | "missingPresetBackup"
+        | "missingWorkspaceBackup"
+        | "recentFailedImport"
+        | "recentFailedRecovery",
+      value: string,
+    ) => {
+      setResultShareRegistryPresetWorkspaceHealthThresholdDraft((current) => ({
+        ...current,
+        findingPenaltyOverrides: {
+          ...current.findingPenaltyOverrides,
+          [key]: value,
+        },
+      }));
+    },
+    [],
+  );
+
+  const handleResultShareRegistryPresetWorkspaceHealthVisibilityChange = useCallback(
+    (field: "showInfo" | "showWarnings" | "showErrors" | "showCritical", value: boolean) => {
+      setResultShareRegistryPresetWorkspaceHealthThresholdDraft((current) => ({
+        ...current,
+        recommendationVisibility: {
+          ...current.recommendationVisibility,
+          [field]: value,
+        },
+      }));
+    },
+    [],
+  );
+
+  const handleApplyResultShareRegistryPresetWorkspaceHealthThresholds = useCallback(() => {
+    if (!resultShareRegistryPresetWorkspaceHealthThresholdValidation.valid) {
+      recordResultShareRegistryPresetAuditEvent(
+        createPresetAuditEvent(
+          "preset_workspace_health_threshold_validation_failed",
+          "failed",
+          "Local health threshold validation failed before apply.",
+          {
+            scope: "storage",
+            safeDetails:
+              resultShareRegistryPresetWorkspaceHealthThresholdValidation.errors[0] ?? null,
+          },
+        ),
+      );
+      setNoticeMessage("Local health threshold preferences are invalid and were not applied.");
+      return;
+    }
+
+    const storage = getLocalStorageSafe();
+    const normalizedPreferences =
+      resultShareRegistryPresetWorkspaceHealthThresholdValidation.normalizedPreferences ??
+      getDefaultPresetWorkspaceHealthThresholdPreferences();
+    const persisted = persistPresetWorkspaceHealthThresholdPreferences(storage, normalizedPreferences);
+    setResultShareRegistryPresetWorkspaceHealthThresholdPreferences(persisted);
+    setResultShareRegistryPresetWorkspaceHealthThresholdDraft(
+      createPresetWorkspaceHealthThresholdDraft(persisted),
+    );
+    setResultShareRegistryPresetWorkspaceHealthThresholdStorageWarning(null);
+    setResultShareRegistryPresetWorkspaceHealthThresholdSource("local");
+    setResultShareRegistryPresetWorkspaceHealthCheckedAt(new Date().toISOString());
+    recordResultShareRegistryPresetAuditEvent(
+      createPresetAuditEvent(
+        "preset_workspace_health_thresholds_updated",
+        "success",
+        "Updated local preset workspace health thresholds.",
+        {
+          scope: "storage",
+          safeDetails: `healthy>=${persisted.statusThresholds.healthyMin}, attention>=${persisted.statusThresholds.attentionMin}, risk>=${persisted.statusThresholds.riskMin}`,
+        },
+      ),
+    );
+    setNoticeMessage("Updated local preset workspace health threshold preferences.");
+  }, [
+    recordResultShareRegistryPresetAuditEvent,
+    resultShareRegistryPresetWorkspaceHealthThresholdValidation,
+  ]);
+
+  const handleResetResultShareRegistryPresetWorkspaceHealthThresholds = useCallback(() => {
+    const storage = getLocalStorageSafe();
+    const resetPreferences = resetPresetWorkspaceHealthThresholdPreferences(storage);
+    setResultShareRegistryPresetWorkspaceHealthThresholdPreferences(resetPreferences);
+    setResultShareRegistryPresetWorkspaceHealthThresholdDraft(
+      createPresetWorkspaceHealthThresholdDraft(resetPreferences),
+    );
+    setResultShareRegistryPresetWorkspaceHealthThresholdStorageWarning(null);
+    setResultShareRegistryPresetWorkspaceHealthThresholdSource("default");
+    setResultShareRegistryPresetWorkspaceHealthCheckedAt(new Date().toISOString());
+    recordResultShareRegistryPresetAuditEvent(
+      createPresetAuditEvent(
+        "preset_workspace_health_thresholds_reset",
+        "success",
+        "Reset local preset workspace health thresholds to defaults.",
+        {
+          scope: "storage",
+        },
+      ),
+    );
+    setNoticeMessage("Reset local preset workspace health threshold preferences to defaults.");
   }, [recordResultShareRegistryPresetAuditEvent]);
 
   const commitResultShareRegistryPresetWorkspaceState = useCallback(
@@ -3337,6 +3545,13 @@ export function GroupWorkspaceAdminShell({
         presetWorkspace={{
           viewModel: resultShareRegistryPresetWorkspaceViewModel,
           healthScore: resultShareRegistryPresetWorkspaceHealthScore,
+          healthThresholds: {
+            current: resultShareRegistryPresetWorkspaceHealthThresholdPreferences,
+            draft: resultShareRegistryPresetWorkspaceHealthThresholdDraft,
+            validation: resultShareRegistryPresetWorkspaceHealthThresholdValidation,
+            preview: resultShareRegistryPresetWorkspaceHealthThresholdPreview,
+            storageWarning: resultShareRegistryPresetWorkspaceHealthThresholdStorageWarning,
+          },
           transfer: {
             importMode: resultShareRegistryPresetWorkspaceImportMode,
             preview: resultShareRegistryPresetWorkspaceImportPreview,
@@ -3396,6 +3611,11 @@ export function GroupWorkspaceAdminShell({
         onExportPresetWorkspace={handleExportResultShareRegistryPresetWorkspace}
         onRestorePresetWorkspaceBackup={handleRestoreResultShareRegistryPresetWorkspaceBackup}
         onRecalculatePresetWorkspaceHealth={handleRecalculateResultShareRegistryPresetWorkspaceHealth}
+        onHealthThresholdDraftChange={handleResultShareRegistryPresetWorkspaceHealthThresholdDraftChange}
+        onHealthPenaltyOverrideDraftChange={handleResultShareRegistryPresetWorkspaceHealthPenaltyOverrideDraftChange}
+        onHealthVisibilityChange={handleResultShareRegistryPresetWorkspaceHealthVisibilityChange}
+        onApplyHealthThresholds={handleApplyResultShareRegistryPresetWorkspaceHealthThresholds}
+        onResetHealthThresholds={handleResetResultShareRegistryPresetWorkspaceHealthThresholds}
         onPinSavedView={handlePinRegistrySavedView}
         onUnpinSavedView={handleUnpinRegistrySavedView}
         onMovePinnedSavedView={handleMovePinnedRegistrySavedView}

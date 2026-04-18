@@ -41,6 +41,12 @@ import type {
   ResultShareRegistryPresetWorkspaceBackupSnapshot,
   ResultShareRegistryPresetWorkspaceExportPayload,
   ResultShareRegistryPresetWorkspaceHealthFinding,
+  ResultShareRegistryPresetWorkspaceHealthPenaltyOverrideKey,
+  ResultShareRegistryPresetWorkspaceHealthThresholdDraft,
+  ResultShareRegistryPresetWorkspaceHealthThresholdLoadResult,
+  ResultShareRegistryPresetWorkspaceHealthThresholdPreferences,
+  ResultShareRegistryPresetWorkspaceHealthThresholdPreview,
+  ResultShareRegistryPresetWorkspaceHealthThresholdValidationResult,
   ResultShareRegistryPresetWorkspaceHealthRecommendation,
   ResultShareRegistryPresetWorkspaceHealthScore,
   ResultShareRegistryPresetWorkspaceHealthStatus,
@@ -63,6 +69,8 @@ export const RESULT_SHARE_REGISTRY_WORKSPACE_STATE_STORAGE_KEY =
   "resultShareRegistryPresetWorkspaceState";
 export const RESULT_SHARE_REGISTRY_WORKSPACE_LAST_GOOD_BACKUP_STORAGE_KEY =
   "resultShareRegistryPresetWorkspaceLastGoodBackup";
+export const RESULT_SHARE_REGISTRY_WORKSPACE_HEALTH_THRESHOLD_PREFERENCES_STORAGE_KEY =
+  "resultShareRegistryPresetWorkspaceHealthThresholdPreferences";
 export const RESULT_SHARE_REGISTRY_PRESET_EXPORT_SCHEMA_VERSION =
   "result-share-registry-presets.v1";
 export const RESULT_SHARE_REGISTRY_PRESET_BACKUP_SCHEMA_VERSION =
@@ -132,6 +140,24 @@ const workspaceCollapsedSectionAllowedKeys = new Set([
   "recentActivity",
   "storageHealth",
 ]);
+const workspaceHealthThresholdPreferencesAllowedKeys = new Set([
+  "statusThresholds",
+  "findingPenaltyOverrides",
+  "recommendationVisibility",
+  "updatedAt",
+]);
+const workspaceHealthThresholdStatusAllowedKeys = new Set([
+  "healthyMin",
+  "attentionMin",
+  "riskMin",
+  "criticalMin",
+]);
+const workspaceHealthThresholdVisibilityAllowedKeys = new Set([
+  "showInfo",
+  "showWarnings",
+  "showErrors",
+  "showCritical",
+]);
 const unsafeFieldPattern =
   /(^|_)(token|secret|password|hash|rawalias|rawsharetoken|localpath|absolutepath|sourcefile|responsepayload)(_|$)|rawAlias|rawShareToken|localPath|absolutePath|sourceFile|responsePayload|alias_hash|token_hash/i;
 
@@ -143,6 +169,9 @@ const presetLocalAuditActionTypes: ResultShareRegistryPresetLocalAuditActionType
   "preset_pinned",
   "preset_unpinned",
   "preset_workspace_health_checked",
+  "preset_workspace_health_thresholds_updated",
+  "preset_workspace_health_thresholds_reset",
+  "preset_workspace_health_threshold_validation_failed",
   "preset_workspace_export_created",
   "preset_workspace_import_dry_run",
   "preset_workspace_import_merge",
@@ -1829,6 +1858,521 @@ export function buildResultShareRegistryPresetWorkspaceViewModel(
   };
 }
 
+const DEFAULT_PRESET_WORKSPACE_HEALTH_STATUS_THRESHOLDS = {
+  healthyMin: 90,
+  attentionMin: 70,
+  riskMin: 40,
+  criticalMin: 0,
+} as const;
+
+const DEFAULT_PRESET_WORKSPACE_HEALTH_RECOMMENDATION_VISIBILITY = {
+  showInfo: true,
+  showWarnings: true,
+  showErrors: true,
+  showCritical: true,
+} as const;
+
+const DEFAULT_PRESET_WORKSPACE_HEALTH_PENALTY_OVERRIDES: Record<
+  ResultShareRegistryPresetWorkspaceHealthPenaltyOverrideKey,
+  number
+> = {
+  storageInvalidJson: 40,
+  workspaceStateWarning: 15,
+  unsafeFieldDetected: 40,
+  invalidSchemaVersion: 25,
+  danglingDefaultPreset: 10,
+  stalePinnedPreset: 5,
+  allPinnedPresetsStale: 15,
+  missingPresetBackup: 5,
+  missingWorkspaceBackup: 5,
+  corruptedAuditHistory: 10,
+  recentFailedImport: 5,
+  recentFailedRecovery: 5,
+  noSavedPresets: 5,
+  invalidDrilldownContext: 10,
+  importPreviewHasErrors: 15,
+};
+
+function isIntegerString(value: string): boolean {
+  return /^-?\d+$/.test(value.trim());
+}
+
+function parseDraftInteger(
+  value: string,
+  path: string,
+  errors: string[],
+): number | null {
+  const trimmed = value.trim();
+  if (!isIntegerString(trimmed)) {
+    errors.push(`${path} must be an integer.`);
+    return null;
+  }
+  return Number.parseInt(trimmed, 10);
+}
+
+export function getDefaultPresetWorkspaceHealthThresholdPreferences(
+  options?: {
+    now?: string;
+  },
+): ResultShareRegistryPresetWorkspaceHealthThresholdPreferences {
+  return {
+    statusThresholds: {
+      ...DEFAULT_PRESET_WORKSPACE_HEALTH_STATUS_THRESHOLDS,
+    },
+    findingPenaltyOverrides: {},
+    recommendationVisibility: {
+      ...DEFAULT_PRESET_WORKSPACE_HEALTH_RECOMMENDATION_VISIBILITY,
+    },
+    updatedAt: options?.now ?? new Date().toISOString(),
+  };
+}
+
+export function createPresetWorkspaceHealthThresholdDraft(
+  preferences?: ResultShareRegistryPresetWorkspaceHealthThresholdPreferences,
+): ResultShareRegistryPresetWorkspaceHealthThresholdDraft {
+  const source = preferences ?? getDefaultPresetWorkspaceHealthThresholdPreferences();
+  return {
+    statusThresholds: {
+      healthyMin: String(source.statusThresholds.healthyMin),
+      attentionMin: String(source.statusThresholds.attentionMin),
+      riskMin: String(source.statusThresholds.riskMin),
+      criticalMin: String(source.statusThresholds.criticalMin),
+    },
+    findingPenaltyOverrides: Object.fromEntries(
+      Object.entries(source.findingPenaltyOverrides).map(([key, value]) => [key, String(value)]),
+    ) as ResultShareRegistryPresetWorkspaceHealthThresholdDraft["findingPenaltyOverrides"],
+    recommendationVisibility: {
+      ...source.recommendationVisibility,
+    },
+  };
+}
+
+function normalizeThresholdVisibility(
+  value: unknown,
+): ResultShareRegistryPresetWorkspaceHealthThresholdPreferences["recommendationVisibility"] {
+  if (!isRecord(value)) {
+    return {
+      ...DEFAULT_PRESET_WORKSPACE_HEALTH_RECOMMENDATION_VISIBILITY,
+    };
+  }
+  return {
+    showInfo: value.showInfo !== false,
+    showWarnings: value.showWarnings !== false,
+    showErrors: value.showErrors !== false,
+    showCritical: value.showCritical !== false,
+  };
+}
+
+function sanitizePenaltyOverridesRecord(
+  value: unknown,
+  warnings: string[],
+  errors: string[],
+  path: string,
+): Partial<Record<ResultShareRegistryPresetWorkspaceHealthPenaltyOverrideKey, number>> {
+  if (value == null) {
+    return {};
+  }
+  if (!isRecord(value)) {
+    errors.push(`${path} must be an object when provided.`);
+    return {};
+  }
+  const result: Partial<
+    Record<ResultShareRegistryPresetWorkspaceHealthPenaltyOverrideKey, number>
+  > = {};
+  for (const [rawKey, rawValue] of Object.entries(value)) {
+    if (!(rawKey in DEFAULT_PRESET_WORKSPACE_HEALTH_PENALTY_OVERRIDES)) {
+      warnings.push(`${path}.${rawKey} is not a supported penalty override and was ignored.`);
+      continue;
+    }
+    if (typeof rawValue !== "number" || !Number.isInteger(rawValue)) {
+      errors.push(`${path}.${rawKey} must be an integer.`);
+      continue;
+    }
+    if (rawValue < 0 || rawValue > 100) {
+      errors.push(`${path}.${rawKey} must be between 0 and 100.`);
+      continue;
+    }
+    result[rawKey as ResultShareRegistryPresetWorkspaceHealthPenaltyOverrideKey] = rawValue;
+  }
+  return result;
+}
+
+function normalizePresetWorkspaceHealthThresholdPreferences(
+  value: unknown,
+  options?: {
+    allowMissingUpdatedAt?: boolean;
+    now?: string;
+  },
+): {
+  preferences: ResultShareRegistryPresetWorkspaceHealthThresholdPreferences | null;
+  warnings: string[];
+  errors: string[];
+} {
+  const warnings: string[] = [];
+  const errors: string[] = [];
+  if (!isRecord(value)) {
+    return {
+      preferences: null,
+      warnings,
+      errors: ["Threshold preferences must be an object."],
+    };
+  }
+  if (
+    collectUnexpectedKeys(
+      value,
+      workspaceHealthThresholdPreferencesAllowedKeys,
+      "thresholdPreferences",
+      warnings,
+      errors,
+    )
+  ) {
+    return { preferences: null, warnings, errors };
+  }
+  if (!isRecord(value.statusThresholds)) {
+    errors.push("thresholdPreferences.statusThresholds must be an object.");
+    return { preferences: null, warnings, errors };
+  }
+  if (
+    collectUnexpectedKeys(
+      value.statusThresholds,
+      workspaceHealthThresholdStatusAllowedKeys,
+      "thresholdPreferences.statusThresholds",
+      warnings,
+      errors,
+    )
+  ) {
+    return { preferences: null, warnings, errors };
+  }
+  if (
+    value.recommendationVisibility !== undefined &&
+    value.recommendationVisibility !== null &&
+    !isRecord(value.recommendationVisibility)
+  ) {
+    errors.push("thresholdPreferences.recommendationVisibility must be an object.");
+    return { preferences: null, warnings, errors };
+  }
+  if (
+    isRecord(value.recommendationVisibility) &&
+    collectUnexpectedKeys(
+      value.recommendationVisibility,
+      workspaceHealthThresholdVisibilityAllowedKeys,
+      "thresholdPreferences.recommendationVisibility",
+      warnings,
+      errors,
+    )
+  ) {
+    return { preferences: null, warnings, errors };
+  }
+  const statusThresholds = value.statusThresholds as Record<string, unknown>;
+  const healthyMin = statusThresholds.healthyMin;
+  const attentionMin = statusThresholds.attentionMin;
+  const riskMin = statusThresholds.riskMin;
+  const criticalMin = statusThresholds.criticalMin;
+  if (
+    ![healthyMin, attentionMin, riskMin, criticalMin].every(
+      (item) => typeof item === "number" && Number.isInteger(item),
+    )
+  ) {
+    errors.push("All threshold values must be integers.");
+    return { preferences: null, warnings, errors };
+  }
+  const normalizedHealthyMin = healthyMin as number;
+  const normalizedAttentionMin = attentionMin as number;
+  const normalizedRiskMin = riskMin as number;
+  const normalizedCriticalMin = criticalMin as number;
+  const thresholdValues = [
+    normalizedHealthyMin,
+    normalizedAttentionMin,
+    normalizedRiskMin,
+    normalizedCriticalMin,
+  ];
+  if (thresholdValues.some((item) => item < 0 || item > 100)) {
+    errors.push("All threshold values must be within 0..100.");
+  }
+  if (normalizedCriticalMin !== 0) {
+    errors.push("criticalMin must stay at 0 in v1.");
+  }
+  if (
+    !(
+      normalizedHealthyMin > normalizedAttentionMin &&
+      normalizedAttentionMin > normalizedRiskMin &&
+      normalizedRiskMin > normalizedCriticalMin
+    )
+  ) {
+    errors.push("Thresholds must satisfy healthyMin > attentionMin > riskMin > criticalMin.");
+  }
+  const updatedAt = typeof value.updatedAt === "string" ? value.updatedAt.trim() : "";
+  if (!updatedAt && !options?.allowMissingUpdatedAt) {
+    errors.push("thresholdPreferences.updatedAt is required.");
+  }
+  const penaltyOverrides = sanitizePenaltyOverridesRecord(
+    value.findingPenaltyOverrides,
+    warnings,
+    errors,
+    "thresholdPreferences.findingPenaltyOverrides",
+  );
+  if (errors.length > 0) {
+    return { preferences: null, warnings, errors };
+  }
+  return {
+    preferences: {
+      statusThresholds: {
+        healthyMin: normalizedHealthyMin,
+        attentionMin: normalizedAttentionMin,
+        riskMin: normalizedRiskMin,
+        criticalMin: normalizedCriticalMin,
+      },
+      findingPenaltyOverrides: penaltyOverrides,
+      recommendationVisibility: normalizeThresholdVisibility(value.recommendationVisibility),
+      updatedAt: updatedAt || options?.now || new Date().toISOString(),
+    },
+    warnings,
+    errors,
+  };
+}
+
+export function validatePresetWorkspaceHealthThresholdPreferences(
+  draft: ResultShareRegistryPresetWorkspaceHealthThresholdDraft,
+  options?: {
+    now?: string;
+  },
+): ResultShareRegistryPresetWorkspaceHealthThresholdValidationResult {
+  const warnings: string[] = [];
+  const errors: string[] = [];
+  const healthyMin = parseDraftInteger(
+    draft.statusThresholds.healthyMin,
+    "statusThresholds.healthyMin",
+    errors,
+  );
+  const attentionMin = parseDraftInteger(
+    draft.statusThresholds.attentionMin,
+    "statusThresholds.attentionMin",
+    errors,
+  );
+  const riskMin = parseDraftInteger(draft.statusThresholds.riskMin, "statusThresholds.riskMin", errors);
+  const criticalMin = parseDraftInteger(
+    draft.statusThresholds.criticalMin,
+    "statusThresholds.criticalMin",
+    errors,
+  );
+  const parsedThresholds = [healthyMin, attentionMin, riskMin, criticalMin];
+  if (parsedThresholds.every((item) => item !== null)) {
+    const values = parsedThresholds as number[];
+    if (values.some((item) => item < 0 || item > 100)) {
+      errors.push("Threshold values must be within 0..100.");
+    }
+    if (criticalMin !== 0) {
+      errors.push("Critical minimum stays fixed at 0 in v1.");
+    }
+    if (!(healthyMin! > attentionMin! && attentionMin! > riskMin! && riskMin! > criticalMin!)) {
+      errors.push("Thresholds must satisfy healthyMin > attentionMin > riskMin > criticalMin.");
+    }
+  }
+
+  const normalizedPenaltyOverrides: Partial<
+    Record<ResultShareRegistryPresetWorkspaceHealthPenaltyOverrideKey, number>
+  > = {};
+  for (const [rawKey, rawValue] of Object.entries(draft.findingPenaltyOverrides)) {
+    const trimmed = rawValue.trim();
+    if (!trimmed) {
+      continue;
+    }
+    if (!(rawKey in DEFAULT_PRESET_WORKSPACE_HEALTH_PENALTY_OVERRIDES)) {
+      warnings.push(`findingPenaltyOverrides.${rawKey} is not supported and was ignored.`);
+      continue;
+    }
+    const parsed = parseDraftInteger(trimmed, `findingPenaltyOverrides.${rawKey}`, errors);
+    if (parsed === null) {
+      continue;
+    }
+    if (parsed < 0 || parsed > 100) {
+      errors.push(`findingPenaltyOverrides.${rawKey} must be within 0..100.`);
+      continue;
+    }
+    normalizedPenaltyOverrides[rawKey as ResultShareRegistryPresetWorkspaceHealthPenaltyOverrideKey] =
+      parsed;
+  }
+
+  if (errors.length > 0 || parsedThresholds.some((item) => item === null)) {
+    return {
+      valid: false,
+      warnings,
+      errors,
+      normalizedPreferences: null,
+      previewStatusImpact: null,
+    };
+  }
+
+  return {
+    valid: true,
+    warnings,
+    errors,
+    normalizedPreferences: {
+      statusThresholds: {
+        healthyMin: healthyMin!,
+        attentionMin: attentionMin!,
+        riskMin: riskMin!,
+        criticalMin: criticalMin!,
+      },
+      findingPenaltyOverrides: normalizedPenaltyOverrides,
+      recommendationVisibility: {
+        ...draft.recommendationVisibility,
+      },
+      updatedAt: options?.now ?? new Date().toISOString(),
+    },
+    previewStatusImpact: null,
+  };
+}
+
+export function loadPresetWorkspaceHealthThresholdPreferences(
+  storage: Storage | null | undefined,
+): ResultShareRegistryPresetWorkspaceHealthThresholdLoadResult {
+  if (!storage) {
+    return {
+      preferences: getDefaultPresetWorkspaceHealthThresholdPreferences(),
+      storageWarning: null,
+      keyPresent: false,
+      source: "default",
+    };
+  }
+  let raw: string | null = null;
+  try {
+    raw = storage.getItem(RESULT_SHARE_REGISTRY_WORKSPACE_HEALTH_THRESHOLD_PREFERENCES_STORAGE_KEY);
+  } catch {
+    return {
+      preferences: getDefaultPresetWorkspaceHealthThresholdPreferences(),
+      storageWarning: "Local health threshold preferences could not be read.",
+      keyPresent: false,
+      source: "default",
+    };
+  }
+  if (!raw) {
+    return {
+      preferences: getDefaultPresetWorkspaceHealthThresholdPreferences(),
+      storageWarning: null,
+      keyPresent: false,
+      source: "default",
+    };
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    const normalized = normalizePresetWorkspaceHealthThresholdPreferences(parsed, {
+      allowMissingUpdatedAt: true,
+    });
+    if (!normalized.preferences || normalized.errors.length > 0) {
+      return {
+        preferences: getDefaultPresetWorkspaceHealthThresholdPreferences(),
+        storageWarning: "Local health threshold preferences are invalid and fell back to defaults.",
+        keyPresent: true,
+        source: "default",
+      };
+    }
+    return {
+      preferences: normalized.preferences,
+      storageWarning:
+        normalized.warnings.length > 0
+          ? "Local health threshold preferences were normalized with warnings."
+          : null,
+      keyPresent: true,
+      source: "local",
+    };
+  } catch {
+    return {
+      preferences: getDefaultPresetWorkspaceHealthThresholdPreferences(),
+      storageWarning: "Local health threshold preferences are not valid JSON and fell back to defaults.",
+      keyPresent: true,
+      source: "default",
+    };
+  }
+}
+
+export function persistPresetWorkspaceHealthThresholdPreferences(
+  storage: Storage | null | undefined,
+  preferences: ResultShareRegistryPresetWorkspaceHealthThresholdPreferences,
+): ResultShareRegistryPresetWorkspaceHealthThresholdPreferences {
+  const normalized =
+    normalizePresetWorkspaceHealthThresholdPreferences(preferences, {
+      allowMissingUpdatedAt: true,
+    }).preferences ?? getDefaultPresetWorkspaceHealthThresholdPreferences();
+  if (!storage) {
+    return normalized;
+  }
+  storage.setItem(
+    RESULT_SHARE_REGISTRY_WORKSPACE_HEALTH_THRESHOLD_PREFERENCES_STORAGE_KEY,
+    JSON.stringify(normalized),
+  );
+  return normalized;
+}
+
+export function resetPresetWorkspaceHealthThresholdPreferences(
+  storage: Storage | null | undefined,
+): ResultShareRegistryPresetWorkspaceHealthThresholdPreferences {
+  if (storage) {
+    storage.removeItem(RESULT_SHARE_REGISTRY_WORKSPACE_HEALTH_THRESHOLD_PREFERENCES_STORAGE_KEY);
+  }
+  return getDefaultPresetWorkspaceHealthThresholdPreferences();
+}
+
+function buildPresetWorkspaceHealthThresholdSummary(
+  preferences: ResultShareRegistryPresetWorkspaceHealthThresholdPreferences,
+): string[] {
+  const thresholds = preferences.statusThresholds;
+  const penaltyKeys = Object.keys(preferences.findingPenaltyOverrides);
+  return [
+    `Healthy ${thresholds.healthyMin}-100`,
+    `Attention ${thresholds.attentionMin}-${thresholds.healthyMin - 1}`,
+    `Risk ${thresholds.riskMin}-${thresholds.attentionMin - 1}`,
+    `Critical ${thresholds.criticalMin}-${thresholds.riskMin - 1}`,
+    penaltyKeys.length > 0
+      ? `Penalty overrides: ${penaltyKeys.length} local override(s)`
+      : "Penalty overrides: default weights",
+  ];
+}
+
+function classifyPresetWorkspaceHealthStatus(
+  score: number,
+  preferences: ResultShareRegistryPresetWorkspaceHealthThresholdPreferences,
+): ResultShareRegistryPresetWorkspaceHealthStatus {
+  if (score >= preferences.statusThresholds.healthyMin) {
+    return "healthy";
+  }
+  if (score >= preferences.statusThresholds.attentionMin) {
+    return "attention";
+  }
+  if (score >= preferences.statusThresholds.riskMin) {
+    return "risk";
+  }
+  return "critical";
+}
+
+function getPresetWorkspaceHealthPenalty(
+  preferences: ResultShareRegistryPresetWorkspaceHealthThresholdPreferences,
+  key: ResultShareRegistryPresetWorkspaceHealthPenaltyOverrideKey,
+): number {
+  return preferences.findingPenaltyOverrides[key] ?? DEFAULT_PRESET_WORKSPACE_HEALTH_PENALTY_OVERRIDES[key];
+}
+
+export function buildPresetWorkspaceHealthThresholdPreview(input: {
+  currentScore: ResultShareRegistryPresetWorkspaceHealthScore;
+  draftScore?: ResultShareRegistryPresetWorkspaceHealthScore | null;
+}): ResultShareRegistryPresetWorkspaceHealthThresholdPreview {
+  const previewScore = input.draftScore ?? input.currentScore;
+  const scoreChanged = previewScore.score !== input.currentScore.score;
+  const statusChanged = previewScore.status !== input.currentScore.status;
+  return {
+    currentScore: input.currentScore.score,
+    currentStatus: input.currentScore.status,
+    draftScore: previewScore.score,
+    draftStatus: previewScore.status,
+    scoreChanged,
+    statusChanged,
+    summary:
+      statusChanged || scoreChanged
+        ? `Preview would change health from ${input.currentScore.status} (${input.currentScore.score}) to ${previewScore.status} (${previewScore.score}).`
+        : `Preview keeps health at ${input.currentScore.status} (${input.currentScore.score}).`,
+  };
+}
+
 function clampScore(value: number): number {
   return Math.max(0, Math.min(100, Math.round(value)));
 }
@@ -1874,9 +2418,16 @@ export function buildResultShareRegistryPresetWorkspaceHealthScore(input: {
   workspaceState: ResultShareRegistryPresetWorkspaceState;
   auditSummary: ResultShareRegistryPresetLocalAuditSummary;
   workspaceImportPreview: ResultShareRegistryPresetWorkspaceImportPreview | null;
+  thresholdPreferences?: ResultShareRegistryPresetWorkspaceHealthThresholdPreferences;
+  thresholdPreferenceSource?: "default" | "local";
+  thresholdStorageWarning?: string | null;
   checkedAt?: string;
 }): ResultShareRegistryPresetWorkspaceHealthScore {
   const checkedAt = input.checkedAt ?? new Date().toISOString();
+  const thresholdPreferences =
+    input.thresholdPreferences ?? getDefaultPresetWorkspaceHealthThresholdPreferences({ now: checkedAt });
+  const thresholdPreferenceSource = input.thresholdPreferenceSource ?? "default";
+  const thresholdWarnings = input.thresholdStorageWarning ? [input.thresholdStorageWarning] : [];
   const classification = classifyWorkspaceStateAgainstStore(input.workspaceState, input.store);
   const totalPresetCount =
     input.store.grantPresets.length + input.store.aliasPresets.length;
@@ -1952,7 +2503,12 @@ export function buildResultShareRegistryPresetWorkspaceHealthScore(input: {
     hasIntegrityIssue(input.integrityReport, "invalid_json") ||
     Boolean(input.diagnostics.workspaceStateWarning);
   if (storageInvalid) {
-    applyPenalty("storageIntegrity", hasIntegrityIssue(input.integrityReport, "invalid_json") ? 40 : 15);
+    applyPenalty(
+      "storageIntegrity",
+      hasIntegrityIssue(input.integrityReport, "invalid_json")
+        ? getPresetWorkspaceHealthPenalty(thresholdPreferences, "storageInvalidJson")
+        : getPresetWorkspaceHealthPenalty(thresholdPreferences, "workspaceStateWarning"),
+    );
     addFinding({
       severity: hasIntegrityIssue(input.integrityReport, "invalid_json") ? "critical" : "warning",
       code: "storage_invalid_json",
@@ -1976,7 +2532,10 @@ export function buildResultShareRegistryPresetWorkspaceHealthScore(input: {
   }
 
   if (hasIntegrityIssue(input.integrityReport, "unsafe_field_detected")) {
-    applyPenalty("storageIntegrity", 40);
+    applyPenalty(
+      "storageIntegrity",
+      getPresetWorkspaceHealthPenalty(thresholdPreferences, "unsafeFieldDetected"),
+    );
     addFinding({
       severity: "critical",
       code: "unsafe_field_detected",
@@ -1991,7 +2550,10 @@ export function buildResultShareRegistryPresetWorkspaceHealthScore(input: {
   }
 
   if (hasIntegrityIssue(input.integrityReport, "invalid_schema_version")) {
-    applyPenalty("storageIntegrity", 25);
+    applyPenalty(
+      "storageIntegrity",
+      getPresetWorkspaceHealthPenalty(thresholdPreferences, "invalidSchemaVersion"),
+    );
     addFinding({
       severity: "error",
       code: "invalid_schema_version",
@@ -2006,7 +2568,10 @@ export function buildResultShareRegistryPresetWorkspaceHealthScore(input: {
   }
 
   if (hasIntegrityIssue(input.integrityReport, "dangling_default_preset")) {
-    applyPenalty("presetValidity", 10);
+    applyPenalty(
+      "presetValidity",
+      getPresetWorkspaceHealthPenalty(thresholdPreferences, "danglingDefaultPreset"),
+    );
     addFinding({
       severity: "warning",
       code: "dangling_default_preset",
@@ -2016,7 +2581,10 @@ export function buildResultShareRegistryPresetWorkspaceHealthScore(input: {
   }
 
   if (totalPresetCount === 0) {
-    applyPenalty("presetValidity", 5);
+    applyPenalty(
+      "presetValidity",
+      getPresetWorkspaceHealthPenalty(thresholdPreferences, "noSavedPresets"),
+    );
     addFinding({
       severity: "warning",
       code: "no_saved_presets",
@@ -2026,7 +2594,14 @@ export function buildResultShareRegistryPresetWorkspaceHealthScore(input: {
   }
 
   if (stalePinnedCount > 0) {
-    applyPenalty("pinnedPresetHygiene", Math.min(20, stalePinnedCount * 5));
+    applyPenalty(
+      "pinnedPresetHygiene",
+      Math.min(
+        20,
+        stalePinnedCount *
+          getPresetWorkspaceHealthPenalty(thresholdPreferences, "stalePinnedPreset"),
+      ),
+    );
     addFinding({
       severity: stalePinnedCount >= 3 ? "error" : "warning",
       code: "stale_pinned_presets",
@@ -2041,7 +2616,10 @@ export function buildResultShareRegistryPresetWorkspaceHealthScore(input: {
   }
 
   if (totalPinnedCount > 0 && validPinnedCount === 0) {
-    applyPenalty("pinnedPresetHygiene", 15);
+    applyPenalty(
+      "pinnedPresetHygiene",
+      getPresetWorkspaceHealthPenalty(thresholdPreferences, "allPinnedPresetsStale"),
+    );
     addFinding({
       severity: "error",
       code: "stale_pinned_presets",
@@ -2063,7 +2641,12 @@ export function buildResultShareRegistryPresetWorkspaceHealthScore(input: {
   }
 
   const missingBackupPenalty =
-    (input.lastGoodBackup ? 0 : 5) + (input.workspaceBackup ? 0 : 5);
+    (input.lastGoodBackup
+      ? 0
+      : getPresetWorkspaceHealthPenalty(thresholdPreferences, "missingPresetBackup")) +
+    (input.workspaceBackup
+      ? 0
+      : getPresetWorkspaceHealthPenalty(thresholdPreferences, "missingWorkspaceBackup"));
   if (missingBackupPenalty > 0) {
     applyPenalty("backupReadiness", missingBackupPenalty);
     addFinding({
@@ -2083,7 +2666,10 @@ export function buildResultShareRegistryPresetWorkspaceHealthScore(input: {
   }
 
   if (input.auditSummary.storageWarning) {
-    applyPenalty("auditReliability", 10);
+    applyPenalty(
+      "auditReliability",
+      getPresetWorkspaceHealthPenalty(thresholdPreferences, "corruptedAuditHistory"),
+    );
     addFinding({
       severity: "warning",
       code: "corrupted_audit_history",
@@ -2098,7 +2684,14 @@ export function buildResultShareRegistryPresetWorkspaceHealthScore(input: {
   }
 
   if (importFailureCount > 0) {
-    applyPenalty("importExportSafety", Math.min(20, importFailureCount * 5));
+    applyPenalty(
+      "importExportSafety",
+      Math.min(
+        20,
+        importFailureCount *
+          getPresetWorkspaceHealthPenalty(thresholdPreferences, "recentFailedImport"),
+      ),
+    );
     addFinding({
       severity: importFailureCount >= 2 ? "error" : "warning",
       code: "recent_failed_import",
@@ -2118,7 +2711,14 @@ export function buildResultShareRegistryPresetWorkspaceHealthScore(input: {
   }
 
   if (recoveryFailureCount > 0) {
-    applyPenalty("auditReliability", Math.min(20, recoveryFailureCount * 5));
+    applyPenalty(
+      "auditReliability",
+      Math.min(
+        20,
+        recoveryFailureCount *
+          getPresetWorkspaceHealthPenalty(thresholdPreferences, "recentFailedRecovery"),
+      ),
+    );
     addFinding({
       severity: recoveryFailureCount >= 2 ? "error" : "warning",
       code: "recent_failed_recovery",
@@ -2140,7 +2740,10 @@ export function buildResultShareRegistryPresetWorkspaceHealthScore(input: {
   }
 
   if (hasIntegrityIssue(input.integrityReport, "invalid_drilldown_context")) {
-    applyPenalty("drilldownContextCompleteness", 10);
+    applyPenalty(
+      "drilldownContextCompleteness",
+      getPresetWorkspaceHealthPenalty(thresholdPreferences, "invalidDrilldownContext"),
+    );
     addFinding({
       severity: "warning",
       code: "invalid_drilldown_context",
@@ -2159,7 +2762,10 @@ export function buildResultShareRegistryPresetWorkspaceHealthScore(input: {
     !input.workspaceImportPreview.canApply &&
     input.workspaceImportPreview.errors.length > 0
   ) {
-    applyPenalty("importExportSafety", 15);
+    applyPenalty(
+      "importExportSafety",
+      getPresetWorkspaceHealthPenalty(thresholdPreferences, "importPreviewHasErrors"),
+    );
     addFinding({
       severity: "warning",
       code: "import_preview_has_errors",
@@ -2174,8 +2780,7 @@ export function buildResultShareRegistryPresetWorkspaceHealthScore(input: {
   }
 
   score = clampScore(score);
-  const status: ResultShareRegistryPresetWorkspaceHealthStatus =
-    score >= 90 ? "healthy" : score >= 70 ? "attention" : score >= 40 ? "risk" : "critical";
+  const status = classifyPresetWorkspaceHealthStatus(score, thresholdPreferences);
 
   const summary =
     status === "healthy"
@@ -2191,12 +2796,18 @@ export function buildResultShareRegistryPresetWorkspaceHealthScore(input: {
     status,
     checkedAt,
     summary,
+    thresholdPreferenceSource,
+    thresholdSummary: buildPresetWorkspaceHealthThresholdSummary(thresholdPreferences),
+    thresholdWarnings,
     breakdown,
     findings,
     recommendations: [...recommendations.values()],
     notes: [
       "This is a local operator hygiene score, not a security, compliance, or backend health score.",
       "It derives only from browser-local preset storage, workspace state, audit history, backup presence, and current import preview state.",
+      thresholdPreferenceSource === "local"
+        ? "Local threshold preferences are active for status classification, and local penalty override preferences may also change raw score when configured."
+        : "Default threshold preferences are active for status classification.",
       "Score calculation never performs automatic repair; it only points to existing local tools.",
     ],
   };

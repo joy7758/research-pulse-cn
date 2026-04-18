@@ -10,6 +10,10 @@ import type {
   ApiErrorViewModel,
   ResultShareRegistryPresetBackupSnapshot,
   ResultShareRegistryPresetWorkspaceBackupSnapshot,
+  ResultShareRegistryPresetWorkspaceHealthThresholdDraft,
+  ResultShareRegistryPresetWorkspaceHealthThresholdPreferences,
+  ResultShareRegistryPresetWorkspaceHealthThresholdValidationResult,
+  ResultShareRegistryPresetWorkspaceHealthThresholdPreview,
   ResultShareRegistryPresetWorkspaceHealthScore,
   ResultShareRegistryPresetWorkspaceHealthRecommendation,
   ResultShareAliasRegistryItemViewModel,
@@ -63,6 +67,13 @@ type ResultShareRegistryPanelProps = {
   presetWorkspace: {
     viewModel: ResultShareRegistryPresetWorkspaceViewModel;
     healthScore: ResultShareRegistryPresetWorkspaceHealthScore;
+    healthThresholds: {
+      current: ResultShareRegistryPresetWorkspaceHealthThresholdPreferences;
+      draft: ResultShareRegistryPresetWorkspaceHealthThresholdDraft;
+      validation: ResultShareRegistryPresetWorkspaceHealthThresholdValidationResult;
+      preview: ResultShareRegistryPresetWorkspaceHealthThresholdPreview | null;
+      storageWarning: string | null;
+    };
     transfer: {
       importMode: ResultShareRegistryPresetImportMode;
       preview: ResultShareRegistryPresetWorkspaceImportPreview | null;
@@ -111,6 +122,25 @@ type ResultShareRegistryPanelProps = {
   onExportPresetWorkspace: () => void;
   onRestorePresetWorkspaceBackup: () => void;
   onRecalculatePresetWorkspaceHealth: () => void;
+  onHealthThresholdDraftChange: (
+    field: "healthyMin" | "attentionMin" | "riskMin" | "criticalMin",
+    value: string,
+  ) => void;
+  onHealthPenaltyOverrideDraftChange: (
+    key:
+      | "stalePinnedPreset"
+      | "missingPresetBackup"
+      | "missingWorkspaceBackup"
+      | "recentFailedImport"
+      | "recentFailedRecovery",
+    value: string,
+  ) => void;
+  onHealthVisibilityChange: (
+    field: "showInfo" | "showWarnings" | "showErrors" | "showCritical",
+    value: boolean,
+  ) => void;
+  onApplyHealthThresholds: () => void;
+  onResetHealthThresholds: () => void;
   onPinSavedView: (scope: ResultShareRegistrySavedViewScope, presetId: string) => void;
   onUnpinSavedView: (scope: ResultShareRegistrySavedViewScope, presetId: string) => void;
   onMovePinnedSavedView: (
@@ -845,19 +875,63 @@ function buildHealthRecommendationAction(
 
 function PresetWorkspaceHealthPanel({
   healthScore,
+  healthThresholds,
   onRecalculate,
   onValidateStorage,
   onCleanStalePins,
   onRestoreWorkspaceBackup,
   onResetWorkspace,
+  onThresholdDraftChange,
+  onPenaltyOverrideDraftChange,
+  onVisibilityChange,
+  onApplyThresholds,
+  onResetThresholds,
 }: {
   healthScore: ResultShareRegistryPresetWorkspaceHealthScore;
+  healthThresholds: {
+    current: ResultShareRegistryPresetWorkspaceHealthThresholdPreferences;
+    draft: ResultShareRegistryPresetWorkspaceHealthThresholdDraft;
+    validation: ResultShareRegistryPresetWorkspaceHealthThresholdValidationResult;
+    preview: ResultShareRegistryPresetWorkspaceHealthThresholdPreview | null;
+    storageWarning: string | null;
+  };
   onRecalculate: () => void;
   onValidateStorage: () => void;
   onCleanStalePins: () => void;
   onRestoreWorkspaceBackup: () => void;
   onResetWorkspace: () => void;
+  onThresholdDraftChange: (
+    field: "healthyMin" | "attentionMin" | "riskMin" | "criticalMin",
+    value: string,
+  ) => void;
+  onPenaltyOverrideDraftChange: (
+    key:
+      | "stalePinnedPreset"
+      | "missingPresetBackup"
+      | "missingWorkspaceBackup"
+      | "recentFailedImport"
+      | "recentFailedRecovery",
+    value: string,
+  ) => void;
+  onVisibilityChange: (
+    field: "showInfo" | "showWarnings" | "showErrors" | "showCritical",
+    value: boolean,
+  ) => void;
+  onApplyThresholds: () => void;
+  onResetThresholds: () => void;
 }) {
+  const visibleFindings = healthScore.findings.filter((finding) => {
+    if (finding.severity === "info") {
+      return healthThresholds.current.recommendationVisibility.showInfo;
+    }
+    if (finding.severity === "warning") {
+      return healthThresholds.current.recommendationVisibility.showWarnings;
+    }
+    if (finding.severity === "error") {
+      return healthThresholds.current.recommendationVisibility.showErrors;
+    }
+    return healthThresholds.current.recommendationVisibility.showCritical;
+  });
   const breakdownCards = [
     {
       label: "Storage integrity",
@@ -917,7 +991,7 @@ function PresetWorkspaceHealthPanel({
         </article>
         <article className="stat-card">
           <span>Findings</span>
-          <strong>{healthScore.findings.length}</strong>
+          <strong>{visibleFindings.length}</strong>
           <p className="stat-hint">Checked {healthScore.checkedAt}</p>
         </article>
         <article className="stat-card">
@@ -936,7 +1010,224 @@ function PresetWorkspaceHealthPanel({
         ))}
       </div>
 
-      {healthScore.findings.length > 0 ? (
+      <section className="conversion-section-card">
+        <div className="conversion-section-header">
+          <div>
+            <h5>Health threshold settings</h5>
+            <p className="section-subtle-copy">
+              Local-only threshold and display preferences. Raw score remains deterministic; status
+              bands and optional local penalty overrides can be previewed before apply.
+            </p>
+          </div>
+        </div>
+
+        <ul className="filter-chip-list">
+          <li className="filter-chip">
+            <span>Preference source</span>
+            <strong>{healthScore.thresholdPreferenceSource}</strong>
+          </li>
+          {healthScore.thresholdSummary.map((item) => (
+            <li key={item} className="filter-chip">
+              <span>Threshold</span>
+              <strong>{item}</strong>
+            </li>
+          ))}
+        </ul>
+
+        {healthThresholds.storageWarning ? (
+          <div className="inline-banner error" role="alert">
+            {healthThresholds.storageWarning}
+          </div>
+        ) : null}
+        {healthScore.thresholdWarnings.length > 0 ? (
+          <div className="inline-banner warning" role="status">
+            {healthScore.thresholdWarnings.join(" ")}
+          </div>
+        ) : null}
+
+        <div className="filter-grid">
+          <label className="field-stack">
+            <span>Healthy minimum</span>
+            <input
+              aria-label="Healthy minimum threshold"
+              type="number"
+              min="0"
+              max="100"
+              value={healthThresholds.draft.statusThresholds.healthyMin}
+              onChange={(event) => onThresholdDraftChange("healthyMin", event.target.value)}
+            />
+          </label>
+          <label className="field-stack">
+            <span>Attention minimum</span>
+            <input
+              aria-label="Attention minimum threshold"
+              type="number"
+              min="0"
+              max="100"
+              value={healthThresholds.draft.statusThresholds.attentionMin}
+              onChange={(event) => onThresholdDraftChange("attentionMin", event.target.value)}
+            />
+          </label>
+          <label className="field-stack">
+            <span>Risk minimum</span>
+            <input
+              aria-label="Risk minimum threshold"
+              type="number"
+              min="0"
+              max="100"
+              value={healthThresholds.draft.statusThresholds.riskMin}
+              onChange={(event) => onThresholdDraftChange("riskMin", event.target.value)}
+            />
+          </label>
+          <label className="field-stack">
+            <span>Critical minimum</span>
+            <input
+              aria-label="Critical minimum threshold"
+              type="number"
+              min="0"
+              max="0"
+              value={healthThresholds.draft.statusThresholds.criticalMin}
+              onChange={(event) => onThresholdDraftChange("criticalMin", event.target.value)}
+              disabled
+            />
+          </label>
+        </div>
+
+        <div className="filter-grid">
+          <label className="field-stack">
+            <span>Stale pin penalty</span>
+            <input
+              aria-label="Stale pin penalty"
+              type="number"
+              min="0"
+              max="100"
+              value={healthThresholds.draft.findingPenaltyOverrides.stalePinnedPreset ?? ""}
+              onChange={(event) =>
+                onPenaltyOverrideDraftChange("stalePinnedPreset", event.target.value)
+              }
+            />
+          </label>
+          <label className="field-stack">
+            <span>Preset backup penalty</span>
+            <input
+              aria-label="Preset backup penalty"
+              type="number"
+              min="0"
+              max="100"
+              value={healthThresholds.draft.findingPenaltyOverrides.missingPresetBackup ?? ""}
+              onChange={(event) =>
+                onPenaltyOverrideDraftChange("missingPresetBackup", event.target.value)
+              }
+            />
+          </label>
+          <label className="field-stack">
+            <span>Workspace backup penalty</span>
+            <input
+              aria-label="Workspace backup penalty"
+              type="number"
+              min="0"
+              max="100"
+              value={healthThresholds.draft.findingPenaltyOverrides.missingWorkspaceBackup ?? ""}
+              onChange={(event) =>
+                onPenaltyOverrideDraftChange("missingWorkspaceBackup", event.target.value)
+              }
+            />
+          </label>
+          <label className="field-stack">
+            <span>Failed import penalty</span>
+            <input
+              aria-label="Failed import penalty"
+              type="number"
+              min="0"
+              max="100"
+              value={healthThresholds.draft.findingPenaltyOverrides.recentFailedImport ?? ""}
+              onChange={(event) =>
+                onPenaltyOverrideDraftChange("recentFailedImport", event.target.value)
+              }
+            />
+          </label>
+          <label className="field-stack">
+            <span>Failed recovery penalty</span>
+            <input
+              aria-label="Failed recovery penalty"
+              type="number"
+              min="0"
+              max="100"
+              value={healthThresholds.draft.findingPenaltyOverrides.recentFailedRecovery ?? ""}
+              onChange={(event) =>
+                onPenaltyOverrideDraftChange("recentFailedRecovery", event.target.value)
+              }
+            />
+          </label>
+        </div>
+
+        <div className="button-row">
+          <label className="checkbox-row">
+            <input
+              type="checkbox"
+              checked={healthThresholds.draft.recommendationVisibility.showInfo}
+              onChange={(event) => onVisibilityChange("showInfo", event.target.checked)}
+            />
+            <span>Show info findings</span>
+          </label>
+          <label className="checkbox-row">
+            <input
+              type="checkbox"
+              checked={healthThresholds.draft.recommendationVisibility.showWarnings}
+              onChange={(event) => onVisibilityChange("showWarnings", event.target.checked)}
+            />
+            <span>Show warnings</span>
+          </label>
+          <label className="checkbox-row">
+            <input
+              type="checkbox"
+              checked={healthThresholds.draft.recommendationVisibility.showErrors}
+              onChange={(event) => onVisibilityChange("showErrors", event.target.checked)}
+            />
+            <span>Show errors</span>
+          </label>
+          <label className="checkbox-row">
+            <input
+              type="checkbox"
+              checked={healthThresholds.draft.recommendationVisibility.showCritical}
+              onChange={(event) => onVisibilityChange("showCritical", event.target.checked)}
+            />
+            <span>Show critical</span>
+          </label>
+        </div>
+
+        {healthThresholds.validation.errors.length > 0 ? (
+          <div className="inline-banner error" role="alert">
+            {healthThresholds.validation.errors.join(" ")}
+          </div>
+        ) : null}
+        {healthThresholds.validation.warnings.length > 0 ? (
+          <div className="inline-banner warning" role="status">
+            {healthThresholds.validation.warnings.join(" ")}
+          </div>
+        ) : null}
+        {healthThresholds.preview ? (
+          <div className="inline-banner info" role="status">
+            <strong>Threshold preview</strong>
+            <span>{healthThresholds.preview.summary}</span>
+          </div>
+        ) : null}
+
+        <div className="button-row">
+          <button
+            type="button"
+            className="button-secondary"
+            onClick={onApplyThresholds}
+          >
+            Apply thresholds
+          </button>
+          <button type="button" className="button-secondary" onClick={onResetThresholds}>
+            Reset thresholds
+          </button>
+        </div>
+      </section>
+
+      {visibleFindings.length > 0 ? (
         <section className="conversion-section-card">
           <div className="conversion-section-header">
             <div>
@@ -948,7 +1239,7 @@ function PresetWorkspaceHealthPanel({
             </div>
           </div>
           <ul className="data-list">
-            {healthScore.findings.map((finding) => (
+            {visibleFindings.map((finding) => (
               <li key={`${finding.code}-${finding.summary}`} className="data-list-item">
                 <div className="registry-item-stack">
                   <div className="registry-item-header">
@@ -1031,6 +1322,7 @@ function PresetWorkspaceHealthPanel({
 function PresetWorkspacePanel({
   viewModel,
   healthScore,
+  healthThresholds,
   transfer,
   onApply,
   onUnpin,
@@ -1047,9 +1339,21 @@ function PresetWorkspacePanel({
   onExportWorkspace,
   onRestoreWorkspaceBackup,
   onRecalculateHealth,
+  onThresholdDraftChange,
+  onPenaltyOverrideDraftChange,
+  onVisibilityChange,
+  onApplyThresholds,
+  onResetThresholds,
 }: {
   viewModel: ResultShareRegistryPresetWorkspaceViewModel;
   healthScore: ResultShareRegistryPresetWorkspaceHealthScore;
+  healthThresholds: {
+    current: ResultShareRegistryPresetWorkspaceHealthThresholdPreferences;
+    draft: ResultShareRegistryPresetWorkspaceHealthThresholdDraft;
+    validation: ResultShareRegistryPresetWorkspaceHealthThresholdValidationResult;
+    preview: ResultShareRegistryPresetWorkspaceHealthThresholdPreview | null;
+    storageWarning: string | null;
+  };
   transfer: {
     importMode: ResultShareRegistryPresetImportMode;
     preview: ResultShareRegistryPresetWorkspaceImportPreview | null;
@@ -1078,6 +1382,25 @@ function PresetWorkspacePanel({
   onExportWorkspace: () => void;
   onRestoreWorkspaceBackup: () => void;
   onRecalculateHealth: () => void;
+  onThresholdDraftChange: (
+    field: "healthyMin" | "attentionMin" | "riskMin" | "criticalMin",
+    value: string,
+  ) => void;
+  onPenaltyOverrideDraftChange: (
+    key:
+      | "stalePinnedPreset"
+      | "missingPresetBackup"
+      | "missingWorkspaceBackup"
+      | "recentFailedImport"
+      | "recentFailedRecovery",
+    value: string,
+  ) => void;
+  onVisibilityChange: (
+    field: "showInfo" | "showWarnings" | "showErrors" | "showCritical",
+    value: boolean,
+  ) => void;
+  onApplyThresholds: () => void;
+  onResetThresholds: () => void;
 }) {
   const stalePinCount = viewModel.staleGrantPinIds.length + viewModel.staleAliasPinIds.length;
 
@@ -1134,11 +1457,17 @@ function PresetWorkspacePanel({
 
       <PresetWorkspaceHealthPanel
         healthScore={healthScore}
+        healthThresholds={healthThresholds}
         onRecalculate={onRecalculateHealth}
         onValidateStorage={onValidateStorage}
         onCleanStalePins={onCleanStalePins}
         onRestoreWorkspaceBackup={onRestoreWorkspaceBackup}
         onResetWorkspace={onResetWorkspace}
+        onThresholdDraftChange={onThresholdDraftChange}
+        onPenaltyOverrideDraftChange={onPenaltyOverrideDraftChange}
+        onVisibilityChange={onVisibilityChange}
+        onApplyThresholds={onApplyThresholds}
+        onResetThresholds={onResetThresholds}
       />
 
       <ul className="filter-chip-list">
@@ -1853,6 +2182,11 @@ export function ResultShareRegistryPanel({
   onExportPresetWorkspace,
   onRestorePresetWorkspaceBackup,
   onRecalculatePresetWorkspaceHealth,
+  onHealthThresholdDraftChange,
+  onHealthPenaltyOverrideDraftChange,
+  onHealthVisibilityChange,
+  onApplyHealthThresholds,
+  onResetHealthThresholds,
   onPinSavedView,
   onUnpinSavedView,
   onMovePinnedSavedView,
@@ -2112,6 +2446,7 @@ export function ResultShareRegistryPanel({
         <PresetWorkspacePanel
           viewModel={presetWorkspace.viewModel}
           healthScore={presetWorkspace.healthScore}
+          healthThresholds={presetWorkspace.healthThresholds}
           transfer={presetWorkspace.transfer}
           onApply={onApplySavedView}
           onUnpin={onUnpinSavedView}
@@ -2128,6 +2463,11 @@ export function ResultShareRegistryPanel({
           onExportWorkspace={onExportPresetWorkspace}
           onRestoreWorkspaceBackup={onRestorePresetWorkspaceBackup}
           onRecalculateHealth={onRecalculatePresetWorkspaceHealth}
+          onThresholdDraftChange={onHealthThresholdDraftChange}
+          onPenaltyOverrideDraftChange={onHealthPenaltyOverrideDraftChange}
+          onVisibilityChange={onHealthVisibilityChange}
+          onApplyThresholds={onApplyHealthThresholds}
+          onResetThresholds={onResetHealthThresholds}
         />
 
         <div className="split-grid">
