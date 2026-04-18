@@ -10,6 +10,7 @@ import {
   appendResultShareRegistryPresetAuditEvent,
   buildResultShareRegistryPresetAuditSummary,
   buildResultShareRegistryPresetExport,
+  buildResultShareRegistryPresetWorkspaceExport,
   buildResultShareRegistryPresetWorkspaceViewModel,
   buildInitialResultShareRegistrySavedViewState,
   buildResultShareRegistrySavedViewSummaries,
@@ -19,28 +20,37 @@ import {
   clearResultShareRegistryPresetAuditEvents,
   createPresetAuditEvent,
   createResultShareRegistryPresetBackup,
+  createResultShareRegistryPresetWorkspaceBackup,
   createResultShareRegistrySavedView,
   deleteResultShareRegistrySavedView,
   inspectResultShareRegistryPresetStorage,
   loadResultShareRegistryPresetAuditEvents,
+  loadResultShareRegistryPresetWorkspaceBackup,
   loadResultShareRegistryPresetWorkspaceState,
   movePinnedResultShareRegistryPresetWorkspacePreset,
   loadResultShareRegistrySavedViewStore,
   overwriteResultShareRegistrySavedView,
   parseResultShareRegistryPresetImport,
+  parseResultShareRegistryPresetWorkspaceImport,
+  applyResultShareRegistryPresetWorkspaceImport,
   persistResultShareRegistryPresetWorkspaceState,
+  persistResultShareRegistryPresetWorkspaceBackup,
   persistResultShareRegistrySavedViewStore,
   persistResultShareRegistryPresetBackup,
   pinResultShareRegistryPresetWorkspacePreset,
   redactUnsafeImportIssueDetails,
   resetResultShareRegistryPresetWorkspaceState,
   restoreResultShareRegistryPresetBackup,
+  restoreResultShareRegistryPresetWorkspaceBackup,
   RESULT_SHARE_REGISTRY_ALIAS_PRESETS_STORAGE_KEY,
   RESULT_SHARE_REGISTRY_DEFAULT_PRESET_ID_STORAGE_KEY,
   RESULT_SHARE_REGISTRY_GRANT_PRESETS_STORAGE_KEY,
   RESULT_SHARE_REGISTRY_LAST_GOOD_BACKUP_STORAGE_KEY,
   RESULT_SHARE_REGISTRY_LOCAL_AUDIT_STORAGE_KEY,
   RESULT_SHARE_REGISTRY_PRESET_EXPORT_SCHEMA_VERSION,
+  RESULT_SHARE_REGISTRY_PRESET_WORKSPACE_EXPORT_SCHEMA_VERSION,
+  RESULT_SHARE_REGISTRY_PRESET_WORKSPACE_BACKUP_SCHEMA_VERSION,
+  RESULT_SHARE_REGISTRY_WORKSPACE_LAST_GOOD_BACKUP_STORAGE_KEY,
   RESULT_SHARE_REGISTRY_WORKSPACE_STATE_STORAGE_KEY,
   saveResultShareRegistryPresetAuditEvents,
   saveResultShareRegistrySavedView,
@@ -1352,6 +1362,264 @@ describe("result share registry saved views", () => {
     expect(loaded.storageWarning).toMatch(/not valid JSON/i);
   });
 
+  it("exports and parses safe preset workspace state JSON", () => {
+    const workspaceState = persistResultShareRegistryPresetWorkspaceState(window.localStorage, {
+      pinnedGrantPresetIds: ["grant-a"],
+      pinnedAliasPresetIds: ["alias-a"],
+      lastActivePresetScope: "grant_registry",
+      lastActivePresetId: "grant-a",
+      collapsedSections: {
+        pinnedGrantPresets: true,
+        pinnedAliasPresets: false,
+        recentGrantPresets: true,
+        recentAliasPresets: false,
+        recentActivity: false,
+        storageHealth: true,
+      },
+      updatedAt: "2026-04-19T03:00:00Z",
+    });
+    const payload = buildResultShareRegistryPresetWorkspaceExport(workspaceState, {
+      now: "2026-04-19T03:01:00Z",
+    });
+
+    expect(payload).toEqual({
+      schemaVersion: RESULT_SHARE_REGISTRY_PRESET_WORKSPACE_EXPORT_SCHEMA_VERSION,
+      exportedAt: "2026-04-19T03:01:00Z",
+      app: "research-pulse-cn",
+      source: "group-workspace-admin-web",
+      workspaceState,
+    });
+    expect(JSON.stringify(payload)).not.toContain("token");
+    expect(JSON.stringify(payload)).not.toContain("rawAlias");
+
+    const preview = parseResultShareRegistryPresetWorkspaceImport(
+      JSON.stringify(payload),
+      {
+        grantPresets: [],
+        aliasPresets: [],
+        defaultPresetId: null,
+      },
+    );
+
+    expect(preview.canApply).toBe(true);
+    expect(preview.valid).toBe(true);
+    expect(preview.workspaceState?.pinnedGrantPresetIds).toEqual(["grant-a"]);
+    expect(preview.workspaceState?.pinnedAliasPresetIds).toEqual(["alias-a"]);
+  });
+
+  it("tolerates missing optional workspace import fields and reports stale pins safely", () => {
+    const grantPreset = createResultShareRegistrySavedView(
+      buildResultShareRegistrySavedViewDraft(
+        "grant_registry",
+        "Grant workspace",
+        {
+          ...DEFAULT_RESULT_SHARE_REGISTRY_FILTER_INPUT,
+          workspaceId: "workspace-1",
+        },
+        DEFAULT_RESULT_SHARE_REGISTRY_SORT_INPUT,
+      )!,
+      {
+        id: "grant-existing",
+        now: "2026-04-19T03:02:00Z",
+      },
+    );
+
+    const preview = parseResultShareRegistryPresetWorkspaceImport(
+      JSON.stringify({
+        schemaVersion: RESULT_SHARE_REGISTRY_PRESET_WORKSPACE_EXPORT_SCHEMA_VERSION,
+        exportedAt: "2026-04-19T03:03:00Z",
+        app: "research-pulse-cn",
+        source: "group-workspace-admin-web",
+        workspaceState: {
+          pinnedGrantPresetIds: ["grant-existing", "grant-missing"],
+          lastActivePresetScope: "grant_registry",
+          lastActivePresetId: "grant-missing",
+        },
+      }),
+      {
+        grantPresets: [grantPreset],
+        aliasPresets: [],
+        defaultPresetId: null,
+      },
+    );
+
+    expect(preview.canApply).toBe(true);
+    expect(preview.workspaceState?.pinnedAliasPresetIds).toEqual([]);
+    expect(preview.workspaceState?.collapsedSections).toBeNull();
+    expect(preview.stalePinnedGrantPresetIds).toEqual(["grant-missing"]);
+    expect(preview.lastActivePresetExists).toBe(false);
+    expect(preview.warnings.some((warning) => warning.includes("stale grant pin"))).toBe(true);
+  });
+
+  it("rejects unsafe workspace import fields before mutating storage", () => {
+    const preview = parseResultShareRegistryPresetWorkspaceImport(
+      JSON.stringify({
+        schemaVersion: RESULT_SHARE_REGISTRY_PRESET_WORKSPACE_EXPORT_SCHEMA_VERSION,
+        exportedAt: "2026-04-19T03:03:00Z",
+        app: "research-pulse-cn",
+        source: "group-workspace-admin-web",
+        workspaceState: {
+          pinnedGrantPresetIds: ["grant-a"],
+          rawShareToken: "secret-value",
+          updatedAt: "2026-04-19T03:03:00Z",
+        },
+      }),
+      {
+        grantPresets: [],
+        aliasPresets: [],
+        defaultPresetId: null,
+      },
+    );
+
+    expect(preview.canApply).toBe(false);
+    expect(preview.errors[0]).toMatch(/unsafe field/i);
+    expect(preview.errors[0]).not.toContain("secret-value");
+    expect(window.localStorage.getItem(RESULT_SHARE_REGISTRY_WORKSPACE_STATE_STORAGE_KEY)).toBeNull();
+  });
+
+  it("merges and replaces workspace organization state without touching saved presets", () => {
+    const grantPreset = createResultShareRegistrySavedView(
+      buildResultShareRegistrySavedViewDraft(
+        "grant_registry",
+        "Grant one",
+        {
+          ...DEFAULT_RESULT_SHARE_REGISTRY_FILTER_INPUT,
+          workspaceId: "workspace-1",
+        },
+        DEFAULT_RESULT_SHARE_REGISTRY_SORT_INPUT,
+      )!,
+      {
+        id: "grant-one",
+        now: "2026-04-19T03:04:00Z",
+      },
+    );
+    const aliasPreset = createResultShareRegistrySavedView(
+      buildResultShareRegistrySavedViewDraft(
+        "alias_registry",
+        "Alias one",
+        {
+          ...DEFAULT_RESULT_SHARE_REGISTRY_FILTER_INPUT,
+          resultShareGrantId: "grant-one",
+        },
+        DEFAULT_RESULT_SHARE_REGISTRY_SORT_INPUT,
+      )!,
+      {
+        id: "alias-one",
+        now: "2026-04-19T03:05:00Z",
+      },
+    );
+    const store = {
+      grantPresets: [grantPreset],
+      aliasPresets: [aliasPreset],
+      defaultPresetId: null,
+    };
+    const currentState = persistResultShareRegistryPresetWorkspaceState(window.localStorage, {
+      pinnedGrantPresetIds: ["grant-one"],
+      pinnedAliasPresetIds: [],
+      lastActivePresetScope: "grant_registry",
+      lastActivePresetId: "grant-one",
+      collapsedSections: null,
+      updatedAt: "2026-04-19T03:06:00Z",
+    });
+
+    const mergePreview = parseResultShareRegistryPresetWorkspaceImport(
+      JSON.stringify({
+        schemaVersion: RESULT_SHARE_REGISTRY_PRESET_WORKSPACE_EXPORT_SCHEMA_VERSION,
+        exportedAt: "2026-04-19T03:07:00Z",
+        app: "research-pulse-cn",
+        source: "group-workspace-admin-web",
+        workspaceState: {
+          pinnedGrantPresetIds: ["grant-one"],
+          pinnedAliasPresetIds: ["alias-one", "alias-missing"],
+          lastActivePresetScope: "alias_registry",
+          lastActivePresetId: "alias-one",
+          collapsedSections: {
+            storageHealth: true,
+          },
+        },
+      }),
+      store,
+    );
+    const merged = applyResultShareRegistryPresetWorkspaceImport(
+      currentState,
+      mergePreview,
+      "merge",
+      store,
+      {
+        now: "2026-04-19T03:08:00Z",
+      },
+    );
+    expect(merged.workspaceState.pinnedGrantPresetIds).toEqual(["grant-one"]);
+    expect(merged.workspaceState.pinnedAliasPresetIds).toEqual(["alias-one", "alias-missing"]);
+    expect(merged.workspaceState.lastActivePresetId).toBe("alias-one");
+    expect(merged.stalePinnedAliasPresetIds).toEqual(["alias-missing"]);
+
+    const replacePreview = parseResultShareRegistryPresetWorkspaceImport(
+      JSON.stringify({
+        schemaVersion: RESULT_SHARE_REGISTRY_PRESET_WORKSPACE_EXPORT_SCHEMA_VERSION,
+        exportedAt: "2026-04-19T03:09:00Z",
+        app: "research-pulse-cn",
+        source: "group-workspace-admin-web",
+        workspaceState: {
+          pinnedGrantPresetIds: [],
+          pinnedAliasPresetIds: ["alias-one"],
+          lastActivePresetScope: "grant_registry",
+          lastActivePresetId: "grant-missing",
+          updatedAt: "2026-04-19T03:09:00Z",
+        },
+      }),
+      store,
+    );
+    const replaced = applyResultShareRegistryPresetWorkspaceImport(
+      currentState,
+      replacePreview,
+      "replace",
+      store,
+      {
+        now: "2026-04-19T03:10:00Z",
+      },
+    );
+    expect(replaced.workspaceState.pinnedGrantPresetIds).toEqual([]);
+    expect(replaced.workspaceState.pinnedAliasPresetIds).toEqual(["alias-one"]);
+    expect(replaced.workspaceState.lastActivePresetId).toBeNull();
+    expect(replaced.lastActivePresetCleared).toBe(true);
+    expect(store.grantPresets[0].name).toBe("Grant one");
+    expect(store.aliasPresets[0].name).toBe("Alias one");
+  });
+
+  it("creates and restores a workspace-state last-good backup snapshot", () => {
+    const workspaceState = persistResultShareRegistryPresetWorkspaceState(window.localStorage, {
+      pinnedGrantPresetIds: ["grant-a"],
+      pinnedAliasPresetIds: ["alias-a"],
+      lastActivePresetScope: "alias_registry",
+      lastActivePresetId: "alias-a",
+      collapsedSections: null,
+      updatedAt: "2026-04-19T03:11:00Z",
+    });
+    const backup = createResultShareRegistryPresetWorkspaceBackup(
+      workspaceState,
+      "workspace_import_replace",
+      {
+        now: "2026-04-19T03:12:00Z",
+      },
+    );
+
+    expect(backup.schemaVersion).toBe(
+      RESULT_SHARE_REGISTRY_PRESET_WORKSPACE_BACKUP_SCHEMA_VERSION,
+    );
+
+    persistResultShareRegistryPresetWorkspaceBackup(window.localStorage, backup);
+    expect(
+      window.localStorage.getItem(RESULT_SHARE_REGISTRY_WORKSPACE_LAST_GOOD_BACKUP_STORAGE_KEY),
+    ).toContain("workspace_import_replace");
+
+    const loadedBackup = loadResultShareRegistryPresetWorkspaceBackup(window.localStorage);
+    expect(loadedBackup?.reason).toBe("workspace_import_replace");
+    expect(restoreResultShareRegistryPresetWorkspaceBackup(loadedBackup)?.pinnedGrantPresetIds).toEqual([
+      "grant-a",
+    ]);
+  });
+
   it("pins, unpins, moves, and cleans stale workspace preset ids without touching saved presets", () => {
     const grantPreset = createResultShareRegistrySavedView(
       buildResultShareRegistrySavedViewDraft(
@@ -1526,6 +1794,13 @@ describe("result share registry saved views", () => {
     const backup = createResultShareRegistryPresetBackup(store, "workspace_test", {
       now: "2026-04-19T02:11:00Z",
     });
+    const workspaceBackup = createResultShareRegistryPresetWorkspaceBackup(
+      workspaceState,
+      "workspace_import_merge",
+      {
+        now: "2026-04-19T02:12:00Z",
+      },
+    );
 
     const workspaceViewModel = buildResultShareRegistryPresetWorkspaceViewModel(
       summaries,
@@ -1533,6 +1808,7 @@ describe("result share registry saved views", () => {
       auditSummary,
       diagnostics,
       backup,
+      workspaceBackup,
     );
 
     expect(workspaceViewModel.pinnedGrantPresets).toHaveLength(1);
@@ -1541,6 +1817,9 @@ describe("result share registry saved views", () => {
     expect(workspaceViewModel.pinnedAliasPresets[0].name).toBe("Alias workspace preset");
     expect(workspaceViewModel.lastActivePresetLabel).toContain("Grant preset");
     expect(workspaceViewModel.storageHealth.lastBackupLabel).toContain("workspace_test");
+    expect(workspaceViewModel.storageHealth.workspaceBackupLabel).toContain(
+      "workspace_import_merge",
+    );
     expect(workspaceViewModel.recentActivity).toHaveLength(2);
     expect(
       workspaceViewModel.overviewSummary.some((item) => item.label === "Pinned grants" && item.value === 1),

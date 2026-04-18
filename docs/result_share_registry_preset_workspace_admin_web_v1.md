@@ -86,7 +86,7 @@
 - No generic login surface
 
 ## Future Work
-- Local workspace state import/export only if later justified
+- Local workspace state import/export was added in the next phase without expanding the same browser-local organization boundary into backend persistence.
 - Shared/team preset workspaces only if later justified
 - Richer preset grouping or folders only if later justified
 - Shared operator dashboards only if later justified

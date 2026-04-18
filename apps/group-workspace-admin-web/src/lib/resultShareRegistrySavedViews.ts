@@ -38,6 +38,10 @@ import type {
   ResultShareRegistrySavedViewSummary,
   ResultShareRegistryPresetStorageDiagnostics,
   ResultShareRegistryPresetWorkspaceLoadResult,
+  ResultShareRegistryPresetWorkspaceBackupSnapshot,
+  ResultShareRegistryPresetWorkspaceExportPayload,
+  ResultShareRegistryPresetWorkspaceImportApplyResult,
+  ResultShareRegistryPresetWorkspaceImportPreview,
   ResultShareRegistryPresetWorkspaceState,
   ResultShareRegistryPresetWorkspaceViewModel,
   ResultShareRegistrySortInput,
@@ -53,10 +57,16 @@ export const RESULT_SHARE_REGISTRY_LOCAL_AUDIT_STORAGE_KEY =
   "resultShareRegistryPresetLocalAuditEvents";
 export const RESULT_SHARE_REGISTRY_WORKSPACE_STATE_STORAGE_KEY =
   "resultShareRegistryPresetWorkspaceState";
+export const RESULT_SHARE_REGISTRY_WORKSPACE_LAST_GOOD_BACKUP_STORAGE_KEY =
+  "resultShareRegistryPresetWorkspaceLastGoodBackup";
 export const RESULT_SHARE_REGISTRY_PRESET_EXPORT_SCHEMA_VERSION =
   "result-share-registry-presets.v1";
 export const RESULT_SHARE_REGISTRY_PRESET_BACKUP_SCHEMA_VERSION =
   "result-share-registry-presets-backup.v1";
+export const RESULT_SHARE_REGISTRY_PRESET_WORKSPACE_EXPORT_SCHEMA_VERSION =
+  "result-share-registry-preset-workspace.v1";
+export const RESULT_SHARE_REGISTRY_PRESET_WORKSPACE_BACKUP_SCHEMA_VERSION =
+  "result-share-registry-preset-workspace-backup.v1";
 const RESULT_SHARE_REGISTRY_LOCAL_AUDIT_MAX_EVENTS = 100;
 const RESULT_SHARE_REGISTRY_LOCAL_AUDIT_RECENT_LIMIT = 12;
 
@@ -95,8 +105,31 @@ const presetDrilldownAllowedKeys = new Set([
   "outcome",
   "limit",
 ]);
+const workspaceExportAllowedKeys = new Set([
+  "schemaVersion",
+  "exportedAt",
+  "app",
+  "source",
+  "workspaceState",
+]);
+const workspaceStateAllowedKeys = new Set([
+  "pinnedGrantPresetIds",
+  "pinnedAliasPresetIds",
+  "lastActivePresetScope",
+  "lastActivePresetId",
+  "collapsedSections",
+  "updatedAt",
+]);
+const workspaceCollapsedSectionAllowedKeys = new Set([
+  "pinnedGrantPresets",
+  "pinnedAliasPresets",
+  "recentGrantPresets",
+  "recentAliasPresets",
+  "recentActivity",
+  "storageHealth",
+]);
 const unsafeFieldPattern =
-  /(^|_)(token|secret|password|hash|rawalias|rawsharetoken|localpath|absolutepath|sourcefile)(_|$)|rawAlias|rawShareToken|localPath|absolutePath|sourceFile|alias_hash|token_hash/i;
+  /(^|_)(token|secret|password|hash|rawalias|rawsharetoken|localpath|absolutepath|sourcefile|responsepayload)(_|$)|rawAlias|rawShareToken|localPath|absolutePath|sourceFile|responsePayload|alias_hash|token_hash/i;
 
 const presetLocalAuditActionTypes: ResultShareRegistryPresetLocalAuditActionType[] = [
   "preset_saved",
@@ -105,6 +138,13 @@ const presetLocalAuditActionTypes: ResultShareRegistryPresetLocalAuditActionType
   "preset_deleted",
   "preset_pinned",
   "preset_unpinned",
+  "preset_workspace_export_created",
+  "preset_workspace_import_dry_run",
+  "preset_workspace_import_merge",
+  "preset_workspace_import_replace",
+  "preset_workspace_backup_created",
+  "preset_workspace_backup_restored",
+  "preset_workspace_import_validation_failed",
   "default_set",
   "default_cleared",
   "import_dry_run",
@@ -919,20 +959,29 @@ export function buildResultShareRegistryPresetAuditSummary(
   }
 
   const backupRelatedCount =
-    byActionType.backup_created + byActionType.backup_restored;
+    byActionType.backup_created +
+    byActionType.backup_restored +
+    byActionType.preset_workspace_backup_created +
+    byActionType.preset_workspace_backup_restored;
   const recoveryRelatedCount =
     byActionType.invalid_presets_discarded +
     byActionType.scope_reset +
     byActionType.all_presets_reset +
     byActionType.dangling_default_cleared +
     byActionType.backup_restored +
-    byActionType.recovery_failed;
+    byActionType.recovery_failed +
+    byActionType.preset_workspace_backup_restored;
   const importRelatedCount =
     byActionType.import_dry_run +
     byActionType.import_merge +
     byActionType.import_replace +
-    byActionType.validation_failed;
-  const exportRelatedCount = byActionType.export_created;
+    byActionType.validation_failed +
+    byActionType.preset_workspace_import_dry_run +
+    byActionType.preset_workspace_import_merge +
+    byActionType.preset_workspace_import_replace +
+    byActionType.preset_workspace_import_validation_failed;
+  const exportRelatedCount =
+    byActionType.export_created + byActionType.preset_workspace_export_created;
 
   return {
     totalEvents: events.length,
@@ -1004,12 +1053,16 @@ function normalizeCollapsedSections(
 
 function normalizeResultShareRegistryPresetWorkspaceState(
   value: unknown,
+  options?: {
+    allowMissingUpdatedAt?: boolean;
+    now?: string;
+  },
 ): ResultShareRegistryPresetWorkspaceState | null {
   if (!isRecord(value)) {
     return null;
   }
   const updatedAt = typeof value.updatedAt === "string" ? value.updatedAt.trim() : "";
-  if (!updatedAt) {
+  if (!updatedAt && !options?.allowMissingUpdatedAt) {
     return null;
   }
   return {
@@ -1027,7 +1080,7 @@ function normalizeResultShareRegistryPresetWorkspaceState(
         ? value.lastActivePresetId.trim()
         : null,
     collapsedSections: normalizeCollapsedSections(value.collapsedSections),
-    updatedAt,
+    updatedAt: updatedAt || options?.now || new Date().toISOString(),
   };
 }
 
@@ -1097,6 +1150,438 @@ export function persistResultShareRegistryPresetWorkspaceState(
     JSON.stringify(normalized),
   );
   return normalized;
+}
+
+function classifyWorkspaceStateAgainstStore(
+  workspaceState: ResultShareRegistryPresetWorkspaceState,
+  store: ResultShareRegistrySavedViewStoreState,
+): {
+  stalePinnedGrantPresetIds: string[];
+  stalePinnedAliasPresetIds: string[];
+  lastActivePresetExists: boolean;
+} {
+  const grantPresetIds = new Set(store.grantPresets.map((preset) => preset.id));
+  const aliasPresetIds = new Set(store.aliasPresets.map((preset) => preset.id));
+  const lastActivePresetExists =
+    workspaceState.lastActivePresetScope === "grant_registry"
+      ? workspaceState.lastActivePresetId !== null &&
+        grantPresetIds.has(workspaceState.lastActivePresetId)
+      : workspaceState.lastActivePresetScope === "alias_registry"
+        ? workspaceState.lastActivePresetId !== null &&
+          aliasPresetIds.has(workspaceState.lastActivePresetId)
+        : true;
+  return {
+    stalePinnedGrantPresetIds: workspaceState.pinnedGrantPresetIds.filter(
+      (presetId) => !grantPresetIds.has(presetId),
+    ),
+    stalePinnedAliasPresetIds: workspaceState.pinnedAliasPresetIds.filter(
+      (presetId) => !aliasPresetIds.has(presetId),
+    ),
+    lastActivePresetExists,
+  };
+}
+
+function sanitizeImportedPresetWorkspaceState(
+  value: unknown,
+  warnings: string[],
+  errors: string[],
+  path: string,
+): ResultShareRegistryPresetWorkspaceState | null {
+  if (!isRecord(value)) {
+    errors.push(`${path} must be an object.`);
+    return null;
+  }
+  if (collectUnexpectedKeys(value, workspaceStateAllowedKeys, path, warnings, errors)) {
+    return null;
+  }
+  if ("pinnedGrantPresetIds" in value && !Array.isArray(value.pinnedGrantPresetIds)) {
+    errors.push(`${path}.pinnedGrantPresetIds must be an array of preset ids.`);
+    return null;
+  }
+  if ("pinnedAliasPresetIds" in value && !Array.isArray(value.pinnedAliasPresetIds)) {
+    errors.push(`${path}.pinnedAliasPresetIds must be an array of preset ids.`);
+    return null;
+  }
+  if (
+    "lastActivePresetScope" in value &&
+    value.lastActivePresetScope !== null &&
+    value.lastActivePresetScope !== undefined &&
+    value.lastActivePresetScope !== "grant_registry" &&
+    value.lastActivePresetScope !== "alias_registry"
+  ) {
+    errors.push(`${path}.lastActivePresetScope must be grant_registry, alias_registry, or null.`);
+    return null;
+  }
+  if (
+    "lastActivePresetId" in value &&
+    value.lastActivePresetId !== null &&
+    value.lastActivePresetId !== undefined &&
+    typeof value.lastActivePresetId !== "string"
+  ) {
+    errors.push(`${path}.lastActivePresetId must be a string or null.`);
+    return null;
+  }
+  if (
+    "collapsedSections" in value &&
+    value.collapsedSections !== null &&
+    value.collapsedSections !== undefined
+  ) {
+    if (!isRecord(value.collapsedSections)) {
+      errors.push(`${path}.collapsedSections must be an object or null.`);
+      return null;
+    }
+    if (
+      collectUnexpectedKeys(
+        value.collapsedSections,
+        workspaceCollapsedSectionAllowedKeys,
+        `${path}.collapsedSections`,
+        warnings,
+        errors,
+      )
+    ) {
+      return null;
+    }
+  }
+
+  const normalized = normalizeResultShareRegistryPresetWorkspaceState(value, {
+    allowMissingUpdatedAt: true,
+  });
+  if (!normalized) {
+    errors.push(`${path} does not match the expected preset workspace shape.`);
+    return null;
+  }
+  return normalized;
+}
+
+export function buildResultShareRegistryPresetWorkspaceExport(
+  workspaceState: ResultShareRegistryPresetWorkspaceState,
+  options?: {
+    now?: string;
+  },
+): ResultShareRegistryPresetWorkspaceExportPayload {
+  return {
+    schemaVersion: RESULT_SHARE_REGISTRY_PRESET_WORKSPACE_EXPORT_SCHEMA_VERSION,
+    exportedAt: options?.now ?? new Date().toISOString(),
+    app: "research-pulse-cn",
+    source: "group-workspace-admin-web",
+    workspaceState:
+      normalizeResultShareRegistryPresetWorkspaceState(workspaceState, {
+        allowMissingUpdatedAt: true,
+        now: options?.now,
+      }) ?? createDefaultResultShareRegistryPresetWorkspaceState(options),
+  };
+}
+
+function buildPresetWorkspaceImportPreview(
+  workspaceState: ResultShareRegistryPresetWorkspaceState | null,
+  store: ResultShareRegistrySavedViewStoreState,
+  warnings: string[],
+  errors: string[],
+  schemaVersion: string | null,
+): ResultShareRegistryPresetWorkspaceImportPreview {
+  const classification = workspaceState
+    ? classifyWorkspaceStateAgainstStore(workspaceState, store)
+    : {
+        stalePinnedGrantPresetIds: [],
+        stalePinnedAliasPresetIds: [],
+        lastActivePresetExists: false,
+      };
+  const previewWarnings = [...warnings];
+  if (classification.stalePinnedGrantPresetIds.length > 0) {
+    previewWarnings.push(
+      `Imported workspace state contains ${classification.stalePinnedGrantPresetIds.length} stale grant pin(s). Existing stale-pin cleanup can remove them after import.`,
+    );
+  }
+  if (classification.stalePinnedAliasPresetIds.length > 0) {
+    previewWarnings.push(
+      `Imported workspace state contains ${classification.stalePinnedAliasPresetIds.length} stale alias pin(s). Existing stale-pin cleanup can remove them after import.`,
+    );
+  }
+  if (workspaceState && !classification.lastActivePresetExists) {
+    previewWarnings.push(
+      "Imported workspace last-active preset does not exist locally and will be cleared on apply.",
+    );
+  }
+  return {
+    schemaVersion,
+    valid: errors.length === 0,
+    canApply: errors.length === 0,
+    warnings: previewWarnings,
+    errors,
+    pinnedGrantPresetCount: workspaceState?.pinnedGrantPresetIds.length ?? 0,
+    pinnedAliasPresetCount: workspaceState?.pinnedAliasPresetIds.length ?? 0,
+    stalePinnedGrantPresetIds: classification.stalePinnedGrantPresetIds,
+    stalePinnedAliasPresetIds: classification.stalePinnedAliasPresetIds,
+    lastActivePresetExists: classification.lastActivePresetExists,
+    workspaceState,
+  };
+}
+
+export function parseResultShareRegistryPresetWorkspaceImport(
+  raw: string,
+  store: ResultShareRegistrySavedViewStoreState,
+): ResultShareRegistryPresetWorkspaceImportPreview {
+  const warnings: string[] = [];
+  const errors: string[] = [];
+  let parsed: unknown;
+
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return {
+      schemaVersion: null,
+      valid: false,
+      canApply: false,
+      warnings: [],
+      errors: ["Import file is not valid JSON."],
+      pinnedGrantPresetCount: 0,
+      pinnedAliasPresetCount: 0,
+      stalePinnedGrantPresetIds: [],
+      stalePinnedAliasPresetIds: [],
+      lastActivePresetExists: false,
+      workspaceState: null,
+    };
+  }
+
+  if (!isRecord(parsed)) {
+    return {
+      schemaVersion: null,
+      valid: false,
+      canApply: false,
+      warnings: [],
+      errors: ["Import file must contain a JSON object."],
+      pinnedGrantPresetCount: 0,
+      pinnedAliasPresetCount: 0,
+      stalePinnedGrantPresetIds: [],
+      stalePinnedAliasPresetIds: [],
+      lastActivePresetExists: false,
+      workspaceState: null,
+    };
+  }
+
+  const schemaVersion =
+    typeof parsed.schemaVersion === "string" ? parsed.schemaVersion : null;
+  if (collectUnexpectedKeys(parsed, workspaceExportAllowedKeys, "payload", warnings, errors)) {
+    return buildPresetWorkspaceImportPreview(null, store, warnings, errors, schemaVersion);
+  }
+  if (schemaVersion !== RESULT_SHARE_REGISTRY_PRESET_WORKSPACE_EXPORT_SCHEMA_VERSION) {
+    errors.push(
+      `Import schemaVersion must be ${RESULT_SHARE_REGISTRY_PRESET_WORKSPACE_EXPORT_SCHEMA_VERSION}.`,
+    );
+    return buildPresetWorkspaceImportPreview(null, store, warnings, errors, schemaVersion);
+  }
+  const workspaceState = sanitizeImportedPresetWorkspaceState(
+    parsed.workspaceState,
+    warnings,
+    errors,
+    "payload.workspaceState",
+  );
+  return buildPresetWorkspaceImportPreview(workspaceState, store, warnings, errors, schemaVersion);
+}
+
+function mergeWorkspaceCollapsedSections(
+  current: ResultShareRegistryPresetWorkspaceState["collapsedSections"],
+  incoming: ResultShareRegistryPresetWorkspaceState["collapsedSections"],
+): ResultShareRegistryPresetWorkspaceState["collapsedSections"] {
+  if (!current && !incoming) {
+    return null;
+  }
+  return {
+    pinnedGrantPresets: incoming?.pinnedGrantPresets ?? current?.pinnedGrantPresets ?? false,
+    pinnedAliasPresets: incoming?.pinnedAliasPresets ?? current?.pinnedAliasPresets ?? false,
+    recentGrantPresets: incoming?.recentGrantPresets ?? current?.recentGrantPresets ?? false,
+    recentAliasPresets: incoming?.recentAliasPresets ?? current?.recentAliasPresets ?? false,
+    recentActivity: incoming?.recentActivity ?? current?.recentActivity ?? false,
+    storageHealth: incoming?.storageHealth ?? current?.storageHealth ?? false,
+  };
+}
+
+export function applyResultShareRegistryPresetWorkspaceImport(
+  currentState: ResultShareRegistryPresetWorkspaceState,
+  preview: ResultShareRegistryPresetWorkspaceImportPreview,
+  mode: ResultShareRegistryPresetImportMode,
+  store: ResultShareRegistrySavedViewStoreState,
+  options?: {
+    now?: string;
+  },
+): ResultShareRegistryPresetWorkspaceImportApplyResult {
+  const timestamp = options?.now ?? new Date().toISOString();
+  const importedWorkspaceState = preview.workspaceState
+    ? normalizeResultShareRegistryPresetWorkspaceState(preview.workspaceState, {
+        allowMissingUpdatedAt: true,
+        now: timestamp,
+      })
+    : null;
+  if (!preview.canApply || !importedWorkspaceState) {
+    return {
+      workspaceState: currentState,
+      stalePinnedGrantPresetIds: [],
+      stalePinnedAliasPresetIds: [],
+      lastActivePresetCleared: false,
+    };
+  }
+
+  const nextWorkspaceState =
+    mode === "merge"
+      ? {
+          pinnedGrantPresetIds: [
+            ...currentState.pinnedGrantPresetIds,
+            ...importedWorkspaceState.pinnedGrantPresetIds.filter(
+              (presetId) => !currentState.pinnedGrantPresetIds.includes(presetId),
+            ),
+          ],
+          pinnedAliasPresetIds: [
+            ...currentState.pinnedAliasPresetIds,
+            ...importedWorkspaceState.pinnedAliasPresetIds.filter(
+              (presetId) => !currentState.pinnedAliasPresetIds.includes(presetId),
+            ),
+          ],
+          lastActivePresetScope:
+            classifyWorkspaceStateAgainstStore(importedWorkspaceState, store).lastActivePresetExists &&
+            importedWorkspaceState.lastActivePresetId
+              ? importedWorkspaceState.lastActivePresetScope
+              : currentState.lastActivePresetScope,
+          lastActivePresetId:
+            classifyWorkspaceStateAgainstStore(importedWorkspaceState, store).lastActivePresetExists &&
+            importedWorkspaceState.lastActivePresetId
+              ? importedWorkspaceState.lastActivePresetId
+              : currentState.lastActivePresetId,
+          collapsedSections: mergeWorkspaceCollapsedSections(
+            currentState.collapsedSections,
+            importedWorkspaceState.collapsedSections,
+          ),
+          updatedAt: timestamp,
+        }
+      : {
+          ...importedWorkspaceState,
+          updatedAt: timestamp,
+        };
+
+  const classification = classifyWorkspaceStateAgainstStore(nextWorkspaceState, store);
+  const resultWorkspaceState =
+    classification.lastActivePresetExists
+      ? nextWorkspaceState
+      : {
+          ...nextWorkspaceState,
+          lastActivePresetScope: null,
+          lastActivePresetId: null,
+          updatedAt: timestamp,
+        };
+
+  return {
+    workspaceState: resultWorkspaceState,
+    stalePinnedGrantPresetIds: classification.stalePinnedGrantPresetIds,
+    stalePinnedAliasPresetIds: classification.stalePinnedAliasPresetIds,
+    lastActivePresetCleared:
+      nextWorkspaceState.lastActivePresetId !== null && !classification.lastActivePresetExists,
+  };
+}
+
+function normalizeResultShareRegistryPresetWorkspaceBackupSnapshot(
+  value: unknown,
+): ResultShareRegistryPresetWorkspaceBackupSnapshot | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const schemaVersion =
+    typeof value.schemaVersion === "string" ? value.schemaVersion.trim() : "";
+  const createdAt = typeof value.createdAt === "string" ? value.createdAt.trim() : "";
+  const reason = typeof value.reason === "string" ? value.reason.trim() : "";
+  if (
+    schemaVersion !== RESULT_SHARE_REGISTRY_PRESET_WORKSPACE_BACKUP_SCHEMA_VERSION ||
+    !createdAt ||
+    !reason
+  ) {
+    return null;
+  }
+  const workspaceState = normalizeResultShareRegistryPresetWorkspaceState(value.workspaceState, {
+    allowMissingUpdatedAt: true,
+    now: createdAt,
+  });
+  if (!workspaceState) {
+    return null;
+  }
+  return {
+    schemaVersion: RESULT_SHARE_REGISTRY_PRESET_WORKSPACE_BACKUP_SCHEMA_VERSION,
+    createdAt,
+    reason,
+    workspaceState,
+  };
+}
+
+export function createResultShareRegistryPresetWorkspaceBackup(
+  workspaceState: ResultShareRegistryPresetWorkspaceState,
+  reason: string,
+  options?: {
+    now?: string;
+  },
+): ResultShareRegistryPresetWorkspaceBackupSnapshot {
+  const createdAt = options?.now ?? new Date().toISOString();
+  return {
+    schemaVersion: RESULT_SHARE_REGISTRY_PRESET_WORKSPACE_BACKUP_SCHEMA_VERSION,
+    createdAt,
+    reason,
+    workspaceState:
+      normalizeResultShareRegistryPresetWorkspaceState(workspaceState, {
+        allowMissingUpdatedAt: true,
+        now: createdAt,
+      }) ?? createDefaultResultShareRegistryPresetWorkspaceState({ now: createdAt }),
+  };
+}
+
+export function persistResultShareRegistryPresetWorkspaceBackup(
+  storage: Storage | null | undefined,
+  backup: ResultShareRegistryPresetWorkspaceBackupSnapshot | null,
+): ResultShareRegistryPresetWorkspaceBackupSnapshot | null {
+  if (!storage) {
+    return backup;
+  }
+  if (!backup) {
+    storage.removeItem(RESULT_SHARE_REGISTRY_WORKSPACE_LAST_GOOD_BACKUP_STORAGE_KEY);
+    return null;
+  }
+  const normalized = normalizeResultShareRegistryPresetWorkspaceBackupSnapshot(backup);
+  if (!normalized) {
+    storage.removeItem(RESULT_SHARE_REGISTRY_WORKSPACE_LAST_GOOD_BACKUP_STORAGE_KEY);
+    return null;
+  }
+  storage.setItem(
+    RESULT_SHARE_REGISTRY_WORKSPACE_LAST_GOOD_BACKUP_STORAGE_KEY,
+    JSON.stringify(normalized),
+  );
+  return normalized;
+}
+
+export function loadResultShareRegistryPresetWorkspaceBackup(
+  storage: Storage | null | undefined,
+): ResultShareRegistryPresetWorkspaceBackupSnapshot | null {
+  if (!storage) {
+    return null;
+  }
+  let raw: string | null = null;
+  try {
+    raw = storage.getItem(RESULT_SHARE_REGISTRY_WORKSPACE_LAST_GOOD_BACKUP_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+  if (!raw) {
+    return null;
+  }
+  try {
+    return normalizeResultShareRegistryPresetWorkspaceBackupSnapshot(JSON.parse(raw));
+  } catch {
+    return null;
+  }
+}
+
+export function restoreResultShareRegistryPresetWorkspaceBackup(
+  backup: ResultShareRegistryPresetWorkspaceBackupSnapshot | null,
+): ResultShareRegistryPresetWorkspaceState | null {
+  if (!backup) {
+    return null;
+  }
+  const normalized = normalizeResultShareRegistryPresetWorkspaceBackupSnapshot(backup);
+  return normalized?.workspaceState ?? null;
 }
 
 export function resetResultShareRegistryPresetWorkspaceState(
@@ -1277,6 +1762,7 @@ export function buildResultShareRegistryPresetWorkspaceViewModel(
   auditSummary: ResultShareRegistryPresetLocalAuditSummary,
   diagnostics: ResultShareRegistryPresetStorageDiagnostics,
   lastGoodBackup: ResultShareRegistryPresetBackupSnapshot | null,
+  workspaceBackup: ResultShareRegistryPresetWorkspaceBackupSnapshot | null,
 ): ResultShareRegistryPresetWorkspaceViewModel {
   const grantById = new Map(summaries.grantPresets.map((preset) => [preset.id, preset]));
   const aliasById = new Map(summaries.aliasPresets.map((preset) => [preset.id, preset]));
@@ -1328,6 +1814,9 @@ export function buildResultShareRegistryPresetWorkspaceViewModel(
       lastBackupLabel: lastGoodBackup
         ? `${lastGoodBackup.createdAt} · ${lastGoodBackup.reason}`
         : "No local backup stored",
+      workspaceBackupLabel: workspaceBackup
+        ? `${workspaceBackup.createdAt} · ${workspaceBackup.reason}`
+        : "No workspace backup stored",
       auditWarning: auditSummary.storageWarning,
       workspaceWarning: diagnostics.workspaceStateWarning,
       latestValidationAt: diagnostics.latestValidationAt,

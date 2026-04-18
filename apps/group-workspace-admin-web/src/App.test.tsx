@@ -1860,6 +1860,267 @@ describe("group workspace admin shell", () => {
     );
   });
 
+  it("validates and merges workspace-state import with stale pin preview", async () => {
+    window.localStorage.setItem(
+      "resultShareRegistryGrantPresets",
+      JSON.stringify([
+        {
+          id: "grant-default",
+          name: "Grant default",
+          scope: "grant_registry",
+          filters: {
+            shareKind: "workspace_board",
+            grantStatus: "active",
+            aliasStatus: null,
+            workspaceId: "workspace-1",
+            resultShareGrantId: null,
+          },
+          sort: {
+            field: "createdAt",
+            direction: "asc",
+          },
+          createdAt: "2026-04-18T08:00:00Z",
+          updatedAt: "2026-04-18T08:00:00Z",
+        },
+      ]),
+    );
+    window.localStorage.setItem(
+      "resultShareRegistryAliasPresets",
+      JSON.stringify([
+        {
+          id: "alias-default",
+          name: "Alias default",
+          scope: "alias_registry",
+          filters: {
+            shareKind: "workspace_board",
+            grantStatus: null,
+            aliasStatus: "active",
+            workspaceId: null,
+            resultShareGrantId: "grant-default",
+          },
+          sort: {
+            field: "status",
+            direction: "desc",
+          },
+          createdAt: "2026-04-18T08:10:00Z",
+          updatedAt: "2026-04-18T08:10:00Z",
+        },
+      ]),
+    );
+    window.localStorage.setItem(
+      "resultShareRegistryPresetWorkspaceState",
+      JSON.stringify({
+        pinnedGrantPresetIds: ["grant-default"],
+        pinnedAliasPresetIds: [],
+        lastActivePresetScope: null,
+        lastActivePresetId: null,
+        collapsedSections: null,
+        updatedAt: "2026-04-19T03:20:00Z",
+      }),
+    );
+
+    const client = buildApiClient();
+    const user = userEvent.setup();
+
+    render(<GroupWorkspaceAdminShell apiClientFactory={() => client} />);
+
+    await user.type(screen.getByLabelText(/admin bearer token/i), "manual-token");
+    await user.click(screen.getByRole("button", { name: /open workspace shell/i }));
+
+    const registryPanel = await screen.findByRole("heading", { name: "Result share registry" });
+    const scoped = within(registryPanel.closest("section") as HTMLElement);
+    const workspaceSection = scoped.getByRole("heading", { name: "Preset workspace" }).closest("section");
+    expect(workspaceSection).not.toBeNull();
+    const workspaceScoped = within(workspaceSection as HTMLElement);
+
+    const importFile = new File(
+      [
+        JSON.stringify(
+          {
+            schemaVersion: "result-share-registry-preset-workspace.v1",
+            exportedAt: "2026-04-19T03:21:00Z",
+            app: "research-pulse-cn",
+            source: "group-workspace-admin-web",
+            workspaceState: {
+              pinnedGrantPresetIds: ["grant-default", "grant-missing"],
+              pinnedAliasPresetIds: ["alias-default"],
+              lastActivePresetScope: "grant_registry",
+              lastActivePresetId: "grant-missing",
+            },
+          },
+          null,
+          2,
+        ),
+      ],
+      "workspace-import.json",
+      { type: "application/json" },
+    );
+
+    fireEvent.change(workspaceScoped.getByLabelText("Import workspace state JSON file"), {
+      target: {
+        files: [importFile],
+      },
+    });
+
+    await workspaceScoped.findByRole("heading", { name: "Workspace import preview" });
+    expect(workspaceScoped.getByText("Grant pin missing locally: grant-missing")).toBeVisible();
+
+    await user.selectOptions(workspaceScoped.getByLabelText("Workspace import mode"), "merge");
+    await user.click(workspaceScoped.getByRole("button", { name: "Apply workspace import" }));
+
+    const persistedWorkspaceState = JSON.parse(
+      window.localStorage.getItem("resultShareRegistryPresetWorkspaceState") ?? "{}",
+    );
+    expect(persistedWorkspaceState.pinnedGrantPresetIds).toEqual([
+      "grant-default",
+      "grant-missing",
+    ]);
+    expect(persistedWorkspaceState.pinnedAliasPresetIds).toEqual(["alias-default"]);
+    expect(persistedWorkspaceState.lastActivePresetId).toBeNull();
+    expect(window.localStorage.getItem("resultShareRegistryGrantPresets")).toContain(
+      "Grant default",
+    );
+    expect(
+      await screen.findByText(/Imported workspace state includes stale pins/i),
+    ).toBeVisible();
+  });
+
+  it("replaces workspace-state organization and restores the workspace backup without touching saved presets", async () => {
+    window.localStorage.setItem(
+      "resultShareRegistryGrantPresets",
+      JSON.stringify([
+        {
+          id: "grant-default",
+          name: "Grant default",
+          scope: "grant_registry",
+          filters: {
+            shareKind: "workspace_board",
+            grantStatus: "active",
+            aliasStatus: null,
+            workspaceId: "workspace-1",
+            resultShareGrantId: null,
+          },
+          sort: {
+            field: "createdAt",
+            direction: "asc",
+          },
+          createdAt: "2026-04-18T08:00:00Z",
+          updatedAt: "2026-04-18T08:00:00Z",
+        },
+      ]),
+    );
+    window.localStorage.setItem(
+      "resultShareRegistryAliasPresets",
+      JSON.stringify([
+        {
+          id: "alias-default",
+          name: "Alias default",
+          scope: "alias_registry",
+          filters: {
+            shareKind: "workspace_board",
+            grantStatus: null,
+            aliasStatus: "active",
+            workspaceId: null,
+            resultShareGrantId: "grant-default",
+          },
+          sort: {
+            field: "status",
+            direction: "desc",
+          },
+          createdAt: "2026-04-18T08:10:00Z",
+          updatedAt: "2026-04-18T08:10:00Z",
+        },
+      ]),
+    );
+    window.localStorage.setItem(
+      "resultShareRegistryPresetWorkspaceState",
+      JSON.stringify({
+        pinnedGrantPresetIds: ["grant-default"],
+        pinnedAliasPresetIds: [],
+        lastActivePresetScope: "grant_registry",
+        lastActivePresetId: "grant-default",
+        collapsedSections: null,
+        updatedAt: "2026-04-19T03:22:00Z",
+      }),
+    );
+    window.confirm = vi.fn(() => true);
+
+    const client = buildApiClient();
+    const user = userEvent.setup();
+
+    render(<GroupWorkspaceAdminShell apiClientFactory={() => client} />);
+
+    await user.type(screen.getByLabelText(/admin bearer token/i), "manual-token");
+    await user.click(screen.getByRole("button", { name: /open workspace shell/i }));
+
+    const registryPanel = await screen.findByRole("heading", { name: "Result share registry" });
+    const scoped = within(registryPanel.closest("section") as HTMLElement);
+    const workspaceSection = scoped.getByRole("heading", { name: "Preset workspace" }).closest("section");
+    expect(workspaceSection).not.toBeNull();
+    const workspaceScoped = within(workspaceSection as HTMLElement);
+
+    const importFile = new File(
+      [
+        JSON.stringify(
+          {
+            schemaVersion: "result-share-registry-preset-workspace.v1",
+            exportedAt: "2026-04-19T03:23:00Z",
+            app: "research-pulse-cn",
+            source: "group-workspace-admin-web",
+            workspaceState: {
+              pinnedGrantPresetIds: [],
+              pinnedAliasPresetIds: ["alias-missing"],
+              lastActivePresetScope: "alias_registry",
+              lastActivePresetId: "alias-missing",
+              collapsedSections: {
+                storageHealth: true,
+              },
+            },
+          },
+          null,
+          2,
+        ),
+      ],
+      "workspace-replace.json",
+      { type: "application/json" },
+    );
+
+    fireEvent.change(workspaceScoped.getByLabelText("Import workspace state JSON file"), {
+      target: {
+        files: [importFile],
+      },
+    });
+
+    await workspaceScoped.findByRole("heading", { name: "Workspace import preview" });
+    await user.selectOptions(workspaceScoped.getByLabelText("Workspace import mode"), "replace");
+    await user.click(workspaceScoped.getByRole("button", { name: "Apply workspace import" }));
+
+    let persistedWorkspaceState = JSON.parse(
+      window.localStorage.getItem("resultShareRegistryPresetWorkspaceState") ?? "{}",
+    );
+    expect(persistedWorkspaceState.pinnedGrantPresetIds).toEqual([]);
+    expect(persistedWorkspaceState.pinnedAliasPresetIds).toEqual(["alias-missing"]);
+    expect(persistedWorkspaceState.lastActivePresetId).toBeNull();
+    expect(window.localStorage.getItem("resultShareRegistryPresetWorkspaceLastGoodBackup")).toContain(
+      "workspace_import_replace",
+    );
+
+    await user.click(workspaceScoped.getByRole("button", { name: "Restore workspace backup" }));
+
+    persistedWorkspaceState = JSON.parse(
+      window.localStorage.getItem("resultShareRegistryPresetWorkspaceState") ?? "{}",
+    );
+    expect(persistedWorkspaceState.pinnedGrantPresetIds).toEqual(["grant-default"]);
+    expect(persistedWorkspaceState.pinnedAliasPresetIds).toEqual([]);
+    expect(window.localStorage.getItem("resultShareRegistryGrantPresets")).toContain(
+      "Grant default",
+    );
+    expect(window.localStorage.getItem("resultShareRegistryAliasPresets")).toContain(
+      "Alias default",
+    );
+    expect((window.confirm as unknown as ReturnType<typeof vi.fn>)).toHaveBeenCalled();
+  });
+
   it("restores the default local registry preset on shell load", async () => {
     window.localStorage.setItem(
       "resultShareRegistryGrantPresets",

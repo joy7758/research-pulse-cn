@@ -9,6 +9,7 @@ import {
 import type {
   ApiErrorViewModel,
   ResultShareRegistryPresetBackupSnapshot,
+  ResultShareRegistryPresetWorkspaceBackupSnapshot,
   ResultShareAliasRegistryItemViewModel,
   ResultShareGrantRegistryItemViewModel,
   ResultShareRegistryFilterInput,
@@ -20,6 +21,7 @@ import type {
   ResultShareRegistryPresetRecoveryAction,
   ResultShareRegistryPresetStorageDiagnostics,
   ResultShareRegistryPresetWorkspaceViewModel,
+  ResultShareRegistryPresetWorkspaceImportPreview,
   ResultShareRegistryFilterSummaryViewModel,
   ResultShareRegistrySavedViewApplyMode,
   ResultShareRegistrySavedViewScope,
@@ -58,6 +60,11 @@ type ResultShareRegistryPanelProps = {
   };
   presetWorkspace: {
     viewModel: ResultShareRegistryPresetWorkspaceViewModel;
+    transfer: {
+      importMode: ResultShareRegistryPresetImportMode;
+      preview: ResultShareRegistryPresetWorkspaceImportPreview | null;
+      lastGoodBackup: ResultShareRegistryPresetWorkspaceBackupSnapshot | null;
+    };
   };
   registry: ResultShareRegistryViewModel | null;
   currentTargetLabel: string | null;
@@ -94,6 +101,12 @@ type ResultShareRegistryPanelProps = {
   onValidatePresetStorage: () => void;
   onRunPresetRecoveryAction: (action: ResultShareRegistryPresetRecoveryAction) => void;
   onClearPresetAudit: () => void;
+  onPresetWorkspaceImportModeChange: (mode: ResultShareRegistryPresetImportMode) => void;
+  onImportPresetWorkspaceFile: (file: File | null) => void;
+  onApplyPresetWorkspaceImport: () => void;
+  onClearPresetWorkspaceImportPreview: () => void;
+  onExportPresetWorkspace: () => void;
+  onRestorePresetWorkspaceBackup: () => void;
   onPinSavedView: (scope: ResultShareRegistrySavedViewScope, presetId: string) => void;
   onUnpinSavedView: (scope: ResultShareRegistrySavedViewScope, presetId: string) => void;
   onMovePinnedSavedView: (
@@ -240,6 +253,141 @@ function ImportPreviewPanel({
         </button>
         <button type="button" className="button-secondary" onClick={onClear}>
           Clear import preview
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function WorkspaceImportPreviewPanel({
+  preview,
+  importMode,
+  onImportModeChange,
+  onApply,
+  onClear,
+}: {
+  preview: ResultShareRegistryPresetWorkspaceImportPreview | null;
+  importMode: ResultShareRegistryPresetImportMode;
+  onImportModeChange: (mode: ResultShareRegistryPresetImportMode) => void;
+  onApply: () => void;
+  onClear: () => void;
+}) {
+  if (!preview) {
+    return (
+      <div className="empty-state">
+        <strong>No workspace import preview yet.</strong>
+        <p>
+          Select a local preset workspace JSON file to validate browser-only pinning and
+          organization state before applying merge or replace.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <section className="conversion-section-card">
+      <div className="conversion-section-header">
+        <div>
+          <h4>Workspace import preview</h4>
+          <p className="section-subtle-copy">
+            This validates local workspace organization only. Saved preset definitions are not
+            included and are never overwritten here.
+          </p>
+        </div>
+      </div>
+
+      <div className="stat-grid">
+        <article className="stat-card">
+          <span>Schema</span>
+          <strong>{preview.schemaVersion ?? "Missing"}</strong>
+        </article>
+        <article className="stat-card">
+          <span>Grant pins</span>
+          <strong>{preview.pinnedGrantPresetCount}</strong>
+        </article>
+        <article className="stat-card">
+          <span>Alias pins</span>
+          <strong>{preview.pinnedAliasPresetCount}</strong>
+        </article>
+        <article className="stat-card">
+          <span>Last active preset</span>
+          <strong>{preview.lastActivePresetExists ? "Valid or empty" : "Will clear"}</strong>
+        </article>
+      </div>
+
+      <div className="button-row">
+        <label className="field-stack">
+          <span>Workspace import mode</span>
+          <select
+            value={importMode}
+            onChange={(event) =>
+              onImportModeChange(event.target.value as ResultShareRegistryPresetImportMode)
+            }
+          >
+            <option value="merge">Merge workspace state</option>
+            <option value="replace">Replace workspace state</option>
+          </select>
+        </label>
+      </div>
+
+      <ul className="filter-chip-list">
+        <li className="filter-chip">
+          <span>Valid preview</span>
+          <strong>{preview.valid ? "Yes" : "No"}</strong>
+        </li>
+        <li className="filter-chip">
+          <span>Can apply</span>
+          <strong>{preview.canApply ? "Yes" : "No"}</strong>
+        </li>
+      </ul>
+
+      {preview.stalePinnedGrantPresetIds.length > 0 || preview.stalePinnedAliasPresetIds.length > 0 ? (
+        <div className="inline-banner info">
+          <strong>Stale pin preview</strong>
+          <ul className="note-list">
+            {preview.stalePinnedGrantPresetIds.map((presetId) => (
+              <li key={`stale-grant-${presetId}`}>Grant pin missing locally: {presetId}</li>
+            ))}
+            {preview.stalePinnedAliasPresetIds.map((presetId) => (
+              <li key={`stale-alias-${presetId}`}>Alias pin missing locally: {presetId}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {preview.warnings.length > 0 ? (
+        <div className="inline-banner info">
+          <strong>Validation warnings</strong>
+          <ul className="note-list">
+            {preview.warnings.map((warning) => (
+              <li key={warning}>{warning}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {preview.errors.length > 0 ? (
+        <div className="inline-banner error" role="alert">
+          <strong>Validation errors</strong>
+          <ul className="note-list">
+            {preview.errors.map((error) => (
+              <li key={error}>{error}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      <div className="button-row">
+        <button
+          type="button"
+          className="button-primary"
+          disabled={!preview.canApply}
+          onClick={onApply}
+        >
+          Apply workspace import
+        </button>
+        <button type="button" className="button-secondary" onClick={onClear}>
+          Clear workspace import preview
         </button>
       </div>
     </section>
@@ -642,6 +790,7 @@ function RecentPresetList({
 
 function PresetWorkspacePanel({
   viewModel,
+  transfer,
   onApply,
   onUnpin,
   onPin,
@@ -649,8 +798,19 @@ function PresetWorkspacePanel({
   onCleanStalePins,
   onClearPins,
   onResetWorkspace,
+  onWorkspaceImportModeChange,
+  onImportWorkspaceFile,
+  onApplyWorkspaceImport,
+  onClearWorkspaceImportPreview,
+  onExportWorkspace,
+  onRestoreWorkspaceBackup,
 }: {
   viewModel: ResultShareRegistryPresetWorkspaceViewModel;
+  transfer: {
+    importMode: ResultShareRegistryPresetImportMode;
+    preview: ResultShareRegistryPresetWorkspaceImportPreview | null;
+    lastGoodBackup: ResultShareRegistryPresetWorkspaceBackupSnapshot | null;
+  };
   onApply: (
     scope: ResultShareRegistrySavedViewScope,
     presetId: string,
@@ -666,6 +826,12 @@ function PresetWorkspacePanel({
   onCleanStalePins: () => void;
   onClearPins: () => void;
   onResetWorkspace: () => void;
+  onWorkspaceImportModeChange: (mode: ResultShareRegistryPresetImportMode) => void;
+  onImportWorkspaceFile: (file: File | null) => void;
+  onApplyWorkspaceImport: () => void;
+  onClearWorkspaceImportPreview: () => void;
+  onExportWorkspace: () => void;
+  onRestoreWorkspaceBackup: () => void;
 }) {
   const stalePinCount = viewModel.staleGrantPinIds.length + viewModel.staleAliasPinIds.length;
 
@@ -681,6 +847,17 @@ function PresetWorkspacePanel({
           </p>
         </div>
         <div className="button-row">
+          <button type="button" className="button-secondary" onClick={onExportWorkspace}>
+            Export workspace state JSON
+          </button>
+          <button
+            type="button"
+            className="button-secondary"
+            onClick={onRestoreWorkspaceBackup}
+            disabled={transfer.lastGoodBackup === null}
+          >
+            Restore workspace backup
+          </button>
           <button
             type="button"
             className="button-secondary"
@@ -721,6 +898,10 @@ function PresetWorkspacePanel({
         <li className="filter-chip">
           <span>Last backup</span>
           <strong>{viewModel.storageHealth.lastBackupLabel}</strong>
+        </li>
+        <li className="filter-chip">
+          <span>Workspace backup</span>
+          <strong>{viewModel.storageHealth.workspaceBackupLabel}</strong>
         </li>
       </ul>
 
@@ -777,6 +958,33 @@ function PresetWorkspacePanel({
           onPin={onPin}
         />
       </div>
+
+      <section className="conversion-section-card saved-view-card">
+        <div className="conversion-section-header">
+          <div>
+            <h4>Workspace import / export</h4>
+            <p className="section-subtle-copy">
+              Local browser organization state only. This does not include saved preset
+              definitions, backend data, bearer tokens, or share payloads.
+            </p>
+          </div>
+        </div>
+        <label className="field-stack">
+          <span>Import workspace state JSON file</span>
+          <input
+            type="file"
+            accept=".json,application/json"
+            onChange={(event) => onImportWorkspaceFile(event.target.files?.[0] ?? null)}
+          />
+        </label>
+        <WorkspaceImportPreviewPanel
+          preview={transfer.preview}
+          importMode={transfer.importMode}
+          onImportModeChange={onWorkspaceImportModeChange}
+          onApply={onApplyWorkspaceImport}
+          onClear={onClearWorkspaceImportPreview}
+        />
+      </section>
 
       <section className="conversion-section-card">
         <div className="conversion-section-header">
@@ -1383,6 +1591,12 @@ export function ResultShareRegistryPanel({
   onValidatePresetStorage,
   onRunPresetRecoveryAction,
   onClearPresetAudit,
+  onPresetWorkspaceImportModeChange,
+  onImportPresetWorkspaceFile,
+  onApplyPresetWorkspaceImport,
+  onClearPresetWorkspaceImportPreview,
+  onExportPresetWorkspace,
+  onRestorePresetWorkspaceBackup,
   onPinSavedView,
   onUnpinSavedView,
   onMovePinnedSavedView,
@@ -1641,6 +1855,7 @@ export function ResultShareRegistryPanel({
 
         <PresetWorkspacePanel
           viewModel={presetWorkspace.viewModel}
+          transfer={presetWorkspace.transfer}
           onApply={onApplySavedView}
           onUnpin={onUnpinSavedView}
           onPin={onPinSavedView}
@@ -1648,6 +1863,12 @@ export function ResultShareRegistryPanel({
           onCleanStalePins={onCleanStaleWorkspacePins}
           onClearPins={onClearWorkspacePins}
           onResetWorkspace={onResetWorkspace}
+          onWorkspaceImportModeChange={onPresetWorkspaceImportModeChange}
+          onImportWorkspaceFile={onImportPresetWorkspaceFile}
+          onApplyWorkspaceImport={onApplyPresetWorkspaceImport}
+          onClearWorkspaceImportPreview={onClearPresetWorkspaceImportPreview}
+          onExportWorkspace={onExportPresetWorkspace}
+          onRestoreWorkspaceBackup={onRestorePresetWorkspaceBackup}
         />
 
         <div className="split-grid">
