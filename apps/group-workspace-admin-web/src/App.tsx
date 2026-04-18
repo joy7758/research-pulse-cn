@@ -44,6 +44,19 @@ import {
   normalizeResultShareRegistrySortInput,
 } from "./lib/resultShareRegistryFilters";
 import {
+  applyResultShareRegistrySavedView,
+  buildInitialResultShareRegistrySavedViewState,
+  buildResultShareRegistrySavedViewDraft,
+  buildResultShareRegistrySavedViewSummaries,
+  createResultShareRegistrySavedView,
+  deleteResultShareRegistrySavedView,
+  loadResultShareRegistrySavedViewStore,
+  overwriteResultShareRegistrySavedView,
+  persistResultShareRegistrySavedViewStore,
+  saveResultShareRegistrySavedView,
+  setResultShareRegistryDefaultPresetId,
+} from "./lib/resultShareRegistrySavedViews";
+import {
   clearVisibleAdminTokenHints,
   extractAdminTokenFromLocation,
 } from "./lib/token";
@@ -62,6 +75,9 @@ import type {
   ResultShareGrantConversionDrilldownRead,
   ResultShareGrantRead,
   ResultShareRegistryFilterInput,
+  ResultShareRegistrySavedView,
+  ResultShareRegistrySavedViewScope,
+  ResultShareRegistrySavedViewStoreState,
   ResultShareRegistrySortInput,
   ShareGrantOneTimeDisplayModel,
   UserProfileRead,
@@ -74,6 +90,17 @@ import type {
 
 const DEFAULT_API_BASE_URL =
   import.meta.env.VITE_GROUP_WORKSPACE_ADMIN_API_BASE_URL?.trim() || "http://127.0.0.1:8000";
+
+function getLocalStorageSafe(): Storage | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
 
 type ShareDrilldownTarget =
   | {
@@ -106,6 +133,12 @@ export function GroupWorkspaceAdminShell({
     locationLike ?? (typeof window === "undefined" ? undefined : window.location);
   const resolvedHistory =
     historyLike ?? (typeof window === "undefined" ? undefined : window.history);
+  const initialSavedViewStoreRef = useRef<ResultShareRegistrySavedViewStoreState>(
+    loadResultShareRegistrySavedViewStore(getLocalStorageSafe()),
+  );
+  const initialSavedViewStateRef = useRef(
+    buildInitialResultShareRegistrySavedViewState(initialSavedViewStoreRef.current),
+  );
 
   const [apiBaseUrlInput, setApiBaseUrlInput] = useState(
     initialApiBaseUrl ?? DEFAULT_API_BASE_URL,
@@ -180,13 +213,17 @@ export function GroupWorkspaceAdminShell({
   const [shareDrilldownFilterDraft, setShareDrilldownFilterDraft] =
     useState<ConversionFilterInput>(DEFAULT_CONVERSION_FILTER_INPUT);
   const [resultShareRegistryFilters, setResultShareRegistryFilters] =
-    useState<ResultShareRegistryFilterInput>(DEFAULT_RESULT_SHARE_REGISTRY_FILTER_INPUT);
+    useState<ResultShareRegistryFilterInput>(initialSavedViewStateRef.current.filters);
   const [resultShareRegistryFilterDraft, setResultShareRegistryFilterDraft] =
-    useState<ResultShareRegistryFilterInput>(DEFAULT_RESULT_SHARE_REGISTRY_FILTER_INPUT);
+    useState<ResultShareRegistryFilterInput>(initialSavedViewStateRef.current.filters);
   const [resultShareRegistrySorts, setResultShareRegistrySorts] =
-    useState<ResultShareRegistrySortInput>(DEFAULT_RESULT_SHARE_REGISTRY_SORT_INPUT);
+    useState<ResultShareRegistrySortInput>(initialSavedViewStateRef.current.sorts);
   const [resultShareRegistrySortDraft, setResultShareRegistrySortDraft] =
-    useState<ResultShareRegistrySortInput>(DEFAULT_RESULT_SHARE_REGISTRY_SORT_INPUT);
+    useState<ResultShareRegistrySortInput>(initialSavedViewStateRef.current.sorts);
+  const [resultShareRegistrySavedViews, setResultShareRegistrySavedViews] =
+    useState<ResultShareRegistrySavedViewStoreState>(initialSavedViewStoreRef.current);
+  const [grantSavedViewName, setGrantSavedViewName] = useState("");
+  const [aliasSavedViewName, setAliasSavedViewName] = useState("");
   const [shareGrantLookupId, setShareGrantLookupId] = useState("");
   const [shareAliasLookupId, setShareAliasLookupId] = useState("");
   const [createInput, setCreateInput] = useState<WorkspaceCreateInput>({
@@ -211,6 +248,10 @@ export function GroupWorkspaceAdminShell({
     expires_at: null,
   });
   const locationConsumedRef = useRef(false);
+  const defaultRegistrySavedViewState = useMemo(
+    () => buildInitialResultShareRegistrySavedViewState(resultShareRegistrySavedViews),
+    [resultShareRegistrySavedViews],
+  );
 
   const resetConnectedState = useCallback(() => {
     setSession(null);
@@ -243,14 +284,16 @@ export function GroupWorkspaceAdminShell({
     setWorkspaceConversionFilterDraft(DEFAULT_CONVERSION_FILTER_INPUT);
     setShareDrilldownFilters(DEFAULT_CONVERSION_FILTER_INPUT);
     setShareDrilldownFilterDraft(DEFAULT_CONVERSION_FILTER_INPUT);
-    setResultShareRegistryFilters(DEFAULT_RESULT_SHARE_REGISTRY_FILTER_INPUT);
-    setResultShareRegistryFilterDraft(DEFAULT_RESULT_SHARE_REGISTRY_FILTER_INPUT);
-    setResultShareRegistrySorts(DEFAULT_RESULT_SHARE_REGISTRY_SORT_INPUT);
-    setResultShareRegistrySortDraft(DEFAULT_RESULT_SHARE_REGISTRY_SORT_INPUT);
+    setResultShareRegistryFilters(defaultRegistrySavedViewState.filters);
+    setResultShareRegistryFilterDraft(defaultRegistrySavedViewState.filters);
+    setResultShareRegistrySorts(defaultRegistrySavedViewState.sorts);
+    setResultShareRegistrySortDraft(defaultRegistrySavedViewState.sorts);
+    setGrantSavedViewName("");
+    setAliasSavedViewName("");
     setShareGrantLookupId("");
     setShareAliasLookupId("");
     setOneTimeGrant(null);
-  }, []);
+  }, [defaultRegistrySavedViewState.filters, defaultRegistrySavedViewState.sorts]);
 
   const toApiErrorViewModel = useCallback((error: unknown): ApiErrorViewModel => {
     if (error instanceof GroupWorkspaceAdminApiError) {
@@ -690,6 +733,10 @@ export function GroupWorkspaceAdminShell({
       ),
     [resultShareRegistryFilters, resultShareRegistrySorts],
   );
+  const resultShareRegistrySavedViewSummaries = useMemo(
+    () => buildResultShareRegistrySavedViewSummaries(resultShareRegistrySavedViews),
+    [resultShareRegistrySavedViews],
+  );
   const shareDrilldownCurrentTargetLabel = useMemo(() => {
     if (shareDrilldownGrantViewModel) {
       return `Grant · ${shareDrilldownGrantViewModel.shareGrant.title}`;
@@ -702,6 +749,24 @@ export function GroupWorkspaceAdminShell({
     }
     return null;
   }, [shareDrilldownAliasViewModel, shareDrilldownGrantViewModel, shareDrilldownTarget]);
+
+  useEffect(() => {
+    persistResultShareRegistrySavedViewStore(
+      getLocalStorageSafe(),
+      resultShareRegistrySavedViews,
+    );
+  }, [resultShareRegistrySavedViews]);
+
+  const findSavedView = useCallback(
+    (scope: ResultShareRegistrySavedViewScope, presetId: string): ResultShareRegistrySavedView | null => {
+      const presets =
+        scope === "grant_registry"
+          ? resultShareRegistrySavedViews.grantPresets
+          : resultShareRegistrySavedViews.aliasPresets;
+      return presets.find((preset) => preset.id === presetId) ?? null;
+    },
+    [resultShareRegistrySavedViews],
+  );
 
   const patchGlobalFilterDraft = useCallback((patch: Partial<ConversionFilterInput>) => {
     setGlobalConversionFilterDraft((current) =>
@@ -951,6 +1016,163 @@ export function GroupWorkspaceAdminShell({
     [loadResultShareRegistry, resultShareRegistryFilterDraft, session],
   );
 
+  const handleSaveRegistrySavedView = useCallback(
+    (scope: ResultShareRegistrySavedViewScope) => {
+      const name = scope === "grant_registry" ? grantSavedViewName : aliasSavedViewName;
+      const draft = buildResultShareRegistrySavedViewDraft(
+        scope,
+        name,
+        resultShareRegistryFilterDraft,
+        resultShareRegistrySortDraft,
+      );
+      if (!draft) {
+        setNoticeMessage("Enter a local preset name before saving the current registry view.");
+        return;
+      }
+      const preset = createResultShareRegistrySavedView(draft);
+      setResultShareRegistrySavedViews((current) =>
+        saveResultShareRegistrySavedView(current, preset),
+      );
+      if (scope === "grant_registry") {
+        setGrantSavedViewName("");
+      } else {
+        setAliasSavedViewName("");
+      }
+      setNoticeMessage(`Saved local ${scope === "grant_registry" ? "grant" : "alias"} registry view.`);
+    },
+    [
+      aliasSavedViewName,
+      grantSavedViewName,
+      resultShareRegistryFilterDraft,
+      resultShareRegistrySortDraft,
+    ],
+  );
+
+  const handleOverwriteRegistrySavedView = useCallback(
+    (scope: ResultShareRegistrySavedViewScope, presetId: string) => {
+      const existing = findSavedView(scope, presetId);
+      if (!existing) {
+        return;
+      }
+      const nextName =
+        (scope === "grant_registry" ? grantSavedViewName : aliasSavedViewName).trim() ||
+        existing.name;
+      const draft = buildResultShareRegistrySavedViewDraft(
+        scope,
+        nextName,
+        resultShareRegistryFilterDraft,
+        resultShareRegistrySortDraft,
+      );
+      if (!draft) {
+        return;
+      }
+      setResultShareRegistrySavedViews((current) =>
+        overwriteResultShareRegistrySavedView(current, presetId, draft),
+      );
+      if (scope === "grant_registry") {
+        setGrantSavedViewName("");
+      } else {
+        setAliasSavedViewName("");
+      }
+      setNoticeMessage(`Overwrote local preset ${existing.name}.`);
+    },
+    [
+      aliasSavedViewName,
+      findSavedView,
+      grantSavedViewName,
+      resultShareRegistryFilterDraft,
+      resultShareRegistrySortDraft,
+    ],
+  );
+
+  const handleApplyRegistrySavedView = useCallback(
+    (scope: ResultShareRegistrySavedViewScope, presetId: string) => {
+      const preset = findSavedView(scope, presetId);
+      if (!preset) {
+        return;
+      }
+      const applied = applyResultShareRegistrySavedView(
+        resultShareRegistryFilterDraft,
+        resultShareRegistrySortDraft,
+        preset,
+      );
+      setResultShareRegistryFilterDraft(applied.filters);
+      setResultShareRegistryFilters(applied.filters);
+      setResultShareRegistrySortDraft(applied.sorts);
+      setResultShareRegistrySorts(applied.sorts);
+      if (session) {
+        void loadResultShareRegistry(session.client, applied.filters);
+      }
+      setNoticeMessage(`Applied local preset ${preset.name}.`);
+    },
+    [
+      findSavedView,
+      loadResultShareRegistry,
+      resultShareRegistryFilterDraft,
+      resultShareRegistrySortDraft,
+      session,
+    ],
+  );
+
+  const handleDeleteRegistrySavedView = useCallback(
+    (scope: ResultShareRegistrySavedViewScope, presetId: string) => {
+      const preset = findSavedView(scope, presetId);
+      setResultShareRegistrySavedViews((current) =>
+        deleteResultShareRegistrySavedView(current, scope, presetId),
+      );
+      if (preset) {
+        setNoticeMessage(`Deleted local preset ${preset.name}.`);
+      }
+    },
+    [findSavedView],
+  );
+
+  const handleSetDefaultRegistrySavedView = useCallback(
+    (scope: ResultShareRegistrySavedViewScope, presetId: string) => {
+      const preset = findSavedView(scope, presetId);
+      setResultShareRegistrySavedViews((current) =>
+        setResultShareRegistryDefaultPresetId(current, presetId),
+      );
+      if (preset) {
+        setNoticeMessage(`Marked ${preset.name} as the default local registry view.`);
+      }
+    },
+    [findSavedView],
+  );
+
+  const handleClearDefaultRegistrySavedView = useCallback(() => {
+    setResultShareRegistrySavedViews((current) =>
+      setResultShareRegistryDefaultPresetId(current, null),
+    );
+    setNoticeMessage("Cleared the default local registry view.");
+  }, []);
+
+  const handleRestoreDefaultRegistrySavedView = useCallback(() => {
+    const defaultPreset = defaultRegistrySavedViewState.defaultPreset;
+    if (!defaultPreset) {
+      return;
+    }
+    const applied = applyResultShareRegistrySavedView(
+      resultShareRegistryFilterDraft,
+      resultShareRegistrySortDraft,
+      defaultPreset,
+    );
+    setResultShareRegistryFilterDraft(applied.filters);
+    setResultShareRegistryFilters(applied.filters);
+    setResultShareRegistrySortDraft(applied.sorts);
+    setResultShareRegistrySorts(applied.sorts);
+    if (session) {
+      void loadResultShareRegistry(session.client, applied.filters);
+    }
+    setNoticeMessage(`Restored default local registry view ${defaultPreset.name}.`);
+  }, [
+    defaultRegistrySavedViewState.defaultPreset,
+    loadResultShareRegistry,
+    resultShareRegistryFilterDraft,
+    resultShareRegistrySortDraft,
+    session,
+  ]);
+
   const handleClearShareDrilldown = useCallback(() => {
     setShareDrilldownTarget(null);
     setShareGrantDrilldown(null);
@@ -1193,6 +1415,11 @@ export function GroupWorkspaceAdminShell({
         filters={resultShareRegistryFilterDraft}
         sorts={resultShareRegistrySortDraft}
         filterSummary={resultShareRegistryFilterSummary}
+        savedViewDrafts={{
+          grantName: grantSavedViewName,
+          aliasName: aliasSavedViewName,
+        }}
+        savedViews={resultShareRegistrySavedViewSummaries}
         registry={
           resultShareRegistryLoading &&
           resultShareGrants.length === 0 &&
@@ -1205,8 +1432,22 @@ export function GroupWorkspaceAdminShell({
         error={resultShareRegistryError}
         onFilterChange={patchResultShareRegistryFilterDraft}
         onSortChange={patchResultShareRegistrySortDraft}
+        onSavedViewDraftChange={(scope, name) => {
+          if (scope === "grant_registry") {
+            setGrantSavedViewName(name);
+          } else {
+            setAliasSavedViewName(name);
+          }
+        }}
         onApplyFilters={handleApplyResultShareRegistryFilters}
         onResetFilters={handleResetResultShareRegistryFilters}
+        onSaveSavedView={handleSaveRegistrySavedView}
+        onApplySavedView={handleApplyRegistrySavedView}
+        onOverwriteSavedView={handleOverwriteRegistrySavedView}
+        onDeleteSavedView={handleDeleteRegistrySavedView}
+        onSetDefaultSavedView={handleSetDefaultRegistrySavedView}
+        onClearDefaultSavedView={handleClearDefaultRegistrySavedView}
+        onRestoreDefaultSavedView={handleRestoreDefaultRegistrySavedView}
         onOpenGrantDrilldown={handleOpenShareGrantDrilldown}
         onOpenAliasDrilldown={handleOpenShareAliasDrilldown}
         onFilterAliasesForGrant={handleFilterAliasesForGrant}

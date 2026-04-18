@@ -73,7 +73,7 @@
 - No AI-generated attribution or AI-written registry copy
 
 ## Future Work
-- Saved local registry filters or operator presets
+- Local saved views on top of the stronger registry filter/sort shell
 - Per-share comparison views
 - Registry-level bulk operations only if later justified
 - Still no source-file sharing by default

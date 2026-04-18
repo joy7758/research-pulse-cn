@@ -441,6 +441,25 @@ button {
   border: 1px solid rgba(23, 32, 51, 0.08);
 }
 
+.saved-view-shell {
+  margin-top: 18px;
+}
+
+.saved-view-card {
+  margin-top: 0;
+}
+
+.saved-view-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: end;
+}
+
+.saved-view-default-chip {
+  margin-bottom: 18px;
+}
+
 .filter-chip-list {
   list-style: none;
   padding: 0;
@@ -674,7 +693,8 @@ button {
   .attribution-grid,
   .filter-grid,
   .field-grid,
-  .stat-grid {
+  .stat-grid,
+  .saved-view-toolbar {
     grid-template-columns: 1fr;
   }
 

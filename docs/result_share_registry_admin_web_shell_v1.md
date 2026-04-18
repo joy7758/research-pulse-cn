@@ -46,6 +46,7 @@
   - applied filter/sort chips
   - stable sort controls for timestamps, share kind, and status
   - a direct `show aliases for this grant` shortcut from grant rows
+- The later saved-view follow-up keeps the same safe read model and adds local-only preset save/apply/overwrite/delete flows over those existing filters and sorts.
 - Registry filters narrow safe list reads only; they do not change attribution semantics inside the downstream drilldown.
 
 ## Current Non-Goals

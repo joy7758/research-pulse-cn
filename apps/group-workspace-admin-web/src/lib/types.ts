@@ -821,6 +821,41 @@ export type ResultShareRegistrySortInput = {
   aliases: ResultShareRegistrySectionSortInput;
 };
 
+export type ResultShareRegistrySavedViewScope = "grant_registry" | "alias_registry";
+
+export type ResultShareRegistrySavedView = {
+  id: string;
+  name: string;
+  scope: ResultShareRegistrySavedViewScope;
+  filters: ResultShareRegistryFilterInput;
+  sort: ResultShareRegistrySectionSortInput;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ResultShareRegistrySavedViewDraft = {
+  name: string;
+  scope: ResultShareRegistrySavedViewScope;
+  filters: ResultShareRegistryFilterInput;
+  sort: ResultShareRegistrySectionSortInput;
+};
+
+export type ResultShareRegistrySavedViewSummary = {
+  id: string;
+  name: string;
+  scope: ResultShareRegistrySavedViewScope;
+  summaryItems: string[];
+  createdAt: string;
+  updatedAt: string;
+  isDefault: boolean;
+};
+
+export type ResultShareRegistrySavedViewStoreState = {
+  grantPresets: ResultShareRegistrySavedView[];
+  aliasPresets: ResultShareRegistrySavedView[];
+  defaultPresetId: string | null;
+};
+
 export type ResultShareRegistryFilterChipViewModel = {
   key: string;
   label: string;

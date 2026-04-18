@@ -585,7 +585,38 @@ function buildApiClient() {
   };
 }
 
+function createMemoryStorage(): Storage {
+  let store: Record<string, string> = {};
+  return {
+    get length() {
+      return Object.keys(store).length;
+    },
+    clear() {
+      store = {};
+    },
+    getItem(key: string) {
+      return Object.prototype.hasOwnProperty.call(store, key) ? store[key] : null;
+    },
+    key(index: number) {
+      return Object.keys(store)[index] ?? null;
+    },
+    removeItem(key: string) {
+      delete store[key];
+    },
+    setItem(key: string, value: string) {
+      store[key] = value;
+    },
+  };
+}
+
 describe("group workspace admin shell", () => {
+  beforeEach(() => {
+    Object.defineProperty(window, "localStorage", {
+      value: createMemoryStorage(),
+      configurable: true,
+    });
+  });
+
   it("renders the token entry state by default", () => {
     render(<GroupWorkspaceAdminShell />);
     expect(
@@ -1142,6 +1173,103 @@ describe("group workspace admin shell", () => {
       scoped.getByText("No aliases matched the current alias filters."),
     ).toBeVisible();
     expect(screen.getByRole("heading", { name: "Workspace conversion overview" })).toBeVisible();
+  });
+
+  it("saves, applies, overwrites, and deletes local registry presets without storing the admin token", async () => {
+    const client = buildApiClient();
+    const user = userEvent.setup();
+
+    render(<GroupWorkspaceAdminShell apiClientFactory={() => client} />);
+
+    await user.type(screen.getByLabelText(/admin bearer token/i), "manual-token");
+    await user.click(screen.getByRole("button", { name: /open workspace shell/i }));
+
+    const registryPanel = await screen.findByRole("heading", { name: "Result share registry" });
+    const scoped = within(registryPanel.closest("section") as HTMLElement);
+
+    await user.clear(scoped.getByLabelText("Workspace ID"));
+    await user.type(scoped.getByLabelText("Workspace ID"), "workspace-1");
+    await user.selectOptions(scoped.getByLabelText("Grant sort"), "createdAt_asc");
+    await user.type(scoped.getByLabelText("Grant preset name"), "Board triage");
+    await user.click(scoped.getByRole("button", { name: "Save current grant view" }));
+
+    expect(await scoped.findByText("Board triage")).toBeVisible();
+    expect(window.localStorage.getItem("resultShareRegistryGrantPresets")).toContain("Board triage");
+    expect(JSON.stringify(window.localStorage)).not.toContain("manual-token");
+
+    await user.clear(scoped.getByLabelText("Workspace ID"));
+    await user.type(scoped.getByLabelText("Workspace ID"), "workspace-2");
+    await user.clear(scoped.getByLabelText("Grant preset name"));
+    await user.type(scoped.getByLabelText("Grant preset name"), "Renamed triage");
+    await user.click(scoped.getByRole("button", { name: "Overwrite with current view" }));
+
+    expect(await scoped.findByText("Renamed triage")).toBeVisible();
+    expect(scoped.queryByText("Board triage")).not.toBeInTheDocument();
+
+    await user.clear(scoped.getByLabelText("Workspace ID"));
+    await user.click(scoped.getByRole("button", { name: "Apply preset" }));
+
+    await waitFor(() => {
+      expect(scoped.getByLabelText("Workspace ID")).toHaveValue("workspace-2");
+    });
+    expect(scoped.getByLabelText("Grant sort")).toHaveValue("createdAt_asc");
+
+    await user.click(scoped.getByRole("button", { name: "Delete preset" }));
+    const grantSavedViewSection = scoped
+      .getByRole("heading", { name: "Grant saved views" })
+      .closest("section");
+    expect(grantSavedViewSection).not.toBeNull();
+    expect(
+      await within(grantSavedViewSection as HTMLElement).findByText("No saved views yet."),
+    ).toBeVisible();
+  });
+
+  it("restores the default local registry preset on shell load", async () => {
+    window.localStorage.setItem(
+      "resultShareRegistryGrantPresets",
+      JSON.stringify([
+        {
+          id: "grant-default",
+          name: "Grant default",
+          scope: "grant_registry",
+          filters: {
+            shareKind: "workspace_board",
+            grantStatus: "active",
+            aliasStatus: null,
+            workspaceId: "workspace-1",
+            resultShareGrantId: null,
+          },
+          sort: {
+            field: "createdAt",
+            direction: "asc",
+          },
+          createdAt: "2026-04-18T08:00:00Z",
+          updatedAt: "2026-04-18T08:00:00Z",
+        },
+      ]),
+    );
+    window.localStorage.setItem("resultShareRegistryAliasPresets", JSON.stringify([]));
+    window.localStorage.setItem("resultShareRegistryDefaultPresetId", "grant-default");
+
+    const client = buildApiClient();
+    const user = userEvent.setup();
+
+    render(<GroupWorkspaceAdminShell apiClientFactory={() => client} />);
+
+    await user.type(screen.getByLabelText(/admin bearer token/i), "manual-token");
+    await user.click(screen.getByRole("button", { name: /open workspace shell/i }));
+
+    const registryPanel = await screen.findByRole("heading", { name: "Result share registry" });
+    const scoped = within(registryPanel.closest("section") as HTMLElement);
+
+    expect(scoped.getByLabelText("Workspace ID")).toHaveValue("workspace-1");
+    expect(scoped.getByLabelText("Grant sort")).toHaveValue("createdAt_asc");
+    expect(scoped.getAllByText("Grant default").length).toBeGreaterThan(0);
+    expect(client.listResultShareGrants).toHaveBeenCalledWith({
+      workspaceId: "workspace-1",
+      shareKind: "workspace_board",
+      status: "active",
+    });
   });
 
   it("renders a graceful empty per-share drilldown state", async () => {

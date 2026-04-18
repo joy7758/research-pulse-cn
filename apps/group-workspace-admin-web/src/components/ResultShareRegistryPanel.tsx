@@ -12,6 +12,8 @@ import type {
   ResultShareGrantRegistryItemViewModel,
   ResultShareRegistryFilterInput,
   ResultShareRegistryFilterSummaryViewModel,
+  ResultShareRegistrySavedViewScope,
+  ResultShareRegistrySavedViewSummary,
   ResultShareRegistrySortInput,
   ResultShareRegistrySummaryViewModel,
   ResultShareRegistryViewModel,
@@ -21,14 +23,31 @@ type ResultShareRegistryPanelProps = {
   filters: ResultShareRegistryFilterInput;
   sorts: ResultShareRegistrySortInput;
   filterSummary: ResultShareRegistryFilterSummaryViewModel;
+  savedViewDrafts: {
+    grantName: string;
+    aliasName: string;
+  };
+  savedViews: {
+    grantPresets: ResultShareRegistrySavedViewSummary[];
+    aliasPresets: ResultShareRegistrySavedViewSummary[];
+    defaultPreset: ResultShareRegistrySavedViewSummary | null;
+  };
   registry: ResultShareRegistryViewModel | null;
   currentTargetLabel: string | null;
   loading: boolean;
   error: ApiErrorViewModel | null;
   onFilterChange: (patch: Partial<ResultShareRegistryFilterInput>) => void;
   onSortChange: (patch: Partial<ResultShareRegistrySortInput>) => void;
+  onSavedViewDraftChange: (scope: ResultShareRegistrySavedViewScope, name: string) => void;
   onApplyFilters: () => void;
   onResetFilters: () => void;
+  onSaveSavedView: (scope: ResultShareRegistrySavedViewScope) => void;
+  onApplySavedView: (scope: ResultShareRegistrySavedViewScope, presetId: string) => void;
+  onOverwriteSavedView: (scope: ResultShareRegistrySavedViewScope, presetId: string) => void;
+  onDeleteSavedView: (scope: ResultShareRegistrySavedViewScope, presetId: string) => void;
+  onSetDefaultSavedView: (scope: ResultShareRegistrySavedViewScope, presetId: string) => void;
+  onClearDefaultSavedView: () => void;
+  onRestoreDefaultSavedView: () => void;
   onOpenGrantDrilldown: (grantId: string) => void;
   onOpenAliasDrilldown: (aliasId: string) => void;
   onFilterAliasesForGrant: (grantId: string, shareKind: ResultShareGrantRegistryItemViewModel["shareKind"]) => void;
@@ -45,6 +64,137 @@ function SummaryCardList({ items }: { items: ResultShareRegistrySummaryViewModel
         </article>
       ))}
     </div>
+  );
+}
+
+function SavedViewList({
+  scope,
+  title,
+  description,
+  draftName,
+  presets,
+  onDraftChange,
+  onSave,
+  onApply,
+  onOverwrite,
+  onDelete,
+  onSetDefault,
+}: {
+  scope: ResultShareRegistrySavedViewScope;
+  title: string;
+  description: string;
+  draftName: string;
+  presets: ResultShareRegistrySavedViewSummary[];
+  onDraftChange: (name: string) => void;
+  onSave: () => void;
+  onApply: (presetId: string) => void;
+  onOverwrite: (presetId: string) => void;
+  onDelete: (presetId: string) => void;
+  onSetDefault: (presetId: string) => void;
+}) {
+  return (
+    <section className="conversion-section-card saved-view-card">
+      <div className="conversion-section-header">
+        <div>
+          <h3>{title}</h3>
+          <p className="section-subtle-copy">{description}</p>
+        </div>
+      </div>
+
+      <div className="saved-view-toolbar">
+        <label className="field-stack">
+          <span>{scope === "grant_registry" ? "Grant preset name" : "Alias preset name"}</span>
+          <input
+            type="text"
+            placeholder={
+              scope === "grant_registry"
+                ? "e.g. Active workspace-board grants"
+                : "e.g. Grant-specific alias follow-up"
+            }
+            value={draftName}
+            onChange={(event) => onDraftChange(event.target.value)}
+          />
+        </label>
+        <div className="button-row">
+          <button
+            type="button"
+            className="button-primary"
+            onClick={onSave}
+            disabled={draftName.trim().length === 0}
+          >
+            {scope === "grant_registry" ? "Save current grant view" : "Save current alias view"}
+          </button>
+        </div>
+      </div>
+
+      {presets.length === 0 ? (
+        <div className="empty-state">
+          <strong>No saved views yet.</strong>
+          <p>
+            Saved views are local to this browser profile and contain only safe registry filter and
+            sort state.
+          </p>
+        </div>
+      ) : (
+        <ul className="data-list">
+          {presets.map((preset) => (
+            <li key={preset.id} className="data-list-item">
+              <div className="registry-item-stack">
+                <div className="registry-item-header">
+                  <div>
+                    <strong>{preset.name}</strong>
+                    <p>
+                      {preset.scope === "grant_registry" ? "Grant registry preset" : "Alias registry preset"} ·
+                      {" "}
+                      updated {preset.updatedAt}
+                    </p>
+                  </div>
+                  {preset.isDefault ? <span className="status-pill active">Default</span> : null}
+                </div>
+                <ul className="filter-chip-list">
+                  {preset.summaryItems.map((item) => (
+                    <li key={`${preset.id}-${item}`} className="filter-chip">
+                      <strong>{item}</strong>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div className="button-row">
+                <button
+                  type="button"
+                  className="button-secondary"
+                  onClick={() => onApply(preset.id)}
+                >
+                  Apply preset
+                </button>
+                <button
+                  type="button"
+                  className="button-secondary"
+                  onClick={() => onOverwrite(preset.id)}
+                >
+                  Overwrite with current view
+                </button>
+                <button
+                  type="button"
+                  className="button-secondary"
+                  onClick={() => onSetDefault(preset.id)}
+                  disabled={preset.isDefault}
+                >
+                  {preset.isDefault ? "Default preset" : "Make default"}
+                </button>
+                <button
+                  type="button"
+                  className="button-danger"
+                  onClick={() => onDelete(preset.id)}
+                >
+                  Delete preset
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 
@@ -214,14 +364,24 @@ export function ResultShareRegistryPanel({
   filters,
   sorts,
   filterSummary,
+  savedViewDrafts,
+  savedViews,
   registry,
   currentTargetLabel,
   loading,
   error,
   onFilterChange,
   onSortChange,
+  onSavedViewDraftChange,
   onApplyFilters,
   onResetFilters,
+  onSaveSavedView,
+  onApplySavedView,
+  onOverwriteSavedView,
+  onDeleteSavedView,
+  onSetDefaultSavedView,
+  onClearDefaultSavedView,
+  onRestoreDefaultSavedView,
   onOpenGrantDrilldown,
   onOpenAliasDrilldown,
   onFilterAliasesForGrant,
@@ -252,7 +412,10 @@ export function ResultShareRegistryPanel({
             value={filters.shareKind ?? ""}
             onChange={(event) =>
               onFilterChange({
-                shareKind: event.target.value === "" ? null : (event.target.value as ResultShareRegistryFilterInput["shareKind"]),
+                shareKind:
+                  event.target.value === ""
+                    ? null
+                    : (event.target.value as ResultShareRegistryFilterInput["shareKind"]),
               })
             }
           >
@@ -371,7 +534,7 @@ export function ResultShareRegistryPanel({
           {loading ? "Loading..." : "Apply filters"}
         </button>
         <button type="button" className="button-secondary" disabled={loading} onClick={onResetFilters}>
-          Reset defaults
+          Clear current filters
         </button>
       </div>
 
@@ -379,7 +542,8 @@ export function ResultShareRegistryPanel({
         <div className="conversion-section-header">
           <h3>Applied registry filters and sort</h3>
           <p className="section-subtle-copy">
-            Grant-only and alias-only filters stay explicit, while each registry keeps its own stable sort mode.
+            Grant-only and alias-only filters stay explicit, while each registry keeps its own
+            stable sort mode.
           </p>
         </div>
         {filterSummary.chips.length > 0 ? (
@@ -399,6 +563,76 @@ export function ResultShareRegistryPanel({
             <li key={note}>{note}</li>
           ))}
         </ul>
+      </section>
+
+      <section className="conversion-notes-card saved-view-shell">
+        <div className="conversion-section-header">
+          <div>
+            <h3>Saved views</h3>
+            <p className="section-subtle-copy">
+              Local-only presets for safe registry filters and sorts. These views never include
+              admin bearer tokens or share payloads.
+            </p>
+          </div>
+          <div className="button-row">
+            <button
+              type="button"
+              className="button-secondary"
+              onClick={onRestoreDefaultSavedView}
+              disabled={savedViews.defaultPreset === null}
+            >
+              Restore default view
+            </button>
+            <button
+              type="button"
+              className="button-secondary"
+              onClick={onClearDefaultSavedView}
+              disabled={savedViews.defaultPreset === null}
+            >
+              Clear default marker
+            </button>
+          </div>
+        </div>
+        {savedViews.defaultPreset ? (
+          <div className="meta-chip saved-view-default-chip">
+            <span>Default local view</span>
+            <strong>{savedViews.defaultPreset.name}</strong>
+          </div>
+        ) : (
+          <div className="empty-state">
+            <strong>No default saved view is set.</strong>
+            <p>Mark one preset as default if you want a one-click restore target for the registry.</p>
+          </div>
+        )}
+
+        <div className="split-grid">
+          <SavedViewList
+            scope="grant_registry"
+            title="Grant saved views"
+            description="Store common grant-registry filters and grant sort modes locally in this browser."
+            draftName={savedViewDrafts.grantName}
+            presets={savedViews.grantPresets}
+            onDraftChange={(name) => onSavedViewDraftChange("grant_registry", name)}
+            onSave={() => onSaveSavedView("grant_registry")}
+            onApply={(presetId) => onApplySavedView("grant_registry", presetId)}
+            onOverwrite={(presetId) => onOverwriteSavedView("grant_registry", presetId)}
+            onDelete={(presetId) => onDeleteSavedView("grant_registry", presetId)}
+            onSetDefault={(presetId) => onSetDefaultSavedView("grant_registry", presetId)}
+          />
+          <SavedViewList
+            scope="alias_registry"
+            title="Alias saved views"
+            description="Store common alias-registry filters and alias sort modes locally in this browser."
+            draftName={savedViewDrafts.aliasName}
+            presets={savedViews.aliasPresets}
+            onDraftChange={(name) => onSavedViewDraftChange("alias_registry", name)}
+            onSave={() => onSaveSavedView("alias_registry")}
+            onApply={(presetId) => onApplySavedView("alias_registry", presetId)}
+            onOverwrite={(presetId) => onOverwriteSavedView("alias_registry", presetId)}
+            onDelete={(presetId) => onDeleteSavedView("alias_registry", presetId)}
+            onSetDefault={(presetId) => onSetDefaultSavedView("alias_registry", presetId)}
+          />
+        </div>
       </section>
 
       {error ? (
