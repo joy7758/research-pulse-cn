@@ -55,7 +55,7 @@
 
 ## Current Non-Goals
 - No backend-saved or team-shared presets
-- No import/export for presets
+- No cloud sync or backend-owned preset exchange
 - No business write actions in the registry
 - No source-file, attachment, or note-file sharing
 - No new frontend app
@@ -63,6 +63,6 @@
 
 ## Future Work
 - Team/shared presets only if later justified
-- Preset import/export only if later justified
 - Richer operator workspaces across multiple admin views
+- Imported preset signing or provenance if later justified
 - Still no source-file sharing by default

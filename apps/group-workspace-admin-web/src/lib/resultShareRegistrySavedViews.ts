@@ -15,6 +15,10 @@ import {
 import type {
   ConversionFilterInput,
   ResultShareRegistryFilterInput,
+  ResultShareRegistryPresetExportPayload,
+  ResultShareRegistryPresetImportApplyResult,
+  ResultShareRegistryPresetImportMode,
+  ResultShareRegistryPresetImportPreview,
   ResultShareRegistrySavedViewApplyMode,
   ResultShareRegistrySavedView,
   ResultShareRegistrySavedViewDrilldownContext,
@@ -29,6 +33,46 @@ export const RESULT_SHARE_REGISTRY_GRANT_PRESETS_STORAGE_KEY = "resultShareRegis
 export const RESULT_SHARE_REGISTRY_ALIAS_PRESETS_STORAGE_KEY = "resultShareRegistryAliasPresets";
 export const RESULT_SHARE_REGISTRY_DEFAULT_PRESET_ID_STORAGE_KEY =
   "resultShareRegistryDefaultPresetId";
+export const RESULT_SHARE_REGISTRY_PRESET_EXPORT_SCHEMA_VERSION =
+  "result-share-registry-presets.v1";
+
+const presetTopLevelAllowedKeys = new Set([
+  "schemaVersion",
+  "exportedAt",
+  "app",
+  "source",
+  "presets",
+  "defaultPresetId",
+]);
+const presetEnvelopeAllowedKeys = new Set(["grantRegistry", "aliasRegistry", "defaultPresetId"]);
+const presetAllowedKeys = new Set([
+  "id",
+  "name",
+  "scope",
+  "filters",
+  "sort",
+  "drilldownContext",
+  "createdAt",
+  "updatedAt",
+]);
+const presetFilterAllowedKeys = new Set([
+  "shareKind",
+  "grantStatus",
+  "aliasStatus",
+  "workspaceId",
+  "resultShareGrantId",
+]);
+const presetSortAllowedKeys = new Set(["field", "direction"]);
+const presetDrilldownAllowedKeys = new Set([
+  "dateFrom",
+  "dateTo",
+  "accessMode",
+  "eventType",
+  "outcome",
+  "limit",
+]);
+const unsafeFieldPattern =
+  /(^|_)(token|secret|password|hash|rawalias|rawsharetoken|localpath|absolutepath|sourcefile)(_|$)|rawAlias|rawShareToken|localPath|absolutePath|sourceFile|alias_hash|token_hash/i;
 
 function createSavedViewId(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -174,6 +218,354 @@ function normalizeSavedView(
   };
 }
 
+export function sanitizeImportedSavedView(
+  value: unknown,
+  scope: ResultShareRegistrySavedViewScope,
+  warnings: string[],
+  errors: string[],
+  path: string,
+): ResultShareRegistrySavedView | null {
+  if (!isRecord(value)) {
+    errors.push(`${path} is not a valid preset object.`);
+    return null;
+  }
+
+  const hasUnsafePresetKeys = collectUnexpectedKeys(value, presetAllowedKeys, path, warnings, errors);
+  if (hasUnsafePresetKeys) {
+    return null;
+  }
+
+  if (value.scope !== scope) {
+    errors.push(`${path} has invalid scope "${String(value.scope ?? "")}".`);
+    return null;
+  }
+
+  if ("filters" in value && isRecord(value.filters)) {
+    if (
+      collectUnexpectedKeys(
+        value.filters,
+        presetFilterAllowedKeys,
+        `${path}.filters`,
+        warnings,
+        errors,
+      )
+    ) {
+      return null;
+    }
+  } else if ("filters" in value && value.filters !== null && value.filters !== undefined) {
+    errors.push(`${path}.filters must be an object.`);
+    return null;
+  }
+
+  if ("sort" in value && isRecord(value.sort)) {
+    if (
+      collectUnexpectedKeys(value.sort, presetSortAllowedKeys, `${path}.sort`, warnings, errors)
+    ) {
+      return null;
+    }
+  } else if ("sort" in value && value.sort !== null && value.sort !== undefined) {
+    errors.push(`${path}.sort must be an object.`);
+    return null;
+  }
+
+  if ("drilldownContext" in value && value.drilldownContext !== null && value.drilldownContext !== undefined) {
+    if (!isRecord(value.drilldownContext)) {
+      errors.push(`${path}.drilldownContext must be an object or null.`);
+      return null;
+    }
+    if (
+      collectUnexpectedKeys(
+        value.drilldownContext,
+        presetDrilldownAllowedKeys,
+        `${path}.drilldownContext`,
+        warnings,
+        errors,
+      )
+    ) {
+      return null;
+    }
+  }
+
+  const normalized = normalizeSavedView(value, scope);
+  if (!normalized) {
+    errors.push(`${path} does not match the expected preset shape.`);
+    return null;
+  }
+  return normalized;
+}
+
+export function buildResultShareRegistryPresetExport(
+  store: ResultShareRegistrySavedViewStoreState,
+  options?: {
+    now?: string;
+  },
+): ResultShareRegistryPresetExportPayload {
+  return {
+    schemaVersion: RESULT_SHARE_REGISTRY_PRESET_EXPORT_SCHEMA_VERSION,
+    exportedAt: options?.now ?? new Date().toISOString(),
+    app: "research-pulse-cn",
+    source: "group-workspace-admin-web",
+    presets: {
+      grantRegistry: store.grantPresets,
+      aliasRegistry: store.aliasPresets,
+    },
+  };
+}
+
+export function parseResultShareRegistryPresetImport(
+  raw: string,
+): ResultShareRegistryPresetImportPreview {
+  const warnings: string[] = [];
+  const errors: string[] = [];
+  let parsed: unknown;
+
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return {
+      schemaVersion: null,
+      validPresetCount: 0,
+      invalidPresetCount: 0,
+      grantPresetCount: 0,
+      aliasPresetCount: 0,
+      warnings: [],
+      errors: ["Import file is not valid JSON."],
+      canApply: false,
+      importedScopes: {
+        grantRegistry: false,
+        aliasRegistry: false,
+      },
+      presets: {
+        grantRegistry: [],
+        aliasRegistry: [],
+      },
+    };
+  }
+
+  if (!isRecord(parsed)) {
+    return {
+      schemaVersion: null,
+      validPresetCount: 0,
+      invalidPresetCount: 0,
+      grantPresetCount: 0,
+      aliasPresetCount: 0,
+      warnings: [],
+      errors: ["Import file must contain a JSON object."],
+      canApply: false,
+      importedScopes: {
+        grantRegistry: false,
+        aliasRegistry: false,
+      },
+      presets: {
+        grantRegistry: [],
+        aliasRegistry: [],
+      },
+    };
+  }
+
+  collectUnexpectedKeys(parsed, presetTopLevelAllowedKeys, "Import payload", warnings, errors);
+
+  const schemaVersion =
+    typeof parsed.schemaVersion === "string" ? parsed.schemaVersion : null;
+  if (schemaVersion !== RESULT_SHARE_REGISTRY_PRESET_EXPORT_SCHEMA_VERSION) {
+    errors.push(
+      `Import schemaVersion must be "${RESULT_SHARE_REGISTRY_PRESET_EXPORT_SCHEMA_VERSION}".`,
+    );
+  }
+
+  if (
+    typeof parsed.app === "string" &&
+    parsed.app !== "research-pulse-cn"
+  ) {
+    warnings.push(`Import app is "${parsed.app}" instead of "research-pulse-cn".`);
+  }
+  if (
+    typeof parsed.source === "string" &&
+    parsed.source !== "group-workspace-admin-web"
+  ) {
+    warnings.push(`Import source is "${parsed.source}" instead of "group-workspace-admin-web".`);
+  }
+  if ("defaultPresetId" in parsed) {
+    warnings.push("Imported default preset markers are ignored in v1.");
+  }
+
+  const presetEnvelope = parsed.presets;
+  if (!isRecord(presetEnvelope)) {
+    errors.push('Import payload must contain a "presets" object.');
+    return {
+      schemaVersion,
+      validPresetCount: 0,
+      invalidPresetCount: 0,
+      grantPresetCount: 0,
+      aliasPresetCount: 0,
+      warnings,
+      errors,
+      canApply: false,
+      importedScopes: {
+        grantRegistry: false,
+        aliasRegistry: false,
+      },
+      presets: {
+        grantRegistry: [],
+        aliasRegistry: [],
+      },
+    };
+  }
+
+  collectUnexpectedKeys(presetEnvelope, presetEnvelopeAllowedKeys, "Import payload.presets", warnings, errors);
+  if ("defaultPresetId" in presetEnvelope) {
+    warnings.push("Imported nested default preset markers are ignored in v1.");
+  }
+
+  const grantScopePresent = Object.prototype.hasOwnProperty.call(presetEnvelope, "grantRegistry");
+  const aliasScopePresent = Object.prototype.hasOwnProperty.call(presetEnvelope, "aliasRegistry");
+
+  const sanitizedGrantPresets: ResultShareRegistrySavedView[] = [];
+  const sanitizedAliasPresets: ResultShareRegistrySavedView[] = [];
+  let invalidPresetCount = 0;
+
+  const parseScope = (
+    scope: ResultShareRegistrySavedViewScope,
+    envelopeKey: "grantRegistry" | "aliasRegistry",
+    target: ResultShareRegistrySavedView[],
+  ) => {
+    if (!Object.prototype.hasOwnProperty.call(presetEnvelope, envelopeKey)) {
+      return;
+    }
+    const value = presetEnvelope[envelopeKey];
+    if (!Array.isArray(value)) {
+      errors.push(`Import payload.presets.${envelopeKey} must be an array.`);
+      return;
+    }
+    value.forEach((item, index) => {
+      const normalized = sanitizeImportedSavedView(
+        item,
+        scope,
+        warnings,
+        errors,
+        `Import payload.presets.${envelopeKey}[${index}]`,
+      );
+      if (!normalized) {
+        invalidPresetCount += 1;
+        return;
+      }
+      target.push(normalized);
+    });
+  };
+
+  parseScope("grant_registry", "grantRegistry", sanitizedGrantPresets);
+  parseScope("alias_registry", "aliasRegistry", sanitizedAliasPresets);
+
+  const validPresetCount = sanitizedGrantPresets.length + sanitizedAliasPresets.length;
+  const fatalErrors = errors.some((message) =>
+    message.includes("must") || message.includes("unsafe") || message.includes("not valid"),
+  );
+
+  return {
+    schemaVersion,
+    validPresetCount,
+    invalidPresetCount,
+    grantPresetCount: sanitizedGrantPresets.length,
+    aliasPresetCount: sanitizedAliasPresets.length,
+    warnings,
+    errors,
+    canApply: !fatalErrors && validPresetCount > 0,
+    importedScopes: {
+      grantRegistry: grantScopePresent,
+      aliasRegistry: aliasScopePresent,
+    },
+    presets: {
+      grantRegistry: sanitizedGrantPresets,
+      aliasRegistry: sanitizedAliasPresets,
+    },
+  };
+}
+
+function prepareImportedPresetsForMerge(
+  existingPresets: ResultShareRegistrySavedView[],
+  importedPresets: ResultShareRegistrySavedView[],
+): ResultShareRegistrySavedView[] {
+  const existingIds = new Set(existingPresets.map((preset) => preset.id));
+  const existingNames = new Set(existingPresets.map((preset) => preset.name));
+  const merged = [...existingPresets];
+
+  for (const preset of importedPresets) {
+    let nextPreset = preset;
+    if (existingIds.has(preset.id)) {
+      nextPreset = {
+        ...preset,
+        id: generateImportedPresetId(existingIds, preset.id),
+        name: generateImportedPresetName(existingNames, preset.name),
+      };
+    } else {
+      existingIds.add(preset.id);
+      existingNames.add(preset.name);
+    }
+    merged.push(nextPreset);
+  }
+
+  return merged;
+}
+
+function prepareImportedPresetsForReplace(
+  importedPresets: ResultShareRegistrySavedView[],
+): ResultShareRegistrySavedView[] {
+  const existingIds = new Set<string>();
+  const existingNames = new Set<string>();
+  return importedPresets.map((preset) => {
+    let nextPreset = preset;
+    if (existingIds.has(preset.id)) {
+      nextPreset = {
+        ...preset,
+        id: generateImportedPresetId(existingIds, preset.id),
+        name: generateImportedPresetName(existingNames, preset.name),
+      };
+    } else {
+      existingIds.add(preset.id);
+      existingNames.add(preset.name);
+    }
+    return nextPreset;
+  });
+}
+
+export function applyResultShareRegistryPresetImport(
+  store: ResultShareRegistrySavedViewStoreState,
+  preview: ResultShareRegistryPresetImportPreview,
+  mode: ResultShareRegistryPresetImportMode,
+): ResultShareRegistryPresetImportApplyResult {
+  const nextGrantPresets =
+    mode === "replace"
+      ? preview.importedScopes.grantRegistry
+        ? prepareImportedPresetsForReplace(preview.presets.grantRegistry)
+        : store.grantPresets
+      : prepareImportedPresetsForMerge(store.grantPresets, preview.presets.grantRegistry);
+  const nextAliasPresets =
+    mode === "replace"
+      ? preview.importedScopes.aliasRegistry
+        ? prepareImportedPresetsForReplace(preview.presets.aliasRegistry)
+        : store.aliasPresets
+      : prepareImportedPresetsForMerge(store.aliasPresets, preview.presets.aliasRegistry);
+
+  const provisionalStore: ResultShareRegistrySavedViewStoreState = {
+    grantPresets: nextGrantPresets,
+    aliasPresets: nextAliasPresets,
+    defaultPresetId: store.defaultPresetId,
+  };
+  const defaultPresetStillExists = Boolean(
+    provisionalStore.defaultPresetId && findSavedViewById(provisionalStore, provisionalStore.defaultPresetId),
+  );
+
+  return {
+    store: {
+      ...provisionalStore,
+      defaultPresetId: defaultPresetStillExists ? provisionalStore.defaultPresetId : null,
+    },
+    importedGrantCount: preview.presets.grantRegistry.length,
+    importedAliasCount: preview.presets.aliasRegistry.length,
+    defaultPresetCleared: Boolean(provisionalStore.defaultPresetId) && !defaultPresetStillExists,
+  };
+}
+
 function parseSavedViewList(
   raw: string | null,
   scope: ResultShareRegistrySavedViewScope,
@@ -213,6 +605,73 @@ function replaceSavedView(
   nextPreset: ResultShareRegistrySavedView,
 ): ResultShareRegistrySavedView[] {
   return presets.map((preset) => (preset.id === nextPreset.id ? nextPreset : preset));
+}
+
+function looksUnsafeFieldName(key: string): boolean {
+  return unsafeFieldPattern.test(key);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function collectUnexpectedKeys(
+  value: Record<string, unknown>,
+  allowedKeys: Set<string>,
+  path: string,
+  warnings: string[],
+  errors: string[],
+): boolean {
+  let hasUnsafeKey = false;
+  for (const key of Object.keys(value)) {
+    if (allowedKeys.has(key)) {
+      continue;
+    }
+    if (looksUnsafeFieldName(key)) {
+      errors.push(`${path} contains unsafe field "${key}".`);
+      hasUnsafeKey = true;
+      continue;
+    }
+    warnings.push(`${path} contains unsupported field "${key}" and it will be ignored.`);
+  }
+  return hasUnsafeKey;
+}
+
+function generateImportedPresetId(
+  existingIds: Set<string>,
+  preferredId: string,
+): string {
+  if (!existingIds.has(preferredId)) {
+    existingIds.add(preferredId);
+    return preferredId;
+  }
+  let suffix = 1;
+  let candidate = `${preferredId}-imported-${suffix}`;
+  while (existingIds.has(candidate)) {
+    suffix += 1;
+    candidate = `${preferredId}-imported-${suffix}`;
+  }
+  existingIds.add(candidate);
+  return candidate;
+}
+
+function generateImportedPresetName(
+  existingNames: Set<string>,
+  preferredName: string,
+): string {
+  const baseCopyName = `${preferredName} (Imported copy)`;
+  if (!existingNames.has(baseCopyName)) {
+    existingNames.add(baseCopyName);
+    return baseCopyName;
+  }
+  let suffix = 2;
+  let candidate = `${preferredName} (Imported copy ${suffix})`;
+  while (existingNames.has(candidate)) {
+    suffix += 1;
+    candidate = `${preferredName} (Imported copy ${suffix})`;
+  }
+  existingNames.add(candidate);
+  return candidate;
 }
 
 export function loadResultShareRegistrySavedViewStore(
@@ -301,6 +760,7 @@ export function overwriteResultShareRegistrySavedView(
     name: draft.name.trim(),
     filters: normalizeFiltersForScope(draft.scope, draft.filters),
     sort: normalizeResultShareRegistrySectionSortInput(draft.sort),
+    drilldownContext: normalizeDrilldownContext(draft.drilldownContext),
     updatedAt: options?.now ?? new Date().toISOString(),
   };
   if (draft.scope === "grant_registry") {

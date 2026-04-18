@@ -1287,6 +1287,255 @@ describe("group workspace admin shell", () => {
     });
   });
 
+  it("renders import preview and validation errors for unsafe preset JSON", async () => {
+    const client = buildApiClient();
+    const user = userEvent.setup();
+
+    render(<GroupWorkspaceAdminShell apiClientFactory={() => client} />);
+
+    await user.type(screen.getByLabelText(/admin bearer token/i), "manual-token");
+    await user.click(screen.getByRole("button", { name: /open workspace shell/i }));
+
+    const registryPanel = await screen.findByRole("heading", { name: "Result share registry" });
+    const scoped = within(registryPanel.closest("section") as HTMLElement);
+    const fileInput = scoped.getByLabelText("Import preset JSON file");
+    const importFile = new File(
+      [
+        JSON.stringify({
+          schemaVersion: "result-share-registry-presets.v1",
+          exportedAt: "2026-04-18T10:00:00Z",
+          app: "research-pulse-cn",
+          source: "group-workspace-admin-web",
+          secret: "blocked",
+          presets: {
+            grantRegistry: [
+              {
+                id: "unsafe-grant",
+                name: "Unsafe grant",
+                scope: "grant_registry",
+                filters: {
+                  shareKind: "workspace_board",
+                  grantStatus: "active",
+                  aliasStatus: null,
+                  workspaceId: "workspace-1",
+                  resultShareGrantId: null,
+                },
+                sort: {
+                  field: "createdAt",
+                  direction: "asc",
+                },
+                sourceFile: "/tmp/preset.json",
+                createdAt: "2026-04-18T08:00:00Z",
+                updatedAt: "2026-04-18T08:00:00Z",
+              },
+            ],
+            aliasRegistry: [],
+          },
+        }),
+      ],
+      "unsafe-presets.json",
+      { type: "application/json" },
+    );
+
+    fireEvent.change(fileInput, {
+      target: {
+        files: [importFile],
+      },
+    });
+
+    expect(await scoped.findByRole("heading", { name: "Import preview" })).toBeVisible();
+    expect(scoped.getByRole("alert")).toHaveTextContent(/validation errors/i);
+    expect(scoped.getByRole("alert")).toHaveTextContent(/unsafe field/i);
+    expect(scoped.getByRole("button", { name: "Apply import" })).toBeDisabled();
+  });
+
+  it("merges imported presets without deleting existing local presets", async () => {
+    const client = buildApiClient();
+    const user = userEvent.setup();
+
+    render(<GroupWorkspaceAdminShell apiClientFactory={() => client} />);
+
+    await user.type(screen.getByLabelText(/admin bearer token/i), "manual-token");
+    await user.click(screen.getByRole("button", { name: /open workspace shell/i }));
+
+    const registryPanel = await screen.findByRole("heading", { name: "Result share registry" });
+    const scoped = within(registryPanel.closest("section") as HTMLElement);
+
+    await user.type(scoped.getByLabelText("Grant preset name"), "Existing grant preset");
+    await user.click(scoped.getByRole("button", { name: "Save current grant view" }));
+    expect(await scoped.findByText("Existing grant preset")).toBeVisible();
+
+    const importFile = new File(
+      [
+        JSON.stringify({
+          schemaVersion: "result-share-registry-presets.v1",
+          exportedAt: "2026-04-18T10:00:00Z",
+          app: "research-pulse-cn",
+          source: "group-workspace-admin-web",
+          presets: {
+            aliasRegistry: [
+              {
+                id: "alias-imported",
+                name: "Imported alias preset",
+                scope: "alias_registry",
+                filters: {
+                  shareKind: "workspace_board",
+                  grantStatus: null,
+                  aliasStatus: "active",
+                  workspaceId: null,
+                  resultShareGrantId: "grant-1",
+                },
+                sort: {
+                  field: "status",
+                  direction: "desc",
+                },
+                createdAt: "2026-04-18T08:00:00Z",
+                updatedAt: "2026-04-18T08:00:00Z",
+              },
+            ],
+          },
+        }),
+      ],
+      "merge-presets.json",
+      { type: "application/json" },
+    );
+
+    fireEvent.change(scoped.getByLabelText("Import preset JSON file"), {
+      target: {
+        files: [importFile],
+      },
+    });
+
+    expect(await scoped.findByRole("heading", { name: "Import preview" })).toBeVisible();
+    await user.click(scoped.getByRole("button", { name: "Apply import" }));
+
+    expect(await scoped.findByText("Existing grant preset")).toBeVisible();
+    expect(window.localStorage.getItem("resultShareRegistryGrantPresets")).toContain(
+      "Existing grant preset",
+    );
+    expect(window.localStorage.getItem("resultShareRegistryAliasPresets")).toContain(
+      "Imported alias preset",
+    );
+  });
+
+  it("replaces only imported scopes and keeps absent scopes intact", async () => {
+    window.localStorage.setItem(
+      "resultShareRegistryGrantPresets",
+      JSON.stringify([
+        {
+          id: "grant-default",
+          name: "Grant default",
+          scope: "grant_registry",
+          filters: {
+            shareKind: "workspace_board",
+            grantStatus: "active",
+            aliasStatus: null,
+            workspaceId: "workspace-1",
+            resultShareGrantId: null,
+          },
+          sort: {
+            field: "createdAt",
+            direction: "asc",
+          },
+          createdAt: "2026-04-18T08:00:00Z",
+          updatedAt: "2026-04-18T08:00:00Z",
+        },
+      ]),
+    );
+    window.localStorage.setItem(
+      "resultShareRegistryAliasPresets",
+      JSON.stringify([
+        {
+          id: "alias-keep",
+          name: "Alias keep",
+          scope: "alias_registry",
+          filters: {
+            shareKind: "workspace_board",
+            grantStatus: null,
+            aliasStatus: "active",
+            workspaceId: null,
+            resultShareGrantId: "grant-1",
+          },
+          sort: {
+            field: "status",
+            direction: "desc",
+          },
+          createdAt: "2026-04-18T08:00:00Z",
+          updatedAt: "2026-04-18T08:00:00Z",
+        },
+      ]),
+    );
+    window.localStorage.setItem("resultShareRegistryDefaultPresetId", "grant-default");
+
+    const client = buildApiClient();
+    const user = userEvent.setup();
+
+    render(<GroupWorkspaceAdminShell apiClientFactory={() => client} />);
+
+    await user.type(screen.getByLabelText(/admin bearer token/i), "manual-token");
+    await user.click(screen.getByRole("button", { name: /open workspace shell/i }));
+
+    const registryPanel = await screen.findByRole("heading", { name: "Result share registry" });
+    const scoped = within(registryPanel.closest("section") as HTMLElement);
+    expect(scoped.getAllByText("Grant default").length).toBeGreaterThan(0);
+    expect(scoped.getByText("Alias keep")).toBeVisible();
+
+    const importFile = new File(
+      [
+        JSON.stringify({
+          schemaVersion: "result-share-registry-presets.v1",
+          exportedAt: "2026-04-18T10:00:00Z",
+          app: "research-pulse-cn",
+          source: "group-workspace-admin-web",
+          presets: {
+            grantRegistry: [
+              {
+                id: "grant-replaced",
+                name: "Grant replaced",
+                scope: "grant_registry",
+                filters: {
+                  shareKind: "digest_issue",
+                  grantStatus: "revoked",
+                  aliasStatus: null,
+                  workspaceId: null,
+                  resultShareGrantId: null,
+                },
+                sort: {
+                  field: "status",
+                  direction: "desc",
+                },
+                createdAt: "2026-04-18T09:00:00Z",
+                updatedAt: "2026-04-18T09:00:00Z",
+              },
+            ],
+          },
+        }),
+      ],
+      "replace-presets.json",
+      { type: "application/json" },
+    );
+
+    fireEvent.change(scoped.getByLabelText("Import preset JSON file"), {
+      target: {
+        files: [importFile],
+      },
+    });
+
+    await scoped.findByRole("heading", { name: "Import preview" });
+    await user.selectOptions(scoped.getByLabelText("Import mode"), "replace");
+    await user.click(scoped.getByRole("button", { name: "Apply import" }));
+
+    expect(window.localStorage.getItem("resultShareRegistryGrantPresets")).toContain(
+      "Grant replaced",
+    );
+    expect(window.localStorage.getItem("resultShareRegistryGrantPresets")).not.toContain(
+      "Grant default",
+    );
+    expect(window.localStorage.getItem("resultShareRegistryAliasPresets")).toContain("Alias keep");
+    expect(window.localStorage.getItem("resultShareRegistryDefaultPresetId")).toBeNull();
+    expect(scoped.getByText("No default saved view is set.")).toBeVisible();
+  });
+
   it("restores the default local registry preset on shell load", async () => {
     window.localStorage.setItem(
       "resultShareRegistryGrantPresets",
