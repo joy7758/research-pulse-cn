@@ -18,9 +18,11 @@
   - `scope`
   - safe registry filter state
   - safe registry sort state
+  - optional safe per-share drilldown filter context
   - `createdAt`
   - `updatedAt`
 - The shell may optionally mark one preset as the local default restore target.
+- A later linked-preset phase can reuse the same local model to carry compact per-share drilldown filter context without changing backend contracts.
 
 ## Grant Vs Alias Preset Scope Separation
 - Grant presets and alias presets stay logically separate.
@@ -40,6 +42,7 @@
 - Allowed in local storage:
   - non-sensitive registry filter state
   - non-sensitive registry sort state
+  - optional non-sensitive per-share drilldown filter state
   - local preset names
   - local default preset marker
 - Not allowed in local storage:

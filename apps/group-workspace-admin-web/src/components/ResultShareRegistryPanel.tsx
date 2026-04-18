@@ -12,6 +12,7 @@ import type {
   ResultShareGrantRegistryItemViewModel,
   ResultShareRegistryFilterInput,
   ResultShareRegistryFilterSummaryViewModel,
+  ResultShareRegistrySavedViewApplyMode,
   ResultShareRegistrySavedViewScope,
   ResultShareRegistrySavedViewSummary,
   ResultShareRegistrySortInput,
@@ -26,6 +27,8 @@ type ResultShareRegistryPanelProps = {
   savedViewDrafts: {
     grantName: string;
     aliasName: string;
+    grantIncludeDrilldown: boolean;
+    aliasIncludeDrilldown: boolean;
   };
   savedViews: {
     grantPresets: ResultShareRegistrySavedViewSummary[];
@@ -34,20 +37,31 @@ type ResultShareRegistryPanelProps = {
   };
   registry: ResultShareRegistryViewModel | null;
   currentTargetLabel: string | null;
+  activePresetLabel: string | null;
+  activeDrilldownContextLabel: string;
   loading: boolean;
   error: ApiErrorViewModel | null;
   onFilterChange: (patch: Partial<ResultShareRegistryFilterInput>) => void;
   onSortChange: (patch: Partial<ResultShareRegistrySortInput>) => void;
   onSavedViewDraftChange: (scope: ResultShareRegistrySavedViewScope, name: string) => void;
+  onSavedViewIncludeDrilldownChange: (
+    scope: ResultShareRegistrySavedViewScope,
+    include: boolean,
+  ) => void;
   onApplyFilters: () => void;
   onResetFilters: () => void;
   onSaveSavedView: (scope: ResultShareRegistrySavedViewScope) => void;
-  onApplySavedView: (scope: ResultShareRegistrySavedViewScope, presetId: string) => void;
+  onApplySavedView: (
+    scope: ResultShareRegistrySavedViewScope,
+    presetId: string,
+    mode: ResultShareRegistrySavedViewApplyMode,
+  ) => void;
   onOverwriteSavedView: (scope: ResultShareRegistrySavedViewScope, presetId: string) => void;
   onDeleteSavedView: (scope: ResultShareRegistrySavedViewScope, presetId: string) => void;
   onSetDefaultSavedView: (scope: ResultShareRegistrySavedViewScope, presetId: string) => void;
   onClearDefaultSavedView: () => void;
   onRestoreDefaultSavedView: () => void;
+  onResetDrilldownContext: () => void;
   onOpenGrantDrilldown: (grantId: string) => void;
   onOpenAliasDrilldown: (aliasId: string) => void;
   onFilterAliasesForGrant: (grantId: string, shareKind: ResultShareGrantRegistryItemViewModel["shareKind"]) => void;
@@ -72,8 +86,10 @@ function SavedViewList({
   title,
   description,
   draftName,
+  includeDrilldownContext,
   presets,
   onDraftChange,
+  onIncludeDrilldownChange,
   onSave,
   onApply,
   onOverwrite,
@@ -84,10 +100,12 @@ function SavedViewList({
   title: string;
   description: string;
   draftName: string;
+  includeDrilldownContext: boolean;
   presets: ResultShareRegistrySavedViewSummary[];
   onDraftChange: (name: string) => void;
+  onIncludeDrilldownChange: (include: boolean) => void;
   onSave: () => void;
-  onApply: (presetId: string) => void;
+  onApply: (presetId: string, mode: ResultShareRegistrySavedViewApplyMode) => void;
   onOverwrite: (presetId: string) => void;
   onDelete: (presetId: string) => void;
   onSetDefault: (presetId: string) => void;
@@ -115,6 +133,17 @@ function SavedViewList({
             onChange={(event) => onDraftChange(event.target.value)}
           />
         </label>
+        <div className="field-stack">
+          <span>Saved preset options</span>
+          <label className="checkbox-row">
+            <input
+              type="checkbox"
+              checked={includeDrilldownContext}
+              onChange={(event) => onIncludeDrilldownChange(event.target.checked)}
+            />
+            <span>Include current per-share drilldown filters</span>
+          </label>
+        </div>
         <div className="button-row">
           <button
             type="button"
@@ -131,8 +160,8 @@ function SavedViewList({
         <div className="empty-state">
           <strong>No saved views yet.</strong>
           <p>
-            Saved views are local to this browser profile and contain only safe registry filter and
-            sort state.
+            Saved views are local to this browser profile and contain only safe registry filter,
+            sort, and optional drilldown-filter state.
           </p>
         </div>
       ) : (
@@ -158,14 +187,38 @@ function SavedViewList({
                     </li>
                   ))}
                 </ul>
+                {preset.hasDrilldownContext ? (
+                  <>
+                    <p className="section-subtle-copy">
+                      Linked per-share drilldown context
+                    </p>
+                    <ul className="filter-chip-list">
+                      {preset.drilldownSummaryItems.map((item) => (
+                        <li key={`${preset.id}-drilldown-${item}`} className="filter-chip">
+                          <strong>{item}</strong>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                ) : null}
               </div>
               <div className="button-row">
                 <button
                   type="button"
                   className="button-secondary"
-                  onClick={() => onApply(preset.id)}
+                  onClick={() => onApply(preset.id, "registry_only")}
                 >
-                  Apply preset
+                  Apply registry only
+                </button>
+                <button
+                  type="button"
+                  className="button-secondary"
+                  onClick={() => onApply(preset.id, "registry_and_drilldown")}
+                  disabled={!preset.hasDrilldownContext}
+                >
+                  {preset.hasDrilldownContext
+                    ? "Apply registry + drilldown"
+                    : "No drilldown context saved"}
                 </button>
                 <button
                   type="button"
@@ -368,11 +421,14 @@ export function ResultShareRegistryPanel({
   savedViews,
   registry,
   currentTargetLabel,
+  activePresetLabel,
+  activeDrilldownContextLabel,
   loading,
   error,
   onFilterChange,
   onSortChange,
   onSavedViewDraftChange,
+  onSavedViewIncludeDrilldownChange,
   onApplyFilters,
   onResetFilters,
   onSaveSavedView,
@@ -382,6 +438,7 @@ export function ResultShareRegistryPanel({
   onSetDefaultSavedView,
   onClearDefaultSavedView,
   onRestoreDefaultSavedView,
+  onResetDrilldownContext,
   onOpenGrantDrilldown,
   onOpenAliasDrilldown,
   onFilterAliasesForGrant,
@@ -403,6 +460,26 @@ export function ResultShareRegistryPanel({
             <strong>{currentTargetLabel}</strong>
           </div>
         ) : null}
+      </div>
+
+      <div className="button-row">
+        {activePresetLabel ? (
+          <div className="meta-chip">
+            <span>Active registry preset</span>
+            <strong>{activePresetLabel}</strong>
+          </div>
+        ) : null}
+        <div className="meta-chip">
+          <span>Drilldown context</span>
+          <strong>{activeDrilldownContextLabel}</strong>
+        </div>
+        <button
+          type="button"
+          className="button-secondary"
+          onClick={onResetDrilldownContext}
+        >
+          Reset drilldown context
+        </button>
       </div>
 
       <div className="filter-grid">
@@ -611,10 +688,14 @@ export function ResultShareRegistryPanel({
             title="Grant saved views"
             description="Store common grant-registry filters and grant sort modes locally in this browser."
             draftName={savedViewDrafts.grantName}
+            includeDrilldownContext={savedViewDrafts.grantIncludeDrilldown}
             presets={savedViews.grantPresets}
             onDraftChange={(name) => onSavedViewDraftChange("grant_registry", name)}
+            onIncludeDrilldownChange={(include) =>
+              onSavedViewIncludeDrilldownChange("grant_registry", include)
+            }
             onSave={() => onSaveSavedView("grant_registry")}
-            onApply={(presetId) => onApplySavedView("grant_registry", presetId)}
+            onApply={(presetId, mode) => onApplySavedView("grant_registry", presetId, mode)}
             onOverwrite={(presetId) => onOverwriteSavedView("grant_registry", presetId)}
             onDelete={(presetId) => onDeleteSavedView("grant_registry", presetId)}
             onSetDefault={(presetId) => onSetDefaultSavedView("grant_registry", presetId)}
@@ -624,10 +705,14 @@ export function ResultShareRegistryPanel({
             title="Alias saved views"
             description="Store common alias-registry filters and alias sort modes locally in this browser."
             draftName={savedViewDrafts.aliasName}
+            includeDrilldownContext={savedViewDrafts.aliasIncludeDrilldown}
             presets={savedViews.aliasPresets}
             onDraftChange={(name) => onSavedViewDraftChange("alias_registry", name)}
+            onIncludeDrilldownChange={(include) =>
+              onSavedViewIncludeDrilldownChange("alias_registry", include)
+            }
             onSave={() => onSaveSavedView("alias_registry")}
-            onApply={(presetId) => onApplySavedView("alias_registry", presetId)}
+            onApply={(presetId, mode) => onApplySavedView("alias_registry", presetId, mode)}
             onOverwrite={(presetId) => onOverwriteSavedView("alias_registry", presetId)}
             onDelete={(presetId) => onDeleteSavedView("alias_registry", presetId)}
             onSetDefault={(presetId) => onSetDefaultSavedView("alias_registry", presetId)}

@@ -75,6 +75,7 @@ import type {
   ResultShareGrantConversionDrilldownRead,
   ResultShareGrantRead,
   ResultShareRegistryFilterInput,
+  ResultShareRegistrySavedViewApplyMode,
   ResultShareRegistrySavedView,
   ResultShareRegistrySavedViewScope,
   ResultShareRegistrySavedViewStoreState,
@@ -112,6 +113,52 @@ type ShareDrilldownTarget =
       id: string;
     };
 
+type ActiveRegistryPresetState = {
+  scope: ResultShareRegistrySavedViewScope;
+  presetId: string;
+  presetName: string;
+  source: "saved_view" | "default_preset";
+} | null;
+
+type ShareDrilldownContextSourceState = {
+  kind: "manual" | "saved_view" | "default_preset";
+  presetId: string | null;
+  presetName: string | null;
+};
+
+function buildActiveRegistryPresetState(
+  preset: ResultShareRegistrySavedView | null,
+  source: "saved_view" | "default_preset",
+): ActiveRegistryPresetState {
+  if (!preset) {
+    return null;
+  }
+  return {
+    scope: preset.scope,
+    presetId: preset.id,
+    presetName: preset.name,
+    source,
+  };
+}
+
+function buildShareDrilldownContextSourceState(
+  preset: ResultShareRegistrySavedView | null,
+  source: "saved_view" | "default_preset",
+): ShareDrilldownContextSourceState {
+  if (!preset?.drilldownContext) {
+    return {
+      kind: "manual",
+      presetId: null,
+      presetName: null,
+    };
+  }
+  return {
+    kind: source,
+    presetId: preset.id,
+    presetName: preset.name,
+  };
+}
+
 type GroupWorkspaceAdminShellProps = {
   initialApiBaseUrl?: string;
   locationLike?: Pick<Location, "pathname" | "search" | "hash">;
@@ -138,6 +185,15 @@ export function GroupWorkspaceAdminShell({
   );
   const initialSavedViewStateRef = useRef(
     buildInitialResultShareRegistrySavedViewState(initialSavedViewStoreRef.current),
+  );
+  const initialActiveRegistryPresetRef = useRef<ActiveRegistryPresetState>(
+    buildActiveRegistryPresetState(initialSavedViewStateRef.current.defaultPreset, "default_preset"),
+  );
+  const initialShareDrilldownContextSourceRef = useRef<ShareDrilldownContextSourceState>(
+    buildShareDrilldownContextSourceState(
+      initialSavedViewStateRef.current.defaultPreset,
+      "default_preset",
+    ),
   );
 
   const [apiBaseUrlInput, setApiBaseUrlInput] = useState(
@@ -208,10 +264,10 @@ export function GroupWorkspaceAdminShell({
   const [workspaceConversionFilterDraft, setWorkspaceConversionFilterDraft] =
     useState<ConversionFilterInput>(DEFAULT_CONVERSION_FILTER_INPUT);
   const [shareDrilldownFilters, setShareDrilldownFilters] = useState<ConversionFilterInput>(
-    DEFAULT_CONVERSION_FILTER_INPUT,
+    initialSavedViewStateRef.current.drilldownFilters,
   );
   const [shareDrilldownFilterDraft, setShareDrilldownFilterDraft] =
-    useState<ConversionFilterInput>(DEFAULT_CONVERSION_FILTER_INPUT);
+    useState<ConversionFilterInput>(initialSavedViewStateRef.current.drilldownFilters);
   const [resultShareRegistryFilters, setResultShareRegistryFilters] =
     useState<ResultShareRegistryFilterInput>(initialSavedViewStateRef.current.filters);
   const [resultShareRegistryFilterDraft, setResultShareRegistryFilterDraft] =
@@ -224,6 +280,13 @@ export function GroupWorkspaceAdminShell({
     useState<ResultShareRegistrySavedViewStoreState>(initialSavedViewStoreRef.current);
   const [grantSavedViewName, setGrantSavedViewName] = useState("");
   const [aliasSavedViewName, setAliasSavedViewName] = useState("");
+  const [grantSavedViewIncludesDrilldown, setGrantSavedViewIncludesDrilldown] = useState(false);
+  const [aliasSavedViewIncludesDrilldown, setAliasSavedViewIncludesDrilldown] = useState(false);
+  const [activeRegistryPreset, setActiveRegistryPreset] = useState<ActiveRegistryPresetState>(
+    initialActiveRegistryPresetRef.current,
+  );
+  const [shareDrilldownContextSource, setShareDrilldownContextSource] =
+    useState<ShareDrilldownContextSourceState>(initialShareDrilldownContextSourceRef.current);
   const [shareGrantLookupId, setShareGrantLookupId] = useState("");
   const [shareAliasLookupId, setShareAliasLookupId] = useState("");
   const [createInput, setCreateInput] = useState<WorkspaceCreateInput>({
@@ -282,18 +345,37 @@ export function GroupWorkspaceAdminShell({
     setGlobalConversionFilterDraft(DEFAULT_CONVERSION_FILTER_INPUT);
     setWorkspaceConversionFilters(DEFAULT_CONVERSION_FILTER_INPUT);
     setWorkspaceConversionFilterDraft(DEFAULT_CONVERSION_FILTER_INPUT);
-    setShareDrilldownFilters(DEFAULT_CONVERSION_FILTER_INPUT);
-    setShareDrilldownFilterDraft(DEFAULT_CONVERSION_FILTER_INPUT);
+    setShareDrilldownFilters(defaultRegistrySavedViewState.drilldownFilters);
+    setShareDrilldownFilterDraft(defaultRegistrySavedViewState.drilldownFilters);
     setResultShareRegistryFilters(defaultRegistrySavedViewState.filters);
     setResultShareRegistryFilterDraft(defaultRegistrySavedViewState.filters);
     setResultShareRegistrySorts(defaultRegistrySavedViewState.sorts);
     setResultShareRegistrySortDraft(defaultRegistrySavedViewState.sorts);
     setGrantSavedViewName("");
     setAliasSavedViewName("");
+    setGrantSavedViewIncludesDrilldown(false);
+    setAliasSavedViewIncludesDrilldown(false);
+    setActiveRegistryPreset(
+      buildActiveRegistryPresetState(
+        defaultRegistrySavedViewState.defaultPreset,
+        "default_preset",
+      ),
+    );
+    setShareDrilldownContextSource(
+      buildShareDrilldownContextSourceState(
+        defaultRegistrySavedViewState.defaultPreset,
+        "default_preset",
+      ),
+    );
     setShareGrantLookupId("");
     setShareAliasLookupId("");
     setOneTimeGrant(null);
-  }, [defaultRegistrySavedViewState.filters, defaultRegistrySavedViewState.sorts]);
+  }, [
+    defaultRegistrySavedViewState.defaultPreset,
+    defaultRegistrySavedViewState.drilldownFilters,
+    defaultRegistrySavedViewState.filters,
+    defaultRegistrySavedViewState.sorts,
+  ]);
 
   const toApiErrorViewModel = useCallback((error: unknown): ApiErrorViewModel => {
     if (error instanceof GroupWorkspaceAdminApiError) {
@@ -737,6 +819,21 @@ export function GroupWorkspaceAdminShell({
     () => buildResultShareRegistrySavedViewSummaries(resultShareRegistrySavedViews),
     [resultShareRegistrySavedViews],
   );
+  const activeRegistryPresetLabel = useMemo(() => {
+    if (!activeRegistryPreset) {
+      return null;
+    }
+    return `${activeRegistryPreset.source === "default_preset" ? "Default preset" : "Active preset"} · ${activeRegistryPreset.presetName}`;
+  }, [activeRegistryPreset]);
+  const shareDrilldownContextLabel = useMemo(() => {
+    if (shareDrilldownContextSource.kind === "saved_view") {
+      return `Saved view drilldown context · ${shareDrilldownContextSource.presetName ?? "Preset"}`;
+    }
+    if (shareDrilldownContextSource.kind === "default_preset") {
+      return `Default preset drilldown context · ${shareDrilldownContextSource.presetName ?? "Preset"}`;
+    }
+    return "Manual / current per-share drilldown filters";
+  }, [shareDrilldownContextSource]);
   const shareDrilldownCurrentTargetLabel = useMemo(() => {
     if (shareDrilldownGrantViewModel) {
       return `Grant · ${shareDrilldownGrantViewModel.shareGrant.title}`;
@@ -787,6 +884,11 @@ export function GroupWorkspaceAdminShell({
   }, []);
 
   const patchShareDrilldownFilterDraft = useCallback((patch: Partial<ConversionFilterInput>) => {
+    setShareDrilldownContextSource({
+      kind: "manual",
+      presetId: null,
+      presetName: null,
+    });
     setShareDrilldownFilterDraft((current) =>
       normalizeConversionFilterInput({
         ...current,
@@ -798,6 +900,7 @@ export function GroupWorkspaceAdminShell({
 
   const patchResultShareRegistryFilterDraft = useCallback(
     (patch: Partial<ResultShareRegistryFilterInput>) => {
+      setActiveRegistryPreset(null);
       setResultShareRegistryFilterDraft((current) =>
         normalizeResultShareRegistryFilterInput({
           ...current,
@@ -810,6 +913,7 @@ export function GroupWorkspaceAdminShell({
 
   const patchResultShareRegistrySortDraft = useCallback(
     (patch: Partial<ResultShareRegistrySortInput>) => {
+      setActiveRegistryPreset(null);
       setResultShareRegistrySortDraft((current) =>
         normalizeResultShareRegistrySortInput({
           ...current,
@@ -818,6 +922,28 @@ export function GroupWorkspaceAdminShell({
       );
     },
     [],
+  );
+
+  const applyShareDrilldownContext = useCallback(
+    (
+      nextFilters: ConversionFilterInput,
+      source: ShareDrilldownContextSourceState,
+      options?: {
+        reloadCurrentTarget?: boolean;
+      },
+    ) => {
+      const normalizedFilters = normalizeConversionFilterInput({
+        ...nextFilters,
+        shareKind: null,
+      });
+      setShareDrilldownFilterDraft(normalizedFilters);
+      setShareDrilldownFilters(normalizedFilters);
+      setShareDrilldownContextSource(source);
+      if (options?.reloadCurrentTarget !== false && session && shareDrilldownTarget) {
+        void loadShareDrilldown(session.client, shareDrilldownTarget, normalizedFilters);
+      }
+    },
+    [loadShareDrilldown, session, shareDrilldownTarget],
   );
 
   const handleOpenShell = useCallback(() => {
@@ -962,17 +1088,18 @@ export function GroupWorkspaceAdminShell({
   }, [loadShareDrilldown, session, shareDrilldownFilterDraft, shareDrilldownTarget]);
 
   const handleResetShareDrilldownFilters = useCallback(() => {
-    if (!session || !shareDrilldownTarget) {
-      return;
-    }
-    setShareDrilldownFilterDraft(DEFAULT_CONVERSION_FILTER_INPUT);
-    setShareDrilldownFilters(DEFAULT_CONVERSION_FILTER_INPUT);
-    void loadShareDrilldown(
-      session.client,
-      shareDrilldownTarget,
+    applyShareDrilldownContext(
       DEFAULT_CONVERSION_FILTER_INPUT,
+      {
+        kind: "manual",
+        presetId: null,
+        presetName: null,
+      },
+      {
+        reloadCurrentTarget: true,
+      },
     );
-  }, [loadShareDrilldown, session, shareDrilldownTarget]);
+  }, [applyShareDrilldownContext]);
 
   const handleApplyResultShareRegistryFilters = useCallback(() => {
     if (!session) {
@@ -991,6 +1118,7 @@ export function GroupWorkspaceAdminShell({
     if (!session) {
       return;
     }
+    setActiveRegistryPreset(null);
     setResultShareRegistryFilterDraft(DEFAULT_RESULT_SHARE_REGISTRY_FILTER_INPUT);
     setResultShareRegistryFilters(DEFAULT_RESULT_SHARE_REGISTRY_FILTER_INPUT);
     setResultShareRegistrySortDraft(DEFAULT_RESULT_SHARE_REGISTRY_SORT_INPUT);
@@ -1003,6 +1131,7 @@ export function GroupWorkspaceAdminShell({
       if (!session) {
         return;
       }
+      setActiveRegistryPreset(null);
       const nextFilters = normalizeResultShareRegistryFilterInput({
         ...resultShareRegistryFilterDraft,
         shareKind,
@@ -1024,6 +1153,13 @@ export function GroupWorkspaceAdminShell({
         name,
         resultShareRegistryFilterDraft,
         resultShareRegistrySortDraft,
+        {
+          includeDrilldownContext:
+            scope === "grant_registry"
+              ? grantSavedViewIncludesDrilldown
+              : aliasSavedViewIncludesDrilldown,
+          drilldownFilters: shareDrilldownFilterDraft,
+        },
       );
       if (!draft) {
         setNoticeMessage("Enter a local preset name before saving the current registry view.");
@@ -1042,9 +1178,12 @@ export function GroupWorkspaceAdminShell({
     },
     [
       aliasSavedViewName,
+      aliasSavedViewIncludesDrilldown,
+      grantSavedViewIncludesDrilldown,
       grantSavedViewName,
       resultShareRegistryFilterDraft,
       resultShareRegistrySortDraft,
+      shareDrilldownFilterDraft,
     ],
   );
 
@@ -1062,6 +1201,13 @@ export function GroupWorkspaceAdminShell({
         nextName,
         resultShareRegistryFilterDraft,
         resultShareRegistrySortDraft,
+        {
+          includeDrilldownContext:
+            scope === "grant_registry"
+              ? grantSavedViewIncludesDrilldown
+              : aliasSavedViewIncludesDrilldown,
+          drilldownFilters: shareDrilldownFilterDraft,
+        },
       );
       if (!draft) {
         return;
@@ -1078,15 +1224,18 @@ export function GroupWorkspaceAdminShell({
     },
     [
       aliasSavedViewName,
+      aliasSavedViewIncludesDrilldown,
       findSavedView,
+      grantSavedViewIncludesDrilldown,
       grantSavedViewName,
       resultShareRegistryFilterDraft,
       resultShareRegistrySortDraft,
+      shareDrilldownFilterDraft,
     ],
   );
 
   const handleApplyRegistrySavedView = useCallback(
-    (scope: ResultShareRegistrySavedViewScope, presetId: string) => {
+    (scope: ResultShareRegistrySavedViewScope, presetId: string, mode: ResultShareRegistrySavedViewApplyMode) => {
       const preset = findSavedView(scope, presetId);
       if (!preset) {
         return;
@@ -1094,23 +1243,45 @@ export function GroupWorkspaceAdminShell({
       const applied = applyResultShareRegistrySavedView(
         resultShareRegistryFilterDraft,
         resultShareRegistrySortDraft,
+        shareDrilldownFilterDraft,
         preset,
+        mode,
       );
       setResultShareRegistryFilterDraft(applied.filters);
       setResultShareRegistryFilters(applied.filters);
       setResultShareRegistrySortDraft(applied.sorts);
       setResultShareRegistrySorts(applied.sorts);
+      setActiveRegistryPreset(buildActiveRegistryPresetState(preset, "saved_view"));
+      if (applied.didApplyDrilldownContext) {
+        applyShareDrilldownContext(
+          applied.drilldownFilters,
+          {
+            kind: "saved_view",
+            presetId: preset.id,
+            presetName: preset.name,
+          },
+          {
+            reloadCurrentTarget: true,
+          },
+        );
+      }
       if (session) {
         void loadResultShareRegistry(session.client, applied.filters);
       }
-      setNoticeMessage(`Applied local preset ${preset.name}.`);
+      setNoticeMessage(
+        applied.didApplyDrilldownContext
+          ? `Applied local preset ${preset.name} with linked drilldown filters.`
+          : `Applied local preset ${preset.name}.`,
+      );
     },
     [
+      applyShareDrilldownContext,
       findSavedView,
       loadResultShareRegistry,
       resultShareRegistryFilterDraft,
       resultShareRegistrySortDraft,
       session,
+      shareDrilldownFilterDraft,
     ],
   );
 
@@ -1119,6 +1290,18 @@ export function GroupWorkspaceAdminShell({
       const preset = findSavedView(scope, presetId);
       setResultShareRegistrySavedViews((current) =>
         deleteResultShareRegistrySavedView(current, scope, presetId),
+      );
+      setActiveRegistryPreset((current) =>
+        current?.presetId === presetId ? null : current,
+      );
+      setShareDrilldownContextSource((current) =>
+        current.presetId === presetId
+          ? {
+              kind: "manual",
+              presetId: null,
+              presetName: null,
+            }
+          : current,
       );
       if (preset) {
         setNoticeMessage(`Deleted local preset ${preset.name}.`);
@@ -1133,6 +1316,20 @@ export function GroupWorkspaceAdminShell({
       setResultShareRegistrySavedViews((current) =>
         setResultShareRegistryDefaultPresetId(current, presetId),
       );
+      setActiveRegistryPreset((current) =>
+        current?.presetId === presetId && preset
+          ? buildActiveRegistryPresetState(preset, "default_preset")
+          : current,
+      );
+      setShareDrilldownContextSource((current) =>
+        current.presetId === presetId && current.kind !== "manual" && preset?.drilldownContext
+          ? {
+              kind: "default_preset",
+              presetId: preset.id,
+              presetName: preset.name,
+            }
+          : current,
+      );
       if (preset) {
         setNoticeMessage(`Marked ${preset.name} as the default local registry view.`);
       }
@@ -1144,6 +1341,22 @@ export function GroupWorkspaceAdminShell({
     setResultShareRegistrySavedViews((current) =>
       setResultShareRegistryDefaultPresetId(current, null),
     );
+    setActiveRegistryPreset((current) =>
+      current?.source === "default_preset"
+        ? {
+            ...current,
+            source: "saved_view",
+          }
+        : current,
+    );
+    setShareDrilldownContextSource((current) =>
+      current.kind === "default_preset"
+        ? {
+            ...current,
+            kind: "saved_view",
+          }
+        : current,
+    );
     setNoticeMessage("Cleared the default local registry view.");
   }, []);
 
@@ -1152,25 +1365,50 @@ export function GroupWorkspaceAdminShell({
     if (!defaultPreset) {
       return;
     }
+    const applyMode: ResultShareRegistrySavedViewApplyMode = defaultPreset.drilldownContext
+      ? "registry_and_drilldown"
+      : "registry_only";
     const applied = applyResultShareRegistrySavedView(
       resultShareRegistryFilterDraft,
       resultShareRegistrySortDraft,
+      shareDrilldownFilterDraft,
       defaultPreset,
+      applyMode,
     );
     setResultShareRegistryFilterDraft(applied.filters);
     setResultShareRegistryFilters(applied.filters);
     setResultShareRegistrySortDraft(applied.sorts);
     setResultShareRegistrySorts(applied.sorts);
+    setActiveRegistryPreset(buildActiveRegistryPresetState(defaultPreset, "default_preset"));
+    if (applied.didApplyDrilldownContext) {
+      applyShareDrilldownContext(
+        applied.drilldownFilters,
+        {
+          kind: "default_preset",
+          presetId: defaultPreset.id,
+          presetName: defaultPreset.name,
+        },
+        {
+          reloadCurrentTarget: true,
+        },
+      );
+    }
     if (session) {
       void loadResultShareRegistry(session.client, applied.filters);
     }
-    setNoticeMessage(`Restored default local registry view ${defaultPreset.name}.`);
+    setNoticeMessage(
+      applied.didApplyDrilldownContext
+        ? `Restored default local registry view ${defaultPreset.name} with linked drilldown filters.`
+        : `Restored default local registry view ${defaultPreset.name}.`,
+    );
   }, [
+    applyShareDrilldownContext,
     defaultRegistrySavedViewState.defaultPreset,
     loadResultShareRegistry,
     resultShareRegistryFilterDraft,
     resultShareRegistrySortDraft,
     session,
+    shareDrilldownFilterDraft,
   ]);
 
   const handleClearShareDrilldown = useCallback(() => {
@@ -1418,8 +1656,12 @@ export function GroupWorkspaceAdminShell({
         savedViewDrafts={{
           grantName: grantSavedViewName,
           aliasName: aliasSavedViewName,
+          grantIncludeDrilldown: grantSavedViewIncludesDrilldown,
+          aliasIncludeDrilldown: aliasSavedViewIncludesDrilldown,
         }}
         savedViews={resultShareRegistrySavedViewSummaries}
+        activePresetLabel={activeRegistryPresetLabel}
+        activeDrilldownContextLabel={shareDrilldownContextLabel}
         registry={
           resultShareRegistryLoading &&
           resultShareGrants.length === 0 &&
@@ -1439,6 +1681,13 @@ export function GroupWorkspaceAdminShell({
             setAliasSavedViewName(name);
           }
         }}
+        onSavedViewIncludeDrilldownChange={(scope, include) => {
+          if (scope === "grant_registry") {
+            setGrantSavedViewIncludesDrilldown(include);
+          } else {
+            setAliasSavedViewIncludesDrilldown(include);
+          }
+        }}
         onApplyFilters={handleApplyResultShareRegistryFilters}
         onResetFilters={handleResetResultShareRegistryFilters}
         onSaveSavedView={handleSaveRegistrySavedView}
@@ -1448,6 +1697,7 @@ export function GroupWorkspaceAdminShell({
         onSetDefaultSavedView={handleSetDefaultRegistrySavedView}
         onClearDefaultSavedView={handleClearDefaultRegistrySavedView}
         onRestoreDefaultSavedView={handleRestoreDefaultRegistrySavedView}
+        onResetDrilldownContext={handleResetShareDrilldownFilters}
         onOpenGrantDrilldown={handleOpenShareGrantDrilldown}
         onOpenAliasDrilldown={handleOpenShareAliasDrilldown}
         onFilterAliasesForGrant={handleFilterAliasesForGrant}
@@ -1489,6 +1739,7 @@ export function GroupWorkspaceAdminShell({
           shareDrilldownGrantLookupId={shareGrantLookupId}
           shareDrilldownAliasLookupId={shareAliasLookupId}
           shareDrilldownCurrentTargetLabel={shareDrilldownCurrentTargetLabel}
+          shareDrilldownContextLabel={shareDrilldownContextLabel}
           shareDrilldownFilters={shareDrilldownFilterDraft}
           shareDrilldownFilterSummary={shareDrilldownFilterSummary}
           shareDrilldownFilterSupport={PER_SHARE_DRILLDOWN_FILTER_SUPPORT}

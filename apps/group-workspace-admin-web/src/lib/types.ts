@@ -822,6 +822,18 @@ export type ResultShareRegistrySortInput = {
 };
 
 export type ResultShareRegistrySavedViewScope = "grant_registry" | "alias_registry";
+export type ResultShareRegistrySavedViewApplyMode =
+  | "registry_only"
+  | "registry_and_drilldown";
+
+export type ResultShareRegistrySavedViewDrilldownContext = {
+  dateFrom: string | null;
+  dateTo: string | null;
+  accessMode: ResultShareViewAccessMode | null;
+  eventType: ResultShareViewEventType | null;
+  outcome: ResultShareViewOutcome | null;
+  limit: number | null;
+};
 
 export type ResultShareRegistrySavedView = {
   id: string;
@@ -829,6 +841,7 @@ export type ResultShareRegistrySavedView = {
   scope: ResultShareRegistrySavedViewScope;
   filters: ResultShareRegistryFilterInput;
   sort: ResultShareRegistrySectionSortInput;
+  drilldownContext: ResultShareRegistrySavedViewDrilldownContext | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -838,6 +851,7 @@ export type ResultShareRegistrySavedViewDraft = {
   scope: ResultShareRegistrySavedViewScope;
   filters: ResultShareRegistryFilterInput;
   sort: ResultShareRegistrySectionSortInput;
+  drilldownContext: ResultShareRegistrySavedViewDrilldownContext | null;
 };
 
 export type ResultShareRegistrySavedViewSummary = {
@@ -845,6 +859,8 @@ export type ResultShareRegistrySavedViewSummary = {
   name: string;
   scope: ResultShareRegistrySavedViewScope;
   summaryItems: string[];
+  drilldownSummaryItems: string[];
+  hasDrilldownContext: boolean;
   createdAt: string;
   updatedAt: string;
   isDefault: boolean;

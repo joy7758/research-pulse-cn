@@ -17,6 +17,7 @@ type ResultShareDrilldownPanelProps = {
   grantLookupId: string;
   aliasLookupId: string;
   currentTargetLabel: string | null;
+  drilldownContextLabel: string;
   filters: ConversionFilterInput;
   filterSummary: ConversionFilterSummaryViewModel;
   filterSupport: ConversionFilterSupportViewModel;
@@ -514,6 +515,7 @@ export function ResultShareDrilldownPanel({
   grantLookupId,
   aliasLookupId,
   currentTargetLabel,
+  drilldownContextLabel,
   filters,
   filterSummary,
   filterSupport,
@@ -553,6 +555,10 @@ export function ResultShareDrilldownPanel({
           <div className="meta-chip">
             <span>Current view</span>
             <strong>{currentTargetLabel ?? "No share selected"}</strong>
+          </div>
+          <div className="meta-chip">
+            <span>Filter context</span>
+            <strong>{drilldownContextLabel}</strong>
           </div>
         </div>
 

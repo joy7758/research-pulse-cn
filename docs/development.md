@@ -186,6 +186,7 @@ The same shell now also includes a minimal read-only result-share registry:
 - applied filter/sort chips plus filtered zero-result explanations
 - grant-to-alias quick filters and alias-to-underlying-grant quick-open actions
 - local-only saved views that persist safe registry filter/sort state in browser storage only
+- optional local preset extension that also carries safe per-share drilldown `date_from`, `date_to`, `access_mode`, `event_type`, `outcome`, and `limit`
 - no admin bearer token, raw share token, or raw alias is stored in those presets
 
 The shell is internal/admin-only, keeps bearer tokens in memory only, and does not introduce end-user login or source-file sharing. Filter controls narrow overview/drilldown reads only and do not change attribution semantics.
