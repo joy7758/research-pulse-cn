@@ -93,7 +93,7 @@ Each dimension is shown directly in the preset workspace and uses transparent pe
 - No source-file, attachment, or note sharing
 
 ## Future Work
-- Local threshold preferences only if later justified
+- Local threshold preferences were added in the next phase without turning the same browser-local hygiene layer into backend policy or shared compliance logic.
 - Richer operator health dashboards only if later justified
 - Team preset workspace health only if backend persistence is ever added
 - Policy-driven preset validation only if later justified

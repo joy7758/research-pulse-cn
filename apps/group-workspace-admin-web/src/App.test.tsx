@@ -1925,6 +1925,117 @@ describe("group workspace admin shell", () => {
     ).toBeGreaterThan(0);
   });
 
+  it("previews, applies, rejects, and resets local health threshold preferences without touching preset storage", async () => {
+    window.localStorage.setItem(
+      "resultShareRegistryGrantPresets",
+      JSON.stringify([
+        {
+          id: "grant-default",
+          name: "Grant default",
+          scope: "grant_registry",
+          filters: {
+            shareKind: "workspace_board",
+            grantStatus: "active",
+            aliasStatus: null,
+            workspaceId: "workspace-1",
+            resultShareGrantId: null,
+          },
+          sort: {
+            field: "createdAt",
+            direction: "asc",
+          },
+          createdAt: "2026-04-18T08:00:00Z",
+          updatedAt: "2026-04-18T08:00:00Z",
+        },
+      ]),
+    );
+    window.localStorage.setItem(
+      "resultShareRegistryPresetWorkspaceState",
+      JSON.stringify({
+        pinnedGrantPresetIds: ["grant-default", "missing-grant"],
+        pinnedAliasPresetIds: [],
+        lastActivePresetScope: "grant_registry",
+        lastActivePresetId: "grant-default",
+        collapsedSections: null,
+        updatedAt: "2026-04-19T04:40:00Z",
+      }),
+    );
+
+    const client = buildApiClient();
+    const user = userEvent.setup();
+
+    render(<GroupWorkspaceAdminShell apiClientFactory={() => client} />);
+
+    await user.type(screen.getByLabelText(/admin bearer token/i), "manual-token");
+    await user.click(screen.getByRole("button", { name: /open workspace shell/i }));
+
+    const registryPanel = await screen.findByRole("heading", { name: "Result share registry" });
+    const scoped = within(registryPanel.closest("section") as HTMLElement);
+    const workspaceSection = scoped.getByRole("heading", { name: "Preset workspace" }).closest("section");
+    expect(workspaceSection).not.toBeNull();
+    const workspaceScoped = within(workspaceSection as HTMLElement);
+
+    expect(workspaceScoped.getByText("attention")).toBeVisible();
+    expect(workspaceScoped.getByText("Healthy 90-100")).toBeVisible();
+
+    await user.clear(workspaceScoped.getByLabelText("Healthy minimum threshold"));
+    await user.type(workspaceScoped.getByLabelText("Healthy minimum threshold"), "80");
+    await user.clear(workspaceScoped.getByLabelText("Attention minimum threshold"));
+    await user.type(workspaceScoped.getByLabelText("Attention minimum threshold"), "60");
+    await user.clear(workspaceScoped.getByLabelText("Risk minimum threshold"));
+    await user.type(workspaceScoped.getByLabelText("Risk minimum threshold"), "30");
+
+    expect(
+      workspaceScoped.getByText(/Preview would change health from attention \(\d+\) to healthy \(\d+\)/i),
+    ).toBeVisible();
+
+    await user.click(workspaceScoped.getByRole("button", { name: "Apply thresholds" }));
+
+    await waitFor(() => {
+      expect(
+        window.localStorage.getItem(
+          "resultShareRegistryPresetWorkspaceHealthThresholdPreferences",
+        ),
+      ).toContain("\"healthyMin\":80");
+    });
+    expect(workspaceScoped.getByText("healthy")).toBeVisible();
+    expect(
+      window.localStorage.getItem("resultShareRegistryPresetLocalAuditEvents"),
+    ).toContain("preset_workspace_health_thresholds_updated");
+
+    await user.clear(workspaceScoped.getByLabelText("Healthy minimum threshold"));
+    await user.type(workspaceScoped.getByLabelText("Healthy minimum threshold"), "50");
+    await user.clear(workspaceScoped.getByLabelText("Attention minimum threshold"));
+    await user.type(workspaceScoped.getByLabelText("Attention minimum threshold"), "70");
+    await user.click(workspaceScoped.getByRole("button", { name: "Apply thresholds" }));
+
+    expect(
+      workspaceScoped.getByText(/Thresholds must satisfy healthyMin > attentionMin > riskMin > criticalMin/i),
+    ).toBeVisible();
+    expect(
+      window.localStorage.getItem(
+        "resultShareRegistryPresetWorkspaceHealthThresholdPreferences",
+      ),
+    ).toContain("\"healthyMin\":80");
+    expect(
+      window.localStorage.getItem("resultShareRegistryPresetLocalAuditEvents"),
+    ).toContain("preset_workspace_health_threshold_validation_failed");
+
+    await user.click(workspaceScoped.getByRole("button", { name: "Reset thresholds" }));
+
+    await waitFor(() => {
+      expect(
+        window.localStorage.getItem(
+          "resultShareRegistryPresetWorkspaceHealthThresholdPreferences",
+        ),
+      ).toBeNull();
+    });
+    expect(window.localStorage.getItem("resultShareRegistryGrantPresets")).toContain(
+      "Grant default",
+    );
+    expect(workspaceScoped.getByText("attention")).toBeVisible();
+  });
+
   it("validates and merges workspace-state import with stale pin preview", async () => {
     window.localStorage.setItem(
       "resultShareRegistryGrantPresets",
