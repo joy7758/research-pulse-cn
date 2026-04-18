@@ -23,6 +23,11 @@ import type {
   ResultShareRegistryPresetImportApplyResult,
   ResultShareRegistryPresetImportMode,
   ResultShareRegistryPresetImportPreview,
+  ResultShareRegistryPresetLocalAuditActionType,
+  ResultShareRegistryPresetLocalAuditEvent,
+  ResultShareRegistryPresetLocalAuditLoadResult,
+  ResultShareRegistryPresetLocalAuditStatus,
+  ResultShareRegistryPresetLocalAuditSummary,
   ResultShareRegistryPresetRecoveryAction,
   ResultShareRegistrySavedViewApplyMode,
   ResultShareRegistrySavedView,
@@ -41,10 +46,14 @@ export const RESULT_SHARE_REGISTRY_DEFAULT_PRESET_ID_STORAGE_KEY =
   "resultShareRegistryDefaultPresetId";
 export const RESULT_SHARE_REGISTRY_LAST_GOOD_BACKUP_STORAGE_KEY =
   "resultShareRegistryPresetLastGoodBackup";
+export const RESULT_SHARE_REGISTRY_LOCAL_AUDIT_STORAGE_KEY =
+  "resultShareRegistryPresetLocalAuditEvents";
 export const RESULT_SHARE_REGISTRY_PRESET_EXPORT_SCHEMA_VERSION =
   "result-share-registry-presets.v1";
 export const RESULT_SHARE_REGISTRY_PRESET_BACKUP_SCHEMA_VERSION =
   "result-share-registry-presets-backup.v1";
+const RESULT_SHARE_REGISTRY_LOCAL_AUDIT_MAX_EVENTS = 100;
+const RESULT_SHARE_REGISTRY_LOCAL_AUDIT_RECENT_LIMIT = 12;
 
 const presetTopLevelAllowedKeys = new Set([
   "schemaVersion",
@@ -84,6 +93,28 @@ const presetDrilldownAllowedKeys = new Set([
 const unsafeFieldPattern =
   /(^|_)(token|secret|password|hash|rawalias|rawsharetoken|localpath|absolutepath|sourcefile)(_|$)|rawAlias|rawShareToken|localPath|absolutePath|sourceFile|alias_hash|token_hash/i;
 
+const presetLocalAuditActionTypes: ResultShareRegistryPresetLocalAuditActionType[] = [
+  "preset_saved",
+  "preset_applied",
+  "preset_overwritten",
+  "preset_deleted",
+  "default_set",
+  "default_cleared",
+  "import_dry_run",
+  "import_merge",
+  "import_replace",
+  "export_created",
+  "integrity_checked",
+  "invalid_presets_discarded",
+  "scope_reset",
+  "all_presets_reset",
+  "dangling_default_cleared",
+  "backup_created",
+  "backup_restored",
+  "recovery_failed",
+  "validation_failed",
+];
+
 type StorageInspectionScopeResult = {
   keyPresent: boolean;
   rawCount: number;
@@ -96,6 +127,13 @@ export type ResultShareRegistryPresetStorageInspection = {
   diagnostics: ResultShareRegistryPresetStorageDiagnostics;
   lastGoodBackup: ResultShareRegistryPresetBackupSnapshot | null;
 };
+
+function createAuditEventId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `registry-preset-audit-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
 
 function buildIssue(
   issue: ResultShareRegistryPresetIntegrityIssue,
@@ -638,8 +676,270 @@ export function redactUnsafeImportIssueDetails(detail: string | null | undefined
   return looksUnsafeFieldName(detail) ? "[redacted]" : detail;
 }
 
+export function sanitizePresetAuditDetails(detail: string | null | undefined): string | null {
+  if (!detail) {
+    return null;
+  }
+  return redactUnsafeImportIssueDetails(detail);
+}
+
+function isAuditActionType(
+  value: unknown,
+): value is ResultShareRegistryPresetLocalAuditActionType {
+  return (
+    typeof value === "string" &&
+    presetLocalAuditActionTypes.includes(
+      value as ResultShareRegistryPresetLocalAuditActionType,
+    )
+  );
+}
+
+function isAuditStatus(
+  value: unknown,
+): value is ResultShareRegistryPresetLocalAuditStatus {
+  return value === "success" || value === "warning" || value === "failed";
+}
+
+function normalizeLocalAuditEvent(
+  value: unknown,
+): ResultShareRegistryPresetLocalAuditEvent | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const id = typeof value.id === "string" ? value.id.trim() : "";
+  const occurredAt = typeof value.occurredAt === "string" ? value.occurredAt.trim() : "";
+  const summary = typeof value.summary === "string" ? value.summary.trim() : "";
+  if (!id || !occurredAt || !summary) {
+    return null;
+  }
+  if (!isAuditActionType(value.actionType) || !isAuditStatus(value.status)) {
+    return null;
+  }
+  const scope =
+    value.scope === null || value.scope === undefined
+      ? null
+      : value.scope === "storage" ||
+          (typeof value.scope === "string" && normalizeScope(value.scope))
+        ? (value.scope as ResultShareRegistrySavedViewScope | "storage")
+        : null;
+  const presetId = typeof value.presetId === "string" ? value.presetId.trim() : null;
+  const presetName = typeof value.presetName === "string" ? value.presetName.trim() : null;
+  return {
+    id,
+    occurredAt,
+    actionType: value.actionType,
+    scope,
+    presetId: presetId || null,
+    presetName: presetName || null,
+    status: value.status,
+    summary,
+    safeDetails: sanitizePresetAuditDetails(
+      typeof value.safeDetails === "string" ? value.safeDetails : null,
+    ),
+  };
+}
+
+export function createPresetAuditEvent(
+  actionType: ResultShareRegistryPresetLocalAuditActionType,
+  status: ResultShareRegistryPresetLocalAuditStatus,
+  summary: string,
+  options?: {
+    scope?: ResultShareRegistrySavedViewScope | "storage" | null;
+    presetId?: string | null;
+    presetName?: string | null;
+    safeDetails?: string | null;
+    occurredAt?: string;
+    id?: string;
+  },
+): ResultShareRegistryPresetLocalAuditEvent {
+  return {
+    id: options?.id ?? createAuditEventId(),
+    occurredAt: options?.occurredAt ?? new Date().toISOString(),
+    actionType,
+    scope: options?.scope ?? null,
+    presetId: options?.presetId?.trim() || null,
+    presetName: options?.presetName?.trim() || null,
+    status,
+    summary: summary.trim(),
+    safeDetails: sanitizePresetAuditDetails(options?.safeDetails ?? null),
+  };
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+export function loadResultShareRegistryPresetAuditEvents(
+  storage: Storage | null | undefined,
+): ResultShareRegistryPresetLocalAuditLoadResult {
+  if (!storage) {
+    return {
+      events: [],
+      storageWarning: null,
+    };
+  }
+  let raw: string | null = null;
+  try {
+    raw = storage.getItem(RESULT_SHARE_REGISTRY_LOCAL_AUDIT_STORAGE_KEY);
+  } catch {
+    return {
+      events: [],
+      storageWarning: "Local preset audit storage could not be read.",
+    };
+  }
+  if (!raw) {
+    return {
+      events: [],
+      storageWarning: null,
+    };
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      return {
+        events: [],
+        storageWarning: "Local preset audit storage must contain an array.",
+      };
+    }
+    const events = parsed
+      .map((item) => normalizeLocalAuditEvent(item))
+      .filter((item): item is ResultShareRegistryPresetLocalAuditEvent => item !== null)
+      .slice(0, RESULT_SHARE_REGISTRY_LOCAL_AUDIT_MAX_EVENTS);
+    return {
+      events,
+      storageWarning:
+        events.length !== parsed.length
+          ? "Some local audit entries were invalid and were ignored."
+          : null,
+    };
+  } catch {
+    return {
+      events: [],
+      storageWarning: "Local preset audit storage is not valid JSON.",
+    };
+  }
+}
+
+export function saveResultShareRegistryPresetAuditEvents(
+  storage: Storage | null | undefined,
+  events: ResultShareRegistryPresetLocalAuditEvent[],
+): ResultShareRegistryPresetLocalAuditEvent[] {
+  const normalizedEvents = events
+    .map((event) => normalizeLocalAuditEvent(event))
+    .filter((event): event is ResultShareRegistryPresetLocalAuditEvent => event !== null)
+    .slice(0, RESULT_SHARE_REGISTRY_LOCAL_AUDIT_MAX_EVENTS);
+  if (!storage) {
+    return normalizedEvents;
+  }
+  storage.setItem(
+    RESULT_SHARE_REGISTRY_LOCAL_AUDIT_STORAGE_KEY,
+    JSON.stringify(normalizedEvents),
+  );
+  return normalizedEvents;
+}
+
+export function appendResultShareRegistryPresetAuditEvent(
+  storage: Storage | null | undefined,
+  event: ResultShareRegistryPresetLocalAuditEvent,
+): ResultShareRegistryPresetLocalAuditLoadResult {
+  const current = loadResultShareRegistryPresetAuditEvents(storage);
+  const nextEvents = [event, ...current.events].slice(
+    0,
+    RESULT_SHARE_REGISTRY_LOCAL_AUDIT_MAX_EVENTS,
+  );
+  return {
+    events: saveResultShareRegistryPresetAuditEvents(storage, nextEvents),
+    storageWarning: null,
+  };
+}
+
+export function clearResultShareRegistryPresetAuditEvents(
+  storage: Storage | null | undefined,
+): void {
+  if (!storage) {
+    return;
+  }
+  storage.removeItem(RESULT_SHARE_REGISTRY_LOCAL_AUDIT_STORAGE_KEY);
+}
+
+function createEmptyAuditActionCount(): Record<ResultShareRegistryPresetLocalAuditActionType, number> {
+  return presetLocalAuditActionTypes.reduce(
+    (counts, actionType) => ({
+      ...counts,
+      [actionType]: 0,
+    }),
+    {} as Record<ResultShareRegistryPresetLocalAuditActionType, number>,
+  );
+}
+
+export function buildResultShareRegistryPresetAuditSummary(
+  events: ResultShareRegistryPresetLocalAuditEvent[],
+  options?: {
+    storageWarning?: string | null;
+  },
+): ResultShareRegistryPresetLocalAuditSummary {
+  const byActionType = createEmptyAuditActionCount();
+  const byScope = {
+    grant_registry: 0,
+    alias_registry: 0,
+    storage: 0,
+    unscoped: 0,
+  };
+  let successCount = 0;
+  let warningCount = 0;
+  let failedCount = 0;
+
+  for (const event of events) {
+    byActionType[event.actionType] += 1;
+    if (event.scope === "grant_registry") {
+      byScope.grant_registry += 1;
+    } else if (event.scope === "alias_registry") {
+      byScope.alias_registry += 1;
+    } else if (event.scope === "storage") {
+      byScope.storage += 1;
+    } else {
+      byScope.unscoped += 1;
+    }
+    if (event.status === "success") {
+      successCount += 1;
+    } else if (event.status === "warning") {
+      warningCount += 1;
+    } else {
+      failedCount += 1;
+    }
+  }
+
+  const backupRelatedCount =
+    byActionType.backup_created + byActionType.backup_restored;
+  const recoveryRelatedCount =
+    byActionType.invalid_presets_discarded +
+    byActionType.scope_reset +
+    byActionType.all_presets_reset +
+    byActionType.dangling_default_cleared +
+    byActionType.backup_restored +
+    byActionType.recovery_failed;
+  const importRelatedCount =
+    byActionType.import_dry_run +
+    byActionType.import_merge +
+    byActionType.import_replace +
+    byActionType.validation_failed;
+  const exportRelatedCount = byActionType.export_created;
+
+  return {
+    totalEvents: events.length,
+    successCount,
+    warningCount,
+    failedCount,
+    lastEventAt: events[0]?.occurredAt ?? null,
+    byActionType,
+    byScope,
+    recentEvents: events.slice(0, RESULT_SHARE_REGISTRY_LOCAL_AUDIT_RECENT_LIMIT),
+    backupRelatedCount,
+    recoveryRelatedCount,
+    importRelatedCount,
+    exportRelatedCount,
+    storageWarning: options?.storageWarning ?? null,
+  };
 }
 
 function collectUnexpectedKeys(

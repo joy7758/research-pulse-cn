@@ -96,6 +96,7 @@
 - No source-file, attachment, or note sharing
 
 ## Future Work
+- Local-only preset activity history and audit summary was added in the next phase without changing the same safety boundary or adding backend storage.
 - Team preset management only if later justified
 - Signed preset packages only if later justified
 - Richer operator workspace recovery tools only if later justified
