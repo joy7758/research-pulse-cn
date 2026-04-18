@@ -4,6 +4,7 @@ import "./App.css";
 import { ConversionDrilldownPanel } from "./components/ConversionDrilldownPanel";
 import { ConversionFilterBar } from "./components/ConversionFilterBar";
 import { ConversionOverviewPanel } from "./components/ConversionOverviewPanel";
+import { ResultShareRegistryPanel } from "./components/ResultShareRegistryPanel";
 import { TokenEntryView } from "./components/TokenEntryView";
 import { WorkspaceDetailView } from "./components/WorkspaceDetailView";
 import { WorkspaceListPanel } from "./components/WorkspaceListPanel";
@@ -22,6 +23,7 @@ import {
   buildPaperLookupOptions,
   buildResultShareAliasDrilldownViewModel,
   buildResultShareGrantDrilldownViewModel,
+  buildResultShareRegistryViewModel,
   buildShareGrantIssueViewModel,
   buildUserLookupOptions,
   buildWorkspaceBoardViewModel,
@@ -34,6 +36,11 @@ import {
   GroupWorkspaceAdminApiError,
   type GroupWorkspaceAdminApiClient,
 } from "./lib/apiClient";
+import {
+  buildResultShareRegistryFilterSummaryViewModel,
+  DEFAULT_RESULT_SHARE_REGISTRY_FILTER_INPUT,
+  normalizeResultShareRegistryFilterInput,
+} from "./lib/resultShareRegistryFilters";
 import {
   clearVisibleAdminTokenHints,
   extractAdminTokenFromLocation,
@@ -48,9 +55,11 @@ import type {
   GroupWorkspaceWorkspaceConversionDrilldownRead,
   GroupWorkspaceWorkspaceConversionOverviewRead,
   PaperProfileRead,
+  ResultShareAliasRead,
   ResultShareAliasConversionDrilldownRead,
   ResultShareGrantConversionDrilldownRead,
   ResultShareGrantRead,
+  ResultShareRegistryFilterInput,
   ShareGrantOneTimeDisplayModel,
   UserProfileRead,
   WorkspaceBoardShareCreateInput,
@@ -111,6 +120,8 @@ export function GroupWorkspaceAdminShell({
   const [selectedWorkspace, setSelectedWorkspace] = useState<GroupWorkspaceRead | null>(null);
   const [selectedBoard, setSelectedBoard] = useState<GroupWorkspaceBoardRead | null>(null);
   const [selectedShareGrants, setSelectedShareGrants] = useState<ResultShareGrantRead[]>([]);
+  const [resultShareGrants, setResultShareGrants] = useState<ResultShareGrantRead[]>([]);
+  const [resultShareAliases, setResultShareAliases] = useState<ResultShareAliasRead[]>([]);
   const [globalConversionOverview, setGlobalConversionOverview] =
     useState<GroupWorkspaceConversionOverviewRead | null>(null);
   const [globalConversionDrilldown, setGlobalConversionDrilldown] =
@@ -135,6 +146,7 @@ export function GroupWorkspaceAdminShell({
   const [workspaceConversionLoading, setWorkspaceConversionLoading] = useState(false);
   const [workspaceConversionDrilldownLoading, setWorkspaceConversionDrilldownLoading] =
     useState(false);
+  const [resultShareRegistryLoading, setResultShareRegistryLoading] = useState(false);
   const [shareDrilldownLoading, setShareDrilldownLoading] = useState(false);
   const [connectError, setConnectError] = useState<ApiErrorViewModel | null>(null);
   const [actionError, setActionError] = useState<ApiErrorViewModel | null>(null);
@@ -144,6 +156,8 @@ export function GroupWorkspaceAdminShell({
   const [workspaceConversionError, setWorkspaceConversionError] =
     useState<ApiErrorViewModel | null>(null);
   const [workspaceConversionDrilldownError, setWorkspaceConversionDrilldownError] =
+    useState<ApiErrorViewModel | null>(null);
+  const [resultShareRegistryError, setResultShareRegistryError] =
     useState<ApiErrorViewModel | null>(null);
   const [shareDrilldownError, setShareDrilldownError] = useState<ApiErrorViewModel | null>(null);
   const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
@@ -162,6 +176,10 @@ export function GroupWorkspaceAdminShell({
   );
   const [shareDrilldownFilterDraft, setShareDrilldownFilterDraft] =
     useState<ConversionFilterInput>(DEFAULT_CONVERSION_FILTER_INPUT);
+  const [resultShareRegistryFilters, setResultShareRegistryFilters] =
+    useState<ResultShareRegistryFilterInput>(DEFAULT_RESULT_SHARE_REGISTRY_FILTER_INPUT);
+  const [resultShareRegistryFilterDraft, setResultShareRegistryFilterDraft] =
+    useState<ResultShareRegistryFilterInput>(DEFAULT_RESULT_SHARE_REGISTRY_FILTER_INPUT);
   const [shareGrantLookupId, setShareGrantLookupId] = useState("");
   const [shareAliasLookupId, setShareAliasLookupId] = useState("");
   const [createInput, setCreateInput] = useState<WorkspaceCreateInput>({
@@ -196,6 +214,8 @@ export function GroupWorkspaceAdminShell({
     setSelectedWorkspace(null);
     setSelectedBoard(null);
     setSelectedShareGrants([]);
+    setResultShareGrants([]);
+    setResultShareAliases([]);
     setGlobalConversionOverview(null);
     setGlobalConversionDrilldown(null);
     setWorkspaceConversionOverview(null);
@@ -208,6 +228,7 @@ export function GroupWorkspaceAdminShell({
     setGlobalConversionDrilldownError(null);
     setWorkspaceConversionError(null);
     setWorkspaceConversionDrilldownError(null);
+    setResultShareRegistryError(null);
     setShareDrilldownError(null);
     setGlobalConversionFilters(DEFAULT_CONVERSION_FILTER_INPUT);
     setGlobalConversionFilterDraft(DEFAULT_CONVERSION_FILTER_INPUT);
@@ -215,6 +236,8 @@ export function GroupWorkspaceAdminShell({
     setWorkspaceConversionFilterDraft(DEFAULT_CONVERSION_FILTER_INPUT);
     setShareDrilldownFilters(DEFAULT_CONVERSION_FILTER_INPUT);
     setShareDrilldownFilterDraft(DEFAULT_CONVERSION_FILTER_INPUT);
+    setResultShareRegistryFilters(DEFAULT_RESULT_SHARE_REGISTRY_FILTER_INPUT);
+    setResultShareRegistryFilterDraft(DEFAULT_RESULT_SHARE_REGISTRY_FILTER_INPUT);
     setShareGrantLookupId("");
     setShareAliasLookupId("");
     setOneTimeGrant(null);
@@ -309,6 +332,39 @@ export function GroupWorkspaceAdminShell({
       } finally {
         setWorkspaceConversionLoading(false);
         setWorkspaceConversionDrilldownLoading(false);
+      }
+    },
+    [toApiErrorViewModel],
+  );
+
+  const loadResultShareRegistry = useCallback(
+    async (
+      client: GroupWorkspaceAdminApiClient,
+      filters: ResultShareRegistryFilterInput,
+    ) => {
+      setResultShareRegistryLoading(true);
+      setResultShareRegistryError(null);
+      try {
+        const [grants, aliases] = await Promise.all([
+          client.listResultShareGrants({
+            workspaceId: filters.workspaceId ?? undefined,
+            shareKind: filters.shareKind ?? undefined,
+            status: filters.grantStatus ?? undefined,
+          }),
+          client.listResultShareAliases({
+            resultShareGrantId: filters.resultShareGrantId ?? undefined,
+            shareKind: filters.shareKind ?? undefined,
+            status: filters.aliasStatus ?? undefined,
+          }),
+        ]);
+        setResultShareGrants(grants);
+        setResultShareAliases(aliases);
+      } catch (error) {
+        setResultShareGrants([]);
+        setResultShareAliases([]);
+        setResultShareRegistryError(toApiErrorViewModel(error));
+      } finally {
+        setResultShareRegistryLoading(false);
       }
     },
     [toApiErrorViewModel],
@@ -448,6 +504,7 @@ export function GroupWorkspaceAdminShell({
         setPapers(paperList);
         setAdminTokenInput("");
         await loadGlobalConversionPanels(client, globalConversionFilters);
+        await loadResultShareRegistry(client, resultShareRegistryFilters);
 
         const initialWorkspaceId = workspaceList[0]?.id ?? null;
         if (initialWorkspaceId) {
@@ -473,8 +530,10 @@ export function GroupWorkspaceAdminShell({
       globalConversionFilters,
       handleError,
       loadGlobalConversionPanels,
+      loadResultShareRegistry,
       loadWorkspaceContext,
       resetConnectedState,
+      resultShareRegistryFilters,
       workspaceConversionFilters,
     ],
   );
@@ -604,6 +663,14 @@ export function GroupWorkspaceAdminShell({
       ),
     [shareDrilldownFilters],
   );
+  const resultShareRegistryViewModel = useMemo(
+    () => buildResultShareRegistryViewModel(resultShareGrants, resultShareAliases),
+    [resultShareAliases, resultShareGrants],
+  );
+  const resultShareRegistryFilterSummary = useMemo(
+    () => buildResultShareRegistryFilterSummaryViewModel(resultShareRegistryFilters),
+    [resultShareRegistryFilters],
+  );
   const shareDrilldownCurrentTargetLabel = useMemo(() => {
     if (shareDrilldownGrantViewModel) {
       return `Grant · ${shareDrilldownGrantViewModel.shareGrant.title}`;
@@ -644,6 +711,18 @@ export function GroupWorkspaceAdminShell({
       }),
     );
   }, []);
+
+  const patchResultShareRegistryFilterDraft = useCallback(
+    (patch: Partial<ResultShareRegistryFilterInput>) => {
+      setResultShareRegistryFilterDraft((current) =>
+        normalizeResultShareRegistryFilterInput({
+          ...current,
+          ...patch,
+        }),
+      );
+    },
+    [],
+  );
 
   const handleOpenShell = useCallback(() => {
     void connectWithToken({
@@ -799,6 +878,25 @@ export function GroupWorkspaceAdminShell({
     );
   }, [loadShareDrilldown, session, shareDrilldownTarget]);
 
+  const handleApplyResultShareRegistryFilters = useCallback(() => {
+    if (!session) {
+      return;
+    }
+    const nextFilters = normalizeResultShareRegistryFilterInput(resultShareRegistryFilterDraft);
+    setResultShareRegistryFilterDraft(nextFilters);
+    setResultShareRegistryFilters(nextFilters);
+    void loadResultShareRegistry(session.client, nextFilters);
+  }, [loadResultShareRegistry, resultShareRegistryFilterDraft, session]);
+
+  const handleResetResultShareRegistryFilters = useCallback(() => {
+    if (!session) {
+      return;
+    }
+    setResultShareRegistryFilterDraft(DEFAULT_RESULT_SHARE_REGISTRY_FILTER_INPUT);
+    setResultShareRegistryFilters(DEFAULT_RESULT_SHARE_REGISTRY_FILTER_INPUT);
+    void loadResultShareRegistry(session.client, DEFAULT_RESULT_SHARE_REGISTRY_FILTER_INPUT);
+  }, [loadResultShareRegistry, session]);
+
   const handleClearShareDrilldown = useCallback(() => {
     setShareDrilldownTarget(null);
     setShareGrantDrilldown(null);
@@ -907,9 +1005,18 @@ export function GroupWorkspaceAdminShell({
       setOneTimeGrant(buildShareGrantIssueViewModel(issued));
       setShareInput({ display_label: "", expires_at: null });
       await refreshWorkspaceContext();
+      await loadResultShareRegistry(session.client, resultShareRegistryFilters);
       setNoticeMessage("Issued workspace_board share grant.");
     });
-  }, [refreshWorkspaceContext, runAction, selectedWorkspaceId, session, shareInput]);
+  }, [
+    loadResultShareRegistry,
+    refreshWorkspaceContext,
+    resultShareRegistryFilters,
+    runAction,
+    selectedWorkspaceId,
+    session,
+    shareInput,
+  ]);
 
   const handleRevokeShareGrant = useCallback(
     (grantId: string) => {
@@ -919,10 +1026,11 @@ export function GroupWorkspaceAdminShell({
       void runAction("Revoking share grant...", async () => {
         await session.client.revokeResultShareGrant(grantId);
         await refreshWorkspaceContext();
+        await loadResultShareRegistry(session.client, resultShareRegistryFilters);
         setNoticeMessage("Revoked workspace_board share grant.");
       });
     },
-    [refreshWorkspaceContext, runAction, session],
+    [loadResultShareRegistry, refreshWorkspaceContext, resultShareRegistryFilters, runAction, session],
   );
 
   if (!session) {
@@ -1025,6 +1133,26 @@ export function GroupWorkspaceAdminShell({
         error={globalConversionDrilldownError}
         empty={globalConversionDrilldownViewModel?.empty ?? !globalConversionDrilldownLoading}
         emptyMessage="No global drilldown activity has been recorded in this analytics window."
+      />
+
+      <ResultShareRegistryPanel
+        filters={resultShareRegistryFilterDraft}
+        filterSummary={resultShareRegistryFilterSummary}
+        registry={
+          resultShareRegistryLoading &&
+          resultShareGrants.length === 0 &&
+          resultShareAliases.length === 0
+            ? null
+            : resultShareRegistryViewModel
+        }
+        currentTargetLabel={shareDrilldownCurrentTargetLabel}
+        loading={resultShareRegistryLoading}
+        error={resultShareRegistryError}
+        onFilterChange={patchResultShareRegistryFilterDraft}
+        onApplyFilters={handleApplyResultShareRegistryFilters}
+        onResetFilters={handleResetResultShareRegistryFilters}
+        onOpenGrantDrilldown={handleOpenShareGrantDrilldown}
+        onOpenAliasDrilldown={handleOpenShareAliasDrilldown}
       />
 
       <section className="admin-shell-grid">

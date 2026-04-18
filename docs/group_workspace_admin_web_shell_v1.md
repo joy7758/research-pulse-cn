@@ -106,6 +106,14 @@ The same shell now also includes a minimal read-only per-share dashboard over th
 - keep alias drilldown explicitly access-path scoped with no invented collect attribution
 - reuse the same in-memory admin bearer-token flow and compact filter-bar pattern
 
+The same shell now also includes a minimal read-only result-share registry layer:
+
+- a global share-grant registry with safe scope/status/timestamp summaries
+- a global alias registry with safe prefix/status/timestamp summaries
+- explicit grant-to-alias relationship hints in registry rows
+- quick-open actions that reuse the existing per-share drilldown panel
+- no new create/revoke/bulk actions in the registry itself
+
 ## Safety Exclusions
 
 The shell must not expose or reconstruct:

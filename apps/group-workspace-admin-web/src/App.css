@@ -348,6 +348,30 @@ button {
   color: #4e5f81;
 }
 
+.registry-item-stack {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.registry-item-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.registry-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.registry-current-target {
+  min-width: 220px;
+}
+
 .data-list-item .button-row {
   justify-content: flex-end;
   align-self: flex-start;
@@ -659,12 +683,17 @@ button {
   }
 
   .ranked-item-header,
-  .activity-card-header {
+  .activity-card-header,
+  .registry-item-header {
     flex-direction: column;
   }
 
   .ranked-item-time {
     min-width: 0;
     text-align: left;
+  }
+
+  .registry-meta-grid {
+    grid-template-columns: 1fr;
   }
 }

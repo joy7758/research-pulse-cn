@@ -11,11 +11,13 @@ import type {
   GroupWorkspaceWorkspaceConversionDrilldownRead,
   GroupWorkspaceWorkspaceConversionOverviewRead,
   PaperProfileRead,
+  ResultShareAliasRead,
   ResultShareAliasConversionDrilldownRead,
   ResultShareGrantIssueResponse,
   ResultShareGrantConversionDrilldownRead,
   ResultShareGrantRead,
   ResultShareGrantRevokeResponse,
+  ResultShareAliasStatus,
   ResultShareGrantStatus,
   ResultShareKind,
   UserProfileRead,
@@ -290,7 +292,7 @@ export function createGroupWorkspaceAdminApiClient(
       userId?: string;
       shareKind?: ResultShareKind;
       status?: ResultShareGrantStatus;
-    }) => {
+    } = {}) => {
       const query = new URLSearchParams();
       if (params.workspaceId) {
         query.set("workspace_id", params.workspaceId);
@@ -307,6 +309,27 @@ export function createGroupWorkspaceAdminApiClient(
       return request<ResultShareGrantRead[]>({
         method: "GET",
         path: "/admin/result-share-grants",
+        query,
+      });
+    },
+    listResultShareAliases: (params: {
+      resultShareGrantId?: string;
+      shareKind?: ResultShareKind;
+      status?: ResultShareAliasStatus;
+    } = {}) => {
+      const query = new URLSearchParams();
+      if (params.resultShareGrantId) {
+        query.set("result_share_grant_id", params.resultShareGrantId);
+      }
+      if (params.shareKind) {
+        query.set("share_kind", params.shareKind);
+      }
+      if (params.status) {
+        query.set("status", params.status);
+      }
+      return request<ResultShareAliasRead[]>({
+        method: "GET",
+        path: "/admin/result-share-aliases",
         query,
       });
     },

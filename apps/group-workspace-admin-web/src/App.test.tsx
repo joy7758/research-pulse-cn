@@ -12,6 +12,7 @@ import type {
   GroupWorkspaceWorkspaceConversionDrilldownRead,
   GroupWorkspaceWorkspaceConversionOverviewRead,
   PaperProfileRead,
+  ResultShareAliasRead,
   ResultShareAliasConversionDrilldownRead,
   ResultShareGrantConversionDrilldownRead,
   ResultShareGrantIssueResponse,
@@ -165,6 +166,23 @@ function shareGrantFixture(): ResultShareGrantRead[] {
       last_used_at: null,
       created_at: "2026-04-16T06:10:00Z",
       updated_at: "2026-04-16T06:10:00Z",
+    },
+  ];
+}
+
+function shareAliasFixture(): ResultShareAliasRead[] {
+  return [
+    {
+      id: "alias-1",
+      result_share_grant_id: "grant-1",
+      share_kind: "workspace_board",
+      status: "active",
+      display_label: "Board alias",
+      alias_prefix: "abc123",
+      expires_at: null,
+      last_used_at: "2026-04-17T08:00:00Z",
+      created_at: "2026-04-16T06:11:00Z",
+      updated_at: "2026-04-16T06:11:00Z",
     },
   ];
 }
@@ -559,6 +577,7 @@ function buildApiClient() {
     addWorkspacePaper: vi.fn().mockResolvedValue(undefined),
     removeWorkspacePaper: vi.fn().mockResolvedValue(undefined),
     listResultShareGrants: vi.fn().mockResolvedValue(shareGrantFixture()),
+    listResultShareAliases: vi.fn().mockResolvedValue(shareAliasFixture()),
     createWorkspaceBoardShareGrant: vi.fn().mockResolvedValue(issuedShareFixture()),
     revokeResultShareGrant: vi.fn().mockResolvedValue(undefined),
     listUsers: vi.fn().mockResolvedValue(userFixture()),
@@ -608,6 +627,7 @@ describe("group workspace admin shell", () => {
     expect(screen.getByRole("heading", { name: "Workspace conversion filters" })).toBeVisible();
     expect(screen.getByRole("heading", { name: "Global conversion overview" })).toBeVisible();
     expect(screen.getByRole("heading", { name: "Global conversion drilldown" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Result share registry" })).toBeVisible();
     expect(screen.getByRole("heading", { name: "Workspace conversion overview" })).toBeVisible();
     expect(screen.getByRole("heading", { name: "Workspace conversion drilldown" })).toBeVisible();
     expect(screen.getByRole("heading", { name: "Share grant and alias drilldown" })).toBeVisible();
@@ -950,6 +970,57 @@ describe("group workspace admin shell", () => {
         limit: 10,
       });
     });
+  });
+
+  it("renders read-only share registries and quick-opens drilldown from registry rows", async () => {
+    const client = buildApiClient();
+    const user = userEvent.setup();
+
+    render(<GroupWorkspaceAdminShell apiClientFactory={() => client} />);
+
+    await user.type(screen.getByLabelText(/admin bearer token/i), "manual-token");
+    await user.click(screen.getByRole("button", { name: /open workspace shell/i }));
+
+    expect(await screen.findByRole("heading", { name: "Result share registry" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Share grant registry" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Alias registry" })).toBeVisible();
+    expect(screen.getByText("Board alias")).toBeVisible();
+    expect(screen.getAllByText("Board share").length).toBeGreaterThan(0);
+
+    await user.click(screen.getByRole("button", { name: "Open linked grant" }));
+
+    await waitFor(() => {
+      expect(client.getResultShareGrantConversionDrilldown).toHaveBeenLastCalledWith(
+        "grant-1",
+        DEFAULT_CONVERSION_FILTER_INPUT,
+      );
+    });
+  });
+
+  it("renders a filtered empty registry state without breaking the rest of the shell", async () => {
+    const client = buildApiClient();
+    client.listResultShareGrants.mockResolvedValue([]);
+    client.listResultShareAliases.mockResolvedValue([]);
+    const user = userEvent.setup();
+
+    render(<GroupWorkspaceAdminShell apiClientFactory={() => client} />);
+
+    await user.type(screen.getByLabelText(/admin bearer token/i), "manual-token");
+    await user.click(screen.getByRole("button", { name: /open workspace shell/i }));
+
+    const registryPanel = screen.getByRole("heading", { name: "Result share registry" }).closest("section");
+    expect(registryPanel).not.toBeNull();
+    const scoped = within(registryPanel as HTMLElement);
+
+    expect(
+      await scoped.findByText(
+        "Try widening the share-grant filters or reset back to the default registry view.",
+      ),
+    ).toBeVisible();
+    expect(
+      scoped.getByText("Try widening the alias filters or reset back to the default registry view."),
+    ).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Workspace conversion overview" })).toBeVisible();
   });
 
   it("renders a graceful empty per-share drilldown state", async () => {

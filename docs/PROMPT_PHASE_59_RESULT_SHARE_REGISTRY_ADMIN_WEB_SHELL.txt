@@ -1,0 +1,265 @@
+Read AGENTS.md, docs/BUILD_SPEC.md, docs/architecture.md, docs/development.md, docs/group_workspace_admin_web_shell_v1.md, docs/result_share_grant_alias_admin_web_shell_v1.md, docs/result_share_grant_alias_drilldown_reserve_v1.md, docs/result_share_alias_boundary_v1.md, docs/result_share_analytics_reserve_v1.md, and docs/group_workspace_result_sharing_v1.md before editing.
+
+Implement Phase 59 only: result share registry admin web shell v1.
+
+Hard boundaries for this phase:
+- Do not add source file sharing.
+- Do not add local attachment sharing, note-file sharing, or cloud attachment sync.
+- Do not add real-time collaboration or live multi-user editing.
+- Do not add new delivery channels.
+- Do not add desktop or mini UI work in this phase.
+- Do not add a generic end-user login/session system.
+- Do not add campaign/broadcast/referral behavior.
+- Do not add third-party browser analytics scripts.
+- Do not add AI attribution, AI summarization, or LLM-based dashboard copy.
+- Do not create a new frontend app; extend the existing group-workspace-admin-web only.
+- Do not weaken existing auth boundaries.
+- Do not replace the modular monolith backend architecture.
+
+Primary goal:
+Extend the existing internal group-workspace admin shell with a read-only registry/index for:
+1. ResultShareGrant
+2. ResultShareAlias
+
+This phase should make the repository suitable for:
+- browsing all share grants
+- browsing all aliases
+- filtering the registries by a few high-signal dimensions
+- opening grant/alias drilldown from the registry
+- avoiding manual grant_id / alias_id entry for common operator workflows
+- staying strictly read-only and file-safe
+
+Architectural intent:
+- Reuse existing apps/group-workspace-admin-web.
+- Reuse existing read-only backend endpoints only:
+  - GET /admin/result-share-grants
+  - GET /admin/result-share-aliases
+  - GET /admin/result-share-grants/{grant_id}/conversion-drilldown
+  - GET /admin/result-share-aliases/{alias_id}/conversion-drilldown
+- Keep token handling exactly as the current in-memory admin shell.
+- Keep the registry compact, operator-readable, and explicitly safe.
+- No source-file semantics are exposed anywhere.
+
+Required changes:
+
+1. Reuse existing app
+Work only inside:
+- apps/group-workspace-admin-web
+
+Requirements:
+- do not create a new frontend app
+- preserve current workspace list/detail/member/paper/share-grant/conversion-overview/drilldown/filter/per-share drilldown behavior
+- add registry/index views on top of the existing shell
+
+2. Existing admin auth boot flow remains unchanged
+Requirements:
+- continue to support in-memory admin bearer token entry
+- continue query/fragment token ingestion and immediate URL cleanup
+- do not persist admin bearer tokens in:
+  - localStorage
+  - sessionStorage
+  - cookies
+- reuse existing API base URL handling
+
+3. API client extension
+Extend the existing typed API client.
+
+Required calls:
+- GET /admin/result-share-grants
+- GET /admin/result-share-aliases
+- GET /admin/result-share-grants/{grant_id}/conversion-drilldown
+- GET /admin/result-share-aliases/{alias_id}/conversion-drilldown
+
+Support reasonable filters where the backend already supports them:
+For share grants:
+- share_kind
+- status
+- workspace_id
+- digest_issue_id if already supported
+- paper_id if already supported
+
+For aliases:
+- result_share_grant_id
+- share_kind
+- status
+
+Requirements:
+- keep network logic out of React components
+- attach bearer token from in-memory state only
+- build query params deterministically
+- return structured error objects suitable for UI display
+
+4. Read models / view models
+Add frontend types/view models for:
+- ResultShareGrantRegistryItemViewModel
+- ResultShareAliasRegistryItemViewModel
+- ResultShareRegistryFilterInput
+- ResultShareRegistrySummaryViewModel
+- ResultShareRegistrySectionViewModel
+- ResultShareRegistryEmptyStateViewModel
+
+Required fields to surface for share grants:
+- id
+- share_kind
+- status
+- display_label
+- workspace_id nullable
+- digest_issue_id nullable
+- paper_id nullable
+- expires_at nullable
+- last_used_at nullable
+- created_at
+
+Required fields to surface for aliases:
+- id
+- result_share_grant_id
+- share_kind
+- status
+- display_label
+- alias_prefix
+- expires_at nullable
+- last_used_at nullable
+- created_at
+
+Registry summary cards may include:
+- total listed
+- active count
+- revoked count
+- expired count
+- share kinds represented
+- aliases with recent usage
+Only derive from already loaded safe list data.
+
+5. UI structure
+Extend the existing app shell with:
+- result share registry tab/panel
+- share grant registry section
+- alias registry section
+- registry filter bar
+- summary cards
+- quick open drilldown actions
+- empty/error states
+
+Requirements:
+- do not add a heavy routing system
+- a simple internal mode/toggle/panel approach is acceptable
+- if useful, support deep-link query params like:
+  - ?view=share-registry
+  - ?grant_id=...
+  - ?alias_id=...
+- no major design system dependency unless clearly justified
+- simple responsive layout is enough
+
+6. Registry behavior
+Requirements:
+- load share grants and aliases read-only
+- allow filtering without page reload
+- allow reset to default filters
+- allow opening grant drilldown from a grant row
+- allow opening alias drilldown from an alias row
+- if an alias row is tied to a grant already listed, make that relationship visible
+- no create/revoke buttons in this phase
+- no one-time token display in this phase
+
+7. UX requirements
+Requirements:
+- show safe summaries only
+- show status clearly
+- show last_used_at / expires_at when present
+- make grant vs alias distinction obvious
+- do not expose plaintext share tokens or aliases
+- do not over-interpret usage
+- do not invent unsupported conversion percentages
+- preserve existing drilldown/filter UI behavior
+
+8. Minimal backend compatibility
+Prefer no backend changes.
+
+Allowed only if strictly needed:
+- tiny response-shape normalization fixes
+- tiny list-filter consistency fixes
+- tiny CORS/dev-origin support if current allowlist needs update
+- no migration unless absolutely necessary
+- no new mutations
+- no new analytics persistence
+
+9. Developer workflow and CI
+Reuse the existing group-workspace-admin-web app and commands.
+
+Requirements:
+- keep existing Makefile targets:
+  - workspace-admin-install
+  - workspace-admin-dev
+  - workspace-admin-lint
+  - workspace-admin-test
+  - workspace-admin-build
+- keep existing CI job for group-workspace-admin-web
+- extend tests/builds as needed
+- do not add deployment/release packaging
+
+10. Tests
+Add or update tests covering at minimum:
+
+Frontend / TS tests:
+- share grant registry shaping
+- alias registry shaping
+- registry filter shaping
+- registry summary card shaping
+- quick open drilldown launcher shaping
+- zero-data / empty-state shaping
+- token handling remains unchanged
+
+If lightweight component tests are practical:
+- registry tab render
+- share grant registry render
+- alias registry render
+- filtered registry empty state render
+- open drilldown action render
+- existing workspace list/detail/per-share drilldown behavior remains intact
+
+Backend:
+- no major backend work expected
+- if tiny compatibility changes are made, existing backend tests must continue to pass
+
+11. Documentation
+Add docs/result_share_registry_admin_web_shell_v1.md
+
+It should explain:
+- why an internal share/alias registry shell is added after per-share drilldown exists
+- grant registry vs alias registry rendering
+- safe data model
+- quick open drilldown behavior
+- current non-goals
+- future work:
+  - richer share registry filters
+  - per-share comparison views
+  - registry-level bulk ops if later justified
+  - still no source-file sharing by default
+
+Also update:
+- README.md
+- docs/development.md
+- docs/architecture.md
+- docs/group_workspace_admin_web_shell_v1.md
+- docs/result_share_grant_alias_admin_web_shell_v1.md
+- any docs that should mention the share registry shell
+
+12. Quality bar
+- keep frontend code typed and readable
+- keep backend changes zero or minimal
+- do not add unnecessary dependencies
+- do not require live external credentials in tests
+- do not add source-file sharing in this phase
+- do not add new channels in this phase
+- do not add a generic login system
+- do not weaken auth boundaries
+- do not add browser tracking scripts
+- run available checks
+- fix obvious lint/test issues
+- end with a concise summary:
+  - files changed
+  - whether any backend migration was needed
+  - changed app path
+  - surfaced registry sections
+  - quick-open behavior
+  - next-phase recommendation only

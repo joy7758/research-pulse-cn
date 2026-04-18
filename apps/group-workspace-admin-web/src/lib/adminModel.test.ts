@@ -5,6 +5,7 @@ import {
   buildPaperLookupOptions,
   buildResultShareAliasDrilldownViewModel,
   buildResultShareGrantDrilldownViewModel,
+  buildResultShareRegistryViewModel,
   buildShareGrantIssueViewModel,
   buildUserLookupOptions,
   buildWorkspaceBoardViewModel,
@@ -20,8 +21,10 @@ import type {
   GroupWorkspaceWorkspaceConversionDrilldownRead,
   GroupWorkspaceWorkspaceConversionOverviewRead,
   PaperProfileRead,
+  ResultShareAliasRead,
   ResultShareAliasConversionDrilldownRead,
   ResultShareGrantConversionDrilldownRead,
+  ResultShareGrantRead,
   UserProfileRead,
 } from "./types";
 
@@ -266,6 +269,64 @@ const workspaceConversionDrilldown: GroupWorkspaceWorkspaceConversionDrilldownRe
   },
   notes: ["Active share-grant inventory is a snapshot, not a time-series count."],
 };
+
+const resultShareGrants: ResultShareGrantRead[] = [
+  {
+    id: "grant-1",
+    share_kind: "workspace_board",
+    workspace_id: "workspace-1",
+    digest_issue_id: null,
+    paper_id: null,
+    status: "active",
+    display_label: "Board share",
+    issued_by_admin_id: "admin-1",
+    expires_at: null,
+    last_used_at: "2026-04-17T08:00:00Z",
+    created_at: "2026-04-16T06:10:00Z",
+    updated_at: "2026-04-16T06:10:00Z",
+  },
+  {
+    id: "grant-2",
+    share_kind: "digest_issue",
+    workspace_id: null,
+    digest_issue_id: "digest-1",
+    paper_id: null,
+    status: "revoked",
+    display_label: null,
+    issued_by_admin_id: "admin-1",
+    expires_at: null,
+    last_used_at: null,
+    created_at: "2026-04-15T06:10:00Z",
+    updated_at: "2026-04-15T06:10:00Z",
+  },
+];
+
+const resultShareAliases: ResultShareAliasRead[] = [
+  {
+    id: "alias-1",
+    result_share_grant_id: "grant-1",
+    share_kind: "workspace_board",
+    status: "active",
+    display_label: "Board alias",
+    alias_prefix: "abc123",
+    expires_at: null,
+    last_used_at: "2026-04-17T08:00:00Z",
+    created_at: "2026-04-16T06:11:00Z",
+    updated_at: "2026-04-16T06:11:00Z",
+  },
+  {
+    id: "alias-2",
+    result_share_grant_id: "grant-missing",
+    share_kind: "paper_snapshot",
+    status: "expired",
+    display_label: null,
+    alias_prefix: "snap99",
+    expires_at: "2026-04-17T00:00:00Z",
+    last_used_at: null,
+    created_at: "2026-04-16T07:11:00Z",
+    updated_at: "2026-04-16T07:11:00Z",
+  },
+];
 
 const resultShareGrantDrilldown: ResultShareGrantConversionDrilldownRead = {
   share_grant: {
@@ -739,5 +800,42 @@ describe("group workspace admin model helpers", () => {
         recent_events: [],
       }).empty,
     ).toBe(true);
+  });
+
+  it("shapes read-only share registries with grant-alias relationships", () => {
+    expect(buildResultShareRegistryViewModel(resultShareGrants, resultShareAliases)).toMatchObject({
+      grants: {
+        summaryMetrics: expect.arrayContaining([
+          expect.objectContaining({ label: "Total listed", value: 2 }),
+          expect.objectContaining({ label: "Active", value: 1 }),
+        ]),
+        items: expect.arrayContaining([
+          expect.objectContaining({
+            grantId: "grant-1",
+            title: "Board share",
+            aliasCount: 1,
+            relationshipHint: "1 alias linked · 1 active",
+          }),
+        ]),
+      },
+      aliases: {
+        summaryMetrics: expect.arrayContaining([
+          expect.objectContaining({ label: "Recent usage", value: 1 }),
+        ]),
+        items: expect.arrayContaining([
+          expect.objectContaining({
+            aliasId: "alias-1",
+            grantId: "grant-1",
+            linkedGrantInRegistry: true,
+            relationshipHint: "Board share · active",
+          }),
+          expect.objectContaining({
+            aliasId: "alias-2",
+            linkedGrantInRegistry: false,
+            relationshipHint: "Grant grant-missing",
+          }),
+        ]),
+      },
+    });
   });
 });

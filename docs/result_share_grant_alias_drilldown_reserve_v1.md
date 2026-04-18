@@ -61,7 +61,7 @@
 - No AI attribution or AI-generated analysis copy
 
 ## Future Work
-- The existing `apps/group-workspace-admin-web` shell now consumes this reserve through a minimal read-only per-share dashboard
+- The existing `apps/group-workspace-admin-web` shell now consumes this reserve through a minimal read-only per-share dashboard plus a safe registry layer for quick-open operator flows
 - Richer time-series drilldown and comparison controls
 - Alias comparison views if later justified
 - Still no source-file sharing by default

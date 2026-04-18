@@ -23,6 +23,50 @@ function buildFetchMock() {
 }
 
 describe("group workspace admin api client conversion filter queries", () => {
+  it("shapes share grant registry queries", async () => {
+    const fetchImpl = buildFetchMock();
+    const client = createGroupWorkspaceAdminApiClient({
+      apiBaseUrl: "http://127.0.0.1:8000",
+      accessToken: "token",
+      fetchImpl,
+    });
+
+    await client.listResultShareGrants({
+      workspaceId: "workspace-1",
+      shareKind: "workspace_board",
+      status: "active",
+    });
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://127.0.0.1:8000/admin/result-share-grants?workspace_id=workspace-1&share_kind=workspace_board&status=active",
+      expect.objectContaining({
+        method: "GET",
+      }),
+    );
+  });
+
+  it("shapes alias registry queries", async () => {
+    const fetchImpl = buildFetchMock();
+    const client = createGroupWorkspaceAdminApiClient({
+      apiBaseUrl: "http://127.0.0.1:8000",
+      accessToken: "token",
+      fetchImpl,
+    });
+
+    await client.listResultShareAliases({
+      resultShareGrantId: "grant-1",
+      shareKind: "workspace_board",
+      status: "active",
+    });
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://127.0.0.1:8000/admin/result-share-aliases?result_share_grant_id=grant-1&share_kind=workspace_board&status=active",
+      expect.objectContaining({
+        method: "GET",
+      }),
+    );
+  });
+
   it("shapes global overview filter queries", async () => {
     const fetchImpl = buildFetchMock();
     const client = createGroupWorkspaceAdminApiClient({
