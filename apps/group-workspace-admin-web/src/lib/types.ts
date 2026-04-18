@@ -802,6 +802,25 @@ export type ResultShareRegistryFilterInput = {
   resultShareGrantId: string | null;
 };
 
+export type ResultShareRegistrySortField =
+  | "createdAt"
+  | "lastUsedAt"
+  | "expiresAt"
+  | "shareKind"
+  | "status";
+
+export type ResultShareRegistrySortDirection = "asc" | "desc";
+
+export type ResultShareRegistrySectionSortInput = {
+  field: ResultShareRegistrySortField;
+  direction: ResultShareRegistrySortDirection;
+};
+
+export type ResultShareRegistrySortInput = {
+  grants: ResultShareRegistrySectionSortInput;
+  aliases: ResultShareRegistrySectionSortInput;
+};
+
 export type ResultShareRegistryFilterChipViewModel = {
   key: string;
   label: string;

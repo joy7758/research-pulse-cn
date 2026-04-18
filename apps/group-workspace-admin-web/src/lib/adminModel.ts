@@ -50,6 +50,9 @@ import type {
   ResultShareRecentEventRead,
   ResultShareRecentEventViewModel,
   ResultShareRegistrySummaryViewModel,
+  ResultShareRegistryFilterInput,
+  ResultShareRegistrySectionSortInput,
+  ResultShareRegistrySortInput,
   ResultShareRegistryViewModel,
   UserProfileRead,
   WorkspaceConversionOverviewViewModel,
@@ -517,6 +520,101 @@ function buildShareKindHint(kinds: string[]): string | null {
     return null;
   }
   return kinds.map(humanizeMetricKey).join(", ");
+}
+
+function compareNullableTimestamp(
+  left: string | null,
+  right: string | null,
+  direction: ResultShareRegistrySectionSortInput["direction"],
+): number {
+  if (left === null && right === null) {
+    return 0;
+  }
+  if (left === null) {
+    return 1;
+  }
+  if (right === null) {
+    return -1;
+  }
+  const compare = left.localeCompare(right);
+  return direction === "asc" ? compare : -compare;
+}
+
+function compareSortableValue(
+  left: string,
+  right: string,
+  direction: ResultShareRegistrySectionSortInput["direction"],
+): number {
+  const compare = left.localeCompare(right);
+  return direction === "asc" ? compare : -compare;
+}
+
+function sortGrantRegistryItems(
+  items: ResultShareGrantRegistryItemViewModel[],
+  sort: ResultShareRegistrySectionSortInput,
+): ResultShareGrantRegistryItemViewModel[] {
+  return [...items].sort((left, right) => {
+    let compare = 0;
+    switch (sort.field) {
+      case "createdAt":
+        compare = compareSortableValue(left.createdAt, right.createdAt, sort.direction);
+        break;
+      case "lastUsedAt":
+        compare = compareNullableTimestamp(left.lastUsedAt, right.lastUsedAt, sort.direction);
+        break;
+      case "expiresAt":
+        compare = compareNullableTimestamp(left.expiresAt, right.expiresAt, sort.direction);
+        break;
+      case "shareKind":
+        compare = compareSortableValue(left.shareKind, right.shareKind, sort.direction);
+        break;
+      case "status":
+        compare = compareSortableValue(left.status, right.status, sort.direction);
+        break;
+    }
+    if (compare !== 0) {
+      return compare;
+    }
+    return left.grantId.localeCompare(right.grantId);
+  });
+}
+
+function sortAliasRegistryItems(
+  items: ResultShareAliasRegistryItemViewModel[],
+  sort: ResultShareRegistrySectionSortInput,
+): ResultShareAliasRegistryItemViewModel[] {
+  return [...items].sort((left, right) => {
+    let compare = 0;
+    switch (sort.field) {
+      case "createdAt":
+        compare = compareSortableValue(left.createdAt, right.createdAt, sort.direction);
+        break;
+      case "lastUsedAt":
+        compare = compareNullableTimestamp(left.lastUsedAt, right.lastUsedAt, sort.direction);
+        break;
+      case "expiresAt":
+        compare = compareNullableTimestamp(left.expiresAt, right.expiresAt, sort.direction);
+        break;
+      case "shareKind":
+        compare = compareSortableValue(left.shareKind, right.shareKind, sort.direction);
+        break;
+      case "status":
+        compare = compareSortableValue(left.status, right.status, sort.direction);
+        break;
+    }
+    if (compare !== 0) {
+      return compare;
+    }
+    return left.aliasId.localeCompare(right.aliasId);
+  });
+}
+
+function hasGrantRegistryFilters(filters: ResultShareRegistryFilterInput): boolean {
+  return Boolean(filters.shareKind || filters.grantStatus || filters.workspaceId);
+}
+
+function hasAliasRegistryFilters(filters: ResultShareRegistryFilterInput): boolean {
+  return Boolean(filters.shareKind || filters.aliasStatus || filters.resultShareGrantId);
 }
 
 function buildResultShareRecentEventViewModel(
@@ -1005,6 +1103,8 @@ export function buildResultShareAliasDrilldownViewModel(
 export function buildResultShareRegistryViewModel(
   grants: ResultShareGrantRead[],
   aliases: ResultShareAliasRead[],
+  filters: ResultShareRegistryFilterInput,
+  sorts: ResultShareRegistrySortInput,
 ): ResultShareRegistryViewModel {
   const aliasesByGrantId = new Map<string, ResultShareAliasRead[]>();
   for (const alias of aliases) {
@@ -1014,29 +1114,26 @@ export function buildResultShareRegistryViewModel(
   }
 
   const grantsById = new Map(grants.map((grant) => [grant.id, grant]));
-  const grantItems = grants
-    .map((grant) => buildResultShareGrantRegistryItemViewModel(grant, aliasesByGrantId.get(grant.id) ?? []))
-    .sort((left, right) => {
-      const lastUsedCompare = (right.lastUsedAt ?? "").localeCompare(left.lastUsedAt ?? "");
-      if (lastUsedCompare !== 0) {
-        return lastUsedCompare;
-      }
-      return right.createdAt.localeCompare(left.createdAt);
-    });
-  const aliasItems = aliases
-    .map((alias) =>
-      buildResultShareAliasRegistryItemViewModel(alias, grantsById.get(alias.result_share_grant_id) ?? null),
-    )
-    .sort((left, right) => {
-      const lastUsedCompare = (right.lastUsedAt ?? "").localeCompare(left.lastUsedAt ?? "");
-      if (lastUsedCompare !== 0) {
-        return lastUsedCompare;
-      }
-      return right.createdAt.localeCompare(left.createdAt);
-    });
+  const grantItems = sortGrantRegistryItems(
+    grants.map((grant) =>
+      buildResultShareGrantRegistryItemViewModel(grant, aliasesByGrantId.get(grant.id) ?? []),
+    ),
+    sorts.grants,
+  );
+  const aliasItems = sortAliasRegistryItems(
+    aliases.map((alias) =>
+      buildResultShareAliasRegistryItemViewModel(
+        alias,
+        grantsById.get(alias.result_share_grant_id) ?? null,
+      ),
+    ),
+    sorts.aliases,
+  );
 
   const grantKinds = Array.from(new Set(grants.map((grant) => grant.share_kind))).sort();
   const aliasKinds = Array.from(new Set(aliases.map((alias) => alias.share_kind))).sort();
+  const hasGrantFilters = hasGrantRegistryFilters(filters);
+  const hasAliasFilters = hasAliasRegistryFilters(filters);
 
   return {
     grants: {
@@ -1065,8 +1162,12 @@ export function buildResultShareRegistryViewModel(
       ],
       items: grantItems,
       emptyState: {
-        title: "No share grants matched these filters.",
-        message: "Try widening the share-grant filters or reset back to the default registry view.",
+        title: hasGrantFilters
+          ? "No share grants matched the current grant filters."
+          : "No share grants are available.",
+        message: hasGrantFilters
+          ? "Try clearing workspace, share-kind, or grant-status filters, or switch the grant sort mode."
+          : "No admin-safe share grants were returned yet.",
       },
     },
     aliases: {
@@ -1099,8 +1200,12 @@ export function buildResultShareRegistryViewModel(
       ],
       items: aliasItems,
       emptyState: {
-        title: "No aliases matched these filters.",
-        message: "Try widening the alias filters or reset back to the default registry view.",
+        title: hasAliasFilters
+          ? "No aliases matched the current alias filters."
+          : "No aliases are available.",
+        message: hasAliasFilters
+          ? "Try clearing grant, share-kind, or alias-status filters, or switch the alias sort mode."
+          : "No admin-safe aliases were returned yet.",
       },
     },
   };

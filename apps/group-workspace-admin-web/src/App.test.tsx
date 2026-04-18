@@ -986,6 +986,7 @@ describe("group workspace admin shell", () => {
     expect(screen.getByRole("heading", { name: "Alias registry" })).toBeVisible();
     expect(screen.getByText("Board alias")).toBeVisible();
     expect(screen.getAllByText("Board share").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "Show aliases for this grant" })).toBeVisible();
 
     await user.click(screen.getByRole("button", { name: "Open linked grant" }));
 
@@ -995,6 +996,123 @@ describe("group workspace admin shell", () => {
         DEFAULT_CONVERSION_FILTER_INPUT,
       );
     });
+  });
+
+  it("applies the grant-to-alias quick filter from a registry row", async () => {
+    const client = buildApiClient();
+    const user = userEvent.setup();
+
+    render(<GroupWorkspaceAdminShell apiClientFactory={() => client} />);
+
+    await user.type(screen.getByLabelText(/admin bearer token/i), "manual-token");
+    await user.click(screen.getByRole("button", { name: /open workspace shell/i }));
+    await user.click(screen.getByRole("button", { name: "Show aliases for this grant" }));
+
+    await waitFor(() => {
+      expect(client.listResultShareAliases).toHaveBeenLastCalledWith({
+        resultShareGrantId: "grant-1",
+        shareKind: "workspace_board",
+        status: undefined,
+      });
+    });
+
+    const summaryCard = screen
+      .getByRole("heading", { name: "Applied registry filters and sort" })
+      .closest("section");
+    expect(summaryCard).not.toBeNull();
+    const summaryScoped = within(summaryCard as HTMLElement);
+    expect(summaryScoped.getByText("Alias grant")).toBeVisible();
+    expect(summaryScoped.getByText("grant-1")).toBeVisible();
+  });
+
+  it("applies stable registry sort controls and shows sort chips", async () => {
+    const client = buildApiClient();
+    client.listResultShareGrants.mockResolvedValue([
+      {
+        id: "grant-z",
+        share_kind: "workspace_board",
+        workspace_id: "workspace-1",
+        digest_issue_id: null,
+        paper_id: null,
+        status: "active",
+        display_label: "Newest grant",
+        issued_by_admin_id: "admin-1",
+        expires_at: null,
+        last_used_at: null,
+        created_at: "2026-04-17T06:10:00Z",
+        updated_at: "2026-04-17T06:10:00Z",
+      },
+      {
+        id: "grant-a",
+        share_kind: "workspace_board",
+        workspace_id: "workspace-1",
+        digest_issue_id: null,
+        paper_id: null,
+        status: "revoked",
+        display_label: "Older grant",
+        issued_by_admin_id: "admin-1",
+        expires_at: null,
+        last_used_at: "2026-04-17T08:00:00Z",
+        created_at: "2026-04-15T06:10:00Z",
+        updated_at: "2026-04-15T06:10:00Z",
+      },
+    ]);
+    client.listResultShareAliases.mockResolvedValue([
+      {
+        id: "alias-b",
+        result_share_grant_id: "grant-z",
+        share_kind: "workspace_board",
+        status: "active",
+        display_label: "Alias B",
+        alias_prefix: "bbb222",
+        expires_at: null,
+        last_used_at: null,
+        created_at: "2026-04-17T06:11:00Z",
+        updated_at: "2026-04-17T06:11:00Z",
+      },
+      {
+        id: "alias-a",
+        result_share_grant_id: "grant-a",
+        share_kind: "workspace_board",
+        status: "revoked",
+        display_label: "Alias A",
+        alias_prefix: "aaa111",
+        expires_at: null,
+        last_used_at: "2026-04-17T08:00:00Z",
+        created_at: "2026-04-15T06:11:00Z",
+        updated_at: "2026-04-15T06:11:00Z",
+      },
+    ]);
+    const user = userEvent.setup();
+
+    render(<GroupWorkspaceAdminShell apiClientFactory={() => client} />);
+
+    await user.type(screen.getByLabelText(/admin bearer token/i), "manual-token");
+    await user.click(screen.getByRole("button", { name: /open workspace shell/i }));
+
+    const registryPanel = await screen.findByRole("heading", { name: "Result share registry" });
+    const scoped = within(registryPanel.closest("section") as HTMLElement);
+    await user.selectOptions(scoped.getByLabelText("Grant sort"), "createdAt_asc");
+    await user.selectOptions(scoped.getByLabelText("Alias sort"), "status_desc");
+    await user.click(scoped.getByRole("button", { name: "Apply filters" }));
+
+    const summaryCard = scoped
+      .getByRole("heading", { name: "Applied registry filters and sort" })
+      .closest("section");
+    expect(summaryCard).not.toBeNull();
+    const summaryScoped = within(summaryCard as HTMLElement);
+    expect(summaryScoped.getByText("Created, oldest first")).toBeVisible();
+    expect(summaryScoped.getByText("Status, Z-A")).toBeVisible();
+
+    const grantSection = screen.getByRole("heading", { name: "Share grant registry" }).closest("section");
+    const aliasSection = screen.getByRole("heading", { name: "Alias registry" }).closest("section");
+    expect(grantSection).not.toBeNull();
+    expect(aliasSection).not.toBeNull();
+
+    const grantRows = within(grantSection as HTMLElement).getAllByRole("listitem");
+    const aliasRows = within(aliasSection as HTMLElement).getAllByRole("listitem");
+    expect(grantRows[0]).toHaveTextContent("Older grant");
+    expect(aliasRows[0]).toHaveTextContent("Alias A");
   });
 
   it("renders a filtered empty registry state without breaking the rest of the shell", async () => {
@@ -1011,14 +1129,17 @@ describe("group workspace admin shell", () => {
     const registryPanel = screen.getByRole("heading", { name: "Result share registry" }).closest("section");
     expect(registryPanel).not.toBeNull();
     const scoped = within(registryPanel as HTMLElement);
+    await user.type(scoped.getByLabelText("Workspace ID"), "workspace-1");
+    await user.type(scoped.getByLabelText("Grant ID"), "grant-1");
+    await user.click(scoped.getByRole("button", { name: "Apply filters" }));
 
     expect(
       await scoped.findByText(
-        "Try widening the share-grant filters or reset back to the default registry view.",
+        "No share grants matched the current grant filters.",
       ),
     ).toBeVisible();
     expect(
-      scoped.getByText("Try widening the alias filters or reset back to the default registry view."),
+      scoped.getByText("No aliases matched the current alias filters."),
     ).toBeVisible();
     expect(screen.getByRole("heading", { name: "Workspace conversion overview" })).toBeVisible();
   });

@@ -181,6 +181,10 @@ The same shell now also includes a minimal read-only result-share registry:
 - safe global share-grant rows with linked alias counts
 - safe global alias rows with linked grant hints
 - quick-open actions that reuse the existing per-share drilldown panel instead of adding new write flows
+- stronger registry filters for share kind, status, workspace, and linked grant
+- stable frontend sort controls for `created_at`, `last_used_at`, `expires_at`, `share_kind`, and `status`
+- applied filter/sort chips plus filtered zero-result explanations
+- grant-to-alias quick filters and alias-to-underlying-grant quick-open actions
 
 The shell is internal/admin-only, keeps bearer tokens in memory only, and does not introduce end-user login or source-file sharing. Filter controls narrow overview/drilldown reads only and do not change attribution semantics.
 

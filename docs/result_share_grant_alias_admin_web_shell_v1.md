@@ -56,4 +56,5 @@
 - Richer per-share operator dashboard and comparison flows
 - Time-series per-share views when justified
 - Alias comparison UI if later justified
+- Filterable/sortable registry shortcuts so common drilldown entry no longer starts from manual ID entry
 - Still no source-file sharing by default

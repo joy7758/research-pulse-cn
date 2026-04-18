@@ -39,7 +39,9 @@ import {
 import {
   buildResultShareRegistryFilterSummaryViewModel,
   DEFAULT_RESULT_SHARE_REGISTRY_FILTER_INPUT,
+  DEFAULT_RESULT_SHARE_REGISTRY_SORT_INPUT,
   normalizeResultShareRegistryFilterInput,
+  normalizeResultShareRegistrySortInput,
 } from "./lib/resultShareRegistryFilters";
 import {
   clearVisibleAdminTokenHints,
@@ -60,6 +62,7 @@ import type {
   ResultShareGrantConversionDrilldownRead,
   ResultShareGrantRead,
   ResultShareRegistryFilterInput,
+  ResultShareRegistrySortInput,
   ShareGrantOneTimeDisplayModel,
   UserProfileRead,
   WorkspaceBoardShareCreateInput,
@@ -180,6 +183,10 @@ export function GroupWorkspaceAdminShell({
     useState<ResultShareRegistryFilterInput>(DEFAULT_RESULT_SHARE_REGISTRY_FILTER_INPUT);
   const [resultShareRegistryFilterDraft, setResultShareRegistryFilterDraft] =
     useState<ResultShareRegistryFilterInput>(DEFAULT_RESULT_SHARE_REGISTRY_FILTER_INPUT);
+  const [resultShareRegistrySorts, setResultShareRegistrySorts] =
+    useState<ResultShareRegistrySortInput>(DEFAULT_RESULT_SHARE_REGISTRY_SORT_INPUT);
+  const [resultShareRegistrySortDraft, setResultShareRegistrySortDraft] =
+    useState<ResultShareRegistrySortInput>(DEFAULT_RESULT_SHARE_REGISTRY_SORT_INPUT);
   const [shareGrantLookupId, setShareGrantLookupId] = useState("");
   const [shareAliasLookupId, setShareAliasLookupId] = useState("");
   const [createInput, setCreateInput] = useState<WorkspaceCreateInput>({
@@ -238,6 +245,8 @@ export function GroupWorkspaceAdminShell({
     setShareDrilldownFilterDraft(DEFAULT_CONVERSION_FILTER_INPUT);
     setResultShareRegistryFilters(DEFAULT_RESULT_SHARE_REGISTRY_FILTER_INPUT);
     setResultShareRegistryFilterDraft(DEFAULT_RESULT_SHARE_REGISTRY_FILTER_INPUT);
+    setResultShareRegistrySorts(DEFAULT_RESULT_SHARE_REGISTRY_SORT_INPUT);
+    setResultShareRegistrySortDraft(DEFAULT_RESULT_SHARE_REGISTRY_SORT_INPUT);
     setShareGrantLookupId("");
     setShareAliasLookupId("");
     setOneTimeGrant(null);
@@ -664,12 +673,22 @@ export function GroupWorkspaceAdminShell({
     [shareDrilldownFilters],
   );
   const resultShareRegistryViewModel = useMemo(
-    () => buildResultShareRegistryViewModel(resultShareGrants, resultShareAliases),
-    [resultShareAliases, resultShareGrants],
+    () =>
+      buildResultShareRegistryViewModel(
+        resultShareGrants,
+        resultShareAliases,
+        resultShareRegistryFilters,
+        resultShareRegistrySorts,
+      ),
+    [resultShareAliases, resultShareGrants, resultShareRegistryFilters, resultShareRegistrySorts],
   );
   const resultShareRegistryFilterSummary = useMemo(
-    () => buildResultShareRegistryFilterSummaryViewModel(resultShareRegistryFilters),
-    [resultShareRegistryFilters],
+    () =>
+      buildResultShareRegistryFilterSummaryViewModel(
+        resultShareRegistryFilters,
+        resultShareRegistrySorts,
+      ),
+    [resultShareRegistryFilters, resultShareRegistrySorts],
   );
   const shareDrilldownCurrentTargetLabel = useMemo(() => {
     if (shareDrilldownGrantViewModel) {
@@ -716,6 +735,18 @@ export function GroupWorkspaceAdminShell({
     (patch: Partial<ResultShareRegistryFilterInput>) => {
       setResultShareRegistryFilterDraft((current) =>
         normalizeResultShareRegistryFilterInput({
+          ...current,
+          ...patch,
+        }),
+      );
+    },
+    [],
+  );
+
+  const patchResultShareRegistrySortDraft = useCallback(
+    (patch: Partial<ResultShareRegistrySortInput>) => {
+      setResultShareRegistrySortDraft((current) =>
+        normalizeResultShareRegistrySortInput({
           ...current,
           ...patch,
         }),
@@ -883,10 +914,13 @@ export function GroupWorkspaceAdminShell({
       return;
     }
     const nextFilters = normalizeResultShareRegistryFilterInput(resultShareRegistryFilterDraft);
+    const nextSorts = normalizeResultShareRegistrySortInput(resultShareRegistrySortDraft);
     setResultShareRegistryFilterDraft(nextFilters);
     setResultShareRegistryFilters(nextFilters);
+    setResultShareRegistrySortDraft(nextSorts);
+    setResultShareRegistrySorts(nextSorts);
     void loadResultShareRegistry(session.client, nextFilters);
-  }, [loadResultShareRegistry, resultShareRegistryFilterDraft, session]);
+  }, [loadResultShareRegistry, resultShareRegistryFilterDraft, resultShareRegistrySortDraft, session]);
 
   const handleResetResultShareRegistryFilters = useCallback(() => {
     if (!session) {
@@ -894,8 +928,28 @@ export function GroupWorkspaceAdminShell({
     }
     setResultShareRegistryFilterDraft(DEFAULT_RESULT_SHARE_REGISTRY_FILTER_INPUT);
     setResultShareRegistryFilters(DEFAULT_RESULT_SHARE_REGISTRY_FILTER_INPUT);
+    setResultShareRegistrySortDraft(DEFAULT_RESULT_SHARE_REGISTRY_SORT_INPUT);
+    setResultShareRegistrySorts(DEFAULT_RESULT_SHARE_REGISTRY_SORT_INPUT);
     void loadResultShareRegistry(session.client, DEFAULT_RESULT_SHARE_REGISTRY_FILTER_INPUT);
   }, [loadResultShareRegistry, session]);
+
+  const handleFilterAliasesForGrant = useCallback(
+    (grantId: string, shareKind: ResultShareGrantRead["share_kind"]) => {
+      if (!session) {
+        return;
+      }
+      const nextFilters = normalizeResultShareRegistryFilterInput({
+        ...resultShareRegistryFilterDraft,
+        shareKind,
+        aliasStatus: null,
+        resultShareGrantId: grantId,
+      });
+      setResultShareRegistryFilterDraft(nextFilters);
+      setResultShareRegistryFilters(nextFilters);
+      void loadResultShareRegistry(session.client, nextFilters);
+    },
+    [loadResultShareRegistry, resultShareRegistryFilterDraft, session],
+  );
 
   const handleClearShareDrilldown = useCallback(() => {
     setShareDrilldownTarget(null);
@@ -1137,6 +1191,7 @@ export function GroupWorkspaceAdminShell({
 
       <ResultShareRegistryPanel
         filters={resultShareRegistryFilterDraft}
+        sorts={resultShareRegistrySortDraft}
         filterSummary={resultShareRegistryFilterSummary}
         registry={
           resultShareRegistryLoading &&
@@ -1149,10 +1204,12 @@ export function GroupWorkspaceAdminShell({
         loading={resultShareRegistryLoading}
         error={resultShareRegistryError}
         onFilterChange={patchResultShareRegistryFilterDraft}
+        onSortChange={patchResultShareRegistrySortDraft}
         onApplyFilters={handleApplyResultShareRegistryFilters}
         onResetFilters={handleResetResultShareRegistryFilters}
         onOpenGrantDrilldown={handleOpenShareGrantDrilldown}
         onOpenAliasDrilldown={handleOpenShareAliasDrilldown}
+        onFilterAliasesForGrant={handleFilterAliasesForGrant}
       />
 
       <section className="admin-shell-grid">
