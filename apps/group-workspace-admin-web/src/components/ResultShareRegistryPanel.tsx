@@ -1,7 +1,10 @@
 import {
+  parseResultShareRegistrySectionSortInput,
   RESULT_SHARE_REGISTRY_ALIAS_STATUS_OPTIONS,
   RESULT_SHARE_REGISTRY_GRANT_STATUS_OPTIONS,
   RESULT_SHARE_REGISTRY_SHARE_KIND_OPTIONS,
+  RESULT_SHARE_REGISTRY_SORT_OPTIONS,
+  serializeResultShareRegistrySectionSortInput,
 } from "../lib/resultShareRegistryFilters";
 import type {
   ApiErrorViewModel,
@@ -9,22 +12,26 @@ import type {
   ResultShareGrantRegistryItemViewModel,
   ResultShareRegistryFilterInput,
   ResultShareRegistryFilterSummaryViewModel,
+  ResultShareRegistrySortInput,
   ResultShareRegistrySummaryViewModel,
   ResultShareRegistryViewModel,
 } from "../lib/types";
 
 type ResultShareRegistryPanelProps = {
   filters: ResultShareRegistryFilterInput;
+  sorts: ResultShareRegistrySortInput;
   filterSummary: ResultShareRegistryFilterSummaryViewModel;
   registry: ResultShareRegistryViewModel | null;
   currentTargetLabel: string | null;
   loading: boolean;
   error: ApiErrorViewModel | null;
   onFilterChange: (patch: Partial<ResultShareRegistryFilterInput>) => void;
+  onSortChange: (patch: Partial<ResultShareRegistrySortInput>) => void;
   onApplyFilters: () => void;
   onResetFilters: () => void;
   onOpenGrantDrilldown: (grantId: string) => void;
   onOpenAliasDrilldown: (aliasId: string) => void;
+  onFilterAliasesForGrant: (grantId: string, shareKind: ResultShareGrantRegistryItemViewModel["shareKind"]) => void;
 };
 
 function SummaryCardList({ items }: { items: ResultShareRegistrySummaryViewModel[] }) {
@@ -43,15 +50,22 @@ function SummaryCardList({ items }: { items: ResultShareRegistrySummaryViewModel
 
 function GrantRegistryList({
   items,
-  emptyMessage,
+  emptyState,
   onOpenGrantDrilldown,
+  onFilterAliasesForGrant,
 }: {
   items: ResultShareGrantRegistryItemViewModel[];
-  emptyMessage: string;
+  emptyState: ResultShareRegistryViewModel["grants"]["emptyState"];
   onOpenGrantDrilldown: (grantId: string) => void;
+  onFilterAliasesForGrant: (grantId: string, shareKind: ResultShareGrantRegistryItemViewModel["shareKind"]) => void;
 }) {
   if (items.length === 0) {
-    return <div className="empty-state">{emptyMessage}</div>;
+    return (
+      <div className="empty-state">
+        <strong>{emptyState.title}</strong>
+        <p>{emptyState.message}</p>
+      </div>
+    );
   }
 
   return (
@@ -101,6 +115,13 @@ function GrantRegistryList({
             >
               Open grant drilldown
             </button>
+            <button
+              type="button"
+              className="button-secondary"
+              onClick={() => onFilterAliasesForGrant(item.grantId, item.shareKind)}
+            >
+              Show aliases for this grant
+            </button>
           </div>
         </li>
       ))}
@@ -110,17 +131,22 @@ function GrantRegistryList({
 
 function AliasRegistryList({
   items,
-  emptyMessage,
+  emptyState,
   onOpenGrantDrilldown,
   onOpenAliasDrilldown,
 }: {
   items: ResultShareAliasRegistryItemViewModel[];
-  emptyMessage: string;
+  emptyState: ResultShareRegistryViewModel["aliases"]["emptyState"];
   onOpenGrantDrilldown: (grantId: string) => void;
   onOpenAliasDrilldown: (aliasId: string) => void;
 }) {
   if (items.length === 0) {
-    return <div className="empty-state">{emptyMessage}</div>;
+    return (
+      <div className="empty-state">
+        <strong>{emptyState.title}</strong>
+        <p>{emptyState.message}</p>
+      </div>
+    );
   }
 
   return (
@@ -186,16 +212,19 @@ function AliasRegistryList({
 
 export function ResultShareRegistryPanel({
   filters,
+  sorts,
   filterSummary,
   registry,
   currentTargetLabel,
   loading,
   error,
   onFilterChange,
+  onSortChange,
   onApplyFilters,
   onResetFilters,
   onOpenGrantDrilldown,
   onOpenAliasDrilldown,
+  onFilterAliasesForGrant,
 }: ResultShareRegistryPanelProps) {
   return (
     <section className="panel-card">
@@ -299,6 +328,42 @@ export function ResultShareRegistryPanel({
             onChange={(event) => onFilterChange({ resultShareGrantId: event.target.value })}
           />
         </label>
+
+        <label className="field-stack">
+          <span>Grant sort</span>
+          <select
+            value={serializeResultShareRegistrySectionSortInput(sorts.grants)}
+            onChange={(event) =>
+              onSortChange({
+                grants: parseResultShareRegistrySectionSortInput(event.target.value),
+              })
+            }
+          >
+            {RESULT_SHARE_REGISTRY_SORT_OPTIONS.map((option) => (
+              <option key={`grant-${option.key}`} value={option.key}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="field-stack">
+          <span>Alias sort</span>
+          <select
+            value={serializeResultShareRegistrySectionSortInput(sorts.aliases)}
+            onChange={(event) =>
+              onSortChange({
+                aliases: parseResultShareRegistrySectionSortInput(event.target.value),
+              })
+            }
+          >
+            {RESULT_SHARE_REGISTRY_SORT_OPTIONS.map((option) => (
+              <option key={`alias-${option.key}`} value={option.key}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
 
       <div className="button-row">
@@ -312,9 +377,9 @@ export function ResultShareRegistryPanel({
 
       <section className="filter-summary-card">
         <div className="conversion-section-header">
-          <h3>Applied registry filters</h3>
+          <h3>Applied registry filters and sort</h3>
           <p className="section-subtle-copy">
-            Grant-only and alias-only filters stay explicit so the two registries do not blur.
+            Grant-only and alias-only filters stay explicit, while each registry keeps its own stable sort mode.
           </p>
         </div>
         {filterSummary.chips.length > 0 ? (
@@ -357,8 +422,9 @@ export function ResultShareRegistryPanel({
             <SummaryCardList items={registry.grants.summaryMetrics} />
             <GrantRegistryList
               items={registry.grants.items}
-              emptyMessage={registry.grants.emptyState.message}
+              emptyState={registry.grants.emptyState}
               onOpenGrantDrilldown={onOpenGrantDrilldown}
+              onFilterAliasesForGrant={onFilterAliasesForGrant}
             />
           </section>
 
@@ -370,7 +436,7 @@ export function ResultShareRegistryPanel({
             <SummaryCardList items={registry.aliases.summaryMetrics} />
             <AliasRegistryList
               items={registry.aliases.items}
-              emptyMessage={registry.aliases.emptyState.message}
+              emptyState={registry.aliases.emptyState}
               onOpenGrantDrilldown={onOpenGrantDrilldown}
               onOpenAliasDrilldown={onOpenAliasDrilldown}
             />

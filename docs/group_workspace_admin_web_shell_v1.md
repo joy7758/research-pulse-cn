@@ -112,6 +112,8 @@ The same shell now also includes a minimal read-only result-share registry layer
 - a global alias registry with safe prefix/status/timestamp summaries
 - explicit grant-to-alias relationship hints in registry rows
 - quick-open actions that reuse the existing per-share drilldown panel
+- stronger filter chips and stable sort controls for registry rows
+- cross-link affordances such as `show aliases for this grant` and `open underlying grant`
 - no new create/revoke/bulk actions in the registry itself
 
 ## Safety Exclusions

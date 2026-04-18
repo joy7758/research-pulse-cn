@@ -42,6 +42,10 @@
 - Opening a grant row reuses the existing read-only per-share drilldown panel inside the same admin shell.
 - Opening an alias row reuses the same drilldown panel with alias-scoped reads.
 - Alias rows also expose the linked grant relationship so operators can move from alias behavior back to the underlying grant when needed.
+- The later filter/sort follow-up keeps this behavior and adds:
+  - applied filter/sort chips
+  - stable sort controls for timestamps, share kind, and status
+  - a direct `show aliases for this grant` shortcut from grant rows
 - Registry filters narrow safe list reads only; they do not change attribution semantics inside the downstream drilldown.
 
 ## Current Non-Goals
@@ -54,7 +58,7 @@
 - No AI attribution or AI-written dashboard copy
 
 ## Future Work
-- Richer share-registry filters and sorting controls
+- Saved/local filter presets on top of the stronger filter/sort shell
 - Per-share comparison views across grants or aliases
 - Registry-level bulk operations only if later justified
 - Still no source-file sharing by default

@@ -13,6 +13,10 @@ import {
   buildWorkspaceConversionOverviewViewModel,
   buildWorkspaceListItems,
 } from "./adminModel";
+import {
+  DEFAULT_RESULT_SHARE_REGISTRY_FILTER_INPUT,
+  DEFAULT_RESULT_SHARE_REGISTRY_SORT_INPUT,
+} from "./resultShareRegistryFilters";
 import type {
   GroupWorkspaceBoardRead,
   GroupWorkspaceConversionDrilldownRead,
@@ -803,7 +807,14 @@ describe("group workspace admin model helpers", () => {
   });
 
   it("shapes read-only share registries with grant-alias relationships", () => {
-    expect(buildResultShareRegistryViewModel(resultShareGrants, resultShareAliases)).toMatchObject({
+    expect(
+      buildResultShareRegistryViewModel(
+        resultShareGrants,
+        resultShareAliases,
+        DEFAULT_RESULT_SHARE_REGISTRY_FILTER_INPUT,
+        DEFAULT_RESULT_SHARE_REGISTRY_SORT_INPUT,
+      ),
+    ).toMatchObject({
       grants: {
         summaryMetrics: expect.arrayContaining([
           expect.objectContaining({ label: "Total listed", value: 2 }),
@@ -835,6 +846,87 @@ describe("group workspace admin model helpers", () => {
             relationshipHint: "Grant grant-missing",
           }),
         ]),
+      },
+    });
+  });
+
+  it("sorts registry rows deterministically and keeps null timestamps last", () => {
+    const sorted = buildResultShareRegistryViewModel(
+      [
+        {
+          ...resultShareGrants[0],
+          id: "grant-a",
+          last_used_at: null,
+          created_at: "2026-04-17T06:10:00Z",
+        },
+        {
+          ...resultShareGrants[0],
+          id: "grant-b",
+          last_used_at: "2026-04-17T08:00:00Z",
+          created_at: "2026-04-16T06:10:00Z",
+          status: "revoked",
+        },
+        {
+          ...resultShareGrants[0],
+          id: "grant-c",
+          last_used_at: "2026-04-17T08:00:00Z",
+          created_at: "2026-04-15T06:10:00Z",
+          status: "active",
+        },
+      ],
+      [
+        {
+          ...resultShareAliases[0],
+          id: "alias-a",
+          last_used_at: null,
+          created_at: "2026-04-16T06:11:00Z",
+        },
+        {
+          ...resultShareAliases[0],
+          id: "alias-b",
+          last_used_at: "2026-04-17T08:00:00Z",
+          created_at: "2026-04-15T06:11:00Z",
+        },
+      ],
+      DEFAULT_RESULT_SHARE_REGISTRY_FILTER_INPUT,
+      {
+        grants: {
+          field: "lastUsedAt",
+          direction: "desc",
+        },
+        aliases: {
+          field: "lastUsedAt",
+          direction: "desc",
+        },
+      },
+    );
+
+    expect(sorted.grants.items.map((item) => item.grantId)).toEqual(["grant-b", "grant-c", "grant-a"]);
+    expect(sorted.aliases.items.map((item) => item.aliasId)).toEqual(["alias-b", "alias-a"]);
+  });
+
+  it("explains zero-result registries differently when filters are active", () => {
+    expect(
+      buildResultShareRegistryViewModel(
+        [],
+        [],
+        {
+          ...DEFAULT_RESULT_SHARE_REGISTRY_FILTER_INPUT,
+          workspaceId: "workspace-1",
+          resultShareGrantId: "grant-1",
+        },
+        DEFAULT_RESULT_SHARE_REGISTRY_SORT_INPUT,
+      ),
+    ).toMatchObject({
+      grants: {
+        emptyState: {
+          title: "No share grants matched the current grant filters.",
+        },
+      },
+      aliases: {
+        emptyState: {
+          title: "No aliases matched the current alias filters.",
+        },
       },
     });
   });
