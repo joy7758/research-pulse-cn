@@ -1444,6 +1444,57 @@ describe("group workspace admin shell", () => {
     expect(window.localStorage.getItem("resultShareRegistryPresetLastGoodBackup")).toBeNull();
   });
 
+  it("renders local preset activity history and can clear it after confirmation", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const client = buildApiClient();
+    const user = userEvent.setup();
+
+    render(<GroupWorkspaceAdminShell apiClientFactory={() => client} />);
+
+    await user.type(screen.getByLabelText(/admin bearer token/i), "manual-token");
+    await user.click(screen.getByRole("button", { name: /open workspace shell/i }));
+
+    const registryPanel = await screen.findByRole("heading", { name: "Result share registry" });
+    const scoped = within(registryPanel.closest("section") as HTMLElement);
+    await user.type(scoped.getByLabelText("Grant preset name"), "Audited preset");
+    await user.click(scoped.getByRole("button", { name: "Save current grant view" }));
+
+    expect(await scoped.findByRole("heading", { name: "Local preset activity" })).toBeVisible();
+    expect(scoped.getByText("Saved local grant preset Audited preset.")).toBeVisible();
+    expect(scoped.getByText("preset_saved")).toBeVisible();
+    expect(window.localStorage.getItem("resultShareRegistryPresetLocalAuditEvents")).toContain(
+      "Audited preset",
+    );
+
+    await user.click(scoped.getByRole("button", { name: "Clear local audit history" }));
+    expect(confirmSpy).toHaveBeenCalled();
+    expect(
+      await scoped.findByText("No preset activity recorded yet."),
+    ).toBeVisible();
+    expect(window.localStorage.getItem("resultShareRegistryPresetLocalAuditEvents")).toBeNull();
+
+    confirmSpy.mockRestore();
+  });
+
+  it("shows a safe warning when local audit storage is corrupted", async () => {
+    window.localStorage.setItem("resultShareRegistryPresetLocalAuditEvents", "{not-json");
+    const client = buildApiClient();
+    const user = userEvent.setup();
+
+    render(<GroupWorkspaceAdminShell apiClientFactory={() => client} />);
+
+    await user.type(screen.getByLabelText(/admin bearer token/i), "manual-token");
+    await user.click(screen.getByRole("button", { name: /open workspace shell/i }));
+
+    const registryPanel = await screen.findByRole("heading", { name: "Result share registry" });
+    const scoped = within(registryPanel.closest("section") as HTMLElement);
+
+    expect(scoped.getByRole("heading", { name: "Local preset activity" })).toBeVisible();
+    expect(scoped.getByRole("alert")).toHaveTextContent("Audit storage warning");
+    expect(scoped.getByRole("alert")).toHaveTextContent(/not valid JSON/i);
+    expect(scoped.getByRole("heading", { name: "Preset storage diagnostics" })).toBeVisible();
+  });
+
   it("creates a backup before reset and restores it on demand", async () => {
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     const client = buildApiClient();

@@ -988,6 +988,70 @@ export type ResultShareRegistryPresetStorageDiagnostics = {
   notes: string[];
 };
 
+export type ResultShareRegistryPresetLocalAuditActionType =
+  | "preset_saved"
+  | "preset_applied"
+  | "preset_overwritten"
+  | "preset_deleted"
+  | "default_set"
+  | "default_cleared"
+  | "import_dry_run"
+  | "import_merge"
+  | "import_replace"
+  | "export_created"
+  | "integrity_checked"
+  | "invalid_presets_discarded"
+  | "scope_reset"
+  | "all_presets_reset"
+  | "dangling_default_cleared"
+  | "backup_created"
+  | "backup_restored"
+  | "recovery_failed"
+  | "validation_failed";
+
+export type ResultShareRegistryPresetLocalAuditStatus =
+  | "success"
+  | "warning"
+  | "failed";
+
+export type ResultShareRegistryPresetLocalAuditEvent = {
+  id: string;
+  occurredAt: string;
+  actionType: ResultShareRegistryPresetLocalAuditActionType;
+  scope: ResultShareRegistrySavedViewScope | "storage" | null;
+  presetId: string | null;
+  presetName: string | null;
+  status: ResultShareRegistryPresetLocalAuditStatus;
+  summary: string;
+  safeDetails: string | null;
+};
+
+export type ResultShareRegistryPresetLocalAuditSummary = {
+  totalEvents: number;
+  successCount: number;
+  warningCount: number;
+  failedCount: number;
+  lastEventAt: string | null;
+  byActionType: Record<ResultShareRegistryPresetLocalAuditActionType, number>;
+  byScope: {
+    grant_registry: number;
+    alias_registry: number;
+    storage: number;
+    unscoped: number;
+  };
+  recentEvents: ResultShareRegistryPresetLocalAuditEvent[];
+  backupRelatedCount: number;
+  recoveryRelatedCount: number;
+  importRelatedCount: number;
+  exportRelatedCount: number;
+  storageWarning: string | null;
+};
+
+export type ResultShareRegistryPresetLocalAuditLoadResult = {
+  events: ResultShareRegistryPresetLocalAuditEvent[];
+  storageWarning: string | null;
+};
+
 export type ResultShareRegistryFilterChipViewModel = {
   key: string;
   label: string;

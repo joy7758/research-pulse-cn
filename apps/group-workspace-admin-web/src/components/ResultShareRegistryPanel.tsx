@@ -16,6 +16,7 @@ import type {
   ResultShareRegistryPresetImportPreview,
   ResultShareRegistryPresetIntegrityIssue,
   ResultShareRegistryPresetIntegrityReport,
+  ResultShareRegistryPresetLocalAuditSummary,
   ResultShareRegistryPresetRecoveryAction,
   ResultShareRegistryPresetStorageDiagnostics,
   ResultShareRegistryFilterSummaryViewModel,
@@ -51,6 +52,9 @@ type ResultShareRegistryPanelProps = {
     diagnostics: ResultShareRegistryPresetStorageDiagnostics;
     lastGoodBackup: ResultShareRegistryPresetBackupSnapshot | null;
   };
+  presetAudit: {
+    summary: ResultShareRegistryPresetLocalAuditSummary;
+  };
   registry: ResultShareRegistryViewModel | null;
   currentTargetLabel: string | null;
   activePresetLabel: string | null;
@@ -85,6 +89,7 @@ type ResultShareRegistryPanelProps = {
   onExportPresets: () => void;
   onValidatePresetStorage: () => void;
   onRunPresetRecoveryAction: (action: ResultShareRegistryPresetRecoveryAction) => void;
+  onClearPresetAudit: () => void;
   onOpenGrantDrilldown: (grantId: string) => void;
   onOpenAliasDrilldown: (aliasId: string) => void;
   onFilterAliasesForGrant: (grantId: string, shareKind: ResultShareGrantRegistryItemViewModel["shareKind"]) => void;
@@ -605,6 +610,158 @@ function PresetDiagnosticsPanel({
   );
 }
 
+function PresetLocalAuditPanel({
+  summary,
+  onClear,
+}: {
+  summary: ResultShareRegistryPresetLocalAuditSummary;
+  onClear: () => void;
+}) {
+  return (
+    <section className="conversion-section-card saved-view-card">
+      <div className="conversion-section-header">
+        <div>
+          <h3>Local preset activity</h3>
+          <p className="section-subtle-copy">
+            Browser-local history only. This is an operator convenience summary, not backend audit
+            logging, and it never stores bearer tokens, raw aliases, or payload dumps.
+          </p>
+        </div>
+        <div className="button-row">
+          <button
+            type="button"
+            className="button-secondary"
+            onClick={onClear}
+            disabled={summary.totalEvents === 0 && !summary.storageWarning}
+          >
+            Clear local audit history
+          </button>
+        </div>
+      </div>
+
+      <SummaryCardList
+        items={[
+          { label: "Total events", value: summary.totalEvents, hint: null },
+          { label: "Success", value: summary.successCount, hint: null },
+          { label: "Warnings", value: summary.warningCount, hint: null },
+          { label: "Failed", value: summary.failedCount, hint: null },
+          { label: "Imports", value: summary.importRelatedCount, hint: null },
+          { label: "Backups", value: summary.backupRelatedCount, hint: null },
+          { label: "Recovery", value: summary.recoveryRelatedCount, hint: null },
+          { label: "Exports", value: summary.exportRelatedCount, hint: null },
+        ]}
+      />
+
+      <ul className="filter-chip-list">
+        <li className="filter-chip">
+          <span>Grant-scope events</span>
+          <strong>{summary.byScope.grant_registry}</strong>
+        </li>
+        <li className="filter-chip">
+          <span>Alias-scope events</span>
+          <strong>{summary.byScope.alias_registry}</strong>
+        </li>
+        <li className="filter-chip">
+          <span>Storage events</span>
+          <strong>{summary.byScope.storage}</strong>
+        </li>
+        <li className="filter-chip">
+          <span>Unscoped events</span>
+          <strong>{summary.byScope.unscoped}</strong>
+        </li>
+        <li className="filter-chip">
+          <span>Last event</span>
+          <strong>{summary.lastEventAt ?? "No history yet"}</strong>
+        </li>
+      </ul>
+
+      {summary.storageWarning ? (
+        <div className="inline-banner error" role="alert">
+          <strong>Audit storage warning</strong>
+          <span>{summary.storageWarning}</span>
+        </div>
+      ) : null}
+
+      <section className="conversion-section-card">
+        <div className="conversion-section-header">
+          <div>
+            <h4>Action-type counts</h4>
+            <p className="section-subtle-copy">
+              Compact aggregation over local preset operations recorded in this browser.
+            </p>
+          </div>
+        </div>
+        <ul className="filter-chip-list">
+          {Object.entries(summary.byActionType)
+            .filter(([, count]) => count > 0)
+            .map(([actionType, count]) => (
+              <li key={actionType} className="filter-chip">
+                <span>{actionType}</span>
+                <strong>{count}</strong>
+              </li>
+            ))}
+        </ul>
+        {Object.values(summary.byActionType).every((count) => count === 0) ? (
+          <div className="empty-state">
+            <strong>No preset activity recorded yet.</strong>
+            <p>Save, apply, import, export, validate, or recover presets to build local history.</p>
+          </div>
+        ) : null}
+      </section>
+
+      <section className="conversion-section-card">
+        <div className="conversion-section-header">
+          <div>
+            <h4>Recent preset activity</h4>
+            <p className="section-subtle-copy">
+              Latest local-only preset operations with safe summaries only.
+            </p>
+          </div>
+        </div>
+        {summary.recentEvents.length > 0 ? (
+          <ul className="data-list">
+            {summary.recentEvents.map((event) => (
+              <li key={event.id} className="data-list-item">
+                <div className="registry-item-stack">
+                  <div className="registry-item-header">
+                    <div>
+                      <strong>{event.summary}</strong>
+                      <p>
+                        {event.actionType} · {event.occurredAt}
+                        {event.scope ? ` · ${event.scope}` : ""}
+                        {event.presetName ? ` · ${event.presetName}` : ""}
+                      </p>
+                    </div>
+                    <span
+                      className={`status-pill ${
+                        event.status === "failed"
+                          ? "revoked"
+                          : event.status === "warning"
+                            ? "expired"
+                            : "active"
+                      }`}
+                    >
+                      {event.status}
+                    </span>
+                  </div>
+                  {event.safeDetails ? (
+                    <p className="section-subtle-copy">Details: {event.safeDetails}</p>
+                  ) : null}
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div className="empty-state">
+            <strong>No recent activity yet.</strong>
+            <p>Local preset history will appear here after saved-view and recovery actions.</p>
+          </div>
+        )}
+      </section>
+    </section>
+  );
+}
+
 function GrantRegistryList({
   items,
   emptyState,
@@ -775,6 +932,7 @@ export function ResultShareRegistryPanel({
   savedViews,
   presetTransfer,
   presetSafety,
+  presetAudit,
   registry,
   currentTargetLabel,
   activePresetLabel,
@@ -802,6 +960,7 @@ export function ResultShareRegistryPanel({
   onExportPresets,
   onValidatePresetStorage,
   onRunPresetRecoveryAction,
+  onClearPresetAudit,
   onOpenGrantDrilldown,
   onOpenAliasDrilldown,
   onFilterAliasesForGrant,
@@ -1123,6 +1282,11 @@ export function ResultShareRegistryPanel({
           lastGoodBackup={presetSafety.lastGoodBackup}
           onValidate={onValidatePresetStorage}
           onRecover={onRunPresetRecoveryAction}
+        />
+
+        <PresetLocalAuditPanel
+          summary={presetAudit.summary}
+          onClear={onClearPresetAudit}
         />
       </section>
 

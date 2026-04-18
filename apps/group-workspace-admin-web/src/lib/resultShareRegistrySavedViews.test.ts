@@ -7,13 +7,18 @@ import {
   applyResultShareRegistryPresetRecoveryAction,
   applyResultShareRegistryPresetImport,
   applyResultShareRegistrySavedView,
+  appendResultShareRegistryPresetAuditEvent,
+  buildResultShareRegistryPresetAuditSummary,
   buildResultShareRegistryPresetExport,
   buildInitialResultShareRegistrySavedViewState,
   buildResultShareRegistrySavedViewDraft,
+  clearResultShareRegistryPresetAuditEvents,
+  createPresetAuditEvent,
   createResultShareRegistryPresetBackup,
   createResultShareRegistrySavedView,
   deleteResultShareRegistrySavedView,
   inspectResultShareRegistryPresetStorage,
+  loadResultShareRegistryPresetAuditEvents,
   loadResultShareRegistrySavedViewStore,
   overwriteResultShareRegistrySavedView,
   parseResultShareRegistryPresetImport,
@@ -25,10 +30,13 @@ import {
   RESULT_SHARE_REGISTRY_DEFAULT_PRESET_ID_STORAGE_KEY,
   RESULT_SHARE_REGISTRY_GRANT_PRESETS_STORAGE_KEY,
   RESULT_SHARE_REGISTRY_LAST_GOOD_BACKUP_STORAGE_KEY,
+  RESULT_SHARE_REGISTRY_LOCAL_AUDIT_STORAGE_KEY,
   RESULT_SHARE_REGISTRY_PRESET_EXPORT_SCHEMA_VERSION,
+  saveResultShareRegistryPresetAuditEvents,
   saveResultShareRegistrySavedView,
   setResultShareRegistryDefaultPresetId,
 } from "./resultShareRegistrySavedViews";
+import type { ResultShareRegistryPresetLocalAuditLoadResult } from "./types";
 
 function createMemoryStorage(): Storage {
   let store: Record<string, string> = {};
@@ -1179,5 +1187,122 @@ describe("result share registry saved views", () => {
     expect(preview.canApply).toBe(true);
     expect(window.localStorage.getItem(RESULT_SHARE_REGISTRY_GRANT_PRESETS_STORAGE_KEY)).toBe(beforeGrant);
     expect(window.localStorage.getItem(RESULT_SHARE_REGISTRY_ALIAS_PRESETS_STORAGE_KEY)).toBe(beforeAlias);
+  });
+
+  it("appends audit events with a deterministic max history cap", () => {
+    let auditState: ResultShareRegistryPresetLocalAuditLoadResult = {
+      events: [],
+      storageWarning: null,
+    };
+    for (let index = 0; index < 110; index += 1) {
+      auditState = appendResultShareRegistryPresetAuditEvent(
+        window.localStorage,
+        createPresetAuditEvent(
+          "preset_saved",
+          "success",
+          `Saved preset ${index}`,
+          {
+            scope: "grant_registry",
+            presetId: `preset-${index}`,
+            presetName: `Preset ${index}`,
+            occurredAt: `2026-04-18T08:${String(index % 60).padStart(2, "0")}:00Z`,
+            id: `event-${index}`,
+          },
+        ),
+      );
+    }
+
+    expect(auditState.events).toHaveLength(100);
+    expect(auditState.events[0].id).toBe("event-109");
+    expect(auditState.events[99].id).toBe("event-10");
+  });
+
+  it("builds audit summary counts by action type, scope, and status", () => {
+    const events = [
+      createPresetAuditEvent("preset_saved", "success", "Saved grant preset.", {
+        scope: "grant_registry",
+        occurredAt: "2026-04-18T10:00:00Z",
+        id: "audit-1",
+      }),
+      createPresetAuditEvent("import_merge", "warning", "Merged preset import.", {
+        scope: "storage",
+        occurredAt: "2026-04-18T10:01:00Z",
+        id: "audit-2",
+      }),
+      createPresetAuditEvent("backup_restored", "failed", "Restore failed.", {
+        scope: "storage",
+        occurredAt: "2026-04-18T10:02:00Z",
+        id: "audit-3",
+      }),
+    ];
+
+    const summary = buildResultShareRegistryPresetAuditSummary(events, {
+      storageWarning: "Audit storage warning.",
+    });
+
+    expect(summary.totalEvents).toBe(3);
+    expect(summary.successCount).toBe(1);
+    expect(summary.warningCount).toBe(1);
+    expect(summary.failedCount).toBe(1);
+    expect(summary.byActionType.preset_saved).toBe(1);
+    expect(summary.byActionType.import_merge).toBe(1);
+    expect(summary.byActionType.backup_restored).toBe(1);
+    expect(summary.byScope.grant_registry).toBe(1);
+    expect(summary.byScope.storage).toBe(2);
+    expect(summary.importRelatedCount).toBe(1);
+    expect(summary.backupRelatedCount).toBe(1);
+    expect(summary.recoveryRelatedCount).toBe(1);
+    expect(summary.storageWarning).toBe("Audit storage warning.");
+  });
+
+  it("keeps corrupted audit localStorage isolated from preset storage", () => {
+    const grantPreset = createResultShareRegistrySavedView(
+      buildResultShareRegistrySavedViewDraft(
+        "grant_registry",
+        "Grant intact",
+        {
+          ...DEFAULT_RESULT_SHARE_REGISTRY_FILTER_INPUT,
+          shareKind: "workspace_board",
+          grantStatus: "active",
+          workspaceId: "workspace-1",
+        },
+        DEFAULT_RESULT_SHARE_REGISTRY_SORT_INPUT,
+      )!,
+      {
+        id: "grant-intact",
+        now: "2026-04-18T08:00:00Z",
+      },
+    );
+    persistResultShareRegistrySavedViewStore(window.localStorage, {
+      grantPresets: [grantPreset],
+      aliasPresets: [],
+      defaultPresetId: null,
+    });
+    window.localStorage.setItem(RESULT_SHARE_REGISTRY_LOCAL_AUDIT_STORAGE_KEY, "{not-json");
+
+    const presetStore = loadResultShareRegistrySavedViewStore(window.localStorage);
+    const auditState = loadResultShareRegistryPresetAuditEvents(window.localStorage);
+
+    expect(presetStore.grantPresets).toHaveLength(1);
+    expect(presetStore.grantPresets[0].name).toBe("Grant intact");
+    expect(auditState.events).toEqual([]);
+    expect(auditState.storageWarning).toMatch(/not valid JSON/i);
+  });
+
+  it("saves and clears safe local audit history", () => {
+    const events = saveResultShareRegistryPresetAuditEvents(window.localStorage, [
+      createPresetAuditEvent("export_created", "success", "Exported presets.", {
+        scope: "storage",
+        id: "audit-export",
+        occurredAt: "2026-04-18T10:05:00Z",
+      }),
+    ]);
+    expect(events).toHaveLength(1);
+    expect(window.localStorage.getItem(RESULT_SHARE_REGISTRY_LOCAL_AUDIT_STORAGE_KEY)).toContain(
+      "audit-export",
+    );
+
+    clearResultShareRegistryPresetAuditEvents(window.localStorage);
+    expect(window.localStorage.getItem(RESULT_SHARE_REGISTRY_LOCAL_AUDIT_STORAGE_KEY)).toBeNull();
   });
 });
