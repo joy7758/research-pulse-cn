@@ -37,6 +37,9 @@ import type {
   ResultShareRegistrySavedViewStoreState,
   ResultShareRegistrySavedViewSummary,
   ResultShareRegistryPresetStorageDiagnostics,
+  ResultShareRegistryPresetWorkspaceLoadResult,
+  ResultShareRegistryPresetWorkspaceState,
+  ResultShareRegistryPresetWorkspaceViewModel,
   ResultShareRegistrySortInput,
 } from "./types";
 
@@ -48,6 +51,8 @@ export const RESULT_SHARE_REGISTRY_LAST_GOOD_BACKUP_STORAGE_KEY =
   "resultShareRegistryPresetLastGoodBackup";
 export const RESULT_SHARE_REGISTRY_LOCAL_AUDIT_STORAGE_KEY =
   "resultShareRegistryPresetLocalAuditEvents";
+export const RESULT_SHARE_REGISTRY_WORKSPACE_STATE_STORAGE_KEY =
+  "resultShareRegistryPresetWorkspaceState";
 export const RESULT_SHARE_REGISTRY_PRESET_EXPORT_SCHEMA_VERSION =
   "result-share-registry-presets.v1";
 export const RESULT_SHARE_REGISTRY_PRESET_BACKUP_SCHEMA_VERSION =
@@ -98,6 +103,8 @@ const presetLocalAuditActionTypes: ResultShareRegistryPresetLocalAuditActionType
   "preset_applied",
   "preset_overwritten",
   "preset_deleted",
+  "preset_pinned",
+  "preset_unpinned",
   "default_set",
   "default_cleared",
   "import_dry_run",
@@ -113,6 +120,8 @@ const presetLocalAuditActionTypes: ResultShareRegistryPresetLocalAuditActionType
   "backup_restored",
   "recovery_failed",
   "validation_failed",
+  "preset_workspace_reset",
+  "stale_pins_cleaned",
 ];
 
 type StorageInspectionScopeResult = {
@@ -942,6 +951,390 @@ export function buildResultShareRegistryPresetAuditSummary(
   };
 }
 
+function createDefaultResultShareRegistryPresetWorkspaceState(
+  options?: {
+    now?: string;
+  },
+): ResultShareRegistryPresetWorkspaceState {
+  return {
+    pinnedGrantPresetIds: [],
+    pinnedAliasPresetIds: [],
+    lastActivePresetScope: null,
+    lastActivePresetId: null,
+    collapsedSections: null,
+    updatedAt: options?.now ?? new Date().toISOString(),
+  };
+}
+
+function normalizeWorkspacePresetIds(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const seen = new Set<string>();
+  const result: string[] = [];
+  value.forEach((item) => {
+    if (typeof item !== "string") {
+      return;
+    }
+    const trimmed = item.trim();
+    if (!trimmed || seen.has(trimmed)) {
+      return;
+    }
+    seen.add(trimmed);
+    result.push(trimmed);
+  });
+  return result;
+}
+
+function normalizeCollapsedSections(
+  value: unknown,
+): ResultShareRegistryPresetWorkspaceState["collapsedSections"] {
+  if (!isRecord(value)) {
+    return null;
+  }
+  return {
+    pinnedGrantPresets: value.pinnedGrantPresets === true,
+    pinnedAliasPresets: value.pinnedAliasPresets === true,
+    recentGrantPresets: value.recentGrantPresets === true,
+    recentAliasPresets: value.recentAliasPresets === true,
+    recentActivity: value.recentActivity === true,
+    storageHealth: value.storageHealth === true,
+  };
+}
+
+function normalizeResultShareRegistryPresetWorkspaceState(
+  value: unknown,
+): ResultShareRegistryPresetWorkspaceState | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const updatedAt = typeof value.updatedAt === "string" ? value.updatedAt.trim() : "";
+  if (!updatedAt) {
+    return null;
+  }
+  return {
+    pinnedGrantPresetIds: normalizeWorkspacePresetIds(value.pinnedGrantPresetIds),
+    pinnedAliasPresetIds: normalizeWorkspacePresetIds(value.pinnedAliasPresetIds),
+    lastActivePresetScope: normalizeScope(
+      typeof value.lastActivePresetScope === "string" ||
+        value.lastActivePresetScope === null ||
+        value.lastActivePresetScope === undefined
+        ? value.lastActivePresetScope
+        : null,
+    ),
+    lastActivePresetId:
+      typeof value.lastActivePresetId === "string" && value.lastActivePresetId.trim()
+        ? value.lastActivePresetId.trim()
+        : null,
+    collapsedSections: normalizeCollapsedSections(value.collapsedSections),
+    updatedAt,
+  };
+}
+
+export function loadResultShareRegistryPresetWorkspaceState(
+  storage: Storage | null | undefined,
+): ResultShareRegistryPresetWorkspaceLoadResult {
+  if (!storage) {
+    return {
+      state: createDefaultResultShareRegistryPresetWorkspaceState(),
+      storageWarning: null,
+      keyPresent: false,
+    };
+  }
+  let raw: string | null = null;
+  try {
+    raw = storage.getItem(RESULT_SHARE_REGISTRY_WORKSPACE_STATE_STORAGE_KEY);
+  } catch {
+    return {
+      state: createDefaultResultShareRegistryPresetWorkspaceState(),
+      storageWarning: "Local preset workspace state could not be read.",
+      keyPresent: false,
+    };
+  }
+  if (!raw) {
+    return {
+      state: createDefaultResultShareRegistryPresetWorkspaceState(),
+      storageWarning: null,
+      keyPresent: false,
+    };
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    const normalized = normalizeResultShareRegistryPresetWorkspaceState(parsed);
+    if (!normalized) {
+      return {
+        state: createDefaultResultShareRegistryPresetWorkspaceState(),
+        storageWarning: "Local preset workspace state is invalid and fell back to defaults.",
+        keyPresent: true,
+      };
+    }
+    return {
+      state: normalized,
+      storageWarning: null,
+      keyPresent: true,
+    };
+  } catch {
+    return {
+      state: createDefaultResultShareRegistryPresetWorkspaceState(),
+      storageWarning: "Local preset workspace state is not valid JSON and fell back to defaults.",
+      keyPresent: true,
+    };
+  }
+}
+
+export function persistResultShareRegistryPresetWorkspaceState(
+  storage: Storage | null | undefined,
+  state: ResultShareRegistryPresetWorkspaceState,
+): ResultShareRegistryPresetWorkspaceState {
+  const normalized =
+    normalizeResultShareRegistryPresetWorkspaceState(state) ??
+    createDefaultResultShareRegistryPresetWorkspaceState();
+  if (!storage) {
+    return normalized;
+  }
+  storage.setItem(
+    RESULT_SHARE_REGISTRY_WORKSPACE_STATE_STORAGE_KEY,
+    JSON.stringify(normalized),
+  );
+  return normalized;
+}
+
+export function resetResultShareRegistryPresetWorkspaceState(
+  options?: {
+    now?: string;
+  },
+): ResultShareRegistryPresetWorkspaceState {
+  return createDefaultResultShareRegistryPresetWorkspaceState(options);
+}
+
+export function pinResultShareRegistryPresetWorkspacePreset(
+  state: ResultShareRegistryPresetWorkspaceState,
+  scope: ResultShareRegistrySavedViewScope,
+  presetId: string,
+  options?: {
+    now?: string;
+  },
+): ResultShareRegistryPresetWorkspaceState {
+  const trimmedId = presetId.trim();
+  if (!trimmedId) {
+    return state;
+  }
+  const key =
+    scope === "grant_registry" ? "pinnedGrantPresetIds" : "pinnedAliasPresetIds";
+  const nextIds = state[key].includes(trimmedId) ? state[key] : [...state[key], trimmedId];
+  return {
+    ...state,
+    [key]: nextIds,
+    updatedAt: options?.now ?? new Date().toISOString(),
+  };
+}
+
+export function unpinResultShareRegistryPresetWorkspacePreset(
+  state: ResultShareRegistryPresetWorkspaceState,
+  scope: ResultShareRegistrySavedViewScope,
+  presetId: string,
+  options?: {
+    now?: string;
+  },
+): ResultShareRegistryPresetWorkspaceState {
+  const key =
+    scope === "grant_registry" ? "pinnedGrantPresetIds" : "pinnedAliasPresetIds";
+  return {
+    ...state,
+    [key]: state[key].filter((item) => item !== presetId),
+    updatedAt: options?.now ?? new Date().toISOString(),
+  };
+}
+
+export function movePinnedResultShareRegistryPresetWorkspacePreset(
+  state: ResultShareRegistryPresetWorkspaceState,
+  scope: ResultShareRegistrySavedViewScope,
+  presetId: string,
+  direction: "up" | "down",
+  options?: {
+    now?: string;
+  },
+): ResultShareRegistryPresetWorkspaceState {
+  const key =
+    scope === "grant_registry" ? "pinnedGrantPresetIds" : "pinnedAliasPresetIds";
+  const nextIds = [...state[key]];
+  const index = nextIds.indexOf(presetId);
+  if (index < 0) {
+    return state;
+  }
+  const swapIndex = direction === "up" ? index - 1 : index + 1;
+  if (swapIndex < 0 || swapIndex >= nextIds.length) {
+    return state;
+  }
+  [nextIds[index], nextIds[swapIndex]] = [nextIds[swapIndex], nextIds[index]];
+  return {
+    ...state,
+    [key]: nextIds,
+    updatedAt: options?.now ?? new Date().toISOString(),
+  };
+}
+
+export function clearAllResultShareRegistryPresetWorkspacePins(
+  state: ResultShareRegistryPresetWorkspaceState,
+  options?: {
+    now?: string;
+  },
+): ResultShareRegistryPresetWorkspaceState {
+  return {
+    ...state,
+    pinnedGrantPresetIds: [],
+    pinnedAliasPresetIds: [],
+    updatedAt: options?.now ?? new Date().toISOString(),
+  };
+}
+
+export function setResultShareRegistryPresetWorkspaceLastActive(
+  state: ResultShareRegistryPresetWorkspaceState,
+  scope: ResultShareRegistrySavedViewScope | null,
+  presetId: string | null,
+  options?: {
+    now?: string;
+  },
+): ResultShareRegistryPresetWorkspaceState {
+  return {
+    ...state,
+    lastActivePresetScope: scope,
+    lastActivePresetId: presetId?.trim() || null,
+    updatedAt: options?.now ?? new Date().toISOString(),
+  };
+}
+
+export function syncResultShareRegistryPresetWorkspaceStateWithStore(
+  state: ResultShareRegistryPresetWorkspaceState,
+  store: ResultShareRegistrySavedViewStoreState,
+  options?: {
+    now?: string;
+  },
+): ResultShareRegistryPresetWorkspaceState {
+  const existingGrantIds = new Set(store.grantPresets.map((preset) => preset.id));
+  const existingAliasIds = new Set(store.aliasPresets.map((preset) => preset.id));
+  const lastActiveStillExists =
+    state.lastActivePresetScope === "grant_registry"
+      ? state.lastActivePresetId !== null && existingGrantIds.has(state.lastActivePresetId)
+      : state.lastActivePresetScope === "alias_registry"
+        ? state.lastActivePresetId !== null && existingAliasIds.has(state.lastActivePresetId)
+        : false;
+
+  return {
+    ...state,
+    lastActivePresetScope: lastActiveStillExists ? state.lastActivePresetScope : null,
+    lastActivePresetId: lastActiveStillExists ? state.lastActivePresetId : null,
+    updatedAt: options?.now ?? new Date().toISOString(),
+  };
+}
+
+export function cleanStaleResultShareRegistryPresetWorkspacePins(
+  state: ResultShareRegistryPresetWorkspaceState,
+  store: ResultShareRegistrySavedViewStoreState,
+  options?: {
+    now?: string;
+  },
+): {
+  state: ResultShareRegistryPresetWorkspaceState;
+  removedGrantPinIds: string[];
+  removedAliasPinIds: string[];
+} {
+  const existingGrantIds = new Set(store.grantPresets.map((preset) => preset.id));
+  const existingAliasIds = new Set(store.aliasPresets.map((preset) => preset.id));
+  const removedGrantPinIds = state.pinnedGrantPresetIds.filter((id) => !existingGrantIds.has(id));
+  const removedAliasPinIds = state.pinnedAliasPresetIds.filter((id) => !existingAliasIds.has(id));
+  return {
+    state: {
+      ...state,
+      pinnedGrantPresetIds: state.pinnedGrantPresetIds.filter((id) => existingGrantIds.has(id)),
+      pinnedAliasPresetIds: state.pinnedAliasPresetIds.filter((id) => existingAliasIds.has(id)),
+      updatedAt: options?.now ?? new Date().toISOString(),
+    },
+    removedGrantPinIds,
+    removedAliasPinIds,
+  };
+}
+
+function sortSavedViewSummariesByUpdatedAt(
+  presets: ResultShareRegistrySavedViewSummary[],
+): ResultShareRegistrySavedViewSummary[] {
+  return [...presets].sort((left, right) => {
+    const timestampCompare = right.updatedAt.localeCompare(left.updatedAt);
+    if (timestampCompare !== 0) {
+      return timestampCompare;
+    }
+    return left.id.localeCompare(right.id);
+  });
+}
+
+export function buildResultShareRegistryPresetWorkspaceViewModel(
+  summaries: {
+    grantPresets: ResultShareRegistrySavedViewSummary[];
+    aliasPresets: ResultShareRegistrySavedViewSummary[];
+    defaultPreset: ResultShareRegistrySavedViewSummary | null;
+  },
+  workspaceState: ResultShareRegistryPresetWorkspaceState,
+  auditSummary: ResultShareRegistryPresetLocalAuditSummary,
+  diagnostics: ResultShareRegistryPresetStorageDiagnostics,
+  lastGoodBackup: ResultShareRegistryPresetBackupSnapshot | null,
+): ResultShareRegistryPresetWorkspaceViewModel {
+  const grantById = new Map(summaries.grantPresets.map((preset) => [preset.id, preset]));
+  const aliasById = new Map(summaries.aliasPresets.map((preset) => [preset.id, preset]));
+  const pinnedGrantPresets = workspaceState.pinnedGrantPresetIds
+    .map((presetId) => grantById.get(presetId) ?? null)
+    .filter((preset): preset is ResultShareRegistrySavedViewSummary => preset !== null);
+  const pinnedAliasPresets = workspaceState.pinnedAliasPresetIds
+    .map((presetId) => aliasById.get(presetId) ?? null)
+    .filter((preset): preset is ResultShareRegistrySavedViewSummary => preset !== null);
+  const staleGrantPinIds = workspaceState.pinnedGrantPresetIds.filter((presetId) => !grantById.has(presetId));
+  const staleAliasPinIds = workspaceState.pinnedAliasPresetIds.filter((presetId) => !aliasById.has(presetId));
+  const recentGrantPresets = sortSavedViewSummariesByUpdatedAt(summaries.grantPresets).slice(0, 3);
+  const recentAliasPresets = sortSavedViewSummariesByUpdatedAt(summaries.aliasPresets).slice(0, 3);
+  const lastActivePreset =
+    workspaceState.lastActivePresetScope === "grant_registry"
+      ? grantById.get(workspaceState.lastActivePresetId ?? "") ?? null
+      : workspaceState.lastActivePresetScope === "alias_registry"
+        ? aliasById.get(workspaceState.lastActivePresetId ?? "") ?? null
+        : null;
+
+  return {
+    overviewSummary: [
+      { label: "Grant presets", value: summaries.grantPresets.length, hint: null },
+      { label: "Alias presets", value: summaries.aliasPresets.length, hint: null },
+      { label: "Pinned grants", value: pinnedGrantPresets.length, hint: null },
+      { label: "Pinned aliases", value: pinnedAliasPresets.length, hint: null },
+      { label: "Local audit events", value: auditSummary.totalEvents, hint: null },
+      {
+        label: "Storage health",
+        value: diagnostics.errorCount + diagnostics.warningCount,
+        hint:
+          diagnostics.errorCount + diagnostics.warningCount > 0
+            ? "Warnings and errors in local preset storage"
+            : "No current storage issues",
+      },
+    ],
+    lastActivePresetLabel: lastActivePreset
+      ? `${lastActivePreset.scope === "grant_registry" ? "Grant" : "Alias"} preset · ${lastActivePreset.name}`
+      : null,
+    pinnedGrantPresets,
+    pinnedAliasPresets,
+    recentGrantPresets,
+    recentAliasPresets,
+    staleGrantPinIds,
+    staleAliasPinIds,
+    recentActivity: auditSummary.recentEvents.slice(0, 5),
+    storageHealth: {
+      issueCount: diagnostics.warningCount + diagnostics.errorCount,
+      lastBackupLabel: lastGoodBackup
+        ? `${lastGoodBackup.createdAt} · ${lastGoodBackup.reason}`
+        : "No local backup stored",
+      auditWarning: auditSummary.storageWarning,
+      workspaceWarning: diagnostics.workspaceStateWarning,
+      latestValidationAt: diagnostics.latestValidationAt,
+    },
+  };
+}
+
 function collectUnexpectedKeys(
   value: Record<string, unknown>,
   allowedKeys: Set<string>,
@@ -1634,6 +2027,8 @@ export function inspectResultShareRegistryPresetStorage(
     }
   }
 
+  const workspaceStateLoad = loadResultShareRegistryPresetWorkspaceState(storage);
+
   const report = buildResultShareRegistryPresetIntegrityReport(store, issues, {
     checkedAt,
     rawGrantPresetCount: grantScope.rawCount,
@@ -1646,6 +2041,7 @@ export function inspectResultShareRegistryPresetStorage(
       aliasPresets: aliasScope.keyPresent,
       defaultPresetId: defaultPresetId !== null,
       lastGoodBackup: rawBackup !== null,
+      workspaceState: workspaceStateLoad.keyPresent,
     },
     grantPresetCount: report.grantPresetCount,
     aliasPresetCount: report.aliasPresetCount,
@@ -1653,6 +2049,8 @@ export function inspectResultShareRegistryPresetStorage(
     invalidPresetCount: report.invalidPresetCount,
     defaultPresetIdPresent: defaultPresetId !== null,
     lastBackupPresent: lastGoodBackup !== null,
+    workspaceStatePresent: workspaceStateLoad.keyPresent,
+    workspaceStateWarning: workspaceStateLoad.storageWarning,
     latestValidationAt: report.checkedAt,
     warningCount: report.warningCount,
     errorCount: report.errorCount,
@@ -1661,6 +2059,11 @@ export function inspectResultShareRegistryPresetStorage(
       lastGoodBackup
         ? `Last-good backup available from ${lastGoodBackup.createdAt}.`
         : "No last-good backup snapshot is stored yet.",
+      workspaceStateLoad.storageWarning
+        ? workspaceStateLoad.storageWarning
+        : workspaceStateLoad.keyPresent
+          ? "Local preset workspace organization state is present."
+          : "No local preset workspace organization state is stored yet.",
     ],
   };
 
@@ -1874,11 +2277,14 @@ export function buildInitialResultShareRegistrySavedViewState(
 
 export function buildResultShareRegistrySavedViewSummaries(
   store: ResultShareRegistrySavedViewStoreState,
+  workspaceState?: ResultShareRegistryPresetWorkspaceState,
 ): {
   grantPresets: ResultShareRegistrySavedViewSummary[];
   aliasPresets: ResultShareRegistrySavedViewSummary[];
   defaultPreset: ResultShareRegistrySavedViewSummary | null;
 } {
+  const pinnedGrantIds = new Set(workspaceState?.pinnedGrantPresetIds ?? []);
+  const pinnedAliasIds = new Set(workspaceState?.pinnedAliasPresetIds ?? []);
   const buildDrilldownSummaryItems = (
     drilldownContext: ResultShareRegistrySavedViewDrilldownContext | null,
   ): string[] => {
@@ -1929,6 +2335,10 @@ export function buildResultShareRegistrySavedViewSummaries(
       createdAt: preset.createdAt,
       updatedAt: preset.updatedAt,
       isDefault: store.defaultPresetId === preset.id,
+      isPinned:
+        preset.scope === "grant_registry"
+          ? pinnedGrantIds.has(preset.id)
+          : pinnedAliasIds.has(preset.id),
     };
   };
 

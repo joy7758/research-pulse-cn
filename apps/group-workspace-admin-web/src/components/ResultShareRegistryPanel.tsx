@@ -19,6 +19,7 @@ import type {
   ResultShareRegistryPresetLocalAuditSummary,
   ResultShareRegistryPresetRecoveryAction,
   ResultShareRegistryPresetStorageDiagnostics,
+  ResultShareRegistryPresetWorkspaceViewModel,
   ResultShareRegistryFilterSummaryViewModel,
   ResultShareRegistrySavedViewApplyMode,
   ResultShareRegistrySavedViewScope,
@@ -55,6 +56,9 @@ type ResultShareRegistryPanelProps = {
   presetAudit: {
     summary: ResultShareRegistryPresetLocalAuditSummary;
   };
+  presetWorkspace: {
+    viewModel: ResultShareRegistryPresetWorkspaceViewModel;
+  };
   registry: ResultShareRegistryViewModel | null;
   currentTargetLabel: string | null;
   activePresetLabel: string | null;
@@ -90,6 +94,16 @@ type ResultShareRegistryPanelProps = {
   onValidatePresetStorage: () => void;
   onRunPresetRecoveryAction: (action: ResultShareRegistryPresetRecoveryAction) => void;
   onClearPresetAudit: () => void;
+  onPinSavedView: (scope: ResultShareRegistrySavedViewScope, presetId: string) => void;
+  onUnpinSavedView: (scope: ResultShareRegistrySavedViewScope, presetId: string) => void;
+  onMovePinnedSavedView: (
+    scope: ResultShareRegistrySavedViewScope,
+    presetId: string,
+    direction: "up" | "down",
+  ) => void;
+  onClearWorkspacePins: () => void;
+  onResetWorkspace: () => void;
+  onCleanStaleWorkspacePins: () => void;
   onOpenGrantDrilldown: (grantId: string) => void;
   onOpenAliasDrilldown: (aliasId: string) => void;
   onFilterAliasesForGrant: (grantId: string, shareKind: ResultShareGrantRegistryItemViewModel["shareKind"]) => void;
@@ -246,6 +260,8 @@ function SavedViewList({
   onOverwrite,
   onDelete,
   onSetDefault,
+  onPin,
+  onUnpin,
 }: {
   scope: ResultShareRegistrySavedViewScope;
   title: string;
@@ -260,6 +276,8 @@ function SavedViewList({
   onOverwrite: (presetId: string) => void;
   onDelete: (presetId: string) => void;
   onSetDefault: (presetId: string) => void;
+  onPin: (presetId: string) => void;
+  onUnpin: (presetId: string) => void;
 }) {
   return (
     <section className="conversion-section-card saved-view-card">
@@ -374,6 +392,13 @@ function SavedViewList({
                 <button
                   type="button"
                   className="button-secondary"
+                  onClick={() => (preset.isPinned ? onUnpin(preset.id) : onPin(preset.id))}
+                >
+                  {preset.isPinned ? "Unpin preset" : "Pin preset"}
+                </button>
+                <button
+                  type="button"
+                  className="button-secondary"
                   onClick={() => onOverwrite(preset.id)}
                 >
                   Overwrite with current view
@@ -398,6 +423,391 @@ function SavedViewList({
           ))}
         </ul>
       )}
+    </section>
+  );
+}
+
+function jumpToRegistrySection(scope: ResultShareRegistrySavedViewScope): void {
+  if (typeof document === "undefined") {
+    return;
+  }
+  const target = document.getElementById(
+    scope === "grant_registry"
+      ? "result-share-grant-registry-section"
+      : "result-share-alias-registry-section",
+  );
+  target?.scrollIntoView?.({
+    block: "start",
+    behavior: "smooth",
+  });
+}
+
+function WorkspacePresetList({
+  title,
+  emptyTitle,
+  emptyMessage,
+  presets,
+  scope,
+  staleIds,
+  onApply,
+  onMove,
+  onUnpin,
+}: {
+  title: string;
+  emptyTitle: string;
+  emptyMessage: string;
+  presets: ResultShareRegistrySavedViewSummary[];
+  scope: ResultShareRegistrySavedViewScope;
+  staleIds: string[];
+  onApply: (presetId: string, mode: ResultShareRegistrySavedViewApplyMode) => void;
+  onMove: (presetId: string, direction: "up" | "down") => void;
+  onUnpin: (presetId: string) => void;
+}) {
+  return (
+    <section className="conversion-section-card saved-view-card">
+      <div className="conversion-section-header">
+        <div>
+          <h4>{title}</h4>
+          <p className="section-subtle-copy">
+            Scope-aware pinned presets for quick apply and quick jumps back to the current registry.
+          </p>
+        </div>
+      </div>
+
+      {staleIds.length > 0 ? (
+        <div className="inline-banner info">
+          <strong>Stale pins detected</strong>
+          <span>{staleIds.join(", ")}</span>
+        </div>
+      ) : null}
+
+      {presets.length === 0 ? (
+        <div className="empty-state">
+          <strong>{emptyTitle}</strong>
+          <p>{emptyMessage}</p>
+        </div>
+      ) : (
+        <ul className="data-list">
+          {presets.map((preset, index) => (
+            <li key={preset.id} className="data-list-item">
+              <div className="registry-item-stack">
+                <div className="registry-item-header">
+                  <div>
+                    <strong>{preset.name}</strong>
+                    <p>
+                      {preset.scope === "grant_registry" ? "Grant preset" : "Alias preset"} · updated{" "}
+                      {preset.updatedAt}
+                    </p>
+                  </div>
+                  <div className="button-row">
+                    {preset.isDefault ? <span className="status-pill active">Default</span> : null}
+                    <span className="status-pill active">Pinned</span>
+                  </div>
+                </div>
+                <ul className="filter-chip-list">
+                  {preset.summaryItems.map((item) => (
+                    <li key={`${preset.id}-${item}`} className="filter-chip">
+                      <strong>{item}</strong>
+                    </li>
+                  ))}
+                </ul>
+                {preset.hasDrilldownContext ? (
+                  <ul className="filter-chip-list">
+                    {preset.drilldownSummaryItems.map((item) => (
+                      <li key={`${preset.id}-drilldown-${item}`} className="filter-chip">
+                        <strong>{item}</strong>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+              <div className="button-row">
+                <button
+                  type="button"
+                  className="button-secondary"
+                  onClick={() => onApply(preset.id, "registry_only")}
+                >
+                  Quick apply
+                </button>
+                <button
+                  type="button"
+                  className="button-secondary"
+                  onClick={() => onApply(preset.id, "registry_and_drilldown")}
+                  disabled={!preset.hasDrilldownContext}
+                >
+                  {preset.hasDrilldownContext
+                    ? "Quick apply + drilldown"
+                    : "No drilldown context saved"}
+                </button>
+                <button
+                  type="button"
+                  className="button-secondary"
+                  onClick={() => jumpToRegistrySection(scope)}
+                >
+                  Jump to {scope === "grant_registry" ? "grant" : "alias"} registry
+                </button>
+                <button
+                  type="button"
+                  className="button-secondary"
+                  onClick={() => onMove(preset.id, "up")}
+                  disabled={index === 0}
+                >
+                  Move up
+                </button>
+                <button
+                  type="button"
+                  className="button-secondary"
+                  onClick={() => onMove(preset.id, "down")}
+                  disabled={index === presets.length - 1}
+                >
+                  Move down
+                </button>
+                <button
+                  type="button"
+                  className="button-secondary"
+                  onClick={() => onUnpin(preset.id)}
+                >
+                  Unpin
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function RecentPresetList({
+  title,
+  presets,
+  onApply,
+  onPin,
+}: {
+  title: string;
+  presets: ResultShareRegistrySavedViewSummary[];
+  onApply: (scope: ResultShareRegistrySavedViewScope, presetId: string, mode: ResultShareRegistrySavedViewApplyMode) => void;
+  onPin: (scope: ResultShareRegistrySavedViewScope, presetId: string) => void;
+}) {
+  return (
+    <section className="conversion-section-card saved-view-card">
+      <div className="conversion-section-header">
+        <div>
+          <h4>{title}</h4>
+          <p className="section-subtle-copy">
+            Recently updated local presets for quick operator reuse.
+          </p>
+        </div>
+      </div>
+      {presets.length === 0 ? (
+        <div className="empty-state">
+          <strong>No recent presets.</strong>
+          <p>Save or import presets in this scope to populate the local workspace overview.</p>
+        </div>
+      ) : (
+        <ul className="data-list">
+          {presets.map((preset) => (
+            <li key={preset.id} className="data-list-item">
+              <div className="registry-item-stack">
+                <strong>{preset.name}</strong>
+                <p>
+                  {preset.scope === "grant_registry" ? "Grant preset" : "Alias preset"} · updated{" "}
+                  {preset.updatedAt}
+                </p>
+              </div>
+              <div className="button-row">
+                <button
+                  type="button"
+                  className="button-secondary"
+                  onClick={() => onApply(preset.scope, preset.id, "registry_only")}
+                >
+                  Apply
+                </button>
+                <button
+                  type="button"
+                  className="button-secondary"
+                  onClick={() => onPin(preset.scope, preset.id)}
+                  disabled={preset.isPinned}
+                >
+                  {preset.isPinned ? "Pinned" : "Pin"}
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function PresetWorkspacePanel({
+  viewModel,
+  onApply,
+  onUnpin,
+  onPin,
+  onMovePinned,
+  onCleanStalePins,
+  onClearPins,
+  onResetWorkspace,
+}: {
+  viewModel: ResultShareRegistryPresetWorkspaceViewModel;
+  onApply: (
+    scope: ResultShareRegistrySavedViewScope,
+    presetId: string,
+    mode: ResultShareRegistrySavedViewApplyMode,
+  ) => void;
+  onUnpin: (scope: ResultShareRegistrySavedViewScope, presetId: string) => void;
+  onPin: (scope: ResultShareRegistrySavedViewScope, presetId: string) => void;
+  onMovePinned: (
+    scope: ResultShareRegistrySavedViewScope,
+    presetId: string,
+    direction: "up" | "down",
+  ) => void;
+  onCleanStalePins: () => void;
+  onClearPins: () => void;
+  onResetWorkspace: () => void;
+}) {
+  const stalePinCount = viewModel.staleGrantPinIds.length + viewModel.staleAliasPinIds.length;
+
+  return (
+    <section className="conversion-section-card saved-view-card">
+      <div className="conversion-section-header">
+        <div>
+          <h3>Preset workspace</h3>
+          <p className="section-subtle-copy">
+            Local-only operator organization for preset pinning, recent activity, and storage
+            health. This never syncs to backend and never stores bearer tokens or source-file
+            data.
+          </p>
+        </div>
+        <div className="button-row">
+          <button
+            type="button"
+            className="button-secondary"
+            onClick={onCleanStalePins}
+            disabled={stalePinCount === 0}
+          >
+            Clean stale pins
+          </button>
+          <button
+            type="button"
+            className="button-secondary"
+            onClick={onClearPins}
+            disabled={
+              viewModel.pinnedGrantPresets.length === 0 &&
+              viewModel.pinnedAliasPresets.length === 0 &&
+              stalePinCount === 0
+            }
+          >
+            Clear all pins
+          </button>
+          <button type="button" className="button-danger" onClick={onResetWorkspace}>
+            Reset workspace
+          </button>
+        </div>
+      </div>
+
+      <SummaryCardList items={viewModel.overviewSummary} />
+
+      <ul className="filter-chip-list">
+        <li className="filter-chip">
+          <span>Last active preset</span>
+          <strong>{viewModel.lastActivePresetLabel ?? "None"}</strong>
+        </li>
+        <li className="filter-chip">
+          <span>Latest validation</span>
+          <strong>{viewModel.storageHealth.latestValidationAt ?? "Not validated yet"}</strong>
+        </li>
+        <li className="filter-chip">
+          <span>Last backup</span>
+          <strong>{viewModel.storageHealth.lastBackupLabel}</strong>
+        </li>
+      </ul>
+
+      {viewModel.storageHealth.workspaceWarning ? (
+        <div className="inline-banner error" role="alert">
+          <strong>Workspace state warning</strong>
+          <span>{viewModel.storageHealth.workspaceWarning}</span>
+        </div>
+      ) : null}
+
+      {viewModel.storageHealth.auditWarning ? (
+        <div className="inline-banner info">
+          <strong>Audit storage warning</strong>
+          <span>{viewModel.storageHealth.auditWarning}</span>
+        </div>
+      ) : null}
+
+      <div className="split-grid">
+        <WorkspacePresetList
+          title="Pinned grant presets"
+          emptyTitle="No pinned grant presets."
+          emptyMessage="Pin grant presets from the saved views list to keep high-signal grant workflows close at hand."
+          presets={viewModel.pinnedGrantPresets}
+          scope="grant_registry"
+          staleIds={viewModel.staleGrantPinIds}
+          onApply={(presetId, mode) => onApply("grant_registry", presetId, mode)}
+          onMove={(presetId, direction) => onMovePinned("grant_registry", presetId, direction)}
+          onUnpin={(presetId) => onUnpin("grant_registry", presetId)}
+        />
+        <WorkspacePresetList
+          title="Pinned alias presets"
+          emptyTitle="No pinned alias presets."
+          emptyMessage="Pin alias presets from the saved views list to keep alias follow-up workflows close at hand."
+          presets={viewModel.pinnedAliasPresets}
+          scope="alias_registry"
+          staleIds={viewModel.staleAliasPinIds}
+          onApply={(presetId, mode) => onApply("alias_registry", presetId, mode)}
+          onMove={(presetId, direction) => onMovePinned("alias_registry", presetId, direction)}
+          onUnpin={(presetId) => onUnpin("alias_registry", presetId)}
+        />
+      </div>
+
+      <div className="split-grid">
+        <RecentPresetList
+          title="Recent grant presets"
+          presets={viewModel.recentGrantPresets}
+          onApply={onApply}
+          onPin={onPin}
+        />
+        <RecentPresetList
+          title="Recent alias presets"
+          presets={viewModel.recentAliasPresets}
+          onApply={onApply}
+          onPin={onPin}
+        />
+      </div>
+
+      <section className="conversion-section-card">
+        <div className="conversion-section-header">
+          <div>
+            <h4>Recent local activity</h4>
+            <p className="section-subtle-copy">
+              Compact recent preset operations from the local audit history.
+            </p>
+          </div>
+        </div>
+        {viewModel.recentActivity.length > 0 ? (
+          <ul className="data-list">
+            {viewModel.recentActivity.map((event) => (
+              <li key={event.id} className="data-list-item">
+                <div className="registry-item-stack">
+                  <strong>{event.summary}</strong>
+                  <p>
+                    {event.actionType} · {event.occurredAt}
+                    {event.scope ? ` · ${event.scope}` : ""}
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div className="empty-state">
+            <strong>No local preset activity yet.</strong>
+            <p>Saved-view, import/export, diagnostics, and recovery actions will appear here.</p>
+          </div>
+        )}
+      </section>
     </section>
   );
 }
@@ -490,10 +900,21 @@ function PresetDiagnosticsPanel({
           <strong>{diagnostics.lastBackupPresent ? "Available" : "Not stored"}</strong>
         </li>
         <li className="filter-chip">
+          <span>Workspace state</span>
+          <strong>{diagnostics.workspaceStatePresent ? "Present" : "Missing"}</strong>
+        </li>
+        <li className="filter-chip">
           <span>Validated at</span>
           <strong>{diagnostics.latestValidationAt ?? diagnostics.checkedAt}</strong>
         </li>
       </ul>
+
+      {diagnostics.workspaceStateWarning ? (
+        <div className="inline-banner info">
+          <strong>Workspace organization warning</strong>
+          <span>{diagnostics.workspaceStateWarning}</span>
+        </div>
+      ) : null}
 
       {lastGoodBackup ? (
         <div className="inline-banner info">
@@ -933,6 +1354,7 @@ export function ResultShareRegistryPanel({
   presetTransfer,
   presetSafety,
   presetAudit,
+  presetWorkspace,
   registry,
   currentTargetLabel,
   activePresetLabel,
@@ -961,6 +1383,12 @@ export function ResultShareRegistryPanel({
   onValidatePresetStorage,
   onRunPresetRecoveryAction,
   onClearPresetAudit,
+  onPinSavedView,
+  onUnpinSavedView,
+  onMovePinnedSavedView,
+  onClearWorkspacePins,
+  onResetWorkspace,
+  onCleanStaleWorkspacePins,
   onOpenGrantDrilldown,
   onOpenAliasDrilldown,
   onFilterAliasesForGrant,
@@ -1211,6 +1639,17 @@ export function ResultShareRegistryPanel({
           </div>
         )}
 
+        <PresetWorkspacePanel
+          viewModel={presetWorkspace.viewModel}
+          onApply={onApplySavedView}
+          onUnpin={onUnpinSavedView}
+          onPin={onPinSavedView}
+          onMovePinned={onMovePinnedSavedView}
+          onCleanStalePins={onCleanStaleWorkspacePins}
+          onClearPins={onClearWorkspacePins}
+          onResetWorkspace={onResetWorkspace}
+        />
+
         <div className="split-grid">
           <SavedViewList
             scope="grant_registry"
@@ -1228,6 +1667,8 @@ export function ResultShareRegistryPanel({
             onOverwrite={(presetId) => onOverwriteSavedView("grant_registry", presetId)}
             onDelete={(presetId) => onDeleteSavedView("grant_registry", presetId)}
             onSetDefault={(presetId) => onSetDefaultSavedView("grant_registry", presetId)}
+            onPin={(presetId) => onPinSavedView("grant_registry", presetId)}
+            onUnpin={(presetId) => onUnpinSavedView("grant_registry", presetId)}
           />
           <SavedViewList
             scope="alias_registry"
@@ -1245,6 +1686,8 @@ export function ResultShareRegistryPanel({
             onOverwrite={(presetId) => onOverwriteSavedView("alias_registry", presetId)}
             onDelete={(presetId) => onDeleteSavedView("alias_registry", presetId)}
             onSetDefault={(presetId) => onSetDefaultSavedView("alias_registry", presetId)}
+            onPin={(presetId) => onPinSavedView("alias_registry", presetId)}
+            onUnpin={(presetId) => onUnpinSavedView("alias_registry", presetId)}
           />
         </div>
 
@@ -1303,7 +1746,7 @@ export function ResultShareRegistryPanel({
 
       {registry ? (
         <div className="split-grid">
-          <section className="conversion-section-card">
+          <section className="conversion-section-card" id="result-share-grant-registry-section">
             <div className="conversion-section-header">
               <h3>{registry.grants.title}</h3>
               <p className="section-subtle-copy">{registry.grants.description}</p>
@@ -1317,7 +1760,7 @@ export function ResultShareRegistryPanel({
             />
           </section>
 
-          <section className="conversion-section-card">
+          <section className="conversion-section-card" id="result-share-alias-registry-section">
             <div className="conversion-section-header">
               <h3>{registry.aliases.title}</h3>
               <p className="section-subtle-copy">{registry.aliases.description}</p>

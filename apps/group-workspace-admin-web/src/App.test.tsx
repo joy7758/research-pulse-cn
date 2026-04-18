@@ -1194,7 +1194,7 @@ describe("group workspace admin shell", () => {
     await user.type(scoped.getByLabelText("Grant preset name"), "Board triage");
     await user.click(scoped.getByRole("button", { name: "Save current grant view" }));
 
-    expect(await scoped.findByText("Board triage")).toBeVisible();
+    expect((await scoped.findAllByText("Board triage")).length).toBeGreaterThan(0);
     expect(window.localStorage.getItem("resultShareRegistryGrantPresets")).toContain("Board triage");
     expect(JSON.stringify(window.localStorage)).not.toContain("manual-token");
 
@@ -1204,7 +1204,7 @@ describe("group workspace admin shell", () => {
     await user.type(scoped.getByLabelText("Grant preset name"), "Renamed triage");
     await user.click(scoped.getByRole("button", { name: "Overwrite with current view" }));
 
-    expect(await scoped.findByText("Renamed triage")).toBeVisible();
+    expect((await scoped.findAllByText("Renamed triage")).length).toBeGreaterThan(0);
     expect(scoped.queryByText("Board triage")).not.toBeInTheDocument();
 
     await user.clear(scoped.getByLabelText("Workspace ID"));
@@ -1259,7 +1259,7 @@ describe("group workspace admin shell", () => {
     await user.click(grantPresetScoped.getByLabelText("Include current per-share drilldown filters"));
     await user.click(registryScoped.getByRole("button", { name: "Save current grant view" }));
 
-    expect(await registryScoped.findByText("Board drilldown preset")).toBeVisible();
+    expect((await registryScoped.findAllByText("Board drilldown preset")).length).toBeGreaterThan(0);
     expect(registryScoped.getByText("Linked per-share drilldown context")).toBeVisible();
     expect(registryScoped.getByText("Date from: 2026-04-01")).toBeVisible();
 
@@ -1459,18 +1459,20 @@ describe("group workspace admin shell", () => {
     await user.type(scoped.getByLabelText("Grant preset name"), "Audited preset");
     await user.click(scoped.getByRole("button", { name: "Save current grant view" }));
 
-    expect(await scoped.findByRole("heading", { name: "Local preset activity" })).toBeVisible();
-    expect(scoped.getByText("Saved local grant preset Audited preset.")).toBeVisible();
-    expect(scoped.getByText("preset_saved")).toBeVisible();
+    const auditSection = (await scoped.findByRole("heading", { name: "Local preset activity" })).closest(
+      "section",
+    );
+    expect(auditSection).not.toBeNull();
+    const auditScoped = within(auditSection as HTMLElement);
+    expect((await auditScoped.findAllByText("Saved local grant preset Audited preset.")).length).toBeGreaterThan(0);
+    expect(auditScoped.getByText("preset_saved")).toBeVisible();
     expect(window.localStorage.getItem("resultShareRegistryPresetLocalAuditEvents")).toContain(
       "Audited preset",
     );
 
     await user.click(scoped.getByRole("button", { name: "Clear local audit history" }));
     expect(confirmSpy).toHaveBeenCalled();
-    expect(
-      await scoped.findByText("No preset activity recorded yet."),
-    ).toBeVisible();
+    expect(await auditScoped.findByText("No preset activity recorded yet.")).toBeVisible();
     expect(window.localStorage.getItem("resultShareRegistryPresetLocalAuditEvents")).toBeNull();
 
     confirmSpy.mockRestore();
@@ -1509,7 +1511,7 @@ describe("group workspace admin shell", () => {
     const scoped = within(registryPanel.closest("section") as HTMLElement);
     await user.type(scoped.getByLabelText("Grant preset name"), "Backupable preset");
     await user.click(scoped.getByRole("button", { name: "Save current grant view" }));
-    expect(await scoped.findByText("Backupable preset")).toBeVisible();
+    expect((await scoped.findAllByText("Backupable preset")).length).toBeGreaterThan(0);
 
     await user.click(scoped.getByRole("button", { name: "Reset all registry presets" }));
     expect(confirmSpy).toHaveBeenCalled();
@@ -1536,7 +1538,7 @@ describe("group workspace admin shell", () => {
 
     await user.type(scoped.getByLabelText("Grant preset name"), "Existing grant preset");
     await user.click(scoped.getByRole("button", { name: "Save current grant view" }));
-    expect(await scoped.findByText("Existing grant preset")).toBeVisible();
+    expect((await scoped.findAllByText("Existing grant preset")).length).toBeGreaterThan(0);
 
     const importFile = new File(
       [
@@ -1582,7 +1584,7 @@ describe("group workspace admin shell", () => {
     expect(await scoped.findByRole("heading", { name: "Import preview" })).toBeVisible();
     await user.click(scoped.getByRole("button", { name: "Apply import" }));
 
-    expect(await scoped.findByText("Existing grant preset")).toBeVisible();
+    expect((await scoped.findAllByText("Existing grant preset")).length).toBeGreaterThan(0);
     expect(window.localStorage.getItem("resultShareRegistryGrantPresets")).toContain(
       "Existing grant preset",
     );
@@ -1651,7 +1653,7 @@ describe("group workspace admin shell", () => {
     const registryPanel = await screen.findByRole("heading", { name: "Result share registry" });
     const scoped = within(registryPanel.closest("section") as HTMLElement);
     expect(scoped.getAllByText("Grant default").length).toBeGreaterThan(0);
-    expect(scoped.getByText("Alias keep")).toBeVisible();
+    expect(scoped.getAllByText("Alias keep").length).toBeGreaterThan(0);
 
     const importFile = new File(
       [
@@ -1707,6 +1709,155 @@ describe("group workspace admin shell", () => {
     expect(window.localStorage.getItem("resultShareRegistryAliasPresets")).toContain("Alias keep");
     expect(window.localStorage.getItem("resultShareRegistryDefaultPresetId")).toBeNull();
     expect(scoped.getByText("No default saved view is set.")).toBeVisible();
+  });
+
+  it("pins presets into the preset workspace and quick-applies a pinned drilldown preset", async () => {
+    const client = buildApiClient();
+    const user = userEvent.setup();
+
+    render(<GroupWorkspaceAdminShell apiClientFactory={() => client} />);
+
+    await user.type(screen.getByLabelText(/admin bearer token/i), "manual-token");
+    await user.click(screen.getByRole("button", { name: /open workspace shell/i }));
+
+    const registryPanel = await screen.findByRole("heading", { name: "Result share registry" });
+    const scoped = within(registryPanel.closest("section") as HTMLElement);
+    await user.click(screen.getByRole("button", { name: "Open drilldown" }));
+
+    const perShareFilterCard = screen
+      .getByRole("heading", { name: "Per-share drilldown filters" })
+      .closest("section");
+    expect(perShareFilterCard).not.toBeNull();
+    const perShareScoped = within(perShareFilterCard as HTMLElement);
+
+    const grantSavedViewsSection = scoped
+      .getByRole("heading", { name: "Grant saved views" })
+      .closest("section");
+    expect(grantSavedViewsSection).not.toBeNull();
+    const grantSavedViewsScoped = within(grantSavedViewsSection as HTMLElement);
+
+    await user.clear(scoped.getByLabelText("Workspace ID"));
+    await user.type(scoped.getByLabelText("Workspace ID"), "workspace-1");
+    await user.click(grantSavedViewsScoped.getByLabelText("Include current per-share drilldown filters"));
+    await user.selectOptions(perShareScoped.getByLabelText("Event type"), "content_view");
+    await user.selectOptions(perShareScoped.getByLabelText("Recent rows limit"), "10");
+    await user.click(perShareScoped.getByRole("button", { name: "Apply filters" }));
+    await user.type(grantSavedViewsScoped.getByLabelText("Grant preset name"), "Pinned board preset");
+    await user.click(grantSavedViewsScoped.getByRole("button", { name: "Save current grant view" }));
+
+    expect((await scoped.findAllByText("Pinned board preset")).length).toBeGreaterThan(0);
+    await user.click(
+      within(grantSavedViewsSection as HTMLElement).getByRole("button", {
+        name: "Pin preset",
+      }),
+    );
+
+    const workspaceSection = scoped.getByRole("heading", { name: "Preset workspace" }).closest("section");
+    expect(workspaceSection).not.toBeNull();
+    const workspaceScoped = within(workspaceSection as HTMLElement);
+    expect((await workspaceScoped.findAllByText("Pinned board preset")).length).toBeGreaterThan(0);
+    const pinnedWorkspaceState = JSON.parse(
+      window.localStorage.getItem("resultShareRegistryPresetWorkspaceState") ?? "{}",
+    );
+    expect(pinnedWorkspaceState.pinnedGrantPresetIds).toHaveLength(1);
+
+    const pinnedGrantSection = workspaceScoped
+      .getByRole("heading", { name: "Pinned grant presets" })
+      .closest("section");
+    expect(pinnedGrantSection).not.toBeNull();
+    await user.click(
+      within(pinnedGrantSection as HTMLElement).getByRole("button", {
+        name: "Quick apply + drilldown",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(client.getResultShareGrantConversionDrilldown).toHaveBeenLastCalledWith("grant-1", {
+        dateFrom: null,
+        dateTo: null,
+        shareKind: null,
+        accessMode: null,
+        eventType: "content_view",
+        outcome: null,
+        limit: 10,
+      });
+    });
+    expect(
+      await workspaceScoped.findByText("Grant preset · Pinned board preset"),
+    ).toBeVisible();
+  });
+
+  it("detects stale workspace pins, cleans them, and resets workspace state without deleting saved presets", async () => {
+    window.localStorage.setItem(
+      "resultShareRegistryGrantPresets",
+      JSON.stringify([
+        {
+          id: "grant-default",
+          name: "Grant default",
+          scope: "grant_registry",
+          filters: {
+            shareKind: "workspace_board",
+            grantStatus: "active",
+            aliasStatus: null,
+            workspaceId: "workspace-1",
+            resultShareGrantId: null,
+          },
+          sort: {
+            field: "createdAt",
+            direction: "asc",
+          },
+          createdAt: "2026-04-18T08:00:00Z",
+          updatedAt: "2026-04-18T08:00:00Z",
+        },
+      ]),
+    );
+    window.localStorage.setItem(
+      "resultShareRegistryPresetWorkspaceState",
+      JSON.stringify({
+        pinnedGrantPresetIds: ["grant-default", "missing-grant"],
+        pinnedAliasPresetIds: ["missing-alias"],
+        lastActivePresetScope: "grant_registry",
+        lastActivePresetId: "grant-default",
+        collapsedSections: null,
+        updatedAt: "2026-04-19T02:20:00Z",
+      }),
+    );
+    window.confirm = vi.fn(() => true);
+
+    const client = buildApiClient();
+    const user = userEvent.setup();
+
+    render(<GroupWorkspaceAdminShell apiClientFactory={() => client} />);
+
+    await user.type(screen.getByLabelText(/admin bearer token/i), "manual-token");
+    await user.click(screen.getByRole("button", { name: /open workspace shell/i }));
+
+    const registryPanel = await screen.findByRole("heading", { name: "Result share registry" });
+    const scoped = within(registryPanel.closest("section") as HTMLElement);
+    const workspaceSection = scoped.getByRole("heading", { name: "Preset workspace" }).closest("section");
+    expect(workspaceSection).not.toBeNull();
+    const workspaceScoped = within(workspaceSection as HTMLElement);
+
+    expect(workspaceScoped.getAllByText("Stale pins detected").length).toBe(2);
+    expect(workspaceScoped.getByText("missing-grant")).toBeVisible();
+
+    await user.click(workspaceScoped.getByRole("button", { name: "Clean stale pins" }));
+
+    await waitFor(() => {
+      expect(
+        window.localStorage.getItem("resultShareRegistryPresetWorkspaceState"),
+      ).not.toContain("missing-grant");
+    });
+    expect((await screen.findAllByText("Cleaned stale preset workspace pins.")).length).toBeGreaterThan(0);
+
+    await user.click(workspaceScoped.getByRole("button", { name: "Reset workspace" }));
+
+    expect(window.localStorage.getItem("resultShareRegistryPresetWorkspaceState")).not.toContain(
+      "grant-default",
+    );
+    expect(window.localStorage.getItem("resultShareRegistryGrantPresets")).toContain(
+      "Grant default",
+    );
   });
 
   it("restores the default local registry preset on shell load", async () => {
