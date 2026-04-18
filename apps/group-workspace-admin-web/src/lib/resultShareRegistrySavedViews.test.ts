@@ -8,9 +8,12 @@ import {
   applyResultShareRegistryPresetImport,
   applyResultShareRegistrySavedView,
   appendResultShareRegistryPresetAuditEvent,
+  buildHealthReportSafeExclusions,
+  buildPresetWorkspaceHealthReportPreview,
   buildPresetWorkspaceHealthThresholdPreview,
   buildResultShareRegistryPresetAuditSummary,
   buildResultShareRegistryPresetExport,
+  buildResultShareRegistryPresetWorkspaceHealthReport,
   buildResultShareRegistryPresetWorkspaceHealthScore,
   buildResultShareRegistryPresetWorkspaceExport,
   buildResultShareRegistryPresetWorkspaceViewModel,
@@ -66,6 +69,9 @@ import {
   unpinResultShareRegistryPresetWorkspacePreset,
   validatePresetWorkspaceHealthThresholdPreferences,
   persistPresetWorkspaceHealthThresholdPreferences,
+  serializeResultShareRegistryPresetWorkspaceHealthReportJson,
+  serializeResultShareRegistryPresetWorkspaceHealthReportMarkdown,
+  validateResultShareRegistryPresetWorkspaceHealthReport,
 } from "./resultShareRegistrySavedViews";
 import type { ResultShareRegistryPresetLocalAuditLoadResult } from "./types";
 
@@ -2446,5 +2452,310 @@ describe("result share registry saved views", () => {
     expect(preview.draftStatus).toBe("healthy");
     expect(preview.statusChanged).toBe(true);
     expect(preview.summary).toMatch(/to healthy/i);
+  });
+
+  it("builds a safe JSON health report preview without exporting raw preset or workspace payloads", () => {
+    const storage = createMemoryStorage();
+    const grantPreset = createResultShareRegistrySavedView(
+      buildResultShareRegistrySavedViewDraft(
+        "grant_registry",
+        "Grant report preset",
+        {
+          ...DEFAULT_RESULT_SHARE_REGISTRY_FILTER_INPUT,
+          workspaceId: "workspace-1",
+        },
+        DEFAULT_RESULT_SHARE_REGISTRY_SORT_INPUT,
+      )!,
+      {
+        id: "grant-report",
+        now: "2026-04-19T05:00:00Z",
+      },
+    );
+    const aliasPreset = createResultShareRegistrySavedView(
+      buildResultShareRegistrySavedViewDraft(
+        "alias_registry",
+        "Alias report preset",
+        {
+          ...DEFAULT_RESULT_SHARE_REGISTRY_FILTER_INPUT,
+          resultShareGrantId: "grant-report",
+          aliasStatus: "active",
+        },
+        DEFAULT_RESULT_SHARE_REGISTRY_SORT_INPUT,
+        {
+          includeDrilldownContext: true,
+          drilldownFilters: {
+            ...DEFAULT_CONVERSION_FILTER_INPUT,
+            eventType: "content_view",
+            limit: 10,
+          },
+        },
+      )!,
+      {
+        id: "alias-report",
+        now: "2026-04-19T05:01:00Z",
+      },
+    );
+    const store = {
+      grantPresets: [grantPreset],
+      aliasPresets: [aliasPreset],
+      defaultPresetId: null,
+    };
+    persistResultShareRegistrySavedViewStore(storage, store);
+    const workspaceState = persistResultShareRegistryPresetWorkspaceState(storage, {
+      pinnedGrantPresetIds: ["grant-report"],
+      pinnedAliasPresetIds: ["alias-report"],
+      lastActivePresetScope: "grant_registry",
+      lastActivePresetId: "grant-report",
+      collapsedSections: null,
+      updatedAt: "2026-04-19T05:02:00Z",
+    });
+    const inspection = inspectResultShareRegistryPresetStorage(storage, {
+      now: "2026-04-19T05:03:00Z",
+    });
+    const presetBackup = createResultShareRegistryPresetBackup(store, "health_report_test", {
+      now: "2026-04-19T05:04:00Z",
+    });
+    const workspaceBackup = createResultShareRegistryPresetWorkspaceBackup(
+      workspaceState,
+      "workspace_health_report_test",
+      {
+        now: "2026-04-19T05:05:00Z",
+      },
+    );
+    const auditSummary = buildResultShareRegistryPresetAuditSummary([
+      createPresetAuditEvent(
+        "preset_workspace_health_checked",
+        "success",
+        "Checked local workspace health.",
+        {
+          scope: "storage",
+          occurredAt: "2026-04-19T05:06:00Z",
+        },
+      ),
+    ]);
+    const workspaceViewModel = buildResultShareRegistryPresetWorkspaceViewModel(
+      buildResultShareRegistrySavedViewSummaries(store),
+      workspaceState,
+      auditSummary,
+      inspection.diagnostics,
+      presetBackup,
+      workspaceBackup,
+    );
+    const healthScore = buildResultShareRegistryPresetWorkspaceHealthScore({
+      store,
+      integrityReport: inspection.report,
+      diagnostics: inspection.diagnostics,
+      lastGoodBackup: presetBackup,
+      workspaceBackup,
+      workspaceState,
+      auditSummary,
+      workspaceImportPreview: null,
+      checkedAt: "2026-04-19T05:07:00Z",
+    });
+    const preview = buildPresetWorkspaceHealthReportPreview({
+      healthScore,
+      diagnostics: inspection.diagnostics,
+      workspaceViewModel,
+      auditSummary,
+      now: "2026-04-19T05:08:00Z",
+    });
+
+    expect(preview.validation.valid).toBe(true);
+    expect(preview.report.schemaVersion).toBe(
+      "result-share-registry-preset-workspace-health-report.v1",
+    );
+    expect(preview.report.metadata.thresholdPreferenceSource).toBe("default");
+    expect(preview.report.workspaceSummary.totalGrantPresets).toBe(1);
+    expect(preview.report.workspaceSummary.pinnedAliasPresetCount).toBe(1);
+    expect(preview.report.safetyExclusions).toEqual(buildHealthReportSafeExclusions());
+    const json = serializeResultShareRegistryPresetWorkspaceHealthReportJson(preview.report);
+    expect(json).toContain('"reportKind": "preset_workspace_health"');
+    expect(json).not.toContain("pinnedGrantPresetIds");
+    expect(json).not.toContain('"drilldownContext":');
+    expect(json).not.toContain("Grant report preset");
+    expect(json).not.toContain("token_hash");
+  });
+
+  it("serializes a compact Markdown health report with expected sections and safe exclusions", () => {
+    const report = buildResultShareRegistryPresetWorkspaceHealthReport({
+      healthScore: {
+        score: 85,
+        status: "attention",
+        checkedAt: "2026-04-19T05:09:00Z",
+        summary: "Local preset workspace hygiene needs minor attention.",
+        thresholdPreferenceSource: "local",
+        thresholdSummary: ["Healthy 80-100", "Attention 60-79"],
+        thresholdWarnings: [],
+        breakdown: {
+          storageIntegrity: 100,
+          presetValidity: 90,
+          pinnedPresetHygiene: 80,
+          backupReadiness: 90,
+          auditReliability: 100,
+          importExportSafety: 95,
+          drilldownContextCompleteness: 100,
+        },
+        findings: [
+          {
+            severity: "warning",
+            code: "stale_pinned_presets",
+            summary: "Pinned presets need cleanup.",
+            detail: "One pinned preset no longer exists locally.",
+          },
+        ],
+        recommendations: [
+          {
+            kind: "clean_stale_pins",
+            label: "Clean stale pins",
+            detail: "Use the existing cleanup action to remove stale workspace pins.",
+          },
+        ],
+        notes: ["Local-only note."],
+      },
+      diagnostics: {
+        checkedAt: "2026-04-19T05:09:00Z",
+        storageKeysPresent: {
+          grantPresets: true,
+          aliasPresets: true,
+          defaultPresetId: false,
+          lastGoodBackup: true,
+          workspaceState: true,
+        },
+        grantPresetCount: 1,
+        aliasPresetCount: 1,
+        validPresetCount: 2,
+        invalidPresetCount: 0,
+        defaultPresetIdPresent: false,
+        lastBackupPresent: true,
+        workspaceStatePresent: true,
+        workspaceStateWarning: null,
+        latestValidationAt: "2026-04-19T05:09:00Z",
+        warningCount: 1,
+        errorCount: 0,
+        notes: [],
+      },
+      workspaceViewModel: {
+        overviewSummary: [],
+        lastActivePresetLabel: null,
+        pinnedGrantPresets: [],
+        pinnedAliasPresets: [],
+        recentGrantPresets: [],
+        recentAliasPresets: [],
+        staleGrantPinIds: ["missing-grant"],
+        staleAliasPinIds: [],
+        recentActivity: [],
+        storageHealth: {
+          issueCount: 1,
+          lastBackupLabel: "Preset backup available",
+          workspaceBackupLabel: "Workspace backup available",
+          auditWarning: null,
+          workspaceWarning: null,
+          latestValidationAt: "2026-04-19T05:09:00Z",
+        },
+      },
+      auditSummary: buildResultShareRegistryPresetAuditSummary([]),
+      now: "2026-04-19T05:10:00Z",
+    });
+    const markdown = serializeResultShareRegistryPresetWorkspaceHealthReportMarkdown(report);
+
+    expect(markdown).toContain("# Result Share Registry Preset Workspace Health Report");
+    expect(markdown).toContain("## Report Metadata");
+    expect(markdown).toContain("## Health Summary");
+    expect(markdown).toContain("## Thresholds");
+    expect(markdown).toContain("## Safety Exclusions");
+    expect(markdown).toContain("Clean stale pins");
+    expect(markdown).not.toContain("pinnedGrantPresetIds");
+    expect(markdown).not.toContain("sourceFile");
+    expect(markdown).not.toContain("rawShareToken");
+  });
+
+  it("rejects invalid or unsafe health reports during validation", () => {
+    const invalidReport = {
+      schemaVersion: "result-share-registry-preset-workspace-health-report.v1",
+      generatedAt: "2026-04-19T05:11:00Z",
+      app: "research-pulse-cn",
+      source: "group-workspace-admin-web",
+      reportKind: "preset_workspace_health",
+      metadata: {
+        schemaVersion: "result-share-registry-preset-workspace-health-report.v1",
+        generatedAt: "2026-04-19T05:11:00Z",
+        app: "research-pulse-cn",
+        source: "group-workspace-admin-web",
+        reportKind: "preset_workspace_health",
+        thresholdPreferenceSource: "default",
+        localOnly: true,
+        safeExport: true,
+      },
+      health: {
+        score: 140,
+        status: "attention",
+        checkedAt: "2026-04-19T05:11:00Z",
+        summary: "Invalid score",
+        breakdown: {
+          storageIntegrity: 100,
+          presetValidity: 100,
+          pinnedPresetHygiene: 100,
+          backupReadiness: 100,
+          auditReliability: 100,
+          importExportSafety: 100,
+          drilldownContextCompleteness: 100,
+        },
+      },
+      thresholds: {
+        source: "default",
+        summary: [],
+        warnings: [],
+      },
+      diagnostics: {
+        checkedAt: "2026-04-19T05:11:00Z",
+        issueCount: 0,
+        warningCount: 0,
+        errorCount: 0,
+        validPresetCount: 0,
+        invalidPresetCount: 0,
+        lastBackupPresent: false,
+        workspaceStatePresent: false,
+        workspaceStateWarningPresent: false,
+        latestValidationAt: null,
+        auditStorageWarningPresent: false,
+        responsePayload: "blocked",
+      },
+      workspaceSummary: {
+        totalGrantPresets: 0,
+        totalAliasPresets: 0,
+        pinnedGrantPresetCount: 0,
+        pinnedAliasPresetCount: 0,
+        staleGrantPinCount: 0,
+        staleAliasPinCount: 0,
+        recentGrantPresetCount: 0,
+        recentAliasPresetCount: 0,
+        hasLastActivePreset: false,
+        integrityStatusLabel: "clean",
+      },
+      auditSummary: {
+        totalEvents: 0,
+        successCount: 0,
+        warningCount: 0,
+        failedCount: 0,
+        lastEventAt: null,
+        backupRelatedCount: 0,
+        recoveryRelatedCount: 0,
+        importRelatedCount: 0,
+        exportRelatedCount: 0,
+      },
+      findings: [],
+      recommendations: [],
+      safetyExclusions: [],
+      notes: ["Invalid note"],
+    } as unknown as ReturnType<
+      typeof buildResultShareRegistryPresetWorkspaceHealthReport
+    >;
+
+    const validation = validateResultShareRegistryPresetWorkspaceHealthReport(invalidReport);
+
+    expect(validation.valid).toBe(false);
+    expect(validation.errors.join(" ")).toMatch(/0..100/i);
+    expect(validation.errors.join(" ")).toMatch(/threshold summary/i);
+    expect(validation.errors.join(" ")).toMatch(/unsafe field/i);
   });
 });

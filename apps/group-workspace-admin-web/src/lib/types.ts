@@ -1000,6 +1000,9 @@ export type ResultShareRegistryPresetLocalAuditActionType =
   | "preset_pinned"
   | "preset_unpinned"
   | "preset_workspace_health_checked"
+  | "preset_workspace_health_report_exported_json"
+  | "preset_workspace_health_report_exported_markdown"
+  | "preset_workspace_health_report_validation_failed"
   | "preset_workspace_health_thresholds_updated"
   | "preset_workspace_health_thresholds_reset"
   | "preset_workspace_health_threshold_validation_failed"
@@ -1265,6 +1268,95 @@ export type ResultShareRegistryPresetWorkspaceHealthScore = {
   findings: ResultShareRegistryPresetWorkspaceHealthFinding[];
   recommendations: ResultShareRegistryPresetWorkspaceHealthRecommendation[];
   notes: string[];
+};
+
+export type ResultShareRegistryPresetWorkspaceHealthReportExportFormat =
+  | "json"
+  | "markdown";
+
+export type ResultShareRegistryPresetWorkspaceHealthReportMetadata = {
+  schemaVersion: "result-share-registry-preset-workspace-health-report.v1";
+  generatedAt: string;
+  app: "research-pulse-cn";
+  source: "group-workspace-admin-web";
+  reportKind: "preset_workspace_health";
+  thresholdPreferenceSource: "default" | "local";
+  localOnly: true;
+  safeExport: true;
+};
+
+export type ResultShareRegistryPresetWorkspaceHealthReport = {
+  schemaVersion: "result-share-registry-preset-workspace-health-report.v1";
+  generatedAt: string;
+  app: "research-pulse-cn";
+  source: "group-workspace-admin-web";
+  reportKind: "preset_workspace_health";
+  metadata: ResultShareRegistryPresetWorkspaceHealthReportMetadata;
+  health: {
+    score: number;
+    status: ResultShareRegistryPresetWorkspaceHealthStatus;
+    checkedAt: string;
+    summary: string;
+    breakdown: ResultShareRegistryPresetWorkspaceHealthBreakdown;
+  };
+  thresholds: {
+    source: "default" | "local";
+    summary: string[];
+    warnings: string[];
+  };
+  diagnostics: {
+    checkedAt: string;
+    issueCount: number;
+    warningCount: number;
+    errorCount: number;
+    validPresetCount: number;
+    invalidPresetCount: number;
+    lastBackupPresent: boolean;
+    workspaceStatePresent: boolean;
+    workspaceStateWarningPresent: boolean;
+    latestValidationAt: string | null;
+    auditStorageWarningPresent: boolean;
+  };
+  workspaceSummary: {
+    totalGrantPresets: number;
+    totalAliasPresets: number;
+    pinnedGrantPresetCount: number;
+    pinnedAliasPresetCount: number;
+    staleGrantPinCount: number;
+    staleAliasPinCount: number;
+    recentGrantPresetCount: number;
+    recentAliasPresetCount: number;
+    hasLastActivePreset: boolean;
+    integrityStatusLabel: string;
+  };
+  auditSummary: {
+    totalEvents: number;
+    successCount: number;
+    warningCount: number;
+    failedCount: number;
+    lastEventAt: string | null;
+    backupRelatedCount: number;
+    recoveryRelatedCount: number;
+    importRelatedCount: number;
+    exportRelatedCount: number;
+  };
+  findings: ResultShareRegistryPresetWorkspaceHealthFinding[];
+  recommendations: ResultShareRegistryPresetWorkspaceHealthRecommendation[];
+  safetyExclusions: string[];
+  notes: string[];
+};
+
+export type ResultShareRegistryPresetWorkspaceHealthReportValidationResult = {
+  valid: boolean;
+  warnings: string[];
+  errors: string[];
+};
+
+export type ResultShareRegistryPresetWorkspaceHealthReportPreview = {
+  report: ResultShareRegistryPresetWorkspaceHealthReport;
+  validation: ResultShareRegistryPresetWorkspaceHealthReportValidationResult;
+  json: string | null;
+  markdown: string | null;
 };
 
 export type ResultShareRegistryPresetWorkspaceExportPayload = {

@@ -94,6 +94,7 @@ Each dimension is shown directly in the preset workspace and uses transparent pe
 
 ## Future Work
 - Local threshold preferences were added in the next phase without turning the same browser-local hygiene layer into backend policy or shared compliance logic.
+- Local health report export was added after threshold preferences without turning the same browser-local hygiene layer into backend report persistence.
 - Richer operator health dashboards only if later justified
 - Team preset workspace health only if backend persistence is ever added
 - Policy-driven preset validation only if later justified

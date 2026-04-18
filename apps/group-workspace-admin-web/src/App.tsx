@@ -45,8 +45,10 @@ import {
 } from "./lib/resultShareRegistryFilters";
 import {
   appendResultShareRegistryPresetAuditEvent,
+  buildPresetWorkspaceHealthReportPreview,
   buildPresetWorkspaceHealthThresholdPreview,
   buildResultShareRegistryPresetWorkspaceViewModel,
+  buildResultShareRegistryPresetWorkspaceHealthReport,
   buildResultShareRegistryPresetWorkspaceHealthScore,
   buildResultShareRegistryPresetIntegrityReport,
   buildResultShareRegistryPresetAuditSummary,
@@ -85,11 +87,14 @@ import {
   RESULT_SHARE_REGISTRY_ALIAS_PRESETS_STORAGE_KEY,
   RESULT_SHARE_REGISTRY_DEFAULT_PRESET_ID_STORAGE_KEY,
   RESULT_SHARE_REGISTRY_PRESET_EXPORT_SCHEMA_VERSION,
+  RESULT_SHARE_REGISTRY_PRESET_WORKSPACE_HEALTH_REPORT_SCHEMA_VERSION,
   RESULT_SHARE_REGISTRY_PRESET_WORKSPACE_EXPORT_SCHEMA_VERSION,
   RESULT_SHARE_REGISTRY_GRANT_PRESETS_STORAGE_KEY,
   resetPresetWorkspaceHealthThresholdPreferences,
   resetResultShareRegistryPresetWorkspaceState,
   saveResultShareRegistrySavedView,
+  serializeResultShareRegistryPresetWorkspaceHealthReportJson,
+  serializeResultShareRegistryPresetWorkspaceHealthReportMarkdown,
   setResultShareRegistryDefaultPresetId,
   setResultShareRegistryPresetWorkspaceLastActive,
   syncResultShareRegistryPresetWorkspaceStateWithStore,
@@ -97,6 +102,7 @@ import {
   restoreResultShareRegistryPresetWorkspaceBackup,
   unpinResultShareRegistryPresetWorkspacePreset,
   validatePresetWorkspaceHealthThresholdPreferences,
+  validateResultShareRegistryPresetWorkspaceHealthReport,
 } from "./lib/resultShareRegistrySavedViews";
 import {
   clearVisibleAdminTokenHints,
@@ -125,6 +131,8 @@ import type {
   ResultShareRegistryPresetLocalAuditSummary,
   ResultShareRegistryPresetRecoveryAction,
   ResultShareRegistryPresetWorkspaceBackupSnapshot,
+  ResultShareRegistryPresetWorkspaceHealthReportExportFormat,
+  ResultShareRegistryPresetWorkspaceHealthReportPreview,
   ResultShareRegistryPresetWorkspaceHealthThresholdDraft,
   ResultShareRegistryPresetWorkspaceHealthThresholdPreferences,
   ResultShareRegistryPresetWorkspaceHealthScore,
@@ -171,6 +179,20 @@ async function readLocalFileText(file: File): Promise<string> {
     reader.onload = () => resolve(String(reader.result ?? ""));
     reader.readAsText(file);
   });
+}
+
+function downloadLocalTextFile(
+  filename: string,
+  content: string,
+  mimeType: string,
+): void {
+  const blob = new Blob([content], { type: mimeType });
+  const downloadUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = downloadUrl;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(downloadUrl);
 }
 
 type ShareDrilldownTarget =
@@ -1167,6 +1189,24 @@ export function GroupWorkspaceAdminShell({
     resultShareRegistryPresetWorkspaceHealthScore,
     resultShareRegistrySavedViews,
   ]);
+  const resultShareRegistryPresetWorkspaceHealthReportPreview =
+    useMemo<ResultShareRegistryPresetWorkspaceHealthReportPreview>(
+      () =>
+        buildPresetWorkspaceHealthReportPreview({
+          healthScore: resultShareRegistryPresetWorkspaceHealthScore,
+          diagnostics: resultShareRegistryPresetStorageDiagnostics,
+          workspaceViewModel: resultShareRegistryPresetWorkspaceViewModel,
+          auditSummary: resultShareRegistryPresetLocalAuditSummary,
+          now: resultShareRegistryPresetWorkspaceHealthCheckedAt,
+        }),
+      [
+        resultShareRegistryPresetLocalAuditSummary,
+        resultShareRegistryPresetStorageDiagnostics,
+        resultShareRegistryPresetWorkspaceHealthCheckedAt,
+        resultShareRegistryPresetWorkspaceHealthScore,
+        resultShareRegistryPresetWorkspaceViewModel,
+      ],
+    );
   const activeRegistryPresetLabel = useMemo(() => {
     if (!activeRegistryPreset) {
       return null;
@@ -1533,6 +1573,73 @@ export function GroupWorkspaceAdminShell({
     );
     setNoticeMessage("Reset local preset workspace health threshold preferences to defaults.");
   }, [recordResultShareRegistryPresetAuditEvent]);
+
+  const handleExportResultShareRegistryPresetWorkspaceHealthReport = useCallback(
+    (format: ResultShareRegistryPresetWorkspaceHealthReportExportFormat) => {
+      const generatedAt = new Date().toISOString();
+      const report = buildResultShareRegistryPresetWorkspaceHealthReport({
+        healthScore: resultShareRegistryPresetWorkspaceHealthScore,
+        diagnostics: resultShareRegistryPresetStorageDiagnostics,
+        workspaceViewModel: resultShareRegistryPresetWorkspaceViewModel,
+        auditSummary: resultShareRegistryPresetLocalAuditSummary,
+        now: generatedAt,
+      });
+      const validation = validateResultShareRegistryPresetWorkspaceHealthReport(report);
+      if (!validation.valid) {
+        recordResultShareRegistryPresetAuditEvent(
+          createPresetAuditEvent(
+            "preset_workspace_health_report_validation_failed",
+            "failed",
+            "Local health report validation failed before export.",
+            {
+              scope: "storage",
+              safeDetails: validation.errors[0] ?? null,
+            },
+          ),
+        );
+        setNoticeMessage("Local health report validation failed. No export was created.");
+        return;
+      }
+
+      const content =
+        format === "json"
+          ? serializeResultShareRegistryPresetWorkspaceHealthReportJson(report)
+          : serializeResultShareRegistryPresetWorkspaceHealthReportMarkdown(report);
+      const safeTimestamp = generatedAt.replace(/[:.]/g, "-");
+      downloadLocalTextFile(
+        `result-share-registry-preset-workspace-health-report-${safeTimestamp}.${format === "json" ? "json" : "md"}`,
+        content,
+        format === "json" ? "application/json" : "text/markdown",
+      );
+      recordResultShareRegistryPresetAuditEvent(
+        createPresetAuditEvent(
+          format === "json"
+            ? "preset_workspace_health_report_exported_json"
+            : "preset_workspace_health_report_exported_markdown",
+          validation.warnings.length > 0 ? "warning" : "success",
+          format === "json"
+            ? "Exported local preset workspace health report as JSON."
+            : "Exported local preset workspace health report as Markdown.",
+          {
+            scope: "storage",
+            safeDetails: RESULT_SHARE_REGISTRY_PRESET_WORKSPACE_HEALTH_REPORT_SCHEMA_VERSION,
+          },
+        ),
+      );
+      setNoticeMessage(
+        format === "json"
+          ? `Exported local health report JSON (${RESULT_SHARE_REGISTRY_PRESET_WORKSPACE_HEALTH_REPORT_SCHEMA_VERSION}).`
+          : `Exported local health report Markdown (${RESULT_SHARE_REGISTRY_PRESET_WORKSPACE_HEALTH_REPORT_SCHEMA_VERSION}).`,
+      );
+    },
+    [
+      recordResultShareRegistryPresetAuditEvent,
+      resultShareRegistryPresetLocalAuditSummary,
+      resultShareRegistryPresetStorageDiagnostics,
+      resultShareRegistryPresetWorkspaceHealthScore,
+      resultShareRegistryPresetWorkspaceViewModel,
+    ],
+  );
 
   const commitResultShareRegistryPresetWorkspaceState = useCallback(
     (
@@ -3545,6 +3652,7 @@ export function GroupWorkspaceAdminShell({
         presetWorkspace={{
           viewModel: resultShareRegistryPresetWorkspaceViewModel,
           healthScore: resultShareRegistryPresetWorkspaceHealthScore,
+          healthReport: resultShareRegistryPresetWorkspaceHealthReportPreview,
           healthThresholds: {
             current: resultShareRegistryPresetWorkspaceHealthThresholdPreferences,
             draft: resultShareRegistryPresetWorkspaceHealthThresholdDraft,
@@ -3611,6 +3719,7 @@ export function GroupWorkspaceAdminShell({
         onExportPresetWorkspace={handleExportResultShareRegistryPresetWorkspace}
         onRestorePresetWorkspaceBackup={handleRestoreResultShareRegistryPresetWorkspaceBackup}
         onRecalculatePresetWorkspaceHealth={handleRecalculateResultShareRegistryPresetWorkspaceHealth}
+        onExportPresetWorkspaceHealthReport={handleExportResultShareRegistryPresetWorkspaceHealthReport}
         onHealthThresholdDraftChange={handleResultShareRegistryPresetWorkspaceHealthThresholdDraftChange}
         onHealthPenaltyOverrideDraftChange={handleResultShareRegistryPresetWorkspaceHealthPenaltyOverrideDraftChange}
         onHealthVisibilityChange={handleResultShareRegistryPresetWorkspaceHealthVisibilityChange}

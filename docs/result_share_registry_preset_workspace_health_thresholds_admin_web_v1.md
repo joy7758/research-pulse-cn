@@ -73,7 +73,7 @@
 - No source-file, attachment, or note sharing
 
 ## Future Work
-- Local health summary export only if later justified
+- Local health summary export was added in the next phase without turning the same browser-local threshold layer into backend report persistence.
 - Team-wide thresholds only if backend persistence is ever justified
 - Policy-driven preset validation only if later justified
 - Richer operator health dashboards only if later justified

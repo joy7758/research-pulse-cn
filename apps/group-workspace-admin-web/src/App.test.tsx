@@ -2036,6 +2036,114 @@ describe("group workspace admin shell", () => {
     expect(workspaceScoped.getByText("attention")).toBeVisible();
   });
 
+  it("previews and exports safe local health reports as JSON and Markdown", async () => {
+    window.localStorage.setItem(
+      "resultShareRegistryGrantPresets",
+      JSON.stringify([
+        {
+          id: "grant-default",
+          name: "Grant default",
+          scope: "grant_registry",
+          filters: {
+            shareKind: "workspace_board",
+            grantStatus: "active",
+            aliasStatus: null,
+            workspaceId: "workspace-1",
+            resultShareGrantId: null,
+          },
+          sort: {
+            field: "createdAt",
+            direction: "asc",
+          },
+          createdAt: "2026-04-18T08:00:00Z",
+          updatedAt: "2026-04-18T08:00:00Z",
+        },
+      ]),
+    );
+    window.localStorage.setItem(
+      "resultShareRegistryPresetWorkspaceState",
+      JSON.stringify({
+        pinnedGrantPresetIds: ["grant-default"],
+        pinnedAliasPresetIds: [],
+        lastActivePresetScope: "grant_registry",
+        lastActivePresetId: "grant-default",
+        collapsedSections: null,
+        updatedAt: "2026-04-19T05:20:00Z",
+      }),
+    );
+
+    const originalCreateObjectURL = URL.createObjectURL;
+    const originalRevokeObjectURL = URL.revokeObjectURL;
+    const createObjectURLMock = vi.fn(() => "blob:health-report");
+    const revokeObjectURLMock = vi.fn();
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      writable: true,
+      value: createObjectURLMock,
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      writable: true,
+      value: revokeObjectURLMock,
+    });
+    const anchorClick = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(() => {});
+
+    try {
+      const client = buildApiClient();
+      const user = userEvent.setup();
+
+      render(<GroupWorkspaceAdminShell apiClientFactory={() => client} />);
+
+      await user.type(screen.getByLabelText(/admin bearer token/i), "manual-token");
+      await user.click(screen.getByRole("button", { name: /open workspace shell/i }));
+
+      const registryPanel = await screen.findByRole("heading", { name: "Result share registry" });
+      const scoped = within(registryPanel.closest("section") as HTMLElement);
+      const workspaceSection = scoped.getByRole("heading", { name: "Preset workspace" }).closest("section");
+      expect(workspaceSection).not.toBeNull();
+      const workspaceScoped = within(workspaceSection as HTMLElement);
+
+      expect(workspaceScoped.getByRole("heading", { name: "Health report preview" })).toBeVisible();
+      expect(
+        workspaceScoped.getByText(/local operator hygiene report only/i),
+      ).toBeVisible();
+      expect(workspaceScoped.getByText("result-share-registry-preset-workspace-health-report.v1")).toBeVisible();
+
+      await user.click(
+        workspaceScoped.getByRole("button", { name: "Export health report JSON" }),
+      );
+      await user.click(
+        workspaceScoped.getByRole("button", { name: "Export health report Markdown" }),
+      );
+
+      expect(createObjectURLMock).toHaveBeenCalledTimes(2);
+      expect(anchorClick).toHaveBeenCalledTimes(2);
+      expect(
+        window.localStorage.getItem("resultShareRegistryPresetLocalAuditEvents"),
+      ).toContain("preset_workspace_health_report_exported_json");
+      expect(
+        window.localStorage.getItem("resultShareRegistryPresetLocalAuditEvents"),
+      ).toContain("preset_workspace_health_report_exported_markdown");
+      expect(
+        window.localStorage.getItem("resultShareRegistryPresetLocalAuditEvents"),
+      ).not.toContain("# Result Share Registry Preset Workspace Health Report");
+    } finally {
+      anchorClick.mockRestore();
+      Object.defineProperty(URL, "createObjectURL", {
+        configurable: true,
+        writable: true,
+        value: originalCreateObjectURL,
+      });
+      Object.defineProperty(URL, "revokeObjectURL", {
+        configurable: true,
+        writable: true,
+        value: originalRevokeObjectURL,
+      });
+    }
+  });
+
   it("validates and merges workspace-state import with stale pin preview", async () => {
     window.localStorage.setItem(
       "resultShareRegistryGrantPresets",

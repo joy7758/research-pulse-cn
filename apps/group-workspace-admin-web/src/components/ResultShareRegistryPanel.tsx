@@ -10,6 +10,8 @@ import type {
   ApiErrorViewModel,
   ResultShareRegistryPresetBackupSnapshot,
   ResultShareRegistryPresetWorkspaceBackupSnapshot,
+  ResultShareRegistryPresetWorkspaceHealthReportExportFormat,
+  ResultShareRegistryPresetWorkspaceHealthReportPreview,
   ResultShareRegistryPresetWorkspaceHealthThresholdDraft,
   ResultShareRegistryPresetWorkspaceHealthThresholdPreferences,
   ResultShareRegistryPresetWorkspaceHealthThresholdValidationResult,
@@ -67,6 +69,7 @@ type ResultShareRegistryPanelProps = {
   presetWorkspace: {
     viewModel: ResultShareRegistryPresetWorkspaceViewModel;
     healthScore: ResultShareRegistryPresetWorkspaceHealthScore;
+    healthReport: ResultShareRegistryPresetWorkspaceHealthReportPreview;
     healthThresholds: {
       current: ResultShareRegistryPresetWorkspaceHealthThresholdPreferences;
       draft: ResultShareRegistryPresetWorkspaceHealthThresholdDraft;
@@ -122,6 +125,9 @@ type ResultShareRegistryPanelProps = {
   onExportPresetWorkspace: () => void;
   onRestorePresetWorkspaceBackup: () => void;
   onRecalculatePresetWorkspaceHealth: () => void;
+  onExportPresetWorkspaceHealthReport: (
+    format: ResultShareRegistryPresetWorkspaceHealthReportExportFormat,
+  ) => void;
   onHealthThresholdDraftChange: (
     field: "healthyMin" | "attentionMin" | "riskMin" | "criticalMin",
     value: string,
@@ -875,12 +881,14 @@ function buildHealthRecommendationAction(
 
 function PresetWorkspaceHealthPanel({
   healthScore,
+  healthReport,
   healthThresholds,
   onRecalculate,
   onValidateStorage,
   onCleanStalePins,
   onRestoreWorkspaceBackup,
   onResetWorkspace,
+  onExportHealthReport,
   onThresholdDraftChange,
   onPenaltyOverrideDraftChange,
   onVisibilityChange,
@@ -888,6 +896,7 @@ function PresetWorkspaceHealthPanel({
   onResetThresholds,
 }: {
   healthScore: ResultShareRegistryPresetWorkspaceHealthScore;
+  healthReport: ResultShareRegistryPresetWorkspaceHealthReportPreview;
   healthThresholds: {
     current: ResultShareRegistryPresetWorkspaceHealthThresholdPreferences;
     draft: ResultShareRegistryPresetWorkspaceHealthThresholdDraft;
@@ -900,6 +909,9 @@ function PresetWorkspaceHealthPanel({
   onCleanStalePins: () => void;
   onRestoreWorkspaceBackup: () => void;
   onResetWorkspace: () => void;
+  onExportHealthReport: (
+    format: ResultShareRegistryPresetWorkspaceHealthReportExportFormat,
+  ) => void;
   onThresholdDraftChange: (
     field: "healthyMin" | "attentionMin" | "riskMin" | "criticalMin",
     value: string,
@@ -1227,6 +1239,106 @@ function PresetWorkspaceHealthPanel({
         </div>
       </section>
 
+      <section className="conversion-section-card">
+        <div className="conversion-section-header">
+          <div>
+            <h5>Health report preview</h5>
+            <p className="section-subtle-copy">
+              Local operator hygiene report only. Exported reports include safe summary data,
+              threshold source, findings, recommendations, and local diagnostics without preset
+              payload dumps or source-file semantics.
+            </p>
+          </div>
+          <div className="button-row">
+            <button
+              type="button"
+              className="button-secondary"
+              onClick={() => onExportHealthReport("json")}
+              disabled={!healthReport.validation.valid}
+            >
+              Export health report JSON
+            </button>
+            <button
+              type="button"
+              className="button-secondary"
+              onClick={() => onExportHealthReport("markdown")}
+              disabled={!healthReport.validation.valid}
+            >
+              Export health report Markdown
+            </button>
+          </div>
+        </div>
+
+        <ul className="filter-chip-list">
+          <li className="filter-chip">
+            <span>Schema</span>
+            <strong>{healthReport.report.schemaVersion}</strong>
+          </li>
+          <li className="filter-chip">
+            <span>Generated for preview</span>
+            <strong>{healthReport.report.generatedAt}</strong>
+          </li>
+          <li className="filter-chip">
+            <span>Threshold source</span>
+            <strong>{healthReport.report.thresholds.source}</strong>
+          </li>
+          <li className="filter-chip">
+            <span>Safe export</span>
+            <strong>{healthReport.report.metadata.safeExport ? "yes" : "no"}</strong>
+          </li>
+        </ul>
+
+        <div className="stat-grid">
+          <article className="stat-card">
+            <span>Report score</span>
+            <strong>{healthReport.report.health.score}</strong>
+            <p className="stat-hint">{healthReport.report.health.summary}</p>
+          </article>
+          <article className="stat-card">
+            <span>Findings</span>
+            <strong>{healthReport.report.findings.length}</strong>
+            <p className="stat-hint">
+              {healthReport.report.recommendations.length} recommendation(s)
+            </p>
+          </article>
+          <article className="stat-card">
+            <span>Local diagnostics</span>
+            <strong>{healthReport.report.diagnostics.issueCount}</strong>
+            <p className="stat-hint">
+              {healthReport.report.diagnostics.warningCount} warning /{" "}
+              {healthReport.report.diagnostics.errorCount} error
+            </p>
+          </article>
+        </div>
+
+        <div className="inline-banner info">
+          <strong>Report safety note</strong>
+          <span>{healthReport.report.safetyExclusions.join(" ")}</span>
+        </div>
+
+        {healthReport.validation.errors.length > 0 ? (
+          <div className="inline-banner error" role="alert">
+            {healthReport.validation.errors.join(" ")}
+          </div>
+        ) : null}
+        {healthReport.validation.warnings.length > 0 ? (
+          <div className="inline-banner warning" role="status">
+            {healthReport.validation.warnings.join(" ")}
+          </div>
+        ) : null}
+
+        <details className="report-preview-block">
+          <summary>JSON preview</summary>
+          <pre>{healthReport.json ?? "Report preview is unavailable until validation passes."}</pre>
+        </details>
+        <details className="report-preview-block">
+          <summary>Markdown preview</summary>
+          <pre>
+            {healthReport.markdown ?? "Report preview is unavailable until validation passes."}
+          </pre>
+        </details>
+      </section>
+
       {visibleFindings.length > 0 ? (
         <section className="conversion-section-card">
           <div className="conversion-section-header">
@@ -1322,6 +1434,7 @@ function PresetWorkspaceHealthPanel({
 function PresetWorkspacePanel({
   viewModel,
   healthScore,
+  healthReport,
   healthThresholds,
   transfer,
   onApply,
@@ -1339,6 +1452,7 @@ function PresetWorkspacePanel({
   onExportWorkspace,
   onRestoreWorkspaceBackup,
   onRecalculateHealth,
+  onExportHealthReport,
   onThresholdDraftChange,
   onPenaltyOverrideDraftChange,
   onVisibilityChange,
@@ -1347,6 +1461,7 @@ function PresetWorkspacePanel({
 }: {
   viewModel: ResultShareRegistryPresetWorkspaceViewModel;
   healthScore: ResultShareRegistryPresetWorkspaceHealthScore;
+  healthReport: ResultShareRegistryPresetWorkspaceHealthReportPreview;
   healthThresholds: {
     current: ResultShareRegistryPresetWorkspaceHealthThresholdPreferences;
     draft: ResultShareRegistryPresetWorkspaceHealthThresholdDraft;
@@ -1382,6 +1497,9 @@ function PresetWorkspacePanel({
   onExportWorkspace: () => void;
   onRestoreWorkspaceBackup: () => void;
   onRecalculateHealth: () => void;
+  onExportHealthReport: (
+    format: ResultShareRegistryPresetWorkspaceHealthReportExportFormat,
+  ) => void;
   onThresholdDraftChange: (
     field: "healthyMin" | "attentionMin" | "riskMin" | "criticalMin",
     value: string,
@@ -1457,12 +1575,14 @@ function PresetWorkspacePanel({
 
       <PresetWorkspaceHealthPanel
         healthScore={healthScore}
+        healthReport={healthReport}
         healthThresholds={healthThresholds}
         onRecalculate={onRecalculateHealth}
         onValidateStorage={onValidateStorage}
         onCleanStalePins={onCleanStalePins}
         onRestoreWorkspaceBackup={onRestoreWorkspaceBackup}
         onResetWorkspace={onResetWorkspace}
+        onExportHealthReport={onExportHealthReport}
         onThresholdDraftChange={onThresholdDraftChange}
         onPenaltyOverrideDraftChange={onPenaltyOverrideDraftChange}
         onVisibilityChange={onVisibilityChange}
@@ -2182,6 +2302,7 @@ export function ResultShareRegistryPanel({
   onExportPresetWorkspace,
   onRestorePresetWorkspaceBackup,
   onRecalculatePresetWorkspaceHealth,
+  onExportPresetWorkspaceHealthReport,
   onHealthThresholdDraftChange,
   onHealthPenaltyOverrideDraftChange,
   onHealthVisibilityChange,
@@ -2446,6 +2567,7 @@ export function ResultShareRegistryPanel({
         <PresetWorkspacePanel
           viewModel={presetWorkspace.viewModel}
           healthScore={presetWorkspace.healthScore}
+          healthReport={presetWorkspace.healthReport}
           healthThresholds={presetWorkspace.healthThresholds}
           transfer={presetWorkspace.transfer}
           onApply={onApplySavedView}
@@ -2463,6 +2585,7 @@ export function ResultShareRegistryPanel({
           onExportWorkspace={onExportPresetWorkspace}
           onRestoreWorkspaceBackup={onRestorePresetWorkspaceBackup}
           onRecalculateHealth={onRecalculatePresetWorkspaceHealth}
+          onExportHealthReport={onExportPresetWorkspaceHealthReport}
           onThresholdDraftChange={onHealthThresholdDraftChange}
           onPenaltyOverrideDraftChange={onHealthPenaltyOverrideDraftChange}
           onVisibilityChange={onHealthVisibilityChange}

@@ -41,6 +41,10 @@ import type {
   ResultShareRegistryPresetWorkspaceBackupSnapshot,
   ResultShareRegistryPresetWorkspaceExportPayload,
   ResultShareRegistryPresetWorkspaceHealthFinding,
+  ResultShareRegistryPresetWorkspaceHealthReport,
+  ResultShareRegistryPresetWorkspaceHealthReportMetadata,
+  ResultShareRegistryPresetWorkspaceHealthReportPreview,
+  ResultShareRegistryPresetWorkspaceHealthReportValidationResult,
   ResultShareRegistryPresetWorkspaceHealthPenaltyOverrideKey,
   ResultShareRegistryPresetWorkspaceHealthThresholdDraft,
   ResultShareRegistryPresetWorkspaceHealthThresholdLoadResult,
@@ -79,6 +83,8 @@ export const RESULT_SHARE_REGISTRY_PRESET_WORKSPACE_EXPORT_SCHEMA_VERSION =
   "result-share-registry-preset-workspace.v1";
 export const RESULT_SHARE_REGISTRY_PRESET_WORKSPACE_BACKUP_SCHEMA_VERSION =
   "result-share-registry-preset-workspace-backup.v1";
+export const RESULT_SHARE_REGISTRY_PRESET_WORKSPACE_HEALTH_REPORT_SCHEMA_VERSION =
+  "result-share-registry-preset-workspace-health-report.v1";
 const RESULT_SHARE_REGISTRY_LOCAL_AUDIT_MAX_EVENTS = 100;
 const RESULT_SHARE_REGISTRY_LOCAL_AUDIT_RECENT_LIMIT = 12;
 
@@ -169,6 +175,9 @@ const presetLocalAuditActionTypes: ResultShareRegistryPresetLocalAuditActionType
   "preset_pinned",
   "preset_unpinned",
   "preset_workspace_health_checked",
+  "preset_workspace_health_report_exported_json",
+  "preset_workspace_health_report_exported_markdown",
+  "preset_workspace_health_report_validation_failed",
   "preset_workspace_health_thresholds_updated",
   "preset_workspace_health_thresholds_reset",
   "preset_workspace_health_threshold_validation_failed",
@@ -1015,7 +1024,10 @@ export function buildResultShareRegistryPresetAuditSummary(
     byActionType.preset_workspace_import_replace +
     byActionType.preset_workspace_import_validation_failed;
   const exportRelatedCount =
-    byActionType.export_created + byActionType.preset_workspace_export_created;
+    byActionType.export_created +
+    byActionType.preset_workspace_export_created +
+    byActionType.preset_workspace_health_report_exported_json +
+    byActionType.preset_workspace_health_report_exported_markdown;
 
   return {
     totalEvents: events.length,
@@ -2810,6 +2822,357 @@ export function buildResultShareRegistryPresetWorkspaceHealthScore(input: {
         : "Default threshold preferences are active for status classification.",
       "Score calculation never performs automatic repair; it only points to existing local tools.",
     ],
+  };
+}
+
+function buildPresetWorkspaceIntegrityStatusLabel(
+  diagnostics: ResultShareRegistryPresetStorageDiagnostics,
+): string {
+  if (diagnostics.errorCount > 0) {
+    return "errors_detected";
+  }
+  if (diagnostics.warningCount > 0 || diagnostics.workspaceStateWarning) {
+    return "warnings_detected";
+  }
+  return "clean";
+}
+
+export function buildHealthReportSafeExclusions(): string[] {
+  return [
+    "Admin bearer tokens are excluded.",
+    "Raw share tokens, raw aliases, token hashes, and alias hashes are excluded.",
+    "Saved preset definitions and raw workspace state objects are excluded.",
+    "Raw import/export payloads, response payloads, local file paths, and source-file data are excluded.",
+  ];
+}
+
+export function sanitizeHealthReportFinding(
+  finding: ResultShareRegistryPresetWorkspaceHealthFinding,
+): ResultShareRegistryPresetWorkspaceHealthFinding {
+  return {
+    severity: finding.severity,
+    code: finding.code,
+    summary: finding.summary.trim(),
+    detail: finding.detail.trim(),
+  };
+}
+
+export function sanitizeHealthReportRecommendation(
+  recommendation: ResultShareRegistryPresetWorkspaceHealthRecommendation,
+): ResultShareRegistryPresetWorkspaceHealthRecommendation {
+  return {
+    kind: recommendation.kind,
+    label: recommendation.label.trim(),
+    detail: recommendation.detail.trim(),
+  };
+}
+
+function buildResultShareRegistryPresetWorkspaceHealthReportMetadata(input: {
+  healthScore: ResultShareRegistryPresetWorkspaceHealthScore;
+  generatedAt: string;
+}): ResultShareRegistryPresetWorkspaceHealthReportMetadata {
+  return {
+    schemaVersion: RESULT_SHARE_REGISTRY_PRESET_WORKSPACE_HEALTH_REPORT_SCHEMA_VERSION,
+    generatedAt: input.generatedAt,
+    app: "research-pulse-cn",
+    source: "group-workspace-admin-web",
+    reportKind: "preset_workspace_health",
+    thresholdPreferenceSource: input.healthScore.thresholdPreferenceSource,
+    localOnly: true,
+    safeExport: true,
+  };
+}
+
+export function buildResultShareRegistryPresetWorkspaceHealthReport(input: {
+  healthScore: ResultShareRegistryPresetWorkspaceHealthScore;
+  diagnostics: ResultShareRegistryPresetStorageDiagnostics;
+  workspaceViewModel: ResultShareRegistryPresetWorkspaceViewModel;
+  auditSummary: ResultShareRegistryPresetLocalAuditSummary;
+  now?: string;
+}): ResultShareRegistryPresetWorkspaceHealthReport {
+  const generatedAt = input.now ?? new Date().toISOString();
+  const metadata = buildResultShareRegistryPresetWorkspaceHealthReportMetadata({
+    healthScore: input.healthScore,
+    generatedAt,
+  });
+  return {
+    schemaVersion: RESULT_SHARE_REGISTRY_PRESET_WORKSPACE_HEALTH_REPORT_SCHEMA_VERSION,
+    generatedAt,
+    app: "research-pulse-cn",
+    source: "group-workspace-admin-web",
+    reportKind: "preset_workspace_health",
+    metadata,
+    health: {
+      score: input.healthScore.score,
+      status: input.healthScore.status,
+      checkedAt: input.healthScore.checkedAt,
+      summary: input.healthScore.summary,
+      breakdown: { ...input.healthScore.breakdown },
+    },
+    thresholds: {
+      source: input.healthScore.thresholdPreferenceSource,
+      summary: [...input.healthScore.thresholdSummary],
+      warnings: [...input.healthScore.thresholdWarnings],
+    },
+    diagnostics: {
+      checkedAt: input.diagnostics.checkedAt,
+      issueCount: input.diagnostics.warningCount + input.diagnostics.errorCount,
+      warningCount: input.diagnostics.warningCount,
+      errorCount: input.diagnostics.errorCount,
+      validPresetCount: input.diagnostics.validPresetCount,
+      invalidPresetCount: input.diagnostics.invalidPresetCount,
+      lastBackupPresent: input.diagnostics.lastBackupPresent,
+      workspaceStatePresent: input.diagnostics.workspaceStatePresent,
+      workspaceStateWarningPresent: Boolean(input.diagnostics.workspaceStateWarning),
+      latestValidationAt: input.diagnostics.latestValidationAt,
+      auditStorageWarningPresent: Boolean(input.auditSummary.storageWarning),
+    },
+    workspaceSummary: {
+      totalGrantPresets: input.diagnostics.grantPresetCount,
+      totalAliasPresets: input.diagnostics.aliasPresetCount,
+      pinnedGrantPresetCount: input.workspaceViewModel.pinnedGrantPresets.length,
+      pinnedAliasPresetCount: input.workspaceViewModel.pinnedAliasPresets.length,
+      staleGrantPinCount: input.workspaceViewModel.staleGrantPinIds.length,
+      staleAliasPinCount: input.workspaceViewModel.staleAliasPinIds.length,
+      recentGrantPresetCount: input.workspaceViewModel.recentGrantPresets.length,
+      recentAliasPresetCount: input.workspaceViewModel.recentAliasPresets.length,
+      hasLastActivePreset: Boolean(input.workspaceViewModel.lastActivePresetLabel),
+      integrityStatusLabel: buildPresetWorkspaceIntegrityStatusLabel(input.diagnostics),
+    },
+    auditSummary: {
+      totalEvents: input.auditSummary.totalEvents,
+      successCount: input.auditSummary.successCount,
+      warningCount: input.auditSummary.warningCount,
+      failedCount: input.auditSummary.failedCount,
+      lastEventAt: input.auditSummary.lastEventAt,
+      backupRelatedCount: input.auditSummary.backupRelatedCount,
+      recoveryRelatedCount: input.auditSummary.recoveryRelatedCount,
+      importRelatedCount: input.auditSummary.importRelatedCount,
+      exportRelatedCount: input.auditSummary.exportRelatedCount,
+    },
+    findings: input.healthScore.findings.map((finding) => sanitizeHealthReportFinding(finding)),
+    recommendations: input.healthScore.recommendations.map((recommendation) =>
+      sanitizeHealthReportRecommendation(recommendation),
+    ),
+    safetyExclusions: buildHealthReportSafeExclusions(),
+    notes: [
+      ...input.healthScore.notes,
+      "This report is generated from browser-local operator workspace state only.",
+      "Export never performs automatic recovery or repair.",
+    ],
+  };
+}
+
+function collectUnsafeHealthReportKeys(
+  value: unknown,
+  path: string,
+  errors: string[],
+): void {
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => {
+      collectUnsafeHealthReportKeys(item, `${path}[${index}]`, errors);
+    });
+    return;
+  }
+  if (!isRecord(value)) {
+    return;
+  }
+  for (const [key, nestedValue] of Object.entries(value)) {
+    if (looksUnsafeFieldName(key)) {
+      errors.push(`${path} contains unsafe field "${key}".`);
+      continue;
+    }
+    collectUnsafeHealthReportKeys(nestedValue, `${path}.${key}`, errors);
+  }
+}
+
+export function validateResultShareRegistryPresetWorkspaceHealthReport(
+  report: ResultShareRegistryPresetWorkspaceHealthReport,
+): ResultShareRegistryPresetWorkspaceHealthReportValidationResult {
+  const warnings: string[] = [];
+  const errors: string[] = [];
+
+  if (
+    report.schemaVersion !== RESULT_SHARE_REGISTRY_PRESET_WORKSPACE_HEALTH_REPORT_SCHEMA_VERSION
+  ) {
+    errors.push(
+      `Health report schemaVersion must be "${RESULT_SHARE_REGISTRY_PRESET_WORKSPACE_HEALTH_REPORT_SCHEMA_VERSION}".`,
+    );
+  }
+  if (!report.generatedAt.trim()) {
+    errors.push("Health report generatedAt is required.");
+  }
+  if (report.app !== "research-pulse-cn") {
+    errors.push('Health report app must be "research-pulse-cn".');
+  }
+  if (report.source !== "group-workspace-admin-web") {
+    errors.push('Health report source must be "group-workspace-admin-web".');
+  }
+  if (report.reportKind !== "preset_workspace_health") {
+    errors.push('Health report reportKind must be "preset_workspace_health".');
+  }
+  if (report.metadata.schemaVersion !== report.schemaVersion) {
+    errors.push("Health report metadata schemaVersion must match the top-level schemaVersion.");
+  }
+  if (report.metadata.thresholdPreferenceSource !== report.thresholds.source) {
+    errors.push("Health report threshold preference source must match the threshold summary source.");
+  }
+  if (!Number.isInteger(report.health.score) || report.health.score < 0 || report.health.score > 100) {
+    errors.push("Health report score must be an integer within 0..100.");
+  }
+  if (
+    !["healthy", "attention", "risk", "critical"].includes(report.health.status)
+  ) {
+    errors.push("Health report status is invalid.");
+  }
+  if (!report.health.checkedAt.trim()) {
+    errors.push("Health report checkedAt is required.");
+  }
+  if (!Array.isArray(report.thresholds.summary) || report.thresholds.summary.length === 0) {
+    errors.push("Health report threshold summary must contain at least one item.");
+  } else if (report.thresholds.summary.some((item) => typeof item !== "string" || !item.trim())) {
+    errors.push("Health report threshold summary entries must be non-empty strings.");
+  }
+  if (!Array.isArray(report.safetyExclusions) || report.safetyExclusions.length === 0) {
+    errors.push("Health report safety exclusions are required.");
+  }
+  if (!Array.isArray(report.findings) || !Array.isArray(report.recommendations)) {
+    errors.push("Health report findings and recommendations must be arrays.");
+  }
+  if (!report.notes.every((item) => typeof item === "string" && item.trim())) {
+    warnings.push("Health report contains one or more empty notes.");
+  }
+
+  collectUnsafeHealthReportKeys(report, "Health report", errors);
+
+  return {
+    valid: errors.length === 0,
+    warnings,
+    errors,
+  };
+}
+
+export function serializeResultShareRegistryPresetWorkspaceHealthReportJson(
+  report: ResultShareRegistryPresetWorkspaceHealthReport,
+): string {
+  return JSON.stringify(report, null, 2);
+}
+
+export function serializeResultShareRegistryPresetWorkspaceHealthReportMarkdown(
+  report: ResultShareRegistryPresetWorkspaceHealthReport,
+): string {
+  const lines = [
+    "# Result Share Registry Preset Workspace Health Report",
+    "",
+    "## Report Metadata",
+    `- Generated at: ${report.generatedAt}`,
+    `- Schema version: ${report.schemaVersion}`,
+    `- App: ${report.app}`,
+    `- Source: ${report.source}`,
+    `- Threshold source: ${report.thresholds.source}`,
+    `- Local only: ${report.metadata.localOnly ? "yes" : "no"}`,
+    "",
+    "## Health Summary",
+    `- Score: ${report.health.score}`,
+    `- Status: ${formatPresetWorkspaceHealthStatus(report.health.status)}`,
+    `- Checked at: ${report.health.checkedAt}`,
+    `- Summary: ${report.health.summary}`,
+    "",
+    "## Thresholds",
+    ...report.thresholds.summary.map((item) => `- ${item}`),
+    ...(report.thresholds.warnings.length > 0
+      ? ["", "Threshold warnings:", ...report.thresholds.warnings.map((item) => `- ${item}`)]
+      : []),
+    "",
+    "## Breakdown",
+    `- Storage integrity: ${report.health.breakdown.storageIntegrity}/100`,
+    `- Preset validity: ${report.health.breakdown.presetValidity}/100`,
+    `- Pinned preset hygiene: ${report.health.breakdown.pinnedPresetHygiene}/100`,
+    `- Backup readiness: ${report.health.breakdown.backupReadiness}/100`,
+    `- Audit reliability: ${report.health.breakdown.auditReliability}/100`,
+    `- Import/export safety: ${report.health.breakdown.importExportSafety}/100`,
+    `- Drilldown context completeness: ${report.health.breakdown.drilldownContextCompleteness}/100`,
+    "",
+    "## Findings",
+    ...(report.findings.length > 0
+      ? report.findings.flatMap((finding) => [
+          `- [${finding.severity}] ${finding.summary}`,
+          `  - Code: ${finding.code}`,
+          `  - Detail: ${finding.detail}`,
+        ])
+      : ["- None"]),
+    "",
+    "## Recommendations",
+    ...(report.recommendations.length > 0
+      ? report.recommendations.flatMap((recommendation) => [
+          `- ${recommendation.label}`,
+          `  - Kind: ${recommendation.kind}`,
+          `  - Detail: ${recommendation.detail}`,
+        ])
+      : ["- None"]),
+    "",
+    "## Local Diagnostics Summary",
+    `- Issues: ${report.diagnostics.issueCount}`,
+    `- Warnings: ${report.diagnostics.warningCount}`,
+    `- Errors: ${report.diagnostics.errorCount}`,
+    `- Valid presets: ${report.diagnostics.validPresetCount}`,
+    `- Invalid presets: ${report.diagnostics.invalidPresetCount}`,
+    `- Last preset backup present: ${report.diagnostics.lastBackupPresent ? "yes" : "no"}`,
+    `- Workspace state present: ${report.diagnostics.workspaceStatePresent ? "yes" : "no"}`,
+    `- Workspace state warning present: ${report.diagnostics.workspaceStateWarningPresent ? "yes" : "no"}`,
+    `- Audit storage warning present: ${report.diagnostics.auditStorageWarningPresent ? "yes" : "no"}`,
+    `- Latest validation at: ${report.diagnostics.latestValidationAt ?? "Not available"}`,
+    "",
+    "## Preset Workspace Summary",
+    `- Grant presets: ${report.workspaceSummary.totalGrantPresets}`,
+    `- Alias presets: ${report.workspaceSummary.totalAliasPresets}`,
+    `- Pinned grant presets: ${report.workspaceSummary.pinnedGrantPresetCount}`,
+    `- Pinned alias presets: ${report.workspaceSummary.pinnedAliasPresetCount}`,
+    `- Stale grant pins: ${report.workspaceSummary.staleGrantPinCount}`,
+    `- Stale alias pins: ${report.workspaceSummary.staleAliasPinCount}`,
+    `- Recent grant presets: ${report.workspaceSummary.recentGrantPresetCount}`,
+    `- Recent alias presets: ${report.workspaceSummary.recentAliasPresetCount}`,
+    `- Last active preset present: ${report.workspaceSummary.hasLastActivePreset ? "yes" : "no"}`,
+    `- Integrity status label: ${report.workspaceSummary.integrityStatusLabel}`,
+    "",
+    "## Local Audit Summary",
+    `- Total events: ${report.auditSummary.totalEvents}`,
+    `- Success: ${report.auditSummary.successCount}`,
+    `- Warnings: ${report.auditSummary.warningCount}`,
+    `- Failed: ${report.auditSummary.failedCount}`,
+    `- Last event at: ${report.auditSummary.lastEventAt ?? "Not available"}`,
+    `- Backup-related events: ${report.auditSummary.backupRelatedCount}`,
+    `- Recovery-related events: ${report.auditSummary.recoveryRelatedCount}`,
+    `- Import-related events: ${report.auditSummary.importRelatedCount}`,
+    `- Export-related events: ${report.auditSummary.exportRelatedCount}`,
+    "",
+    "## Safety Exclusions",
+    ...report.safetyExclusions.map((item) => `- ${item}`),
+    "",
+    "## Notes",
+    ...report.notes.map((item) => `- ${item}`),
+  ];
+  return lines.join("\n");
+}
+
+export function buildPresetWorkspaceHealthReportPreview(input: {
+  healthScore: ResultShareRegistryPresetWorkspaceHealthScore;
+  diagnostics: ResultShareRegistryPresetStorageDiagnostics;
+  workspaceViewModel: ResultShareRegistryPresetWorkspaceViewModel;
+  auditSummary: ResultShareRegistryPresetLocalAuditSummary;
+  now?: string;
+}): ResultShareRegistryPresetWorkspaceHealthReportPreview {
+  const report = buildResultShareRegistryPresetWorkspaceHealthReport(input);
+  const validation = validateResultShareRegistryPresetWorkspaceHealthReport(report);
+  return {
+    report,
+    validation,
+    json: validation.valid
+      ? serializeResultShareRegistryPresetWorkspaceHealthReportJson(report)
+      : null,
+    markdown: validation.valid
+      ? serializeResultShareRegistryPresetWorkspaceHealthReportMarkdown(report)
+      : null,
   };
 }
 

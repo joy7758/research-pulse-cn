@@ -449,6 +449,31 @@ button {
   margin-top: 0;
 }
 
+.report-preview-block {
+  margin-top: 12px;
+  border: 1px solid rgba(23, 32, 51, 0.08);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.92);
+  overflow: hidden;
+}
+
+.report-preview-block summary {
+  cursor: pointer;
+  padding: 12px 14px;
+  font-weight: 700;
+  color: #20345e;
+}
+
+.report-preview-block pre {
+  margin: 0;
+  padding: 0 14px 14px;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.84rem;
+  color: #20345e;
+}
+
 .saved-view-toolbar {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
