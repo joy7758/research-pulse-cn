@@ -4,6 +4,7 @@
 - Phase 57 already added admin-safe per-share drilldown reserve reads for one `ResultShareGrant` and one `ResultShareAlias`.
 - This phase reuses the existing `apps/group-workspace-admin-web` shell instead of creating a new app.
 - The goal is a thin operator-readable browser consumer for those reads, not a new write flow, auth surface, or source-file feature.
+- A later registry phase can build on the same shell so common operator flows no longer require manual `grant_id` or `alias_id` lookup.
 
 ## Grant Drilldown Vs Alias Drilldown Rendering
 - Grant drilldown renders:

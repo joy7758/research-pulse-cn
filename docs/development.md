@@ -175,6 +175,13 @@ The shell now also includes a minimal read-only per-share dashboard:
 - a dedicated per-share filter bar for `date_from`, `date_to`, `access_mode`, `event_type`, `outcome`, and `limit`
 - direct collect linkage stays visible only on grant drilldown; alias drilldown stays access-path scoped
 
+The same shell now also includes a minimal read-only result-share registry:
+- `GET /admin/result-share-grants`
+- `GET /admin/result-share-aliases`
+- safe global share-grant rows with linked alias counts
+- safe global alias rows with linked grant hints
+- quick-open actions that reuse the existing per-share drilldown panel instead of adding new write flows
+
 The shell is internal/admin-only, keeps bearer tokens in memory only, and does not introduce end-user login or source-file sharing. Filter controls narrow overview/drilldown reads only and do not change attribution semantics.
 
 ## User workbench admin web shell

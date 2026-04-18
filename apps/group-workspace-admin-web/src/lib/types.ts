@@ -121,6 +121,19 @@ export type ResultShareGrantRead = {
   updated_at: string;
 };
 
+export type ResultShareAliasRead = {
+  id: string;
+  result_share_grant_id: string;
+  share_kind: ResultShareKind;
+  status: ResultShareAliasStatus;
+  display_label: string | null;
+  alias_prefix: string | null;
+  expires_at: string | null;
+  last_used_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type ResultShareGrantIssueResponse = {
   grant: ResultShareGrantRead;
   plain_text_token: string;
@@ -779,4 +792,85 @@ export type ResultShareAliasDrilldownViewModel = {
   attributionScope: ResultShareAttributionScopeViewModel;
   notes: string[];
   empty: boolean;
+};
+
+export type ResultShareRegistryFilterInput = {
+  shareKind: ResultShareKind | null;
+  grantStatus: ResultShareGrantStatus | null;
+  aliasStatus: ResultShareAliasStatus | null;
+  workspaceId: string | null;
+  resultShareGrantId: string | null;
+};
+
+export type ResultShareRegistryFilterChipViewModel = {
+  key: string;
+  label: string;
+  value: string;
+};
+
+export type ResultShareRegistryFilterSummaryViewModel = {
+  chips: ResultShareRegistryFilterChipViewModel[];
+  scopeNotes: string[];
+  hasActiveFilters: boolean;
+};
+
+export type ResultShareRegistrySummaryViewModel = {
+  label: string;
+  value: number;
+  hint: string | null;
+};
+
+export type ResultShareGrantRegistryItemViewModel = {
+  grantId: string;
+  title: string;
+  subtitle: string;
+  shareKind: ResultShareKind;
+  status: ResultShareGrantStatus;
+  displayLabel: string | null;
+  workspaceId: string | null;
+  digestIssueId: string | null;
+  paperId: string | null;
+  expiresAt: string | null;
+  lastUsedAt: string | null;
+  createdAt: string;
+  aliasCount: number;
+  activeAliasCount: number;
+  hasRecentAliasUsage: boolean;
+  relationshipHint: string;
+};
+
+export type ResultShareAliasRegistryItemViewModel = {
+  aliasId: string;
+  grantId: string;
+  title: string;
+  subtitle: string;
+  shareKind: ResultShareKind;
+  status: ResultShareAliasStatus;
+  displayLabel: string | null;
+  aliasPrefix: string | null;
+  expiresAt: string | null;
+  lastUsedAt: string | null;
+  createdAt: string;
+  grantTitle: string;
+  grantStatus: ResultShareGrantStatus | null;
+  linkedGrantInRegistry: boolean;
+  relationshipHint: string;
+};
+
+export type ResultShareRegistryEmptyStateViewModel = {
+  title: string;
+  message: string;
+};
+
+export type ResultShareRegistrySectionViewModel<TItem> = {
+  title: string;
+  description: string;
+  summaryMetrics: ResultShareRegistrySummaryViewModel[];
+  items: TItem[];
+  emptyState: ResultShareRegistryEmptyStateViewModel;
+};
+
+export type ResultShareRegistryViewModel = {
+  grants: ResultShareRegistrySectionViewModel<ResultShareGrantRegistryItemViewModel>;
+  aliases: ResultShareRegistrySectionViewModel<ResultShareAliasRegistryItemViewModel>;
 };

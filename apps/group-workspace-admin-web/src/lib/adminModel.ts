@@ -30,21 +30,27 @@ import type {
   GlobalConversionOverviewViewModel,
   LookupOption,
   PaperProfileRead,
+  ResultShareAliasRead,
   ResultShareAliasConversionDrilldownRead,
   ResultShareAliasDrilldownViewModel,
+  ResultShareAliasRegistryItemViewModel,
   ResultShareAliasSummaryRead,
   ResultShareAliasSummaryViewModel,
   ResultShareAttributionScopeRead,
   ResultShareAttributionScopeViewModel,
   ResultShareDirectCollectRecordRead,
   ResultShareDirectCollectRecordViewModel,
+  ResultShareGrantRead,
   ResultShareGrantConversionDrilldownRead,
   ResultShareGrantDrilldownViewModel,
+  ResultShareGrantRegistryItemViewModel,
   ResultShareGrantSummaryRead,
   ResultShareGrantSummaryViewModel,
   ResultShareGrantIssueResponse,
   ResultShareRecentEventRead,
   ResultShareRecentEventViewModel,
+  ResultShareRegistrySummaryViewModel,
+  ResultShareRegistryViewModel,
   UserProfileRead,
   WorkspaceConversionOverviewViewModel,
   WorkspaceListItemViewModel,
@@ -423,6 +429,94 @@ function buildResultShareAliasSummaryViewModel(
     lastUsedAt: summary.last_used_at,
     createdAt: summary.created_at,
   };
+}
+
+function buildResultShareGrantRegistryScopeLabel(grant: ResultShareGrantRead): string {
+  if (grant.workspace_id !== null) {
+    return `Workspace ${grant.workspace_id}`;
+  }
+  if (grant.digest_issue_id !== null) {
+    return `Digest ${grant.digest_issue_id}`;
+  }
+  if (grant.paper_id !== null) {
+    return `Paper ${grant.paper_id}`;
+  }
+  return "Safe grant summary";
+}
+
+function buildResultShareGrantRegistryItemViewModel(
+  grant: ResultShareGrantRead,
+  aliases: ResultShareAliasRead[],
+): ResultShareGrantRegistryItemViewModel {
+  const activeAliasCount = aliases.filter((alias) => alias.status === "active").length;
+  const hasRecentAliasUsage = aliases.some((alias) => alias.last_used_at !== null);
+
+  return {
+    grantId: grant.id,
+    title: grant.display_label ?? `${humanizeMetricKey(grant.share_kind)} grant`,
+    subtitle: `${buildResultShareGrantRegistryScopeLabel(grant)} · ${grant.status}`,
+    shareKind: grant.share_kind,
+    status: grant.status,
+    displayLabel: grant.display_label,
+    workspaceId: grant.workspace_id,
+    digestIssueId: grant.digest_issue_id,
+    paperId: grant.paper_id,
+    expiresAt: grant.expires_at,
+    lastUsedAt: grant.last_used_at,
+    createdAt: grant.created_at,
+    aliasCount: aliases.length,
+    activeAliasCount,
+    hasRecentAliasUsage,
+    relationshipHint:
+      aliases.length > 0
+        ? `${aliases.length} alias${aliases.length === 1 ? "" : "es"} linked · ${activeAliasCount} active`
+        : "No aliases linked to this grant",
+  };
+}
+
+function buildResultShareAliasRegistryItemViewModel(
+  alias: ResultShareAliasRead,
+  grant: ResultShareGrantRead | null,
+): ResultShareAliasRegistryItemViewModel {
+  const grantTitle =
+    grant?.display_label ??
+    (grant ? `${humanizeMetricKey(grant.share_kind)} grant` : `Grant ${alias.result_share_grant_id}`);
+
+  return {
+    aliasId: alias.id,
+    grantId: alias.result_share_grant_id,
+    title: alias.display_label ?? `Alias ${alias.alias_prefix ?? alias.id}`,
+    subtitle: `${humanizeMetricKey(alias.share_kind)} · ${alias.status}`,
+    shareKind: alias.share_kind,
+    status: alias.status,
+    displayLabel: alias.display_label,
+    aliasPrefix: alias.alias_prefix,
+    expiresAt: alias.expires_at,
+    lastUsedAt: alias.last_used_at,
+    createdAt: alias.created_at,
+    grantTitle,
+    grantStatus: grant?.status ?? null,
+    linkedGrantInRegistry: grant !== null,
+    relationshipHint:
+      grant !== null
+        ? `${grantTitle} · ${grant.status}`
+        : `Grant ${alias.result_share_grant_id}`,
+  };
+}
+
+function buildResultShareRegistrySummaryMetric(
+  label: string,
+  value: number,
+  hint: string | null = null,
+): ResultShareRegistrySummaryViewModel {
+  return { label, value, hint };
+}
+
+function buildShareKindHint(kinds: string[]): string | null {
+  if (kinds.length === 0) {
+    return null;
+  }
+  return kinds.map(humanizeMetricKey).join(", ");
 }
 
 function buildResultShareRecentEventViewModel(
@@ -905,6 +999,110 @@ export function buildResultShareAliasDrilldownViewModel(
     attributionScope: buildResultShareAttributionScopeViewModel(drilldown.attribution_scope),
     notes: drilldown.notes,
     empty,
+  };
+}
+
+export function buildResultShareRegistryViewModel(
+  grants: ResultShareGrantRead[],
+  aliases: ResultShareAliasRead[],
+): ResultShareRegistryViewModel {
+  const aliasesByGrantId = new Map<string, ResultShareAliasRead[]>();
+  for (const alias of aliases) {
+    const current = aliasesByGrantId.get(alias.result_share_grant_id) ?? [];
+    current.push(alias);
+    aliasesByGrantId.set(alias.result_share_grant_id, current);
+  }
+
+  const grantsById = new Map(grants.map((grant) => [grant.id, grant]));
+  const grantItems = grants
+    .map((grant) => buildResultShareGrantRegistryItemViewModel(grant, aliasesByGrantId.get(grant.id) ?? []))
+    .sort((left, right) => {
+      const lastUsedCompare = (right.lastUsedAt ?? "").localeCompare(left.lastUsedAt ?? "");
+      if (lastUsedCompare !== 0) {
+        return lastUsedCompare;
+      }
+      return right.createdAt.localeCompare(left.createdAt);
+    });
+  const aliasItems = aliases
+    .map((alias) =>
+      buildResultShareAliasRegistryItemViewModel(alias, grantsById.get(alias.result_share_grant_id) ?? null),
+    )
+    .sort((left, right) => {
+      const lastUsedCompare = (right.lastUsedAt ?? "").localeCompare(left.lastUsedAt ?? "");
+      if (lastUsedCompare !== 0) {
+        return lastUsedCompare;
+      }
+      return right.createdAt.localeCompare(left.createdAt);
+    });
+
+  const grantKinds = Array.from(new Set(grants.map((grant) => grant.share_kind))).sort();
+  const aliasKinds = Array.from(new Set(aliases.map((alias) => alias.share_kind))).sort();
+
+  return {
+    grants: {
+      title: "Share grant registry",
+      description:
+        "Safe summaries for every listed share grant, including scope, status, timestamps, and linked alias counts.",
+      summaryMetrics: [
+        buildResultShareRegistrySummaryMetric("Total listed", grants.length),
+        buildResultShareRegistrySummaryMetric(
+          "Active",
+          grants.filter((grant) => grant.status === "active").length,
+        ),
+        buildResultShareRegistrySummaryMetric(
+          "Revoked",
+          grants.filter((grant) => grant.status === "revoked").length,
+        ),
+        buildResultShareRegistrySummaryMetric(
+          "Expired",
+          grants.filter((grant) => grant.status === "expired").length,
+        ),
+        buildResultShareRegistrySummaryMetric(
+          "Share kinds",
+          grantKinds.length,
+          buildShareKindHint(grantKinds),
+        ),
+      ],
+      items: grantItems,
+      emptyState: {
+        title: "No share grants matched these filters.",
+        message: "Try widening the share-grant filters or reset back to the default registry view.",
+      },
+    },
+    aliases: {
+      title: "Alias registry",
+      description:
+        "Safe alias rows show prefix summaries, status, last usage, and the linked share grant without exposing plaintext aliases or tokens.",
+      summaryMetrics: [
+        buildResultShareRegistrySummaryMetric("Total listed", aliases.length),
+        buildResultShareRegistrySummaryMetric(
+          "Active",
+          aliases.filter((alias) => alias.status === "active").length,
+        ),
+        buildResultShareRegistrySummaryMetric(
+          "Revoked",
+          aliases.filter((alias) => alias.status === "revoked").length,
+        ),
+        buildResultShareRegistrySummaryMetric(
+          "Expired",
+          aliases.filter((alias) => alias.status === "expired").length,
+        ),
+        buildResultShareRegistrySummaryMetric(
+          "Recent usage",
+          aliases.filter((alias) => alias.last_used_at !== null).length,
+        ),
+        buildResultShareRegistrySummaryMetric(
+          "Share kinds",
+          aliasKinds.length,
+          buildShareKindHint(aliasKinds),
+        ),
+      ],
+      items: aliasItems,
+      emptyState: {
+        title: "No aliases matched these filters.",
+        message: "Try widening the alias filters or reset back to the default registry view.",
+      },
+    },
   };
 }
 
