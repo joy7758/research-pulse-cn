@@ -41,6 +41,9 @@ import type {
   ResultShareRegistryPresetWorkspaceBackupSnapshot,
   ResultShareRegistryPresetWorkspaceExportPayload,
   ResultShareRegistryPresetWorkspaceHealthFinding,
+  ResultShareRegistryPresetWorkspaceHealthClipboardFormat,
+  ResultShareRegistryPresetWorkspaceHealthClipboardSummary,
+  ResultShareRegistryPresetWorkspaceHealthClipboardValidationResult,
   ResultShareRegistryPresetWorkspaceHealthReport,
   ResultShareRegistryPresetWorkspaceHealthReportMetadata,
   ResultShareRegistryPresetWorkspaceHealthReportPreview,
@@ -178,6 +181,13 @@ const presetLocalAuditActionTypes: ResultShareRegistryPresetLocalAuditActionType
   "preset_workspace_health_report_exported_json",
   "preset_workspace_health_report_exported_markdown",
   "preset_workspace_health_report_validation_failed",
+  "preset_workspace_health_report_copied_summary",
+  "preset_workspace_health_report_copied_findings",
+  "preset_workspace_health_report_copied_recommendations",
+  "preset_workspace_health_report_copied_markdown",
+  "preset_workspace_health_report_copied_json",
+  "preset_workspace_health_report_copy_validation_failed",
+  "preset_workspace_health_report_copy_failed",
   "preset_workspace_health_thresholds_updated",
   "preset_workspace_health_thresholds_reset",
   "preset_workspace_health_threshold_validation_failed",
@@ -3173,6 +3183,235 @@ export function buildPresetWorkspaceHealthReportPreview(input: {
     markdown: validation.valid
       ? serializeResultShareRegistryPresetWorkspaceHealthReportMarkdown(report)
       : null,
+  };
+}
+
+function buildHealthClipboardLocalOnlyCaveat(): string {
+  return "Local operator hygiene only. This is not backend health, security scoring, or compliance scoring.";
+}
+
+function buildHealthClipboardTitle(
+  format: ResultShareRegistryPresetWorkspaceHealthClipboardFormat,
+): string {
+  if (format === "health_summary") {
+    return "Result Share Registry Preset Workspace Health Summary";
+  }
+  if (format === "findings_summary") {
+    return "Result Share Registry Preset Workspace Findings Summary";
+  }
+  if (format === "recommendations_summary") {
+    return "Result Share Registry Preset Workspace Recommendations Summary";
+  }
+  if (format === "compact_markdown") {
+    return "Result Share Registry Preset Workspace Compact Markdown Summary";
+  }
+  return "Result Share Registry Preset Workspace Compact JSON Summary";
+}
+
+export function buildPresetWorkspaceHealthSummaryText(
+  report: ResultShareRegistryPresetWorkspaceHealthReport,
+): string {
+  return [
+    buildHealthClipboardTitle("health_summary"),
+    `Generated at: ${report.generatedAt}`,
+    `Score: ${report.health.score}`,
+    `Status: ${formatPresetWorkspaceHealthStatus(report.health.status)}`,
+    `Summary: ${report.health.summary}`,
+    `Threshold source: ${report.thresholds.source}`,
+    `Diagnostics issues: ${report.diagnostics.issueCount}`,
+    buildHealthClipboardLocalOnlyCaveat(),
+  ].join("\n");
+}
+
+export function buildPresetWorkspaceHealthFindingsText(
+  report: ResultShareRegistryPresetWorkspaceHealthReport,
+): string {
+  return [
+    buildHealthClipboardTitle("findings_summary"),
+    `Score: ${report.health.score}`,
+    `Status: ${formatPresetWorkspaceHealthStatus(report.health.status)}`,
+    ...(report.findings.length > 0
+      ? report.findings.map(
+          (finding) => `- [${finding.severity}] ${finding.code}: ${finding.summary}`,
+        )
+      : ["- No findings"]),
+    buildHealthClipboardLocalOnlyCaveat(),
+  ].join("\n");
+}
+
+export function buildPresetWorkspaceHealthRecommendationsText(
+  report: ResultShareRegistryPresetWorkspaceHealthReport,
+): string {
+  return [
+    buildHealthClipboardTitle("recommendations_summary"),
+    ...(report.recommendations.length > 0
+      ? report.recommendations.map(
+          (recommendation) =>
+            `- ${recommendation.label} (${recommendation.kind})`,
+        )
+      : ["- No recommendations"]),
+    "Recommendations are local operator actions only.",
+    buildHealthClipboardLocalOnlyCaveat(),
+  ].join("\n");
+}
+
+export function buildPresetWorkspaceHealthCompactMarkdown(
+  report: ResultShareRegistryPresetWorkspaceHealthReport,
+): string {
+  return [
+    "# Result Share Registry Preset Workspace Health Summary",
+    "",
+    "## Health Summary",
+    `- Score: ${report.health.score}`,
+    `- Status: ${formatPresetWorkspaceHealthStatus(report.health.status)}`,
+    `- Summary: ${report.health.summary}`,
+    "",
+    "## Threshold Source",
+    `- ${report.thresholds.source}`,
+    "",
+    "## Findings",
+    ...(report.findings.length > 0
+      ? report.findings.map((finding) => `- [${finding.severity}] ${finding.summary}`)
+      : ["- None"]),
+    "",
+    "## Recommendations",
+    ...(report.recommendations.length > 0
+      ? report.recommendations.map((recommendation) => `- ${recommendation.label}`)
+      : ["- None"]),
+    "",
+    "## Safety Exclusions",
+    ...report.safetyExclusions.map((item) => `- ${item}`),
+    "",
+    buildHealthClipboardLocalOnlyCaveat(),
+  ].join("\n");
+}
+
+export function buildPresetWorkspaceHealthCompactJson(
+  report: ResultShareRegistryPresetWorkspaceHealthReport,
+): string {
+  return JSON.stringify(
+    {
+      schemaVersion: report.schemaVersion,
+      generatedAt: report.generatedAt,
+      localOnly: true,
+      thresholdPreferenceSource: report.thresholds.source,
+      health: {
+        score: report.health.score,
+        status: report.health.status,
+        summary: report.health.summary,
+      },
+      findings: report.findings.map((finding) => ({
+        severity: finding.severity,
+        code: finding.code,
+        summary: finding.summary,
+      })),
+      recommendations: report.recommendations.map((recommendation) => ({
+        kind: recommendation.kind,
+        label: recommendation.label,
+      })),
+      safetyExclusions: [...report.safetyExclusions],
+    },
+    null,
+    2,
+  );
+}
+
+export function buildPresetWorkspaceHealthClipboardSummary(input: {
+  report: ResultShareRegistryPresetWorkspaceHealthReport;
+  format: ResultShareRegistryPresetWorkspaceHealthClipboardFormat;
+  now?: string;
+}): ResultShareRegistryPresetWorkspaceHealthClipboardSummary {
+  const generatedAt = input.now ?? new Date().toISOString();
+  const body =
+    input.format === "health_summary"
+      ? buildPresetWorkspaceHealthSummaryText(input.report)
+      : input.format === "findings_summary"
+        ? buildPresetWorkspaceHealthFindingsText(input.report)
+        : input.format === "recommendations_summary"
+          ? buildPresetWorkspaceHealthRecommendationsText(input.report)
+          : input.format === "compact_markdown"
+            ? buildPresetWorkspaceHealthCompactMarkdown(input.report)
+            : buildPresetWorkspaceHealthCompactJson(input.report);
+  return {
+    format: input.format,
+    generatedAt,
+    title: buildHealthClipboardTitle(input.format),
+    body,
+    safetyExclusions: [...input.report.safetyExclusions],
+    sourceReportSchemaVersion: input.report.schemaVersion,
+  };
+}
+
+function collectUnsafeClipboardPayloadKeys(
+  value: unknown,
+  path: string,
+  errors: string[],
+): void {
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => {
+      collectUnsafeClipboardPayloadKeys(item, `${path}[${index}]`, errors);
+    });
+    return;
+  }
+  if (!isRecord(value)) {
+    return;
+  }
+  for (const [key, nestedValue] of Object.entries(value)) {
+    if (looksUnsafeFieldName(key)) {
+      errors.push(`${path} contains unsafe field "${key}".`);
+      continue;
+    }
+    collectUnsafeClipboardPayloadKeys(nestedValue, `${path}.${key}`, errors);
+  }
+}
+
+export function validatePresetWorkspaceHealthClipboardPayload(
+  summary: ResultShareRegistryPresetWorkspaceHealthClipboardSummary,
+): ResultShareRegistryPresetWorkspaceHealthClipboardValidationResult {
+  const warnings: string[] = [];
+  const errors: string[] = [];
+
+  if (!summary.title.trim()) {
+    errors.push("Clipboard summary title is required.");
+  }
+  if (!summary.body.trim()) {
+    errors.push("Clipboard summary body is required.");
+  }
+  if (
+    summary.sourceReportSchemaVersion !==
+    RESULT_SHARE_REGISTRY_PRESET_WORKSPACE_HEALTH_REPORT_SCHEMA_VERSION
+  ) {
+    errors.push(
+      `Clipboard summary source schemaVersion must be "${RESULT_SHARE_REGISTRY_PRESET_WORKSPACE_HEALTH_REPORT_SCHEMA_VERSION}".`,
+    );
+  }
+  if (summary.body.length > 12000) {
+    warnings.push("Clipboard summary is large and may be truncated by some clipboard targets.");
+  }
+  if (looksUnsafeFieldName(summary.title)) {
+    errors.push("Clipboard summary title contains an unsafe field name.");
+  }
+
+  if (summary.format === "compact_json") {
+    try {
+      const parsed = JSON.parse(summary.body);
+      collectUnsafeClipboardPayloadKeys(parsed, "Clipboard payload", errors);
+    } catch {
+      errors.push("Compact JSON clipboard payload is not valid JSON.");
+    }
+  } else {
+    const unsafeBodyMatches = summary.body.match(
+      /\b(rawAlias|rawShareToken|token_hash|alias_hash|localPath|absolutePath|sourceFile|responsePayload)\b/g,
+    );
+    if (unsafeBodyMatches && unsafeBodyMatches.length > 0) {
+      errors.push("Clipboard summary contains an unsafe field label.");
+    }
+  }
+
+  return {
+    valid: errors.length === 0,
+    warnings,
+    errors,
   };
 }
 

@@ -113,5 +113,5 @@
 - Richer local operator health summaries only if later justified
 - Signed local report packages only if ever needed
 - Backend or team health reports only if persistence is later justified
-- Clipboard-first health summary views only if later justified
+- Clipboard-first health summary views were added in the next phase without changing the same browser-local safety boundary or introducing backend report persistence
 - Still no source-file sharing by default

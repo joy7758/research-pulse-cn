@@ -9,6 +9,7 @@ import {
   applyResultShareRegistrySavedView,
   appendResultShareRegistryPresetAuditEvent,
   buildHealthReportSafeExclusions,
+  buildPresetWorkspaceHealthClipboardSummary,
   buildPresetWorkspaceHealthReportPreview,
   buildPresetWorkspaceHealthThresholdPreview,
   buildResultShareRegistryPresetAuditSummary,
@@ -68,6 +69,7 @@ import {
   syncResultShareRegistryPresetWorkspaceStateWithStore,
   unpinResultShareRegistryPresetWorkspacePreset,
   validatePresetWorkspaceHealthThresholdPreferences,
+  validatePresetWorkspaceHealthClipboardPayload,
   persistPresetWorkspaceHealthThresholdPreferences,
   serializeResultShareRegistryPresetWorkspaceHealthReportJson,
   serializeResultShareRegistryPresetWorkspaceHealthReportMarkdown,
@@ -2757,5 +2759,318 @@ describe("result share registry saved views", () => {
     expect(validation.errors.join(" ")).toMatch(/0..100/i);
     expect(validation.errors.join(" ")).toMatch(/threshold summary/i);
     expect(validation.errors.join(" ")).toMatch(/unsafe field/i);
+  });
+
+  it("builds a safe health-summary clipboard payload with expected local-only fields", () => {
+    const report = buildResultShareRegistryPresetWorkspaceHealthReport({
+      healthScore: {
+        score: 85,
+        status: "attention",
+        checkedAt: "2026-04-19T05:20:00Z",
+        summary: "Local preset workspace hygiene needs minor attention.",
+        thresholdPreferenceSource: "local",
+        thresholdSummary: ["Healthy 80-100", "Attention 60-79", "Risk 30-59", "Critical 0-29"],
+        thresholdWarnings: [],
+        breakdown: {
+          storageIntegrity: 100,
+          presetValidity: 90,
+          pinnedPresetHygiene: 80,
+          backupReadiness: 90,
+          auditReliability: 100,
+          importExportSafety: 95,
+          drilldownContextCompleteness: 100,
+        },
+        findings: [
+          {
+            severity: "warning",
+            code: "stale_pinned_presets",
+            summary: "Pinned presets need cleanup.",
+            detail: "One pinned preset no longer exists locally.",
+          },
+        ],
+        recommendations: [
+          {
+            kind: "clean_stale_pins",
+            label: "Clean stale pins",
+            detail: "Use the existing cleanup action to remove stale workspace pins.",
+          },
+        ],
+        notes: ["Local-only note."],
+      },
+      diagnostics: {
+        checkedAt: "2026-04-19T05:20:00Z",
+        storageKeysPresent: {
+          grantPresets: true,
+          aliasPresets: true,
+          defaultPresetId: false,
+          lastGoodBackup: true,
+          workspaceState: true,
+        },
+        grantPresetCount: 1,
+        aliasPresetCount: 1,
+        validPresetCount: 2,
+        invalidPresetCount: 0,
+        defaultPresetIdPresent: false,
+        lastBackupPresent: true,
+        workspaceStatePresent: true,
+        workspaceStateWarning: null,
+        latestValidationAt: "2026-04-19T05:20:00Z",
+        warningCount: 1,
+        errorCount: 0,
+        notes: [],
+      },
+      workspaceViewModel: {
+        overviewSummary: [],
+        lastActivePresetLabel: null,
+        pinnedGrantPresets: [],
+        pinnedAliasPresets: [],
+        recentGrantPresets: [],
+        recentAliasPresets: [],
+        staleGrantPinIds: ["missing-grant"],
+        staleAliasPinIds: [],
+        recentActivity: [],
+        storageHealth: {
+          issueCount: 1,
+          lastBackupLabel: "Preset backup available",
+          workspaceBackupLabel: "Workspace backup available",
+          auditWarning: null,
+          workspaceWarning: null,
+          latestValidationAt: "2026-04-19T05:20:00Z",
+        },
+      },
+      auditSummary: buildResultShareRegistryPresetAuditSummary([]),
+      now: "2026-04-19T05:21:00Z",
+    });
+
+    const clipboard = buildPresetWorkspaceHealthClipboardSummary({
+      report,
+      format: "health_summary",
+      now: "2026-04-19T05:22:00Z",
+    });
+
+    expect(clipboard.title).toBe("Result Share Registry Preset Workspace Health Summary");
+    expect(clipboard.body).toContain("Generated at: 2026-04-19T05:21:00Z");
+    expect(clipboard.body).toContain("Score: 85");
+    expect(clipboard.body).toContain("Status: Attention");
+    expect(clipboard.body).toContain("Threshold source: local");
+    expect(clipboard.body).toContain(
+      "Local operator hygiene only. This is not backend health, security scoring, or compliance scoring.",
+    );
+    expect(clipboard.body).not.toContain("pinnedGrantPresetIds");
+    expect(clipboard.body).not.toContain("rawShareToken");
+    expect(clipboard.safetyExclusions).toEqual(buildHealthReportSafeExclusions());
+  });
+
+  it("builds findings and recommendations clipboard payloads without unsafe details", () => {
+    const report = buildResultShareRegistryPresetWorkspaceHealthReport({
+      healthScore: {
+        score: 42,
+        status: "risk",
+        checkedAt: "2026-04-19T05:23:00Z",
+        summary: "Local preset workspace hygiene needs cleanup.",
+        thresholdPreferenceSource: "default",
+        thresholdSummary: ["Healthy 90-100", "Attention 70-89", "Risk 40-69", "Critical 0-39"],
+        thresholdWarnings: [],
+        breakdown: {
+          storageIntegrity: 40,
+          presetValidity: 90,
+          pinnedPresetHygiene: 60,
+          backupReadiness: 70,
+          auditReliability: 90,
+          importExportSafety: 95,
+          drilldownContextCompleteness: 100,
+        },
+        findings: [
+          {
+            severity: "error",
+            code: "storage_invalid_json",
+            summary: "Preset storage contains unreadable JSON.",
+            detail: "rawShareToken=secret-value should never surface.",
+          },
+        ],
+        recommendations: [
+          {
+            kind: "run_integrity_check",
+            label: "Run integrity check",
+            detail: "Use the existing local integrity check before trusting storage.",
+          },
+        ],
+        notes: [],
+      },
+      diagnostics: {
+        checkedAt: "2026-04-19T05:23:00Z",
+        storageKeysPresent: {
+          grantPresets: true,
+          aliasPresets: true,
+          defaultPresetId: false,
+          lastGoodBackup: false,
+          workspaceState: true,
+        },
+        grantPresetCount: 1,
+        aliasPresetCount: 0,
+        validPresetCount: 1,
+        invalidPresetCount: 0,
+        defaultPresetIdPresent: false,
+        lastBackupPresent: false,
+        workspaceStatePresent: true,
+        workspaceStateWarning: null,
+        latestValidationAt: "2026-04-19T05:23:00Z",
+        warningCount: 0,
+        errorCount: 1,
+        notes: [],
+      },
+      workspaceViewModel: {
+        overviewSummary: [],
+        lastActivePresetLabel: null,
+        pinnedGrantPresets: [],
+        pinnedAliasPresets: [],
+        recentGrantPresets: [],
+        recentAliasPresets: [],
+        staleGrantPinIds: [],
+        staleAliasPinIds: [],
+        recentActivity: [],
+        storageHealth: {
+          issueCount: 1,
+          lastBackupLabel: "No backup stored",
+          workspaceBackupLabel: "No workspace backup stored",
+          auditWarning: null,
+          workspaceWarning: null,
+          latestValidationAt: "2026-04-19T05:23:00Z",
+        },
+      },
+      auditSummary: buildResultShareRegistryPresetAuditSummary([]),
+      now: "2026-04-19T05:24:00Z",
+    });
+
+    const findingsClipboard = buildPresetWorkspaceHealthClipboardSummary({
+      report,
+      format: "findings_summary",
+      now: "2026-04-19T05:25:00Z",
+    });
+    const recommendationsClipboard = buildPresetWorkspaceHealthClipboardSummary({
+      report,
+      format: "recommendations_summary",
+      now: "2026-04-19T05:25:00Z",
+    });
+
+    expect(findingsClipboard.body).toContain("Score: 42");
+    expect(findingsClipboard.body).toContain("Status: Risk");
+    expect(findingsClipboard.body).toContain("[error] storage_invalid_json: Preset storage contains unreadable JSON.");
+    expect(findingsClipboard.body).not.toContain("secret-value");
+    expect(recommendationsClipboard.body).toContain("Run integrity check (run_integrity_check)");
+    expect(recommendationsClipboard.body).toContain(
+      "Recommendations are local operator actions only.",
+    );
+    expect(recommendationsClipboard.body).toContain(
+      "Local operator hygiene only. This is not backend health, security scoring, or compliance scoring.",
+    );
+  });
+
+  it("builds compact Markdown and compact JSON clipboard payloads with safe schemas", () => {
+    const report = buildResultShareRegistryPresetWorkspaceHealthReport({
+      healthScore: {
+        score: 92,
+        status: "healthy",
+        checkedAt: "2026-04-19T05:26:00Z",
+        summary: "Local preset workspace hygiene looks healthy.",
+        thresholdPreferenceSource: "default",
+        thresholdSummary: ["Healthy 90-100", "Attention 70-89", "Risk 40-69", "Critical 0-39"],
+        thresholdWarnings: [],
+        breakdown: {
+          storageIntegrity: 100,
+          presetValidity: 100,
+          pinnedPresetHygiene: 90,
+          backupReadiness: 90,
+          auditReliability: 100,
+          importExportSafety: 100,
+          drilldownContextCompleteness: 100,
+        },
+        findings: [],
+        recommendations: [],
+        notes: ["Local-only note."],
+      },
+      diagnostics: {
+        checkedAt: "2026-04-19T05:26:00Z",
+        storageKeysPresent: {
+          grantPresets: true,
+          aliasPresets: true,
+          defaultPresetId: false,
+          lastGoodBackup: true,
+          workspaceState: true,
+        },
+        grantPresetCount: 1,
+        aliasPresetCount: 1,
+        validPresetCount: 2,
+        invalidPresetCount: 0,
+        defaultPresetIdPresent: false,
+        lastBackupPresent: true,
+        workspaceStatePresent: true,
+        workspaceStateWarning: null,
+        latestValidationAt: "2026-04-19T05:26:00Z",
+        warningCount: 0,
+        errorCount: 0,
+        notes: [],
+      },
+      workspaceViewModel: {
+        overviewSummary: [],
+        lastActivePresetLabel: null,
+        pinnedGrantPresets: [],
+        pinnedAliasPresets: [],
+        recentGrantPresets: [],
+        recentAliasPresets: [],
+        staleGrantPinIds: [],
+        staleAliasPinIds: [],
+        recentActivity: [],
+        storageHealth: {
+          issueCount: 0,
+          lastBackupLabel: "Preset backup available",
+          workspaceBackupLabel: "Workspace backup available",
+          auditWarning: null,
+          workspaceWarning: null,
+          latestValidationAt: "2026-04-19T05:26:00Z",
+        },
+      },
+      auditSummary: buildResultShareRegistryPresetAuditSummary([]),
+      now: "2026-04-19T05:27:00Z",
+    });
+
+    const markdownClipboard = buildPresetWorkspaceHealthClipboardSummary({
+      report,
+      format: "compact_markdown",
+      now: "2026-04-19T05:28:00Z",
+    });
+    const jsonClipboard = buildPresetWorkspaceHealthClipboardSummary({
+      report,
+      format: "compact_json",
+      now: "2026-04-19T05:28:00Z",
+    });
+
+    expect(markdownClipboard.body).toContain("# Result Share Registry Preset Workspace Health Summary");
+    expect(markdownClipboard.body).toContain("## Health Summary");
+    expect(markdownClipboard.body).toContain("## Threshold Source");
+    expect(markdownClipboard.body).toContain("## Safety Exclusions");
+    expect(markdownClipboard.body).not.toContain("sourceFile");
+    expect(jsonClipboard.body).toContain('"schemaVersion": "result-share-registry-preset-workspace-health-report.v1"');
+    expect(jsonClipboard.body).toContain('"localOnly": true');
+    expect(jsonClipboard.body).toContain('"thresholdPreferenceSource": "default"');
+    expect(jsonClipboard.body).not.toContain("pinnedGrantPresetIds");
+    expect(jsonClipboard.body).not.toContain("token_hash");
+  });
+
+  it("rejects unsafe clipboard payloads during validation", () => {
+    const invalid = validatePresetWorkspaceHealthClipboardPayload({
+      format: "compact_json",
+      generatedAt: "2026-04-19T05:29:00Z",
+      title: "Unsafe clipboard summary",
+      body: JSON.stringify({
+        schemaVersion: "result-share-registry-preset-workspace-health-report.v1",
+        sourceFile: "/tmp/secret.txt",
+      }),
+      safetyExclusions: buildHealthReportSafeExclusions(),
+      sourceReportSchemaVersion: "result-share-registry-preset-workspace-health-report.v1",
+    });
+
+    expect(invalid.valid).toBe(false);
+    expect(invalid.errors.join(" ")).toMatch(/unsafe field/i);
   });
 });

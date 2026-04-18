@@ -1003,6 +1003,13 @@ export type ResultShareRegistryPresetLocalAuditActionType =
   | "preset_workspace_health_report_exported_json"
   | "preset_workspace_health_report_exported_markdown"
   | "preset_workspace_health_report_validation_failed"
+  | "preset_workspace_health_report_copied_summary"
+  | "preset_workspace_health_report_copied_findings"
+  | "preset_workspace_health_report_copied_recommendations"
+  | "preset_workspace_health_report_copied_markdown"
+  | "preset_workspace_health_report_copied_json"
+  | "preset_workspace_health_report_copy_validation_failed"
+  | "preset_workspace_health_report_copy_failed"
   | "preset_workspace_health_thresholds_updated"
   | "preset_workspace_health_thresholds_reset"
   | "preset_workspace_health_threshold_validation_failed"
@@ -1357,6 +1364,36 @@ export type ResultShareRegistryPresetWorkspaceHealthReportPreview = {
   validation: ResultShareRegistryPresetWorkspaceHealthReportValidationResult;
   json: string | null;
   markdown: string | null;
+};
+
+export type ResultShareRegistryPresetWorkspaceHealthClipboardFormat =
+  | "compact_markdown"
+  | "compact_json"
+  | "health_summary"
+  | "findings_summary"
+  | "recommendations_summary";
+
+export type ResultShareRegistryPresetWorkspaceHealthClipboardSummary = {
+  format: ResultShareRegistryPresetWorkspaceHealthClipboardFormat;
+  generatedAt: string;
+  title: string;
+  body: string;
+  safetyExclusions: string[];
+  sourceReportSchemaVersion: "result-share-registry-preset-workspace-health-report.v1";
+};
+
+export type ResultShareRegistryPresetWorkspaceHealthClipboardValidationResult = {
+  valid: boolean;
+  warnings: string[];
+  errors: string[];
+};
+
+export type ResultShareRegistryPresetWorkspaceHealthClipboardCopyResult = {
+  success: boolean;
+  format: ResultShareRegistryPresetWorkspaceHealthClipboardFormat;
+  message: string;
+  copiedAt: string;
+  validation: ResultShareRegistryPresetWorkspaceHealthClipboardValidationResult;
 };
 
 export type ResultShareRegistryPresetWorkspaceExportPayload = {

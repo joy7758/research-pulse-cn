@@ -45,7 +45,13 @@ import {
 } from "./lib/resultShareRegistryFilters";
 import {
   appendResultShareRegistryPresetAuditEvent,
+  buildPresetWorkspaceHealthClipboardSummary,
+  buildPresetWorkspaceHealthCompactJson,
+  buildPresetWorkspaceHealthCompactMarkdown,
+  buildPresetWorkspaceHealthFindingsText,
   buildPresetWorkspaceHealthReportPreview,
+  buildPresetWorkspaceHealthRecommendationsText,
+  buildPresetWorkspaceHealthSummaryText,
   buildPresetWorkspaceHealthThresholdPreview,
   buildResultShareRegistryPresetWorkspaceViewModel,
   buildResultShareRegistryPresetWorkspaceHealthReport,
@@ -101,6 +107,7 @@ import {
   applyResultShareRegistryPresetWorkspaceImport,
   restoreResultShareRegistryPresetWorkspaceBackup,
   unpinResultShareRegistryPresetWorkspacePreset,
+  validatePresetWorkspaceHealthClipboardPayload,
   validatePresetWorkspaceHealthThresholdPreferences,
   validateResultShareRegistryPresetWorkspaceHealthReport,
 } from "./lib/resultShareRegistrySavedViews";
@@ -131,6 +138,8 @@ import type {
   ResultShareRegistryPresetLocalAuditSummary,
   ResultShareRegistryPresetRecoveryAction,
   ResultShareRegistryPresetWorkspaceBackupSnapshot,
+  ResultShareRegistryPresetWorkspaceHealthClipboardCopyResult,
+  ResultShareRegistryPresetWorkspaceHealthClipboardFormat,
   ResultShareRegistryPresetWorkspaceHealthReportExportFormat,
   ResultShareRegistryPresetWorkspaceHealthReportPreview,
   ResultShareRegistryPresetWorkspaceHealthThresholdDraft,
@@ -193,6 +202,18 @@ function downloadLocalTextFile(
   link.download = filename;
   link.click();
   URL.revokeObjectURL(downloadUrl);
+}
+
+async function copyTextToClipboard(text: string): Promise<void> {
+  if (
+    typeof navigator !== "undefined" &&
+    navigator.clipboard &&
+    typeof navigator.clipboard.writeText === "function"
+  ) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  throw new Error("Clipboard API is not available in this browser.");
 }
 
 type ShareDrilldownTarget =
@@ -509,6 +530,10 @@ export function GroupWorkspaceAdminShell({
   ] = useState<"default" | "local">(
     initialPresetWorkspaceHealthThresholdPreferencesRef.current.source,
   );
+  const [
+    resultShareRegistryPresetWorkspaceHealthClipboardCopyResult,
+    setResultShareRegistryPresetWorkspaceHealthClipboardCopyResult,
+  ] = useState<ResultShareRegistryPresetWorkspaceHealthClipboardCopyResult | null>(null);
   const [resultShareRegistryPresetLocalAuditEvents, setResultShareRegistryPresetLocalAuditEvents] =
     useState<ResultShareRegistryPresetLocalAuditEvent[]>(initialPresetAuditRef.current.events);
   const [
@@ -1207,6 +1232,26 @@ export function GroupWorkspaceAdminShell({
         resultShareRegistryPresetWorkspaceViewModel,
       ],
     );
+  const resultShareRegistryPresetWorkspaceHealthClipboardPreview = useMemo(
+    () => ({
+      healthSummary: buildPresetWorkspaceHealthSummaryText(
+        resultShareRegistryPresetWorkspaceHealthReportPreview.report,
+      ),
+      findingsSummary: buildPresetWorkspaceHealthFindingsText(
+        resultShareRegistryPresetWorkspaceHealthReportPreview.report,
+      ),
+      recommendationsSummary: buildPresetWorkspaceHealthRecommendationsText(
+        resultShareRegistryPresetWorkspaceHealthReportPreview.report,
+      ),
+      compactMarkdown: buildPresetWorkspaceHealthCompactMarkdown(
+        resultShareRegistryPresetWorkspaceHealthReportPreview.report,
+      ),
+      compactJson: buildPresetWorkspaceHealthCompactJson(
+        resultShareRegistryPresetWorkspaceHealthReportPreview.report,
+      ),
+    }),
+    [resultShareRegistryPresetWorkspaceHealthReportPreview],
+  );
   const activeRegistryPresetLabel = useMemo(() => {
     if (!activeRegistryPreset) {
       return null;
@@ -1631,6 +1676,147 @@ export function GroupWorkspaceAdminShell({
           ? `Exported local health report JSON (${RESULT_SHARE_REGISTRY_PRESET_WORKSPACE_HEALTH_REPORT_SCHEMA_VERSION}).`
           : `Exported local health report Markdown (${RESULT_SHARE_REGISTRY_PRESET_WORKSPACE_HEALTH_REPORT_SCHEMA_VERSION}).`,
       );
+    },
+    [
+      recordResultShareRegistryPresetAuditEvent,
+      resultShareRegistryPresetLocalAuditSummary,
+      resultShareRegistryPresetStorageDiagnostics,
+      resultShareRegistryPresetWorkspaceHealthScore,
+      resultShareRegistryPresetWorkspaceViewModel,
+    ],
+  );
+
+  const handleCopyResultShareRegistryPresetWorkspaceHealthReport = useCallback(
+    async (format: ResultShareRegistryPresetWorkspaceHealthClipboardFormat) => {
+      const generatedAt = new Date().toISOString();
+      const report = buildResultShareRegistryPresetWorkspaceHealthReport({
+        healthScore: resultShareRegistryPresetWorkspaceHealthScore,
+        diagnostics: resultShareRegistryPresetStorageDiagnostics,
+        workspaceViewModel: resultShareRegistryPresetWorkspaceViewModel,
+        auditSummary: resultShareRegistryPresetLocalAuditSummary,
+        now: generatedAt,
+      });
+      const reportValidation = validateResultShareRegistryPresetWorkspaceHealthReport(report);
+      if (!reportValidation.valid) {
+        const copyResult: ResultShareRegistryPresetWorkspaceHealthClipboardCopyResult = {
+          success: false,
+          format,
+          message: "Local health report copy validation failed. Nothing was copied.",
+          copiedAt: generatedAt,
+          validation: {
+            valid: false,
+            warnings: reportValidation.warnings,
+            errors: reportValidation.errors,
+          },
+        };
+        setResultShareRegistryPresetWorkspaceHealthClipboardCopyResult(copyResult);
+        recordResultShareRegistryPresetAuditEvent(
+          createPresetAuditEvent(
+            "preset_workspace_health_report_copy_validation_failed",
+            "failed",
+            "Local health report copy validation failed before clipboard copy.",
+            {
+              scope: "storage",
+              safeDetails: reportValidation.errors[0] ?? null,
+            },
+          ),
+        );
+        setNoticeMessage(copyResult.message);
+        return;
+      }
+
+      const summary = buildPresetWorkspaceHealthClipboardSummary({
+        report,
+        format,
+        now: generatedAt,
+      });
+      const clipboardValidation = validatePresetWorkspaceHealthClipboardPayload(summary);
+      if (!clipboardValidation.valid) {
+        const copyResult: ResultShareRegistryPresetWorkspaceHealthClipboardCopyResult = {
+          success: false,
+          format,
+          message: "Clipboard summary validation failed. Nothing was copied.",
+          copiedAt: generatedAt,
+          validation: clipboardValidation,
+        };
+        setResultShareRegistryPresetWorkspaceHealthClipboardCopyResult(copyResult);
+        recordResultShareRegistryPresetAuditEvent(
+          createPresetAuditEvent(
+            "preset_workspace_health_report_copy_validation_failed",
+            "failed",
+            "Clipboard summary validation failed before clipboard copy.",
+            {
+              scope: "storage",
+              safeDetails: clipboardValidation.errors[0] ?? null,
+            },
+          ),
+        );
+        setNoticeMessage(copyResult.message);
+        return;
+      }
+
+      const successMessage =
+        format === "health_summary"
+          ? "Copied local health summary to clipboard."
+          : format === "findings_summary"
+            ? "Copied local findings summary to clipboard."
+            : format === "recommendations_summary"
+              ? "Copied local recommendations summary to clipboard."
+              : format === "compact_markdown"
+                ? "Copied compact Markdown health summary to clipboard."
+                : "Copied compact JSON health summary to clipboard.";
+
+      try {
+        await copyTextToClipboard(summary.body);
+        const copyResult: ResultShareRegistryPresetWorkspaceHealthClipboardCopyResult = {
+          success: true,
+          format,
+          message: successMessage,
+          copiedAt: generatedAt,
+          validation: clipboardValidation,
+        };
+        setResultShareRegistryPresetWorkspaceHealthClipboardCopyResult(copyResult);
+        recordResultShareRegistryPresetAuditEvent(
+          createPresetAuditEvent(
+            format === "health_summary"
+              ? "preset_workspace_health_report_copied_summary"
+              : format === "findings_summary"
+                ? "preset_workspace_health_report_copied_findings"
+                : format === "recommendations_summary"
+                  ? "preset_workspace_health_report_copied_recommendations"
+                  : format === "compact_markdown"
+                    ? "preset_workspace_health_report_copied_markdown"
+                    : "preset_workspace_health_report_copied_json",
+            clipboardValidation.warnings.length > 0 ? "warning" : "success",
+            successMessage,
+            {
+              scope: "storage",
+              safeDetails: summary.sourceReportSchemaVersion,
+            },
+          ),
+        );
+        setNoticeMessage(successMessage);
+      } catch {
+        const copyResult: ResultShareRegistryPresetWorkspaceHealthClipboardCopyResult = {
+          success: false,
+          format,
+          message: "Clipboard copy failed in this browser.",
+          copiedAt: generatedAt,
+          validation: clipboardValidation,
+        };
+        setResultShareRegistryPresetWorkspaceHealthClipboardCopyResult(copyResult);
+        recordResultShareRegistryPresetAuditEvent(
+          createPresetAuditEvent(
+            "preset_workspace_health_report_copy_failed",
+            "failed",
+            "Clipboard copy failed for a local health summary.",
+            {
+              scope: "storage",
+            },
+          ),
+        );
+        setNoticeMessage(copyResult.message);
+      }
     },
     [
       recordResultShareRegistryPresetAuditEvent,
@@ -3653,6 +3839,10 @@ export function GroupWorkspaceAdminShell({
           viewModel: resultShareRegistryPresetWorkspaceViewModel,
           healthScore: resultShareRegistryPresetWorkspaceHealthScore,
           healthReport: resultShareRegistryPresetWorkspaceHealthReportPreview,
+          healthClipboard: {
+            preview: resultShareRegistryPresetWorkspaceHealthClipboardPreview,
+            lastCopyResult: resultShareRegistryPresetWorkspaceHealthClipboardCopyResult,
+          },
           healthThresholds: {
             current: resultShareRegistryPresetWorkspaceHealthThresholdPreferences,
             draft: resultShareRegistryPresetWorkspaceHealthThresholdDraft,
@@ -3720,6 +3910,7 @@ export function GroupWorkspaceAdminShell({
         onRestorePresetWorkspaceBackup={handleRestoreResultShareRegistryPresetWorkspaceBackup}
         onRecalculatePresetWorkspaceHealth={handleRecalculateResultShareRegistryPresetWorkspaceHealth}
         onExportPresetWorkspaceHealthReport={handleExportResultShareRegistryPresetWorkspaceHealthReport}
+        onCopyPresetWorkspaceHealthReport={handleCopyResultShareRegistryPresetWorkspaceHealthReport}
         onHealthThresholdDraftChange={handleResultShareRegistryPresetWorkspaceHealthThresholdDraftChange}
         onHealthPenaltyOverrideDraftChange={handleResultShareRegistryPresetWorkspaceHealthPenaltyOverrideDraftChange}
         onHealthVisibilityChange={handleResultShareRegistryPresetWorkspaceHealthVisibilityChange}

@@ -195,6 +195,7 @@ The same shell now also includes a minimal read-only result-share registry:
 - a deterministic local preset workspace health score with breakdown cards, findings, and recommended local actions over integrity, stale pins, backups, audit history, and workspace import/export state
 - local threshold preferences for that health score, including threshold draft validation, before/after preview, reset-to-defaults, and browser-local storage only
 - local JSON and Markdown health report export for that health score, with safe validation, threshold-source summary, diagnostics recap, findings/recommendations summary, and explicit safety exclusions
+- local clipboard health-report summaries for score, findings, recommendations, compact Markdown, and compact JSON, with copy validation and safe local audit events only
 - no admin bearer token, raw share token, or raw alias is stored in those presets
 - the health score is browser-local hygiene only, not backend health, security scoring, or compliance scoring
 

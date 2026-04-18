@@ -10,6 +10,8 @@ import type {
   ApiErrorViewModel,
   ResultShareRegistryPresetBackupSnapshot,
   ResultShareRegistryPresetWorkspaceBackupSnapshot,
+  ResultShareRegistryPresetWorkspaceHealthClipboardCopyResult,
+  ResultShareRegistryPresetWorkspaceHealthClipboardFormat,
   ResultShareRegistryPresetWorkspaceHealthReportExportFormat,
   ResultShareRegistryPresetWorkspaceHealthReportPreview,
   ResultShareRegistryPresetWorkspaceHealthThresholdDraft,
@@ -70,6 +72,16 @@ type ResultShareRegistryPanelProps = {
     viewModel: ResultShareRegistryPresetWorkspaceViewModel;
     healthScore: ResultShareRegistryPresetWorkspaceHealthScore;
     healthReport: ResultShareRegistryPresetWorkspaceHealthReportPreview;
+    healthClipboard: {
+      preview: {
+        healthSummary: string;
+        findingsSummary: string;
+        recommendationsSummary: string;
+        compactMarkdown: string;
+        compactJson: string;
+      };
+      lastCopyResult: ResultShareRegistryPresetWorkspaceHealthClipboardCopyResult | null;
+    };
     healthThresholds: {
       current: ResultShareRegistryPresetWorkspaceHealthThresholdPreferences;
       draft: ResultShareRegistryPresetWorkspaceHealthThresholdDraft;
@@ -127,6 +139,9 @@ type ResultShareRegistryPanelProps = {
   onRecalculatePresetWorkspaceHealth: () => void;
   onExportPresetWorkspaceHealthReport: (
     format: ResultShareRegistryPresetWorkspaceHealthReportExportFormat,
+  ) => void;
+  onCopyPresetWorkspaceHealthReport: (
+    format: ResultShareRegistryPresetWorkspaceHealthClipboardFormat,
   ) => void;
   onHealthThresholdDraftChange: (
     field: "healthyMin" | "attentionMin" | "riskMin" | "criticalMin",
@@ -882,6 +897,7 @@ function buildHealthRecommendationAction(
 function PresetWorkspaceHealthPanel({
   healthScore,
   healthReport,
+  healthClipboard,
   healthThresholds,
   onRecalculate,
   onValidateStorage,
@@ -889,6 +905,7 @@ function PresetWorkspaceHealthPanel({
   onRestoreWorkspaceBackup,
   onResetWorkspace,
   onExportHealthReport,
+  onCopyHealthReport,
   onThresholdDraftChange,
   onPenaltyOverrideDraftChange,
   onVisibilityChange,
@@ -897,6 +914,16 @@ function PresetWorkspaceHealthPanel({
 }: {
   healthScore: ResultShareRegistryPresetWorkspaceHealthScore;
   healthReport: ResultShareRegistryPresetWorkspaceHealthReportPreview;
+  healthClipboard: {
+    preview: {
+      healthSummary: string;
+      findingsSummary: string;
+      recommendationsSummary: string;
+      compactMarkdown: string;
+      compactJson: string;
+    };
+    lastCopyResult: ResultShareRegistryPresetWorkspaceHealthClipboardCopyResult | null;
+  };
   healthThresholds: {
     current: ResultShareRegistryPresetWorkspaceHealthThresholdPreferences;
     draft: ResultShareRegistryPresetWorkspaceHealthThresholdDraft;
@@ -911,6 +938,9 @@ function PresetWorkspaceHealthPanel({
   onResetWorkspace: () => void;
   onExportHealthReport: (
     format: ResultShareRegistryPresetWorkspaceHealthReportExportFormat,
+  ) => void;
+  onCopyHealthReport: (
+    format: ResultShareRegistryPresetWorkspaceHealthClipboardFormat,
   ) => void;
   onThresholdDraftChange: (
     field: "healthyMin" | "attentionMin" | "riskMin" | "criticalMin",
@@ -1269,6 +1299,44 @@ function PresetWorkspaceHealthPanel({
           </div>
         </div>
 
+        <div className="button-row">
+          <button
+            type="button"
+            className="button-secondary"
+            onClick={() => onCopyHealthReport("health_summary")}
+          >
+            Copy health summary
+          </button>
+          <button
+            type="button"
+            className="button-secondary"
+            onClick={() => onCopyHealthReport("findings_summary")}
+          >
+            Copy findings
+          </button>
+          <button
+            type="button"
+            className="button-secondary"
+            onClick={() => onCopyHealthReport("recommendations_summary")}
+          >
+            Copy recommendations
+          </button>
+          <button
+            type="button"
+            className="button-secondary"
+            onClick={() => onCopyHealthReport("compact_markdown")}
+          >
+            Copy compact Markdown
+          </button>
+          <button
+            type="button"
+            className="button-secondary"
+            onClick={() => onCopyHealthReport("compact_json")}
+          >
+            Copy compact JSON
+          </button>
+        </div>
+
         <ul className="filter-chip-list">
           <li className="filter-chip">
             <span>Schema</span>
@@ -1326,6 +1394,30 @@ function PresetWorkspaceHealthPanel({
             {healthReport.validation.warnings.join(" ")}
           </div>
         ) : null}
+        {healthClipboard.lastCopyResult ? (
+          <div
+            className={`inline-banner ${
+              healthClipboard.lastCopyResult.success
+                ? "success"
+                : healthClipboard.lastCopyResult.validation.valid
+                  ? "error"
+                  : "warning"
+            }`}
+            role="status"
+          >
+            <strong>Clipboard status</strong>
+            <span>{healthClipboard.lastCopyResult.message}</span>
+          </div>
+        ) : null}
+
+        <details className="report-preview-block">
+          <summary>Copy preview: health summary</summary>
+          <pre>{healthClipboard.preview.healthSummary}</pre>
+        </details>
+        <details className="report-preview-block">
+          <summary>Copy preview: compact JSON</summary>
+          <pre>{healthClipboard.preview.compactJson}</pre>
+        </details>
 
         <details className="report-preview-block">
           <summary>JSON preview</summary>
@@ -1435,6 +1527,7 @@ function PresetWorkspacePanel({
   viewModel,
   healthScore,
   healthReport,
+  healthClipboard,
   healthThresholds,
   transfer,
   onApply,
@@ -1453,6 +1546,7 @@ function PresetWorkspacePanel({
   onRestoreWorkspaceBackup,
   onRecalculateHealth,
   onExportHealthReport,
+  onCopyHealthReport,
   onThresholdDraftChange,
   onPenaltyOverrideDraftChange,
   onVisibilityChange,
@@ -1462,6 +1556,16 @@ function PresetWorkspacePanel({
   viewModel: ResultShareRegistryPresetWorkspaceViewModel;
   healthScore: ResultShareRegistryPresetWorkspaceHealthScore;
   healthReport: ResultShareRegistryPresetWorkspaceHealthReportPreview;
+  healthClipboard: {
+    preview: {
+      healthSummary: string;
+      findingsSummary: string;
+      recommendationsSummary: string;
+      compactMarkdown: string;
+      compactJson: string;
+    };
+    lastCopyResult: ResultShareRegistryPresetWorkspaceHealthClipboardCopyResult | null;
+  };
   healthThresholds: {
     current: ResultShareRegistryPresetWorkspaceHealthThresholdPreferences;
     draft: ResultShareRegistryPresetWorkspaceHealthThresholdDraft;
@@ -1499,6 +1603,9 @@ function PresetWorkspacePanel({
   onRecalculateHealth: () => void;
   onExportHealthReport: (
     format: ResultShareRegistryPresetWorkspaceHealthReportExportFormat,
+  ) => void;
+  onCopyHealthReport: (
+    format: ResultShareRegistryPresetWorkspaceHealthClipboardFormat,
   ) => void;
   onThresholdDraftChange: (
     field: "healthyMin" | "attentionMin" | "riskMin" | "criticalMin",
@@ -1576,6 +1683,7 @@ function PresetWorkspacePanel({
       <PresetWorkspaceHealthPanel
         healthScore={healthScore}
         healthReport={healthReport}
+        healthClipboard={healthClipboard}
         healthThresholds={healthThresholds}
         onRecalculate={onRecalculateHealth}
         onValidateStorage={onValidateStorage}
@@ -1583,6 +1691,7 @@ function PresetWorkspacePanel({
         onRestoreWorkspaceBackup={onRestoreWorkspaceBackup}
         onResetWorkspace={onResetWorkspace}
         onExportHealthReport={onExportHealthReport}
+        onCopyHealthReport={onCopyHealthReport}
         onThresholdDraftChange={onThresholdDraftChange}
         onPenaltyOverrideDraftChange={onPenaltyOverrideDraftChange}
         onVisibilityChange={onVisibilityChange}
@@ -2303,6 +2412,7 @@ export function ResultShareRegistryPanel({
   onRestorePresetWorkspaceBackup,
   onRecalculatePresetWorkspaceHealth,
   onExportPresetWorkspaceHealthReport,
+  onCopyPresetWorkspaceHealthReport,
   onHealthThresholdDraftChange,
   onHealthPenaltyOverrideDraftChange,
   onHealthVisibilityChange,
@@ -2568,6 +2678,7 @@ export function ResultShareRegistryPanel({
           viewModel={presetWorkspace.viewModel}
           healthScore={presetWorkspace.healthScore}
           healthReport={presetWorkspace.healthReport}
+          healthClipboard={presetWorkspace.healthClipboard}
           healthThresholds={presetWorkspace.healthThresholds}
           transfer={presetWorkspace.transfer}
           onApply={onApplySavedView}
@@ -2586,6 +2697,7 @@ export function ResultShareRegistryPanel({
           onRestoreWorkspaceBackup={onRestorePresetWorkspaceBackup}
           onRecalculateHealth={onRecalculatePresetWorkspaceHealth}
           onExportHealthReport={onExportPresetWorkspaceHealthReport}
+          onCopyHealthReport={onCopyPresetWorkspaceHealthReport}
           onThresholdDraftChange={onHealthThresholdDraftChange}
           onPenaltyOverrideDraftChange={onHealthPenaltyOverrideDraftChange}
           onVisibilityChange={onHealthVisibilityChange}

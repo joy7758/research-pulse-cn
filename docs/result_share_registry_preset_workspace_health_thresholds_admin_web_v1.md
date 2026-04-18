@@ -74,6 +74,7 @@
 
 ## Future Work
 - Local health summary export was added in the next phase without turning the same browser-local threshold layer into backend report persistence.
+- Clipboard-safe local health summaries were added after export without turning threshold preferences into team-wide policy or backend state.
 - Team-wide thresholds only if backend persistence is ever justified
 - Policy-driven preset validation only if later justified
 - Richer operator health dashboards only if later justified

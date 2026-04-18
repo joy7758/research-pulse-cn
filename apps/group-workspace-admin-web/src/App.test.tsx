@@ -1914,7 +1914,7 @@ describe("group workspace admin shell", () => {
     expect(workspaceScoped.getByText("attention")).toBeVisible();
     expect(workspaceScoped.getAllByText("Clean stale pins").length).toBeGreaterThan(0);
     expect(workspaceScoped.getByText("Create a backup before risky changes")).toBeVisible();
-    expect(workspaceScoped.getByText(/local operator hygiene only/i)).toBeVisible();
+    expect(workspaceScoped.getAllByText(/local operator hygiene only/i).length).toBeGreaterThan(0);
 
     await user.click(workspaceScoped.getByRole("button", { name: "Recalculate health" }));
 
@@ -2140,6 +2140,168 @@ describe("group workspace admin shell", () => {
         configurable: true,
         writable: true,
         value: originalRevokeObjectURL,
+      });
+    }
+  });
+
+  it("copies safe local health summaries to the clipboard and records audit events without storing payload bodies", async () => {
+    window.localStorage.setItem(
+      "resultShareRegistryGrantPresets",
+      JSON.stringify([
+        {
+          id: "grant-default",
+          name: "Grant default",
+          scope: "grant_registry",
+          filters: {
+            shareKind: "workspace_board",
+            grantStatus: "active",
+            aliasStatus: null,
+            workspaceId: "workspace-1",
+            resultShareGrantId: null,
+          },
+          sort: {
+            field: "createdAt",
+            direction: "asc",
+          },
+          createdAt: "2026-04-18T08:00:00Z",
+          updatedAt: "2026-04-18T08:00:00Z",
+        },
+      ]),
+    );
+    window.localStorage.setItem(
+      "resultShareRegistryPresetWorkspaceState",
+      JSON.stringify({
+        pinnedGrantPresetIds: ["grant-default"],
+        pinnedAliasPresetIds: [],
+        lastActivePresetScope: "grant_registry",
+        lastActivePresetId: "grant-default",
+        collapsedSections: null,
+        updatedAt: "2026-04-19T05:40:00Z",
+      }),
+    );
+
+    const originalClipboard = navigator.clipboard;
+    const writeTextMock = vi.fn().mockResolvedValue(undefined);
+
+    try {
+      const client = buildApiClient();
+      const user = userEvent.setup();
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: {
+          writeText: writeTextMock,
+        },
+      });
+
+      render(<GroupWorkspaceAdminShell apiClientFactory={() => client} />);
+
+      await user.type(screen.getByLabelText(/admin bearer token/i), "manual-token");
+      await user.click(screen.getByRole("button", { name: /open workspace shell/i }));
+
+      const registryPanel = await screen.findByRole("heading", { name: "Result share registry" });
+      const scoped = within(registryPanel.closest("section") as HTMLElement);
+      const workspaceSection = scoped
+        .getByRole("heading", { name: "Preset workspace" })
+        .closest("section");
+      expect(workspaceSection).not.toBeNull();
+      const workspaceScoped = within(workspaceSection as HTMLElement);
+
+      await user.click(workspaceScoped.getByRole("button", { name: "Copy health summary" }));
+      await user.click(workspaceScoped.getByRole("button", { name: "Copy compact JSON" }));
+
+      await waitFor(() => {
+        expect(writeTextMock).toHaveBeenCalledTimes(2);
+      });
+      expect(writeTextMock.mock.calls[0]?.[0]).toContain(
+        "Local operator hygiene only. This is not backend health, security scoring, or compliance scoring.",
+      );
+      expect(writeTextMock.mock.calls[1]?.[0]).toContain('"localOnly": true');
+      expect(
+        (
+          await workspaceScoped.findAllByText(
+            "Copied compact JSON health summary to clipboard.",
+          )
+        ).length,
+      ).toBeGreaterThan(0);
+
+      const auditStorage =
+        window.localStorage.getItem("resultShareRegistryPresetLocalAuditEvents") ?? "";
+      expect(auditStorage).toContain("preset_workspace_health_report_copied_summary");
+      expect(auditStorage).toContain("preset_workspace_health_report_copied_json");
+      expect(auditStorage).not.toContain('"localOnly": true');
+      expect(auditStorage).not.toContain("Local-only operator hygiene summary");
+    } finally {
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: originalClipboard,
+      });
+    }
+  });
+
+  it("shows clipboard copy failure and records a safe local audit event when browser copy fails", async () => {
+    window.localStorage.setItem(
+      "resultShareRegistryGrantPresets",
+      JSON.stringify([
+        {
+          id: "grant-default",
+          name: "Grant default",
+          scope: "grant_registry",
+          filters: {
+            shareKind: "workspace_board",
+            grantStatus: "active",
+            aliasStatus: null,
+            workspaceId: "workspace-1",
+            resultShareGrantId: null,
+          },
+          sort: {
+            field: "createdAt",
+            direction: "asc",
+          },
+          createdAt: "2026-04-18T08:00:00Z",
+          updatedAt: "2026-04-18T08:00:00Z",
+        },
+      ]),
+    );
+
+    const originalClipboard = navigator.clipboard;
+    const writeTextMock = vi.fn().mockRejectedValue(new Error("clipboard blocked"));
+
+    try {
+      const client = buildApiClient();
+      const user = userEvent.setup();
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: {
+          writeText: writeTextMock,
+        },
+      });
+
+      render(<GroupWorkspaceAdminShell apiClientFactory={() => client} />);
+
+      await user.type(screen.getByLabelText(/admin bearer token/i), "manual-token");
+      await user.click(screen.getByRole("button", { name: /open workspace shell/i }));
+
+      const registryPanel = await screen.findByRole("heading", { name: "Result share registry" });
+      const scoped = within(registryPanel.closest("section") as HTMLElement);
+      const workspaceSection = scoped
+        .getByRole("heading", { name: "Preset workspace" })
+        .closest("section");
+      expect(workspaceSection).not.toBeNull();
+      const workspaceScoped = within(workspaceSection as HTMLElement);
+
+      await user.click(workspaceScoped.getByRole("button", { name: "Copy findings" }));
+
+      expect(
+        (await screen.findAllByText("Clipboard copy failed in this browser.")).length,
+      ).toBeGreaterThan(0);
+      expect(writeTextMock).toHaveBeenCalledTimes(1);
+      expect(
+        window.localStorage.getItem("resultShareRegistryPresetLocalAuditEvents"),
+      ).toContain("preset_workspace_health_report_copy_failed");
+    } finally {
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: originalClipboard,
       });
     }
   });
