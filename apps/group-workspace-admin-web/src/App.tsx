@@ -52,6 +52,7 @@ import {
   applyResultShareRegistrySavedView,
   buildInitialResultShareRegistrySavedViewState,
   buildResultShareRegistryPresetExport,
+  buildResultShareRegistryPresetWorkspaceExport,
   buildResultShareRegistrySavedViewDraft,
   buildResultShareRegistrySavedViewSummaries,
   cleanStaleResultShareRegistryPresetWorkspacePins,
@@ -59,27 +60,34 @@ import {
   clearAllResultShareRegistryPresetWorkspacePins,
   createPresetAuditEvent,
   createResultShareRegistryPresetBackup,
+  createResultShareRegistryPresetWorkspaceBackup,
   createResultShareRegistrySavedView,
   deleteResultShareRegistrySavedView,
   inspectResultShareRegistryPresetStorage,
   loadResultShareRegistryPresetAuditEvents,
+  loadResultShareRegistryPresetWorkspaceBackup,
   loadResultShareRegistryPresetWorkspaceState,
   movePinnedResultShareRegistryPresetWorkspacePreset,
   overwriteResultShareRegistrySavedView,
   parseResultShareRegistryPresetImport,
+  parseResultShareRegistryPresetWorkspaceImport,
   persistResultShareRegistryPresetWorkspaceState,
+  persistResultShareRegistryPresetWorkspaceBackup,
   persistResultShareRegistrySavedViewStore,
   persistResultShareRegistryPresetBackup,
   pinResultShareRegistryPresetWorkspacePreset,
   RESULT_SHARE_REGISTRY_ALIAS_PRESETS_STORAGE_KEY,
   RESULT_SHARE_REGISTRY_DEFAULT_PRESET_ID_STORAGE_KEY,
   RESULT_SHARE_REGISTRY_PRESET_EXPORT_SCHEMA_VERSION,
+  RESULT_SHARE_REGISTRY_PRESET_WORKSPACE_EXPORT_SCHEMA_VERSION,
   RESULT_SHARE_REGISTRY_GRANT_PRESETS_STORAGE_KEY,
   resetResultShareRegistryPresetWorkspaceState,
   saveResultShareRegistrySavedView,
   setResultShareRegistryDefaultPresetId,
   setResultShareRegistryPresetWorkspaceLastActive,
   syncResultShareRegistryPresetWorkspaceStateWithStore,
+  applyResultShareRegistryPresetWorkspaceImport,
+  restoreResultShareRegistryPresetWorkspaceBackup,
   unpinResultShareRegistryPresetWorkspacePreset,
 } from "./lib/resultShareRegistrySavedViews";
 import {
@@ -108,6 +116,8 @@ import type {
   ResultShareRegistryPresetLocalAuditEvent,
   ResultShareRegistryPresetLocalAuditSummary,
   ResultShareRegistryPresetRecoveryAction,
+  ResultShareRegistryPresetWorkspaceBackupSnapshot,
+  ResultShareRegistryPresetWorkspaceImportPreview,
   ResultShareRegistrySavedViewApplyMode,
   ResultShareRegistrySavedView,
   ResultShareRegistrySavedViewScope,
@@ -314,6 +324,9 @@ export function GroupWorkspaceAdminShell({
   const initialPresetWorkspaceStateRef = useRef(
     loadResultShareRegistryPresetWorkspaceState(getLocalStorageSafe()),
   );
+  const initialPresetWorkspaceBackupRef = useRef(
+    loadResultShareRegistryPresetWorkspaceBackup(getLocalStorageSafe()),
+  );
   const initialSavedViewStoreRef = useRef<ResultShareRegistrySavedViewStoreState>(
     initialPresetInspectionRef.current.store,
   );
@@ -425,6 +438,10 @@ export function GroupWorkspaceAdminShell({
     useState<ResultShareRegistryPresetImportMode>("merge");
   const [resultShareRegistryPresetImportPreview, setResultShareRegistryPresetImportPreview] =
     useState<ResultShareRegistryPresetImportPreview | null>(null);
+  const [resultShareRegistryPresetWorkspaceImportMode, setResultShareRegistryPresetWorkspaceImportMode] =
+    useState<ResultShareRegistryPresetImportMode>("merge");
+  const [resultShareRegistryPresetWorkspaceImportPreview, setResultShareRegistryPresetWorkspaceImportPreview] =
+    useState<ResultShareRegistryPresetWorkspaceImportPreview | null>(null);
   const [resultShareRegistryPresetLocalAuditEvents, setResultShareRegistryPresetLocalAuditEvents] =
     useState<ResultShareRegistryPresetLocalAuditEvent[]>(initialPresetAuditRef.current.events);
   const [
@@ -434,6 +451,10 @@ export function GroupWorkspaceAdminShell({
   const [resultShareRegistryPresetWorkspaceState, setResultShareRegistryPresetWorkspaceState] =
     useState<ResultShareRegistryPresetWorkspaceState>(
       initialPresetWorkspaceStateRef.current.state,
+    );
+  const [resultShareRegistryPresetWorkspaceLastGoodBackup, setResultShareRegistryPresetWorkspaceLastGoodBackup] =
+    useState<ResultShareRegistryPresetWorkspaceBackupSnapshot | null>(
+      initialPresetWorkspaceBackupRef.current,
     );
   const [
     resultShareRegistryPresetWorkspaceStorageWarning,
@@ -523,6 +544,8 @@ export function GroupWorkspaceAdminShell({
     setAliasSavedViewIncludesDrilldown(false);
     setResultShareRegistryPresetImportMode("merge");
     setResultShareRegistryPresetImportPreview(null);
+    setResultShareRegistryPresetWorkspaceImportMode("merge");
+    setResultShareRegistryPresetWorkspaceImportPreview(null);
     setActiveRegistryPreset(
       buildActiveRegistryPresetState(
         defaultRegistrySavedViewState.defaultPreset,
@@ -1013,11 +1036,13 @@ export function GroupWorkspaceAdminShell({
           resultShareRegistryPresetLocalAuditSummary,
           resultShareRegistryPresetStorageDiagnostics,
           resultShareRegistryPresetLastGoodBackup,
+          resultShareRegistryPresetWorkspaceLastGoodBackup,
         ),
       [
         resultShareRegistryPresetLastGoodBackup,
         resultShareRegistryPresetLocalAuditSummary,
         resultShareRegistryPresetStorageDiagnostics,
+        resultShareRegistryPresetWorkspaceLastGoodBackup,
         resultShareRegistryPresetWorkspaceState,
         resultShareRegistrySavedViewSummaries,
       ],
@@ -1255,14 +1280,28 @@ export function GroupWorkspaceAdminShell({
   }, []);
 
   const commitResultShareRegistryPresetWorkspaceState = useCallback(
-    (nextState: ResultShareRegistryPresetWorkspaceState) => {
+    (
+      nextState: ResultShareRegistryPresetWorkspaceState,
+      options?: {
+        backup?: ResultShareRegistryPresetWorkspaceBackupSnapshot | null;
+      },
+    ) => {
       const storage = getLocalStorageSafe();
       const syncedState = syncResultShareRegistryPresetWorkspaceStateWithStore(
         nextState,
         resultShareRegistrySavedViews,
       );
+      const workspaceBackup =
+        Object.prototype.hasOwnProperty.call(options ?? {}, "backup")
+          ? options?.backup ?? null
+          : resultShareRegistryPresetWorkspaceLastGoodBackup;
       if (storage) {
         const persisted = persistResultShareRegistryPresetWorkspaceState(storage, syncedState);
+        if (Object.prototype.hasOwnProperty.call(options ?? {}, "backup")) {
+          setResultShareRegistryPresetWorkspaceLastGoodBackup(
+            persistResultShareRegistryPresetWorkspaceBackup(storage, options?.backup ?? null),
+          );
+        }
         setResultShareRegistryPresetWorkspaceState(persisted);
         setResultShareRegistryPresetWorkspaceStorageWarning(null);
         const inspection = inspectResultShareRegistryPresetStorage(storage);
@@ -1282,6 +1321,9 @@ export function GroupWorkspaceAdminShell({
         null,
         checkedAt,
       );
+      if (Object.prototype.hasOwnProperty.call(options ?? {}, "backup")) {
+        setResultShareRegistryPresetWorkspaceLastGoodBackup(workspaceBackup);
+      }
       setResultShareRegistryPresetWorkspaceState(syncedState);
       setResultShareRegistryPresetWorkspaceStorageWarning(null);
       applyPresetStorageInspection(
@@ -1294,6 +1336,7 @@ export function GroupWorkspaceAdminShell({
     },
     [
       applyPresetStorageInspection,
+      resultShareRegistryPresetWorkspaceLastGoodBackup,
       resultShareRegistryPresetLastGoodBackup,
       resultShareRegistrySavedViews,
     ],
@@ -2385,6 +2428,241 @@ export function GroupWorkspaceAdminShell({
     setResultShareRegistryPresetImportMode("merge");
   }, []);
 
+  const handleExportResultShareRegistryPresetWorkspace = useCallback(() => {
+    const payload = buildResultShareRegistryPresetWorkspaceExport(
+      resultShareRegistryPresetWorkspaceState,
+    );
+    const content = JSON.stringify(payload, null, 2);
+    const blob = new Blob([content], { type: "application/json" });
+    const safeTimestamp = payload.exportedAt.replace(/[:.]/g, "-");
+    const downloadUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = downloadUrl;
+    link.download = `result-share-registry-preset-workspace-${safeTimestamp}.json`;
+    link.click();
+    URL.revokeObjectURL(downloadUrl);
+    recordResultShareRegistryPresetAuditEvent(
+      createPresetAuditEvent(
+        "preset_workspace_export_created",
+        "success",
+        "Exported local preset workspace organization JSON.",
+        {
+          scope: "storage",
+          safeDetails: RESULT_SHARE_REGISTRY_PRESET_WORKSPACE_EXPORT_SCHEMA_VERSION,
+        },
+      ),
+    );
+    setNoticeMessage(
+      `Exported local preset workspace organization JSON (${RESULT_SHARE_REGISTRY_PRESET_WORKSPACE_EXPORT_SCHEMA_VERSION}).`,
+    );
+  }, [
+    recordResultShareRegistryPresetAuditEvent,
+    resultShareRegistryPresetWorkspaceState,
+  ]);
+
+  const handleImportResultShareRegistryPresetWorkspaceFile = useCallback(
+    async (file: File | null) => {
+      if (!file) {
+        setResultShareRegistryPresetWorkspaceImportPreview(null);
+        return;
+      }
+      try {
+        const preview = parseResultShareRegistryPresetWorkspaceImport(
+          await readLocalFileText(file),
+          resultShareRegistrySavedViews,
+        );
+        setResultShareRegistryPresetWorkspaceImportPreview(preview);
+        recordResultShareRegistryPresetAuditEvent(
+          createPresetAuditEvent(
+            preview.canApply
+              ? "preset_workspace_import_dry_run"
+              : "preset_workspace_import_validation_failed",
+            preview.errors.length > 0
+              ? "failed"
+              : preview.warnings.length > 0
+                ? "warning"
+                : "success",
+            preview.canApply
+              ? "Validated local preset workspace import in dry-run mode."
+              : "Preset workspace import validation found errors.",
+            {
+              scope: "storage",
+              safeDetails: preview.schemaVersion,
+            },
+          ),
+        );
+        setNoticeMessage(
+          preview.canApply
+            ? "Validated local preset workspace organization import in dry-run mode."
+            : "Workspace import preview found validation errors. Existing local workspace state was not changed.",
+        );
+      } catch (error) {
+        setResultShareRegistryPresetWorkspaceImportPreview({
+          schemaVersion: null,
+          valid: false,
+          canApply: false,
+          warnings: [],
+          errors: [
+            error instanceof Error
+              ? error.message
+              : "Failed to read local preset workspace JSON file.",
+          ],
+          pinnedGrantPresetCount: 0,
+          pinnedAliasPresetCount: 0,
+          stalePinnedGrantPresetIds: [],
+          stalePinnedAliasPresetIds: [],
+          lastActivePresetExists: false,
+          workspaceState: null,
+        });
+        recordResultShareRegistryPresetAuditEvent(
+          createPresetAuditEvent(
+            "preset_workspace_import_validation_failed",
+            "failed",
+            "Failed to read local preset workspace JSON file for validation-only preview.",
+            {
+              scope: "storage",
+            },
+          ),
+        );
+        setNoticeMessage("Failed to read local preset workspace JSON file.");
+      }
+    },
+    [recordResultShareRegistryPresetAuditEvent, resultShareRegistrySavedViews],
+  );
+
+  const handleApplyResultShareRegistryPresetWorkspaceImport = useCallback(() => {
+    if (!resultShareRegistryPresetWorkspaceImportPreview?.canApply) {
+      return;
+    }
+    const backup = createResultShareRegistryPresetWorkspaceBackup(
+      resultShareRegistryPresetWorkspaceState,
+      `workspace_import_${resultShareRegistryPresetWorkspaceImportMode}`,
+    );
+    recordResultShareRegistryPresetAuditEvent(
+      createPresetAuditEvent(
+        "preset_workspace_backup_created",
+        "success",
+        `Created workspace backup before ${resultShareRegistryPresetWorkspaceImportMode} import.`,
+        {
+          scope: "storage",
+          safeDetails: backup.reason,
+        },
+      ),
+    );
+    const importResult = applyResultShareRegistryPresetWorkspaceImport(
+      resultShareRegistryPresetWorkspaceState,
+      resultShareRegistryPresetWorkspaceImportPreview,
+      resultShareRegistryPresetWorkspaceImportMode,
+      resultShareRegistrySavedViews,
+    );
+    commitResultShareRegistryPresetWorkspaceState(importResult.workspaceState, {
+      backup,
+    });
+    recordResultShareRegistryPresetAuditEvent(
+      createPresetAuditEvent(
+        resultShareRegistryPresetWorkspaceImportMode === "merge"
+          ? "preset_workspace_import_merge"
+          : "preset_workspace_import_replace",
+        importResult.lastActivePresetCleared ||
+          importResult.stalePinnedGrantPresetIds.length > 0 ||
+          importResult.stalePinnedAliasPresetIds.length > 0
+          ? "warning"
+          : "success",
+        `Applied local preset workspace ${resultShareRegistryPresetWorkspaceImportMode} import.`,
+        {
+          scope: "storage",
+          safeDetails: [
+            importResult.lastActivePresetCleared ? "last_active_cleared" : null,
+            importResult.stalePinnedGrantPresetIds.length > 0
+              ? `stale_grant_pins:${importResult.stalePinnedGrantPresetIds.length}`
+              : null,
+            importResult.stalePinnedAliasPresetIds.length > 0
+              ? `stale_alias_pins:${importResult.stalePinnedAliasPresetIds.length}`
+              : null,
+          ]
+            .filter(Boolean)
+            .join(", ") || null,
+        },
+      ),
+    );
+    setResultShareRegistryPresetWorkspaceImportPreview(null);
+    setResultShareRegistryPresetWorkspaceImportMode("merge");
+    setNoticeMessage(
+      [
+        `Applied local preset workspace ${resultShareRegistryPresetWorkspaceImportMode} import.`,
+        importResult.lastActivePresetCleared
+          ? "The imported last-active preset marker was cleared because it does not exist locally."
+          : null,
+        importResult.stalePinnedGrantPresetIds.length > 0 ||
+        importResult.stalePinnedAliasPresetIds.length > 0
+          ? "Imported workspace state includes stale pins. Use the existing stale-pin cleanup action if you want to remove them."
+          : null,
+      ]
+        .filter(Boolean)
+        .join(" "),
+    );
+  }, [
+    commitResultShareRegistryPresetWorkspaceState,
+    recordResultShareRegistryPresetAuditEvent,
+    resultShareRegistryPresetWorkspaceImportMode,
+    resultShareRegistryPresetWorkspaceImportPreview,
+    resultShareRegistryPresetWorkspaceState,
+    resultShareRegistrySavedViews,
+  ]);
+
+  const handleClearResultShareRegistryPresetWorkspaceImportPreview = useCallback(() => {
+    setResultShareRegistryPresetWorkspaceImportPreview(null);
+    setResultShareRegistryPresetWorkspaceImportMode("merge");
+  }, []);
+
+  const handleRestoreResultShareRegistryPresetWorkspaceBackup = useCallback(() => {
+    if (!resultShareRegistryPresetWorkspaceLastGoodBackup) {
+      return;
+    }
+    if (
+      !confirmPresetRecoveryAction(
+        "Restore the last-good local preset workspace backup? This only changes browser-local workspace organization state and does not change saved preset definitions.",
+      )
+    ) {
+      return;
+    }
+    const restoredState = restoreResultShareRegistryPresetWorkspaceBackup(
+      resultShareRegistryPresetWorkspaceLastGoodBackup,
+    );
+    if (!restoredState) {
+      recordResultShareRegistryPresetAuditEvent(
+        createPresetAuditEvent(
+          "preset_workspace_import_validation_failed",
+          "failed",
+          "Failed to validate the stored preset workspace backup before restore.",
+          {
+            scope: "storage",
+          },
+        ),
+      );
+      setNoticeMessage("Stored preset workspace backup could not be restored.");
+      return;
+    }
+    commitResultShareRegistryPresetWorkspaceState(restoredState);
+    recordResultShareRegistryPresetAuditEvent(
+      createPresetAuditEvent(
+        "preset_workspace_backup_restored",
+        "success",
+        "Restored the last-good local preset workspace backup.",
+        {
+          scope: "storage",
+          safeDetails: resultShareRegistryPresetWorkspaceLastGoodBackup.reason,
+        },
+      ),
+    );
+    setNoticeMessage("Restored the last-good local preset workspace backup.");
+  }, [
+    commitResultShareRegistryPresetWorkspaceState,
+    confirmPresetRecoveryAction,
+    recordResultShareRegistryPresetAuditEvent,
+    resultShareRegistryPresetWorkspaceLastGoodBackup,
+  ]);
+
   const handleValidateResultShareRegistryPresetStorage = useCallback(() => {
     const inspection = refreshResultShareRegistryPresetDiagnostics();
     recordResultShareRegistryPresetAuditEvent(
@@ -3011,6 +3289,11 @@ export function GroupWorkspaceAdminShell({
         savedViews={resultShareRegistrySavedViewSummaries}
         presetWorkspace={{
           viewModel: resultShareRegistryPresetWorkspaceViewModel,
+          transfer: {
+            importMode: resultShareRegistryPresetWorkspaceImportMode,
+            preview: resultShareRegistryPresetWorkspaceImportPreview,
+            lastGoodBackup: resultShareRegistryPresetWorkspaceLastGoodBackup,
+          },
         }}
         activePresetLabel={activeRegistryPresetLabel}
         activeDrilldownContextLabel={shareDrilldownContextLabel}
@@ -3058,6 +3341,12 @@ export function GroupWorkspaceAdminShell({
         onValidatePresetStorage={handleValidateResultShareRegistryPresetStorage}
         onRunPresetRecoveryAction={handleRunResultShareRegistryPresetRecoveryAction}
         onClearPresetAudit={handleClearResultShareRegistryPresetLocalAudit}
+        onPresetWorkspaceImportModeChange={setResultShareRegistryPresetWorkspaceImportMode}
+        onImportPresetWorkspaceFile={handleImportResultShareRegistryPresetWorkspaceFile}
+        onApplyPresetWorkspaceImport={handleApplyResultShareRegistryPresetWorkspaceImport}
+        onClearPresetWorkspaceImportPreview={handleClearResultShareRegistryPresetWorkspaceImportPreview}
+        onExportPresetWorkspace={handleExportResultShareRegistryPresetWorkspace}
+        onRestorePresetWorkspaceBackup={handleRestoreResultShareRegistryPresetWorkspaceBackup}
         onPinSavedView={handlePinRegistrySavedView}
         onUnpinSavedView={handleUnpinRegistrySavedView}
         onMovePinnedSavedView={handleMovePinnedRegistrySavedView}

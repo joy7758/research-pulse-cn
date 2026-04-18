@@ -999,6 +999,13 @@ export type ResultShareRegistryPresetLocalAuditActionType =
   | "preset_deleted"
   | "preset_pinned"
   | "preset_unpinned"
+  | "preset_workspace_export_created"
+  | "preset_workspace_import_dry_run"
+  | "preset_workspace_import_merge"
+  | "preset_workspace_import_replace"
+  | "preset_workspace_backup_created"
+  | "preset_workspace_backup_restored"
+  | "preset_workspace_import_validation_failed"
   | "default_set"
   | "default_cleared"
   | "import_dry_run"
@@ -1095,10 +1102,47 @@ export type ResultShareRegistryPresetWorkspaceViewModel = {
   storageHealth: {
     issueCount: number;
     lastBackupLabel: string;
+    workspaceBackupLabel: string;
     auditWarning: string | null;
     workspaceWarning: string | null;
     latestValidationAt: string | null;
   };
+};
+
+export type ResultShareRegistryPresetWorkspaceExportPayload = {
+  schemaVersion: "result-share-registry-preset-workspace.v1";
+  exportedAt: string;
+  app: "research-pulse-cn";
+  source: "group-workspace-admin-web";
+  workspaceState: ResultShareRegistryPresetWorkspaceState;
+};
+
+export type ResultShareRegistryPresetWorkspaceImportPreview = {
+  schemaVersion: string | null;
+  valid: boolean;
+  canApply: boolean;
+  warnings: string[];
+  errors: string[];
+  pinnedGrantPresetCount: number;
+  pinnedAliasPresetCount: number;
+  stalePinnedGrantPresetIds: string[];
+  stalePinnedAliasPresetIds: string[];
+  lastActivePresetExists: boolean;
+  workspaceState: ResultShareRegistryPresetWorkspaceState | null;
+};
+
+export type ResultShareRegistryPresetWorkspaceImportApplyResult = {
+  workspaceState: ResultShareRegistryPresetWorkspaceState;
+  stalePinnedGrantPresetIds: string[];
+  stalePinnedAliasPresetIds: string[];
+  lastActivePresetCleared: boolean;
+};
+
+export type ResultShareRegistryPresetWorkspaceBackupSnapshot = {
+  schemaVersion: "result-share-registry-preset-workspace-backup.v1";
+  createdAt: string;
+  reason: string;
+  workspaceState: ResultShareRegistryPresetWorkspaceState;
 };
 
 export type ResultShareRegistryFilterChipViewModel = {

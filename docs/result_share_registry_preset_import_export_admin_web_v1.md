@@ -69,6 +69,7 @@
 ## Future Work
 - Local diagnostics and last-good recovery was added in the next phase without changing the export schema or adding backend preset storage.
 - Local preset activity history and safe audit summaries were added later without changing the same local JSON boundary.
+- Local preset workspace organization was added later, and that workspace state got its own separate import/export layer without duplicating the saved-preset definition schema.
 - Backend/team presets only if later justified
 - Preset signing or provenance metadata if later justified
 - Shared operator workspaces only if later justified
