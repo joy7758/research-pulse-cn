@@ -10,6 +10,8 @@ import type {
   ApiErrorViewModel,
   ResultShareRegistryPresetBackupSnapshot,
   ResultShareRegistryPresetWorkspaceBackupSnapshot,
+  ResultShareRegistryPresetWorkspaceHealthScore,
+  ResultShareRegistryPresetWorkspaceHealthRecommendation,
   ResultShareAliasRegistryItemViewModel,
   ResultShareGrantRegistryItemViewModel,
   ResultShareRegistryFilterInput,
@@ -60,6 +62,7 @@ type ResultShareRegistryPanelProps = {
   };
   presetWorkspace: {
     viewModel: ResultShareRegistryPresetWorkspaceViewModel;
+    healthScore: ResultShareRegistryPresetWorkspaceHealthScore;
     transfer: {
       importMode: ResultShareRegistryPresetImportMode;
       preview: ResultShareRegistryPresetWorkspaceImportPreview | null;
@@ -107,6 +110,7 @@ type ResultShareRegistryPanelProps = {
   onClearPresetWorkspaceImportPreview: () => void;
   onExportPresetWorkspace: () => void;
   onRestorePresetWorkspaceBackup: () => void;
+  onRecalculatePresetWorkspaceHealth: () => void;
   onPinSavedView: (scope: ResultShareRegistrySavedViewScope, presetId: string) => void;
   onUnpinSavedView: (scope: ResultShareRegistrySavedViewScope, presetId: string) => void;
   onMovePinnedSavedView: (
@@ -788,8 +792,245 @@ function RecentPresetList({
   );
 }
 
+function buildHealthStatusPillClass(
+  status: ResultShareRegistryPresetWorkspaceHealthScore["status"],
+): string {
+  if (status === "healthy") {
+    return "active";
+  }
+  if (status === "attention") {
+    return "expired";
+  }
+  return "revoked";
+}
+
+function buildHealthRecommendationAction(
+  recommendation: ResultShareRegistryPresetWorkspaceHealthRecommendation,
+  handlers: {
+    onValidateStorage: () => void;
+    onCleanStalePins: () => void;
+    onRestoreWorkspaceBackup: () => void;
+    onResetWorkspace: () => void;
+  },
+): {
+  label: string;
+  onClick: () => void;
+} | null {
+  if (recommendation.kind === "run_integrity_check") {
+    return {
+      label: "Run integrity check",
+      onClick: handlers.onValidateStorage,
+    };
+  }
+  if (recommendation.kind === "clean_stale_pins") {
+    return {
+      label: "Clean stale pins",
+      onClick: handlers.onCleanStalePins,
+    };
+  }
+  if (recommendation.kind === "restore_last_good_backup") {
+    return {
+      label: "Restore workspace backup",
+      onClick: handlers.onRestoreWorkspaceBackup,
+    };
+  }
+  if (recommendation.kind === "reset_workspace_state") {
+    return {
+      label: "Reset workspace",
+      onClick: handlers.onResetWorkspace,
+    };
+  }
+  return null;
+}
+
+function PresetWorkspaceHealthPanel({
+  healthScore,
+  onRecalculate,
+  onValidateStorage,
+  onCleanStalePins,
+  onRestoreWorkspaceBackup,
+  onResetWorkspace,
+}: {
+  healthScore: ResultShareRegistryPresetWorkspaceHealthScore;
+  onRecalculate: () => void;
+  onValidateStorage: () => void;
+  onCleanStalePins: () => void;
+  onRestoreWorkspaceBackup: () => void;
+  onResetWorkspace: () => void;
+}) {
+  const breakdownCards = [
+    {
+      label: "Storage integrity",
+      value: `${healthScore.breakdown.storageIntegrity}/100`,
+    },
+    {
+      label: "Preset validity",
+      value: `${healthScore.breakdown.presetValidity}/100`,
+    },
+    {
+      label: "Pinned preset hygiene",
+      value: `${healthScore.breakdown.pinnedPresetHygiene}/100`,
+    },
+    {
+      label: "Backup readiness",
+      value: `${healthScore.breakdown.backupReadiness}/100`,
+    },
+    {
+      label: "Audit reliability",
+      value: `${healthScore.breakdown.auditReliability}/100`,
+    },
+    {
+      label: "Import/export safety",
+      value: `${healthScore.breakdown.importExportSafety}/100`,
+    },
+    {
+      label: "Drilldown context completeness",
+      value: `${healthScore.breakdown.drilldownContextCompleteness}/100`,
+    },
+  ];
+
+  return (
+    <section className="conversion-section-card saved-view-card">
+      <div className="conversion-section-header">
+        <div>
+          <h4>Workspace health score</h4>
+          <p className="section-subtle-copy">
+            Local operator hygiene only. This score summarizes browser-local preset workspace
+            state and is not a security or compliance rating.
+          </p>
+        </div>
+        <div className="button-row">
+          <span className={`status-pill ${buildHealthStatusPillClass(healthScore.status)}`}>
+            {healthScore.status}
+          </span>
+          <button type="button" className="button-secondary" onClick={onRecalculate}>
+            Recalculate health
+          </button>
+        </div>
+      </div>
+
+      <div className="stat-grid">
+        <article className="stat-card">
+          <span>Health score</span>
+          <strong>{healthScore.score}</strong>
+          <p className="stat-hint">{healthScore.summary}</p>
+        </article>
+        <article className="stat-card">
+          <span>Findings</span>
+          <strong>{healthScore.findings.length}</strong>
+          <p className="stat-hint">Checked {healthScore.checkedAt}</p>
+        </article>
+        <article className="stat-card">
+          <span>Recommendations</span>
+          <strong>{healthScore.recommendations.length}</strong>
+          <p className="stat-hint">No auto-repair is performed.</p>
+        </article>
+      </div>
+
+      <div className="stat-grid">
+        {breakdownCards.map((item) => (
+          <article key={item.label} className="stat-card">
+            <span>{item.label}</span>
+            <strong>{item.value}</strong>
+          </article>
+        ))}
+      </div>
+
+      {healthScore.findings.length > 0 ? (
+        <section className="conversion-section-card">
+          <div className="conversion-section-header">
+            <div>
+              <h5>Safety findings</h5>
+              <p className="section-subtle-copy">
+                Deterministic local signals from integrity, backup, audit, pin hygiene, and import
+                preview state.
+              </p>
+            </div>
+          </div>
+          <ul className="data-list">
+            {healthScore.findings.map((finding) => (
+              <li key={`${finding.code}-${finding.summary}`} className="data-list-item">
+                <div className="registry-item-stack">
+                  <div className="registry-item-header">
+                    <div>
+                      <strong>{finding.summary}</strong>
+                      <p>{finding.detail}</p>
+                    </div>
+                    <span
+                      className={`status-pill ${
+                        finding.severity === "info"
+                          ? "active"
+                          : finding.severity === "warning"
+                            ? "expired"
+                            : "revoked"
+                      }`}
+                    >
+                      {finding.severity}
+                    </span>
+                  </div>
+                  <p className="section-subtle-copy">Code: {finding.code}</p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {healthScore.recommendations.length > 0 ? (
+        <section className="conversion-section-card">
+          <div className="conversion-section-header">
+            <div>
+              <h5>Recommended local actions</h5>
+              <p className="section-subtle-copy">
+                These are local operator suggestions that point back to existing preset workspace,
+                diagnostics, recovery, and import/export controls.
+              </p>
+            </div>
+          </div>
+          <ul className="data-list">
+            {healthScore.recommendations.map((recommendation) => {
+              const action = buildHealthRecommendationAction(recommendation, {
+                onValidateStorage,
+                onCleanStalePins,
+                onRestoreWorkspaceBackup,
+                onResetWorkspace,
+              });
+              return (
+                <li key={recommendation.kind} className="data-list-item">
+                  <div className="registry-item-stack">
+                    <strong>{recommendation.label}</strong>
+                    <p>{recommendation.detail}</p>
+                  </div>
+                  {action ? (
+                    <div className="button-row">
+                      <button
+                        type="button"
+                        className="button-secondary"
+                        onClick={action.onClick}
+                      >
+                        {action.label}
+                      </button>
+                    </div>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ) : null}
+
+      <ul className="note-list">
+        {healthScore.notes.map((note) => (
+          <li key={note}>{note}</li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 function PresetWorkspacePanel({
   viewModel,
+  healthScore,
   transfer,
   onApply,
   onUnpin,
@@ -798,14 +1039,17 @@ function PresetWorkspacePanel({
   onCleanStalePins,
   onClearPins,
   onResetWorkspace,
+  onValidateStorage,
   onWorkspaceImportModeChange,
   onImportWorkspaceFile,
   onApplyWorkspaceImport,
   onClearWorkspaceImportPreview,
   onExportWorkspace,
   onRestoreWorkspaceBackup,
+  onRecalculateHealth,
 }: {
   viewModel: ResultShareRegistryPresetWorkspaceViewModel;
+  healthScore: ResultShareRegistryPresetWorkspaceHealthScore;
   transfer: {
     importMode: ResultShareRegistryPresetImportMode;
     preview: ResultShareRegistryPresetWorkspaceImportPreview | null;
@@ -826,12 +1070,14 @@ function PresetWorkspacePanel({
   onCleanStalePins: () => void;
   onClearPins: () => void;
   onResetWorkspace: () => void;
+  onValidateStorage: () => void;
   onWorkspaceImportModeChange: (mode: ResultShareRegistryPresetImportMode) => void;
   onImportWorkspaceFile: (file: File | null) => void;
   onApplyWorkspaceImport: () => void;
   onClearWorkspaceImportPreview: () => void;
   onExportWorkspace: () => void;
   onRestoreWorkspaceBackup: () => void;
+  onRecalculateHealth: () => void;
 }) {
   const stalePinCount = viewModel.staleGrantPinIds.length + viewModel.staleAliasPinIds.length;
 
@@ -885,6 +1131,15 @@ function PresetWorkspacePanel({
       </div>
 
       <SummaryCardList items={viewModel.overviewSummary} />
+
+      <PresetWorkspaceHealthPanel
+        healthScore={healthScore}
+        onRecalculate={onRecalculateHealth}
+        onValidateStorage={onValidateStorage}
+        onCleanStalePins={onCleanStalePins}
+        onRestoreWorkspaceBackup={onRestoreWorkspaceBackup}
+        onResetWorkspace={onResetWorkspace}
+      />
 
       <ul className="filter-chip-list">
         <li className="filter-chip">
@@ -1597,6 +1852,7 @@ export function ResultShareRegistryPanel({
   onClearPresetWorkspaceImportPreview,
   onExportPresetWorkspace,
   onRestorePresetWorkspaceBackup,
+  onRecalculatePresetWorkspaceHealth,
   onPinSavedView,
   onUnpinSavedView,
   onMovePinnedSavedView,
@@ -1855,6 +2111,7 @@ export function ResultShareRegistryPanel({
 
         <PresetWorkspacePanel
           viewModel={presetWorkspace.viewModel}
+          healthScore={presetWorkspace.healthScore}
           transfer={presetWorkspace.transfer}
           onApply={onApplySavedView}
           onUnpin={onUnpinSavedView}
@@ -1863,12 +2120,14 @@ export function ResultShareRegistryPanel({
           onCleanStalePins={onCleanStaleWorkspacePins}
           onClearPins={onClearWorkspacePins}
           onResetWorkspace={onResetWorkspace}
+          onValidateStorage={onValidatePresetStorage}
           onWorkspaceImportModeChange={onPresetWorkspaceImportModeChange}
           onImportWorkspaceFile={onImportPresetWorkspaceFile}
           onApplyWorkspaceImport={onApplyPresetWorkspaceImport}
           onClearWorkspaceImportPreview={onClearPresetWorkspaceImportPreview}
           onExportWorkspace={onExportPresetWorkspace}
           onRestoreWorkspaceBackup={onRestorePresetWorkspaceBackup}
+          onRecalculateHealth={onRecalculatePresetWorkspaceHealth}
         />
 
         <div className="split-grid">

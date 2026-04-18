@@ -999,6 +999,7 @@ export type ResultShareRegistryPresetLocalAuditActionType =
   | "preset_deleted"
   | "preset_pinned"
   | "preset_unpinned"
+  | "preset_workspace_health_checked"
   | "preset_workspace_export_created"
   | "preset_workspace_import_dry_run"
   | "preset_workspace_import_merge"
@@ -1107,6 +1108,78 @@ export type ResultShareRegistryPresetWorkspaceViewModel = {
     workspaceWarning: string | null;
     latestValidationAt: string | null;
   };
+};
+
+export type ResultShareRegistryPresetWorkspaceHealthStatus =
+  | "healthy"
+  | "attention"
+  | "risk"
+  | "critical";
+
+export type ResultShareRegistryPresetWorkspaceHealthFindingSeverity =
+  | "info"
+  | "warning"
+  | "error"
+  | "critical";
+
+export type ResultShareRegistryPresetWorkspaceHealthFindingCode =
+  | "storage_invalid_json"
+  | "unsafe_field_detected"
+  | "invalid_schema_version"
+  | "dangling_default_preset"
+  | "stale_pinned_presets"
+  | "missing_last_good_backup"
+  | "corrupted_audit_history"
+  | "recent_failed_import"
+  | "recent_failed_recovery"
+  | "no_saved_presets"
+  | "no_pinned_presets"
+  | "invalid_drilldown_context"
+  | "import_preview_has_errors";
+
+export type ResultShareRegistryPresetWorkspaceHealthRecommendationKind =
+  | "run_integrity_check"
+  | "discard_invalid_presets"
+  | "clean_stale_pins"
+  | "create_backup"
+  | "restore_last_good_backup"
+  | "validate_import_before_apply"
+  | "reset_workspace_state"
+  | "review_recent_audit_failures"
+  | "add_pinned_presets";
+
+export type ResultShareRegistryPresetWorkspaceHealthBreakdown = {
+  storageIntegrity: number;
+  presetValidity: number;
+  pinnedPresetHygiene: number;
+  backupReadiness: number;
+  auditReliability: number;
+  importExportSafety: number;
+  drilldownContextCompleteness: number;
+};
+
+export type ResultShareRegistryPresetWorkspaceHealthFinding = {
+  severity: ResultShareRegistryPresetWorkspaceHealthFindingSeverity;
+  code: ResultShareRegistryPresetWorkspaceHealthFindingCode;
+  summary: string;
+  detail: string;
+};
+
+export type ResultShareRegistryPresetWorkspaceHealthRecommendation = {
+  kind: ResultShareRegistryPresetWorkspaceHealthRecommendationKind;
+  label: string;
+  detail: string;
+};
+
+export type ResultShareRegistryPresetWorkspaceHealthScore = {
+  score: number;
+  status: ResultShareRegistryPresetWorkspaceHealthStatus;
+  checkedAt: string;
+  summary: string;
+  breakdown: ResultShareRegistryPresetWorkspaceHealthBreakdown;
+  findings: ResultShareRegistryPresetWorkspaceHealthFinding[];
+  recommendations: ResultShareRegistryPresetWorkspaceHealthRecommendation[];
+  notes: string[];
 };
 
 export type ResultShareRegistryPresetWorkspaceExportPayload = {

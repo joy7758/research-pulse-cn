@@ -87,6 +87,7 @@
 
 ## Future Work
 - Local workspace state import/export was added in the next phase without expanding the same browser-local organization boundary into backend persistence.
+- Deterministic local workspace health scoring was added later without turning the same browser-local organization layer into backend health reporting.
 - Shared/team preset workspaces only if later justified
 - Richer preset grouping or folders only if later justified
 - Shared operator dashboards only if later justified

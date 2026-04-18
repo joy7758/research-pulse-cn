@@ -10,6 +10,7 @@ import {
   appendResultShareRegistryPresetAuditEvent,
   buildResultShareRegistryPresetAuditSummary,
   buildResultShareRegistryPresetExport,
+  buildResultShareRegistryPresetWorkspaceHealthScore,
   buildResultShareRegistryPresetWorkspaceExport,
   buildResultShareRegistryPresetWorkspaceViewModel,
   buildInitialResultShareRegistrySavedViewState,
@@ -1824,5 +1825,282 @@ describe("result share registry saved views", () => {
     expect(
       workspaceViewModel.overviewSummary.some((item) => item.label === "Pinned grants" && item.value === 1),
     ).toBe(true);
+  });
+
+  it("builds a healthy workspace score for clean local preset state", () => {
+    const grantPreset = createResultShareRegistrySavedView(
+      buildResultShareRegistrySavedViewDraft(
+        "grant_registry",
+        "Healthy grant preset",
+        {
+          ...DEFAULT_RESULT_SHARE_REGISTRY_FILTER_INPUT,
+          workspaceId: "workspace-1",
+        },
+        DEFAULT_RESULT_SHARE_REGISTRY_SORT_INPUT,
+      )!,
+      {
+        id: "grant-healthy",
+        now: "2026-04-19T04:00:00Z",
+      },
+    );
+    const store = {
+      grantPresets: [grantPreset],
+      aliasPresets: [],
+      defaultPresetId: null,
+    };
+    persistResultShareRegistrySavedViewStore(window.localStorage, store);
+    const workspaceState = persistResultShareRegistryPresetWorkspaceState(window.localStorage, {
+      pinnedGrantPresetIds: ["grant-healthy"],
+      pinnedAliasPresetIds: [],
+      lastActivePresetScope: "grant_registry",
+      lastActivePresetId: "grant-healthy",
+      collapsedSections: null,
+      updatedAt: "2026-04-19T04:01:00Z",
+    });
+    const inspection = inspectResultShareRegistryPresetStorage(window.localStorage, {
+      now: "2026-04-19T04:02:00Z",
+    });
+    const presetBackup = createResultShareRegistryPresetBackup(store, "healthy_test", {
+      now: "2026-04-19T04:03:00Z",
+    });
+    const workspaceBackup = createResultShareRegistryPresetWorkspaceBackup(
+      workspaceState,
+      "workspace_healthy_test",
+      {
+        now: "2026-04-19T04:04:00Z",
+      },
+    );
+
+    const health = buildResultShareRegistryPresetWorkspaceHealthScore({
+      store,
+      integrityReport: inspection.report,
+      diagnostics: inspection.diagnostics,
+      lastGoodBackup: presetBackup,
+      workspaceBackup,
+      workspaceState,
+      auditSummary: buildResultShareRegistryPresetAuditSummary([]),
+      workspaceImportPreview: null,
+      checkedAt: "2026-04-19T04:05:00Z",
+    });
+
+    expect(health.score).toBe(100);
+    expect(health.status).toBe("healthy");
+    expect(health.findings).toEqual([]);
+    expect(health.recommendations).toEqual([]);
+  });
+
+  it("applies deterministic penalties and findings for invalid storage, stale pins, audit issues, and import errors", () => {
+    const report = {
+      checkedAt: "2026-04-19T04:06:00Z",
+      grantPresetCount: 0,
+      aliasPresetCount: 0,
+      validPresetCount: 0,
+      invalidPresetCount: 1,
+      warningCount: 1,
+      errorCount: 3,
+      issues: [
+        {
+          severity: "error" as const,
+          scope: "storage" as const,
+          presetId: null,
+          presetName: null,
+          code: "invalid_json" as const,
+          message: "invalid json",
+          safeDetails: "resultShareRegistryGrantPresets",
+        },
+        {
+          severity: "error" as const,
+          scope: "grant_registry" as const,
+          presetId: "preset-unsafe",
+          presetName: "Unsafe preset",
+          code: "unsafe_field_detected" as const,
+          message: "unsafe",
+          safeDetails: "[redacted]",
+        },
+        {
+          severity: "warning" as const,
+          scope: "storage" as const,
+          presetId: null,
+          presetName: null,
+          code: "dangling_default_preset" as const,
+          message: "dangling",
+          safeDetails: "dangling-id",
+        },
+        {
+          severity: "warning" as const,
+          scope: "grant_registry" as const,
+          presetId: "preset-drilldown",
+          presetName: "Broken drilldown",
+          code: "invalid_drilldown_context" as const,
+          message: "invalid drilldown",
+          safeDetails: null,
+        },
+      ],
+      canAutoRepair: true,
+      canResetGrantScope: true,
+      canResetAliasScope: true,
+      notes: [],
+    };
+    const diagnostics = {
+      checkedAt: "2026-04-19T04:06:00Z",
+      storageKeysPresent: {
+        grantPresets: true,
+        aliasPresets: false,
+        defaultPresetId: true,
+        lastGoodBackup: false,
+        workspaceState: true,
+      },
+      grantPresetCount: 0,
+      aliasPresetCount: 0,
+      validPresetCount: 0,
+      invalidPresetCount: 1,
+      defaultPresetIdPresent: true,
+      lastBackupPresent: false,
+      workspaceStatePresent: true,
+      workspaceStateWarning: "Local preset workspace state is not valid JSON and fell back to defaults.",
+      latestValidationAt: "2026-04-19T04:06:00Z",
+      warningCount: 1,
+      errorCount: 3,
+      notes: [],
+    };
+    const workspaceState = {
+      pinnedGrantPresetIds: ["missing-grant-1", "missing-grant-2"],
+      pinnedAliasPresetIds: ["missing-alias-1"],
+      lastActivePresetScope: "grant_registry" as const,
+      lastActivePresetId: "missing-grant-1",
+      collapsedSections: null,
+      updatedAt: "2026-04-19T04:07:00Z",
+    };
+    const auditSummary = buildResultShareRegistryPresetAuditSummary([
+      createPresetAuditEvent(
+        "validation_failed",
+        "failed",
+        "Import validation failed.",
+        {
+          scope: "storage",
+          occurredAt: "2026-04-19T04:08:00Z",
+        },
+      ),
+      createPresetAuditEvent(
+        "recovery_failed",
+        "failed",
+        "Recovery failed.",
+        {
+          scope: "storage",
+          occurredAt: "2026-04-19T04:09:00Z",
+        },
+      ),
+    ], {
+      storageWarning: "Local preset audit storage is not valid JSON.",
+    });
+
+    const health = buildResultShareRegistryPresetWorkspaceHealthScore({
+      store: {
+        grantPresets: [],
+        aliasPresets: [],
+        defaultPresetId: null,
+      },
+      integrityReport: report,
+      diagnostics,
+      lastGoodBackup: null,
+      workspaceBackup: null,
+      workspaceState,
+      auditSummary,
+      workspaceImportPreview: {
+        schemaVersion: "result-share-registry-preset-workspace.v1",
+        valid: false,
+        canApply: false,
+        warnings: [],
+        errors: ["blocking error"],
+        pinnedGrantPresetCount: 2,
+        pinnedAliasPresetCount: 1,
+        stalePinnedGrantPresetIds: ["missing-grant-1", "missing-grant-2"],
+        stalePinnedAliasPresetIds: ["missing-alias-1"],
+        lastActivePresetExists: false,
+        workspaceState,
+      },
+      checkedAt: "2026-04-19T04:10:00Z",
+    });
+
+    expect(health.score).toBe(0);
+    expect(health.status).toBe("critical");
+    expect(health.findings.map((finding) => finding.code)).toEqual(
+      expect.arrayContaining([
+        "storage_invalid_json",
+        "unsafe_field_detected",
+        "dangling_default_preset",
+        "stale_pinned_presets",
+        "missing_last_good_backup",
+        "corrupted_audit_history",
+        "recent_failed_import",
+        "recent_failed_recovery",
+        "no_saved_presets",
+        "invalid_drilldown_context",
+        "import_preview_has_errors",
+      ]),
+    );
+    expect(JSON.stringify(health)).not.toContain("missing-grant-1");
+    expect(JSON.stringify(health)).not.toContain("secret-token");
+  });
+
+  it("keeps no-presets and no-pins findings low severity and recommends backup/pinning deterministically", () => {
+    const health = buildResultShareRegistryPresetWorkspaceHealthScore({
+      store: {
+        grantPresets: [],
+        aliasPresets: [],
+        defaultPresetId: null,
+      },
+      integrityReport: {
+        checkedAt: "2026-04-19T04:11:00Z",
+        grantPresetCount: 0,
+        aliasPresetCount: 0,
+        validPresetCount: 0,
+        invalidPresetCount: 0,
+        warningCount: 0,
+        errorCount: 0,
+        issues: [],
+        canAutoRepair: false,
+        canResetGrantScope: false,
+        canResetAliasScope: false,
+        notes: [],
+      },
+      diagnostics: {
+        checkedAt: "2026-04-19T04:11:00Z",
+        storageKeysPresent: {
+          grantPresets: false,
+          aliasPresets: false,
+          defaultPresetId: false,
+          lastGoodBackup: false,
+          workspaceState: false,
+        },
+        grantPresetCount: 0,
+        aliasPresetCount: 0,
+        validPresetCount: 0,
+        invalidPresetCount: 0,
+        defaultPresetIdPresent: false,
+        lastBackupPresent: false,
+        workspaceStatePresent: false,
+        workspaceStateWarning: null,
+        latestValidationAt: null,
+        warningCount: 0,
+        errorCount: 0,
+        notes: [],
+      },
+      lastGoodBackup: null,
+      workspaceBackup: null,
+      workspaceState: resetResultShareRegistryPresetWorkspaceState({
+        now: "2026-04-19T04:12:00Z",
+      }),
+      auditSummary: buildResultShareRegistryPresetAuditSummary([]),
+      workspaceImportPreview: null,
+      checkedAt: "2026-04-19T04:13:00Z",
+    });
+
+    expect(
+      health.findings.every((finding) =>
+        finding.severity === "info" || finding.severity === "warning",
+      ),
+    ).toBe(true);
+    expect(health.recommendations.map((item) => item.kind)).toEqual(["create_backup"]);
   });
 });
