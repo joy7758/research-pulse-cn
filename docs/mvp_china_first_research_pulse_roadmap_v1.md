@@ -15,6 +15,8 @@
   - RIS
   - Excel
   - PDF folder metadata placeholder
+- Implementation note:
+  - backend-only parser and normalizer foundation lives under `src/research_pulse_cn/*` with no UI or import commit in this phase
 - Non-goals:
   - CNKI
   - Wanfang

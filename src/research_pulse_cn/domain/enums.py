@@ -11,6 +11,14 @@ class PaperType(StrEnum):
     PAUSED = "paused"
 
 
+class PaperImportSourceFormat(StrEnum):
+    CSL_JSON = "csl_json"
+    BIBTEX = "bibtex"
+    RIS = "ris"
+    TABULAR = "tabular"
+    PDF_FOLDER = "pdf_folder"
+
+
 class SignalSource(StrEnum):
     CNKI = "CNKI"
     WANFANG = "WANFANG"
