@@ -74,6 +74,21 @@ Private repository. Proprietary and confidential.
   - do not expose raw import complexity before the user needs it
   - keep official-account, desktop, and mini surfaces explicit as `draft` / `preview` only
 
+## MVP Wireframe Spec
+- Design-2 docs:
+  - `docs/mvp_wireframes_v1.md`
+  - `docs/mvp_page_state_matrix_v1.md`
+  - `docs/mvp_component_inventory_v1.md`
+  - `docs/mvp_interaction_spec_v1.md`
+  - `docs/mvp_wireframe_acceptance_checklist_v1.md`
+- Scope:
+  - documentation-only page wireframes
+  - page state matrix
+  - component inventory
+  - interaction rules and acceptance checklist
+- Guardrail:
+  - do not turn Design-2 into frontend implementation work
+
 ## What is included
 - FastAPI backend with OpenAPI docs
 - SQLAlchemy 2 models and Alembic migration

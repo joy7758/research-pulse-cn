@@ -78,6 +78,21 @@ Research Pulse CN is implemented as a modular monolith that keeps domain decisio
   - no real WeChat frontend/login/payment path
   - no return to the frozen admin preset/report/print/registry track
 
+## MVP Wireframe Spec
+- Design-2 docs now define the page-level handoff for future frontend work:
+  - `docs/mvp_wireframes_v1.md`
+  - `docs/mvp_page_state_matrix_v1.md`
+  - `docs/mvp_component_inventory_v1.md`
+  - `docs/mvp_interaction_spec_v1.md`
+  - `docs/mvp_wireframe_acceptance_checklist_v1.md`
+- Wireframe boundary:
+  - documentation-only
+  - no frontend runtime or component implementation
+  - no backend contract change
+- Architecture implication:
+  - future UI work should map to the existing import -> progress -> pulse -> draft/preview chain
+  - page states must continue to expose `draft` / `preview` / `not_sent` semantics explicitly
+
 Core flow:
 1. CRUD APIs manage user profiles, paper profiles, events, snapshots, and subscription policies.
 2. Pulse preview and run requests build deterministic facts, candidates, scores, suppression reasons, and final selections.

@@ -104,6 +104,23 @@
   - keep paper progress language closer to research work than system administration
   - keep official-account / desktop / mini outputs explicit as `draft` / `preview`
 
+## MVP Wireframe Spec
+- Design-2 docs:
+  - `docs/mvp_wireframes_v1.md`
+  - `docs/mvp_page_state_matrix_v1.md`
+  - `docs/mvp_component_inventory_v1.md`
+  - `docs/mvp_interaction_spec_v1.md`
+  - `docs/mvp_wireframe_acceptance_checklist_v1.md`
+- This phase is also documentation-only:
+  - do not add frontend code
+  - do not add backend code
+  - do not add migrations
+  - do not add dependencies
+- Review checklist before closing the phase:
+  - run `git diff --name-only | grep -Ev '^(docs/|README\\.md$)' || true`
+  - confirm every wireframe page keeps a single primary action
+  - confirm all channel pages still show `draft` / `preview` / `not_sent`
+
 ## Desktop shell
 - Install desktop dependencies:
   - `make desktop-install`
