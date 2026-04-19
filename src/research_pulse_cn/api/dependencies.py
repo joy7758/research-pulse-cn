@@ -22,6 +22,7 @@ from research_pulse_cn.services.official_account_oauth import OfficialAccountOAu
 from research_pulse_cn.services.ops import OpsService
 from research_pulse_cn.services.paper import PaperService
 from research_pulse_cn.services.paper_import import PaperImportService
+from research_pulse_cn.services.paper_progress import PaperProgressWorkbenchService
 from research_pulse_cn.services.pulse import PulseService
 from research_pulse_cn.services.research_watch import ResearchWatchProfileService
 from research_pulse_cn.services.scheduler import SchedulerService
@@ -55,6 +56,10 @@ def get_paper_service(session: SessionDep) -> PaperService:
 
 def get_paper_import_service(session: SessionDep) -> PaperImportService:
     return PaperImportService(session)
+
+
+def get_paper_progress_workbench_service(session: SessionDep) -> PaperProgressWorkbenchService:
+    return PaperProgressWorkbenchService(session)
 
 
 def get_subscription_policy_service(session: SessionDep) -> SubscriptionPolicyService:

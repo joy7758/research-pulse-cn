@@ -318,6 +318,8 @@ def _build_import_identifiers(record: PaperImportRecord) -> dict[str, Any]:
     }
     if record.doi:
         identifiers["doi"] = record.doi
+    if record.year is not None:
+        identifiers["import_year"] = record.year
     if record.source_identifier:
         identifiers["import_source_identifier"] = record.source_identifier
     if record.authors:

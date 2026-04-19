@@ -44,6 +44,8 @@
   - update next action
   - update blockers
   - update priority and last-touch signals
+- Implementation note:
+  - reuse existing `PaperProfile` persistence and extend paper progress state through backend-only workbench APIs, summary views, and pulse-context read models without adding a new UI
 - Non-goals:
   - advanced collaboration
   - admin preset expansion

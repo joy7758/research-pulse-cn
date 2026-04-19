@@ -26,6 +26,31 @@ class PaperImportCommitRecordStatus(StrEnum):
     DRY_RUN = "dry_run"
 
 
+class PaperReadingStatus(StrEnum):
+    UNREAD = "unread"
+    SKIMMING = "skimming"
+    READING = "reading"
+    READ = "read"
+    ARCHIVED = "archived"
+
+
+class PaperResearchStage(StrEnum):
+    INBOX = "inbox"
+    TRIAGE = "triage"
+    RELEVANT = "relevant"
+    REVIEWING = "reviewing"
+    CITED = "cited"
+    IMPLEMENTED = "implemented"
+    PARKED = "parked"
+
+
+class PaperPriorityLevel(StrEnum):
+    LOW = "low"
+    NORMAL = "normal"
+    HIGH = "high"
+    URGENT = "urgent"
+
+
 class SignalSource(StrEnum):
     CNKI = "CNKI"
     WANFANG = "WANFANG"
