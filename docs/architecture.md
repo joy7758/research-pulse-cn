@@ -61,6 +61,23 @@ Research Pulse CN is implemented as a modular monolith that keeps domain decisio
   - keep these boundaries explicit in OpenAPI, schema docs, and tests
   - do not let later platform work silently change draft-only semantics
 
+## MVP UI Direction
+- UI direction docs now live in:
+  - `docs/ui_reference_audit_mvp_v1.md`
+  - `docs/mvp_interface_principles_v1.md`
+  - `docs/mvp_information_architecture_v1.md`
+  - `docs/mvp_user_flows_v1.md`
+  - `docs/mvp_copywriting_guidelines_cn_v1.md`
+- UI architecture rule for the current MVP:
+  - homepage is `today's Research Pulse`, not a full literature database shell
+  - import stays a short `input -> preview -> confirm` flow
+  - paper progress is the main workbench for ongoing research decisions
+  - official-account, desktop, and mini outputs stay downstream previews of the same research context
+- No UI phase should silently weaken current backend boundaries:
+  - no real delivery system
+  - no real WeChat frontend/login/payment path
+  - no return to the frozen admin preset/report/print/registry track
+
 Core flow:
 1. CRUD APIs manage user profiles, paper profiles, events, snapshots, and subscription policies.
 2. Pulse preview and run requests build deterministic facts, candidates, scores, suppression reasons, and final selections.

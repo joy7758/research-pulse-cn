@@ -60,6 +60,20 @@ Private repository. Proprietary and confidential.
   - keep `draft` / `preview` / `not_sent` semantics stable
   - avoid accidental drift before frontend, mini-program, desktop, or official-account real integration starts
 
+## MVP UI Direction
+- Design-1 docs:
+  - `docs/ui_reference_audit_mvp_v1.md`
+  - `docs/mvp_interface_principles_v1.md`
+  - `docs/mvp_information_architecture_v1.md`
+  - `docs/mvp_user_flows_v1.md`
+  - `docs/mvp_copywriting_guidelines_cn_v1.md`
+- UI direction in one sentence:
+  - make the first screen answer what to read today, what needs fixing, and what to do next
+- Current UI guardrails:
+  - do not turn the homepage into a dense literature manager
+  - do not expose raw import complexity before the user needs it
+  - keep official-account, desktop, and mini surfaces explicit as `draft` / `preview` only
+
 ## What is included
 - FastAPI backend with OpenAPI docs
 - SQLAlchemy 2 models and Alembic migration

@@ -86,6 +86,24 @@
   - do not add mini-program frontend files
   - do not add external LLM or external network calls
 
+## MVP UI Direction
+- Design docs:
+  - `docs/ui_reference_audit_mvp_v1.md`
+  - `docs/mvp_interface_principles_v1.md`
+  - `docs/mvp_information_architecture_v1.md`
+  - `docs/mvp_user_flows_v1.md`
+  - `docs/mvp_copywriting_guidelines_cn_v1.md`
+- This phase is documentation-only:
+  - do not add frontend code
+  - do not add backend features
+  - do not add migrations
+  - do not add dependencies
+- UI design guardrails:
+  - keep the homepage centered on today's Research Pulse
+  - keep import as a short preview-first flow
+  - keep paper progress language closer to research work than system administration
+  - keep official-account / desktop / mini outputs explicit as `draft` / `preview`
+
 ## Desktop shell
 - Install desktop dependencies:
   - `make desktop-install`
