@@ -8,7 +8,14 @@ from research_pulse_cn.api.dependencies import SessionDep
 from research_pulse_cn.api.security import require_admin_role
 from research_pulse_cn.domain.auth import ActorContext
 from research_pulse_cn.domain.enums import AdminRole
+from research_pulse_cn.schemas.official_account_daily_summary import (
+    OfficialAccountDailySummaryRequest,
+    OfficialAccountDailySummaryResult,
+)
 from research_pulse_cn.schemas.research_pulse import ResearchPulseRequest, ResearchPulseResult
+from research_pulse_cn.services.official_account_daily_summary import (
+    OfficialAccountDailySummaryService,
+)
 from research_pulse_cn.services.research_pulse import ResearchPulseService
 
 router = APIRouter(prefix="/pulse", tags=["pulse"])
@@ -25,6 +32,18 @@ ResearchPulseServiceDep = Annotated[
 ]
 
 
+def get_official_account_daily_summary_service(
+    session: SessionDep,
+) -> OfficialAccountDailySummaryService:
+    return OfficialAccountDailySummaryService(session)
+
+
+OfficialAccountDailySummaryServiceDep = Annotated[
+    OfficialAccountDailySummaryService,
+    Depends(get_official_account_daily_summary_service),
+]
+
+
 @router.post("/papers/daily", response_model=ResearchPulseResult)
 def generate_research_pulse_from_imported_papers(
     payload: ResearchPulseRequest,
@@ -32,3 +51,15 @@ def generate_research_pulse_from_imported_papers(
     service: ResearchPulseServiceDep,
 ) -> ResearchPulseResult:
     return service.generate_daily_pulse(payload)
+
+
+@router.post(
+    "/papers/official-account/daily-summary",
+    response_model=OfficialAccountDailySummaryResult,
+)
+def generate_official_account_daily_summary_from_imported_papers(
+    payload: OfficialAccountDailySummaryRequest,
+    _actor: ViewerDep,
+    service: OfficialAccountDailySummaryServiceDep,
+) -> OfficialAccountDailySummaryResult:
+    return service.build_daily_summary(payload)

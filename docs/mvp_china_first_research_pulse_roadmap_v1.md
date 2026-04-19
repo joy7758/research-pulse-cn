@@ -65,6 +65,8 @@
 - Scope:
   - connect pulse output to the existing official-account delivery path
   - keep daily summary focused and minimal
+- Implementation note:
+  - reuse paper-based `ResearchPulseResult` to generate official-account daily summary draft, `publication_preview`, and template payload preview without creating real send jobs in this phase
 - Non-goals:
   - full social growth tooling
   - referral or broadcast logic
