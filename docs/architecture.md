@@ -3,6 +3,22 @@
 ## Overview
 Research Pulse CN is implemented as a modular monolith that keeps domain decisions, persistence, adapters, and API transport separate while remaining easy to run in one process.
 
+## Current Product Direction
+- Active direction:
+  - China-first Research Pulse
+- Product focus:
+  - import papers
+  - track paper and research progress
+  - generate daily Research Pulse
+  - deliver through desktop, official account, and mini-program surfaces
+- Frozen direction:
+  - admin preset, registry, threshold, report, print, copy, and audit overbuild
+- Read these docs before adding new roadmap phases:
+  - `docs/product_pivot_china_first_research_pulse_v1.md`
+  - `docs/zotero_reference_strategy_v1.md`
+  - `docs/frozen_admin_overbuild_scope_v1.md`
+  - `docs/mvp_china_first_research_pulse_roadmap_v1.md`
+
 Core flow:
 1. CRUD APIs manage user profiles, paper profiles, events, snapshots, and subscription policies.
 2. Pulse preview and run requests build deterministic facts, candidates, scores, suppression reasons, and final selections.
@@ -365,6 +381,7 @@ Tie-break order is deterministic:
   - a deterministic browser-local preset workspace health score that summarizes integrity, stale pins, backup readiness, audit reliability, import/export preview state, and drilldown-context hygiene without claiming backend, security, or compliance status
   - browser-local threshold preferences for that health score so operators can adjust status mapping and selected local penalty weights without changing backend semantics or saved preset payloads
   - local JSON and Markdown health report export for that workspace health score, including threshold-source summary, diagnostics recap, findings/recommendations summary, and explicit safe-exclusion notes without exporting preset payloads or source-file data
+  - this admin preset/report area is now frozen for blocker fixes only and is no longer the active roadmap center
 
 ### Result collect reserve boundary
 - `GroupWorkspaceResultCollectRecord` records one audit-friendly collect outcome per:

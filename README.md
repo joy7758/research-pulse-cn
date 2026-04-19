@@ -5,6 +5,22 @@ Commercial closed-source backend for a China-focused research paper lifecycle an
 ## Repository status
 Private repository. Proprietary and confidential.
 
+## Current Product Direction
+- Active direction:
+  - China-first Research Pulse
+- Product focus:
+  - import papers
+  - track paper and research progress
+  - generate daily Research Pulse
+  - deliver through desktop, official account, and mini-program surfaces
+- Frozen direction:
+  - admin preset, registry, threshold, report, print, copy, and audit overbuild
+- Read these docs before planning new work:
+  - `docs/product_pivot_china_first_research_pulse_v1.md`
+  - `docs/zotero_reference_strategy_v1.md`
+  - `docs/frozen_admin_overbuild_scope_v1.md`
+  - `docs/mvp_china_first_research_pulse_roadmap_v1.md`
+
 ## What is included
 - FastAPI backend with OpenAPI docs
 - SQLAlchemy 2 models and Alembic migration
@@ -312,6 +328,11 @@ The same shell now also includes a read-only result-share registry layer:
 - local JSON and Markdown health report export for that workspace health score, with safe report validation, threshold-source summary, findings/recommendations recap, and explicit safety exclusions
 - no plaintext tokens, plaintext aliases, or write actions
 - health scoring is browser-local operator hygiene only and is not backend, security, or compliance scoring
+
+This admin preset/report track is now frozen:
+- keep existing code
+- fix blockers only
+- do not extend this area with new feature phases
 
 This shell:
 - accepts an admin/operator bearer token from manual paste or query/fragment fallback

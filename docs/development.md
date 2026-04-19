@@ -1,5 +1,21 @@
 # Development Guide
 
+## Current Product Direction
+- Active direction:
+  - China-first Research Pulse
+- Product focus:
+  - import papers
+  - track paper and research progress
+  - generate daily Research Pulse
+  - deliver through desktop, official account, and mini-program surfaces
+- Frozen direction:
+  - admin preset, registry, threshold, report, print, copy, and audit overbuild
+- Read these docs before planning new phases:
+  - `docs/product_pivot_china_first_research_pulse_v1.md`
+  - `docs/zotero_reference_strategy_v1.md`
+  - `docs/frozen_admin_overbuild_scope_v1.md`
+  - `docs/mvp_china_first_research_pulse_roadmap_v1.md`
+
 ## Prerequisites
 - Python 3.12+
 - Docker and Docker Compose
@@ -200,6 +216,11 @@ The same shell now also includes a minimal read-only result-share registry:
 - the health score is browser-local hygiene only, not backend health, security scoring, or compliance scoring
 
 The shell is internal/admin-only, keeps bearer tokens in memory only, and does not introduce end-user login or source-file sharing. Filter controls narrow overview/drilldown reads only and do not change attribution semantics.
+
+This admin preset/report track is frozen:
+- keep the completed code
+- fix blockers only
+- do not plan new feature phases in this area
 
 ## User workbench admin web shell
 - Install user-workbench dependencies:
