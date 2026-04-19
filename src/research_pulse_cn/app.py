@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from research_pulse_cn import __version__
 from research_pulse_cn.api.errors import register_exception_handlers
 from research_pulse_cn.api.router import api_router
+from research_pulse_cn.api.routes.research_pulse import router as research_pulse_router
 from research_pulse_cn.core.config import get_settings
 from research_pulse_cn.core.logging import configure_logging
 from research_pulse_cn.core.request_context import bind_log_context
@@ -57,4 +58,5 @@ def create_app() -> FastAPI:
         return response
 
     app.include_router(api_router)
+    app.include_router(research_pulse_router)
     return app

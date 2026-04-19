@@ -208,6 +208,21 @@ class PaperProgressWorkbenchService:
             ],
         )
 
+    def list_papers_for_pulse_context(
+        self,
+        *,
+        user_id: UUID | None = None,
+        include_archived: bool = False,
+        source_format_filter: list[PaperImportSourceFormat] | None = None,
+    ) -> list[PaperProgressItemRead]:
+        items = self._filtered_items(user_id=user_id)
+        if not include_archived:
+            items = [item for item in items if item.reading_status != PaperReadingStatus.ARCHIVED]
+        if source_format_filter:
+            allowed = set(source_format_filter)
+            items = [item for item in items if item.source_format in allowed]
+        return items
+
     def _filtered_items(
         self,
         *,
