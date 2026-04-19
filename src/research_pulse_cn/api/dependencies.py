@@ -21,6 +21,7 @@ from research_pulse_cn.services.official_account_binding_handshake import (
 from research_pulse_cn.services.official_account_oauth import OfficialAccountOAuthService
 from research_pulse_cn.services.ops import OpsService
 from research_pulse_cn.services.paper import PaperService
+from research_pulse_cn.services.paper_import import PaperImportService
 from research_pulse_cn.services.pulse import PulseService
 from research_pulse_cn.services.research_watch import ResearchWatchProfileService
 from research_pulse_cn.services.scheduler import SchedulerService
@@ -50,6 +51,10 @@ def get_user_service(session: SessionDep) -> UserService:
 
 def get_paper_service(session: SessionDep) -> PaperService:
     return PaperService(session)
+
+
+def get_paper_import_service(session: SessionDep) -> PaperImportService:
+    return PaperImportService(session)
 
 
 def get_subscription_policy_service(session: SessionDep) -> SubscriptionPolicyService:

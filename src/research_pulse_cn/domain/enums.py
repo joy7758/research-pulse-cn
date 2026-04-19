@@ -19,6 +19,13 @@ class PaperImportSourceFormat(StrEnum):
     PDF_FOLDER = "pdf_folder"
 
 
+class PaperImportCommitRecordStatus(StrEnum):
+    COMMITTED = "committed"
+    SKIPPED = "skipped"
+    FAILED = "failed"
+    DRY_RUN = "dry_run"
+
+
 class SignalSource(StrEnum):
     CNKI = "CNKI"
     WANFANG = "WANFANG"

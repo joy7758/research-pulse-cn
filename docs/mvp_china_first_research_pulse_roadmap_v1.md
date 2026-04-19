@@ -30,6 +30,8 @@
   - preview normalized paper rows
   - validate required fields
   - commit imported papers into repository-owned models
+- Implementation note:
+  - reuse existing `PaperProfile` persistence with a minimal preview-and-selected-commit backend flow, without adding a new UI in this phase
 - Non-goals:
   - dedupe perfection
   - external source sync
