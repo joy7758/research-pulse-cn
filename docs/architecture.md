@@ -93,6 +93,23 @@ Research Pulse CN is implemented as a modular monolith that keeps domain decisio
   - future UI work should map to the existing import -> progress -> pulse -> draft/preview chain
   - page states must continue to expose `draft` / `preview` / `not_sent` semantics explicitly
 
+## MVP Visual Language and Prototype Spec
+- Design-3 docs now define the visual and prototype handoff for future frontend work:
+  - `docs/mvp_visual_language_v1.md`
+  - `docs/mvp_design_tokens_v1.md`
+  - `docs/mvp_component_visual_rules_v1.md`
+  - `docs/mvp_clickable_prototype_spec_v1.md`
+  - `docs/mvp_responsive_layout_rules_v1.md`
+  - `docs/mvp_accessibility_readability_v1.md`
+  - `docs/mvp_visual_acceptance_checklist_v1.md`
+- Boundary:
+  - documentation-only
+  - no frontend runtime or design-tool implementation
+  - no backend contract change
+- Architecture implication:
+  - future visual work must keep the homepage centered on Research Pulse decisions
+  - draft/preview/not_sent semantics remain first-class visual states, not hidden implementation details
+
 Core flow:
 1. CRUD APIs manage user profiles, paper profiles, events, snapshots, and subscription policies.
 2. Pulse preview and run requests build deterministic facts, candidates, scores, suppression reasons, and final selections.

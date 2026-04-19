@@ -89,6 +89,24 @@ Private repository. Proprietary and confidential.
 - Guardrail:
   - do not turn Design-2 into frontend implementation work
 
+## MVP Visual Language and Prototype Spec
+- Design-3 docs:
+  - `docs/mvp_visual_language_v1.md`
+  - `docs/mvp_design_tokens_v1.md`
+  - `docs/mvp_component_visual_rules_v1.md`
+  - `docs/mvp_clickable_prototype_spec_v1.md`
+  - `docs/mvp_responsive_layout_rules_v1.md`
+  - `docs/mvp_accessibility_readability_v1.md`
+  - `docs/mvp_visual_acceptance_checklist_v1.md`
+- Scope:
+  - visual language
+  - design tokens
+  - component visual rules
+  - clickable prototype paths
+  - responsive/readability guidance
+- Guardrail:
+  - do not turn Design-3 into frontend implementation or visual system overbuild
+
 ## What is included
 - FastAPI backend with OpenAPI docs
 - SQLAlchemy 2 models and Alembic migration

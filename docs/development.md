@@ -121,6 +121,25 @@
   - confirm every wireframe page keeps a single primary action
   - confirm all channel pages still show `draft` / `preview` / `not_sent`
 
+## MVP Visual Language and Prototype Spec
+- Design-3 docs:
+  - `docs/mvp_visual_language_v1.md`
+  - `docs/mvp_design_tokens_v1.md`
+  - `docs/mvp_component_visual_rules_v1.md`
+  - `docs/mvp_clickable_prototype_spec_v1.md`
+  - `docs/mvp_responsive_layout_rules_v1.md`
+  - `docs/mvp_accessibility_readability_v1.md`
+  - `docs/mvp_visual_acceptance_checklist_v1.md`
+- This phase is also documentation-only:
+  - do not add frontend code
+  - do not add backend code
+  - do not add migrations
+  - do not add dependencies
+- Review checklist before closing the phase:
+  - run `git diff --name-only | grep -Ev '^(docs/|README\\.md$)' || true`
+  - confirm `draft` / `preview` / `not_sent` remain explicit visual states
+  - confirm no page introduces real WeChat / desktop / mini-program capability language
+
 ## Desktop shell
 - Install desktop dependencies:
   - `make desktop-install`
