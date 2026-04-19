@@ -107,6 +107,20 @@
   - new frontend apps
   - new admin overbuild phases
 
+## Phase Hardening-1: API Contract Freeze
+- Scope:
+  - freeze the MVP API path list
+  - freeze key schema fields
+  - freeze minimum error and warning semantics
+  - add contract tests for paths, methods, and core schema fields
+- Implementation note:
+  - Hardening-1 does not add new product features; it stabilizes the existing MVP loop before any real platform integration begins
+- Non-goals:
+  - real WeChat integration
+  - real desktop notifications
+  - real mini-program frontend
+  - new product surfaces
+
 ## Roadmap Guardrails
 - No new admin preset/report/print phases
 - No new frontend app for this pivot phase

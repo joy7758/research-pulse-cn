@@ -39,6 +39,28 @@ Research Pulse CN is implemented as a modular monolith that keeps domain decisio
   - blocker fixes only
   - no new feature phases on that track
 
+## MVP Contract Boundaries
+- Import boundary:
+  - preview and commit are separate
+  - preview can warn or error without triggering downstream draft generation
+- Progress boundary:
+  - paper progress is the canonical research-state layer for the current MVP
+- Pulse boundary:
+  - `ResearchPulseService` produces deterministic daily draft content only
+  - it is not a real delivery system
+- Official-account boundary:
+  - daily summary output is a draft plus payload preview
+  - it does not send through the real WeChat provider path
+- Desktop boundary:
+  - desktop output is a local draft payload
+  - it does not call system notification APIs
+- Mini-program boundary:
+  - mini output is detail preview plus share-safe payload
+  - it does not imply mini frontend, login, or payment capability
+- Contract-freeze rule:
+  - keep these boundaries explicit in OpenAPI, schema docs, and tests
+  - do not let later platform work silently change draft-only semantics
+
 Core flow:
 1. CRUD APIs manage user profiles, paper profiles, events, snapshots, and subscription policies.
 2. Pulse preview and run requests build deterministic facts, candidates, scores, suppression reasons, and final selections.

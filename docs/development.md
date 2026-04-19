@@ -63,6 +63,29 @@
   - do not add external LLM or external network dependencies
   - keep official-account / desktop / mini outputs at `draft` / `preview` / `not_sent`
 
+## API Contract Tests
+- Contract docs:
+  - `docs/api_contract_mvp_v1.md`
+  - `docs/schema_contract_mvp_v1.md`
+  - `docs/error_warning_contract_mvp_v1.md`
+- Targeted contract tests:
+  - `.venv/bin/python -m pytest tests/test_api_contract_mvp.py tests/test_schema_contract_mvp.py tests/test_mvp_end_to_end_smoke.py`
+- Related MVP chain tests:
+  - `.venv/bin/python -m pytest tests/test_import_formats_foundation.py tests/test_import_preview_commit.py tests/test_paper_progress_workbench.py tests/test_research_pulse_over_imported_papers.py tests/test_official_account_daily_summary_mvp.py tests/test_desktop_notification_mvp.py tests/test_mini_program_detail_mvp.py tests/test_mvp_end_to_end_smoke.py tests/test_api_contract_mvp.py tests/test_schema_contract_mvp.py`
+- Inspect OpenAPI locally without starting a separate export toolchain:
+  ```bash
+  .venv/bin/python - <<'PY'
+  from research_pulse_cn.app import create_app
+  import json
+  print(json.dumps(create_app().openapi(), ensure_ascii=False, indent=2))
+  PY
+  ```
+- Guardrails:
+  - do not add real WeChat API integration while adjusting docs or tests
+  - do not add real desktop notification calls
+  - do not add mini-program frontend files
+  - do not add external LLM or external network calls
+
 ## Desktop shell
 - Install desktop dependencies:
   - `make desktop-install`

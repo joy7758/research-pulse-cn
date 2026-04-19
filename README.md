@@ -48,6 +48,18 @@ Private repository. Proprietary and confidential.
 - Smoke-test doc:
   - `docs/mvp_end_to_end_smoke_test_v1.md`
 
+## MVP API Contract Freeze
+- MVP contract docs:
+  - `docs/api_contract_mvp_v1.md`
+  - `docs/schema_contract_mvp_v1.md`
+  - `docs/error_warning_contract_mvp_v1.md`
+  - `docs/mvp_end_to_end_smoke_test_v1.md`
+- Current freeze focus:
+  - keep the API path list stable
+  - keep key schema fields stable
+  - keep `draft` / `preview` / `not_sent` semantics stable
+  - avoid accidental drift before frontend, mini-program, desktop, or official-account real integration starts
+
 ## What is included
 - FastAPI backend with OpenAPI docs
 - SQLAlchemy 2 models and Alembic migration

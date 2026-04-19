@@ -1,0 +1,427 @@
+from research_pulse_cn.schemas.desktop_notification import (
+    DesktopNotificationAction,
+    DesktopNotificationRequest,
+    DesktopNotificationResult,
+)
+from research_pulse_cn.schemas.imports import (
+    PaperImportCommitRecordResult,
+    PaperImportCommitResult,
+    PaperImportPreviewRecord,
+    PaperImportPreviewResult,
+    PaperImportProblem,
+)
+from research_pulse_cn.schemas.mini_program_detail import (
+    MiniProgramDetailAction,
+    MiniProgramDetailCard,
+    MiniProgramDetailItem,
+    MiniProgramDetailRequest,
+    MiniProgramDetailResult,
+    MiniProgramNavigation,
+    MiniProgramShareCard,
+)
+from research_pulse_cn.schemas.official_account_daily_summary import (
+    OfficialAccountDailySummaryItem,
+    OfficialAccountDailySummaryRequest,
+    OfficialAccountDailySummaryResult,
+    OfficialAccountDailySummarySection,
+)
+from research_pulse_cn.schemas.paper_progress import (
+    PaperProgressItemRead,
+    PaperProgressSummaryRead,
+    PaperProgressUpdateRequest,
+)
+from research_pulse_cn.schemas.research_pulse import (
+    ResearchPulseItem,
+    ResearchPulseRequest,
+    ResearchPulseResult,
+    ResearchPulseSection,
+)
+
+
+def assert_schema_has_fields(model, expected_fields: set[str]) -> None:
+    schema = model.model_json_schema()
+    properties = set(schema.get("properties", {}))
+    missing = expected_fields - properties
+    assert not missing, f"{model.__name__} missing fields: {sorted(missing)}"
+
+
+def test_import_schema_contract_fields_exist() -> None:
+    assert_schema_has_fields(PaperImportProblem, {"code", "message", "field"})
+    assert_schema_has_fields(
+        PaperImportPreviewRecord,
+        {
+            "source_index",
+            "normalized_record",
+            "title",
+            "authors",
+            "year",
+            "venue",
+            "doi",
+            "url",
+            "keywords",
+            "warnings",
+            "errors",
+            "can_commit",
+            "selected",
+        },
+    )
+    assert_schema_has_fields(
+        PaperImportPreviewResult,
+        {
+            "preview_id",
+            "source_format",
+            "created_at",
+            "total_records",
+            "valid_records_count",
+            "warning_records_count",
+            "error_records_count",
+            "records",
+            "warnings",
+            "errors",
+        },
+    )
+    assert_schema_has_fields(
+        PaperImportCommitRecordResult,
+        {"source_index", "status", "reason", "paper_id", "warnings", "errors"},
+    )
+    assert_schema_has_fields(
+        PaperImportCommitResult,
+        {
+            "preview_id",
+            "user_id",
+            "source_format",
+            "dry_run",
+            "committed_at",
+            "total_selected",
+            "committed_count",
+            "skipped_count",
+            "failed_count",
+            "committed_record_ids",
+            "record_results",
+            "warnings",
+            "errors",
+        },
+    )
+
+
+def test_paper_progress_schema_contract_fields_exist() -> None:
+    assert_schema_has_fields(
+        PaperProgressItemRead,
+        {
+            "paper_id",
+            "user_id",
+            "title",
+            "authors",
+            "year",
+            "venue",
+            "doi",
+            "url",
+            "source_format",
+            "reading_status",
+            "research_stage",
+            "priority",
+            "priority_score",
+            "next_action",
+            "user_note",
+            "research_note",
+            "tags",
+            "imported_at",
+            "created_at",
+            "updated_at",
+            "last_touch_at",
+            "warnings",
+        },
+    )
+    assert_schema_has_fields(
+        PaperProgressUpdateRequest,
+        {
+            "reading_status",
+            "research_stage",
+            "priority",
+            "next_action",
+            "clear_next_action",
+            "user_note",
+            "research_note",
+            "tags",
+        },
+    )
+    assert_schema_has_fields(
+        PaperProgressSummaryRead,
+        {
+            "total_papers",
+            "unread_count",
+            "reading_count",
+            "read_count",
+            "high_priority_count",
+            "urgent_count",
+            "with_next_action_count",
+            "by_reading_status",
+            "by_research_stage",
+            "by_priority",
+        },
+    )
+
+
+def test_research_pulse_schema_contract_fields_exist() -> None:
+    assert_schema_has_fields(
+        ResearchPulseRequest,
+        {
+            "user_id",
+            "pulse_date",
+            "timezone",
+            "max_items_per_section",
+            "include_low_priority",
+            "include_archived",
+            "source_format_filter",
+            "dry_run",
+        },
+    )
+    assert_schema_has_fields(
+        ResearchPulseItem,
+        {
+            "paper_id",
+            "title",
+            "authors",
+            "year",
+            "venue",
+            "doi",
+            "url",
+            "priority",
+            "reading_status",
+            "research_stage",
+            "next_action",
+            "reason",
+            "suggested_action",
+            "metadata_warnings",
+            "tags",
+            "source_format",
+        },
+    )
+    assert_schema_has_fields(
+        ResearchPulseSection,
+        {"section_id", "title", "description", "items", "empty_reason"},
+    )
+    assert_schema_has_fields(
+        ResearchPulseResult,
+        {
+            "draft_id",
+            "user_id",
+            "pulse_date",
+            "timezone",
+            "dry_run",
+            "title",
+            "summary",
+            "sections",
+            "total_source_papers",
+            "total_items",
+            "warnings",
+            "generated_at",
+            "source_context_notes",
+        },
+    )
+
+
+def test_official_account_schema_contract_fields_exist() -> None:
+    assert_schema_has_fields(
+        OfficialAccountDailySummaryRequest,
+        {
+            "user_id",
+            "pulse_date",
+            "timezone",
+            "max_items_per_section",
+            "max_highlights",
+            "include_low_priority",
+            "include_archived",
+            "source_format_filter",
+            "binding_id",
+            "dry_run",
+        },
+    )
+    assert_schema_has_fields(
+        OfficialAccountDailySummaryItem,
+        {
+            "paper_id",
+            "title",
+            "authors",
+            "year",
+            "venue",
+            "doi",
+            "url",
+            "priority",
+            "reading_status",
+            "research_stage",
+            "next_action",
+            "reason",
+            "suggested_action",
+            "summary_line",
+            "metadata_warnings",
+            "tags",
+            "source_format",
+        },
+    )
+    assert_schema_has_fields(
+        OfficialAccountDailySummarySection,
+        {"section_id", "title", "description", "items", "empty_reason"},
+    )
+    assert_schema_has_fields(
+        OfficialAccountDailySummaryResult,
+        {
+            "draft_id",
+            "source_research_pulse_draft_id",
+            "user_id",
+            "pulse_date",
+            "timezone",
+            "dry_run",
+            "title",
+            "headline",
+            "summary",
+            "sections",
+            "highlight_count",
+            "publication_preview",
+            "template_payload_preview",
+            "binding_preview",
+            "provider_preview",
+            "total_source_papers",
+            "warnings",
+            "generated_at",
+            "source_context_notes",
+        },
+    )
+
+
+def test_desktop_and_mini_schema_contract_fields_exist() -> None:
+    assert_schema_has_fields(
+        DesktopNotificationRequest,
+        {
+            "user_id",
+            "pulse_date",
+            "timezone",
+            "max_items",
+            "include_low_priority",
+            "include_archived",
+            "source_format_filter",
+            "title_prefix",
+            "include_actions",
+            "dry_run",
+        },
+    )
+    assert_schema_has_fields(
+        DesktopNotificationAction,
+        {"action_id", "label", "kind", "deep_link", "payload"},
+    )
+    assert_schema_has_fields(
+        DesktopNotificationResult,
+        {
+            "draft_id",
+            "source_research_pulse_draft_id",
+            "user_id",
+            "pulse_date",
+            "timezone",
+            "title",
+            "body",
+            "notification_type",
+            "urgency",
+            "badge_count",
+            "items",
+            "actions",
+            "deep_link",
+            "payload_preview",
+            "total_source_papers",
+            "total_items",
+            "warnings",
+            "generated_at",
+            "delivery_state",
+            "delivery_notes",
+        },
+    )
+    assert_schema_has_fields(
+        MiniProgramDetailRequest,
+        {
+            "user_id",
+            "detail_type",
+            "pulse_date",
+            "timezone",
+            "paper_id",
+            "source_research_pulse_draft_id",
+            "max_items",
+            "include_low_priority",
+            "include_archived",
+            "source_format_filter",
+            "share_safe",
+            "dry_run",
+        },
+    )
+    assert_schema_has_fields(
+        MiniProgramDetailItem,
+        {
+            "item_id",
+            "paper_id",
+            "title",
+            "authors",
+            "year",
+            "venue",
+            "doi",
+            "url",
+            "priority",
+            "reading_status",
+            "research_stage",
+            "next_action",
+            "reason",
+            "suggested_action",
+            "metadata_warnings",
+            "tags",
+            "source_format",
+            "safe_abstract",
+            "detail_path",
+        },
+    )
+    assert_schema_has_fields(
+        MiniProgramDetailCard,
+        {
+            "card_id",
+            "card_type",
+            "title",
+            "subtitle",
+            "body",
+            "items",
+            "badges",
+            "warnings",
+            "empty_reason",
+        },
+    )
+    assert_schema_has_fields(
+        MiniProgramDetailAction,
+        {"action_id", "label", "kind", "path", "payload"},
+    )
+    assert_schema_has_fields(
+        MiniProgramShareCard,
+        {"title", "summary", "path", "image_placeholder", "share_safe", "redacted_fields"},
+    )
+    assert_schema_has_fields(
+        MiniProgramNavigation,
+        {"current_path", "back_path", "related_paths"},
+    )
+    assert_schema_has_fields(
+        MiniProgramDetailResult,
+        {
+            "detail_id",
+            "detail_type",
+            "user_id",
+            "pulse_date",
+            "timezone",
+            "title",
+            "subtitle",
+            "summary",
+            "cards",
+            "actions",
+            "share_card",
+            "navigation",
+            "source_research_pulse_draft_id",
+            "total_source_papers",
+            "total_items",
+            "warnings",
+            "generated_at",
+            "delivery_state",
+            "visibility_notes",
+        },
+    )
