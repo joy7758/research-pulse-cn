@@ -8,11 +8,16 @@ from research_pulse_cn.api.dependencies import SessionDep
 from research_pulse_cn.api.security import require_admin_role
 from research_pulse_cn.domain.auth import ActorContext
 from research_pulse_cn.domain.enums import AdminRole
+from research_pulse_cn.schemas.desktop_notification import (
+    DesktopNotificationRequest,
+    DesktopNotificationResult,
+)
 from research_pulse_cn.schemas.official_account_daily_summary import (
     OfficialAccountDailySummaryRequest,
     OfficialAccountDailySummaryResult,
 )
 from research_pulse_cn.schemas.research_pulse import ResearchPulseRequest, ResearchPulseResult
+from research_pulse_cn.services.desktop_notification import DesktopNotificationService
 from research_pulse_cn.services.official_account_daily_summary import (
     OfficialAccountDailySummaryService,
 )
@@ -29,6 +34,16 @@ def get_research_pulse_service(session: SessionDep) -> ResearchPulseService:
 ResearchPulseServiceDep = Annotated[
     ResearchPulseService,
     Depends(get_research_pulse_service),
+]
+
+
+def get_desktop_notification_service(session: SessionDep) -> DesktopNotificationService:
+    return DesktopNotificationService(session)
+
+
+DesktopNotificationServiceDep = Annotated[
+    DesktopNotificationService,
+    Depends(get_desktop_notification_service),
 ]
 
 
@@ -51,6 +66,18 @@ def generate_research_pulse_from_imported_papers(
     service: ResearchPulseServiceDep,
 ) -> ResearchPulseResult:
     return service.generate_daily_pulse(payload)
+
+
+@router.post(
+    "/papers/desktop-notification/draft",
+    response_model=DesktopNotificationResult,
+)
+def generate_desktop_notification_draft_from_imported_papers(
+    payload: DesktopNotificationRequest,
+    _actor: ViewerDep,
+    service: DesktopNotificationServiceDep,
+) -> DesktopNotificationResult:
+    return service.generate_daily_notification_draft(payload)
 
 
 @router.post(

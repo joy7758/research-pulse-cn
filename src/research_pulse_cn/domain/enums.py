@@ -293,6 +293,28 @@ class OfficialAccountTransportKind(StrEnum):
     TEMPLATE_NOTICE = "template_notice"
 
 
+class DesktopNotificationType(StrEnum):
+    DAILY_RESEARCH_PULSE = "daily_research_pulse"
+
+
+class DesktopNotificationUrgency(StrEnum):
+    LOW = "low"
+    NORMAL = "normal"
+    HIGH = "high"
+
+
+class DesktopNotificationDeliveryState(StrEnum):
+    DRAFT = "draft"
+    NOT_SENT = "not_sent"
+
+
+class DesktopNotificationActionKind(StrEnum):
+    OPEN_DAILY_PULSE = "open_daily_pulse"
+    OPEN_NEXT_ACTIONS = "open_next_actions"
+    OPEN_METADATA_ATTENTION = "open_metadata_attention"
+    OPEN_TRIAGE_QUEUE = "open_triage_queue"
+
+
 class OfficialAccountCallbackPayloadFormat(StrEnum):
     XML = "xml"
     JSON = "json"

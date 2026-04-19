@@ -76,6 +76,8 @@
 - Scope:
   - deliver pulse reminder and pulse detail entry through the existing desktop foundation
   - keep desktop as the fastest operator and researcher surface
+- Implementation note:
+  - reuse paper-based `ResearchPulseResult` to generate local desktop notification draft, actions, deep-link placeholders, and payload preview without building a real desktop client in this phase
 - Non-goals:
   - full desktop-local workspace reinvention
   - broad plugin support
