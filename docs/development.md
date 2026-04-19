@@ -46,6 +46,23 @@
 - Tests: `make test`
 - Full local gate: `make check`
 
+## MVP Smoke Test
+- Targeted Pivot-2 to Pivot-9 chain:
+  - `.venv/bin/python -m pytest tests/test_import_formats_foundation.py tests/test_import_preview_commit.py tests/test_paper_progress_workbench.py tests/test_research_pulse_over_imported_papers.py tests/test_official_account_daily_summary_mvp.py tests/test_desktop_notification_mvp.py tests/test_mini_program_detail_mvp.py tests/test_mvp_end_to_end_smoke.py`
+- Full backend suite:
+  - `.venv/bin/python -m pytest`
+- Ruff:
+  - `.venv/bin/python -m ruff format src tests`
+  - `.venv/bin/python -m ruff check .`
+- MVP smoke-test document:
+  - `docs/mvp_end_to_end_smoke_test_v1.md`
+- Guardrails for MVP smoke work:
+  - do not add real WeChat API calls
+  - do not add real desktop notification calls
+  - do not add real mini-program frontend files
+  - do not add external LLM or external network dependencies
+  - keep official-account / desktop / mini outputs at `draft` / `preview` / `not_sent`
+
 ## Desktop shell
 - Install desktop dependencies:
   - `make desktop-install`

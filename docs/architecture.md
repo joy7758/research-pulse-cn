@@ -19,6 +19,26 @@ Research Pulse CN is implemented as a modular monolith that keeps domain decisio
   - `docs/frozen_admin_overbuild_scope_v1.md`
   - `docs/mvp_china_first_research_pulse_roadmap_v1.md`
 
+## China-First Research Pulse MVP Architecture
+- MVP backend chain:
+  - import parsers normalize paper metadata into preview records
+  - import commit reuses `PaperProfile` persistence
+  - paper progress workbench reshapes committed papers into reading/research context
+  - paper-based `ResearchPulseService` turns that context into deterministic daily pulse drafts
+  - official-account, desktop, and mini-program services each adapt the same pulse context into channel-specific draft payloads
+- Active MVP adapters in this chain are draft-only:
+  - official-account daily summary draft
+  - desktop notification draft
+  - mini-program detail preview
+- There is still no real delivery system on this MVP chain:
+  - no real WeChat official-account send
+  - no real desktop system notification
+  - no real mini-program frontend or login
+- Admin preset/report/print/registry overbuild remains frozen:
+  - keep existing completed code
+  - blocker fixes only
+  - no new feature phases on that track
+
 Core flow:
 1. CRUD APIs manage user profiles, paper profiles, events, snapshots, and subscription policies.
 2. Pulse preview and run requests build deterministic facts, candidates, scores, suppression reasons, and final selections.

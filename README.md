@@ -21,6 +21,33 @@ Private repository. Proprietary and confidential.
   - `docs/frozen_admin_overbuild_scope_v1.md`
   - `docs/mvp_china_first_research_pulse_roadmap_v1.md`
 
+## Current MVP Flow
+- Current MVP chain:
+  - `import formats`
+  - `import preview`
+  - `import commit`
+  - `paper progress`
+  - `Research Pulse draft`
+  - `official-account daily summary draft`
+  - `desktop notification draft`
+  - `mini-program detail preview`
+- Current backend paths on that chain:
+  - `POST /papers/import-preview`
+  - `POST /papers/import-commit`
+  - `GET /papers/progress`
+  - `GET /papers/progress/summary`
+  - `GET /papers/progress/pulse-context`
+  - `PATCH /papers/{paper_id}/progress`
+  - `POST /pulse/papers/daily`
+  - `POST /pulse/papers/official-account/daily-summary`
+  - `POST /pulse/papers/desktop-notification/draft`
+  - `POST /pulse/papers/mini-program/detail/preview`
+- Delivery boundary:
+  - all official-account, desktop, and mini-program outputs are still `draft` / `preview` / `not_sent`
+  - there is no real WeChat send, real desktop push, or real mini frontend in the current MVP
+- Smoke-test doc:
+  - `docs/mvp_end_to_end_smoke_test_v1.md`
+
 ## What is included
 - FastAPI backend with OpenAPI docs
 - SQLAlchemy 2 models and Alembic migration

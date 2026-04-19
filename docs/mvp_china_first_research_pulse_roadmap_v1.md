@@ -94,6 +94,19 @@
   - OAuth expansion
   - broad workflow authoring
 
+## Phase Pivot-9: MVP Closeout And Smoke Test
+- Scope:
+  - validate the end-to-end MVP chain from import to multi-surface draft payloads
+  - add one deterministic local smoke test for the current backend-only loop
+  - tighten docs, API path index, and draft/preview boundary notes
+- Implementation note:
+  - Pivot-9 adds smoke coverage for `import -> preview -> commit -> progress -> pulse -> official-account draft -> desktop draft -> mini-program detail preview` without adding real delivery or new product surfaces
+- Non-goals:
+  - new channel features
+  - real WeChat or desktop delivery
+  - new frontend apps
+  - new admin overbuild phases
+
 ## Roadmap Guardrails
 - No new admin preset/report/print phases
 - No new frontend app for this pivot phase
