@@ -107,6 +107,22 @@ Private repository. Proprietary and confidential.
 - Guardrail:
   - do not turn Design-3 into frontend implementation or visual system overbuild
 
+## MVP Local Demo
+- Demo docs:
+  - `docs/mvp_demo_fixture_pack_v1.md`
+  - `docs/mvp_local_demo_script_v1.md`
+- Minimal local demo command:
+  - `.venv/bin/python scripts/run_mvp_demo.py --output-dir /tmp/research_pulse_cn_demo --date 2026-04-19 --format csv --max-items-per-section 3`
+- Demo output:
+  - import preview and commit JSON
+  - progress summary JSON
+  - Research Pulse draft JSON
+  - official-account / desktop / mini demo payloads
+  - `demo_summary.md` for non-technical walkthroughs
+- Guardrail:
+  - the demo stays local, offline, and deterministic
+  - it does not introduce real WeChat, desktop notification, mini-program, or external-model integration
+
 ## What is included
 - FastAPI backend with OpenAPI docs
 - SQLAlchemy 2 models and Alembic migration

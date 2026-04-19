@@ -110,6 +110,16 @@ Research Pulse CN is implemented as a modular monolith that keeps domain decisio
   - future visual work must keep the homepage centered on Research Pulse decisions
   - draft/preview/not_sent semantics remain first-class visual states, not hidden implementation details
 
+## MVP Local Demo
+- A local demo entry now exists to replay the current MVP chain with synthetic fixtures and a temporary SQLite runtime:
+  - `scripts/run_mvp_demo.py`
+  - `docs/mvp_demo_fixture_pack_v1.md`
+  - `docs/mvp_local_demo_script_v1.md`
+- Architecture boundary:
+  - this demo entry reuses existing routes and services
+  - it is not a production delivery system
+  - it does not add real WeChat, desktop notification, mini-program, or external-model integration
+
 Core flow:
 1. CRUD APIs manage user profiles, paper profiles, events, snapshots, and subscription policies.
 2. Pulse preview and run requests build deterministic facts, candidates, scores, suppression reasons, and final selections.

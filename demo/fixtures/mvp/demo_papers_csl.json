@@ -1,0 +1,167 @@
+[
+  {
+    "id": "demo-focus-2026",
+    "type": "article-journal",
+    "title": "面向高校课题组的 Research Pulse 工作台设计",
+    "author": [
+      {
+        "family": "周",
+        "given": "宁"
+      },
+      {
+        "family": "陈",
+        "given": "一凡"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2026
+        ]
+      ]
+    },
+    "container-title": "科研协同学刊",
+    "abstract": "这是 synthetic demo data，用于说明课题组如何把今日重点论文组织成 Research Pulse。",
+    "keyword": "Research Pulse;课题组协同",
+    "DOI": "10.4242/demo-focus-2026",
+    "URL": "https://example.local/demo/focus",
+    "language": "zh-CN"
+  },
+  {
+    "id": "demo-reading-2025",
+    "type": "article-journal",
+    "title": "面向研究生的持续阅读推进策略",
+    "author": [
+      {
+        "family": "刘",
+        "given": "敏"
+      },
+      {
+        "literal": "高桥"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2025
+        ]
+      ]
+    },
+    "container-title": "教育技术研究",
+    "abstract": "这是 synthetic demo data，用于说明阅读中论文如何进入继续阅读与分析 section。",
+    "keyword": "阅读推进;研究生",
+    "DOI": "10.4242/demo-reading-2025",
+    "URL": "https://example.local/demo/reading",
+    "language": "zh-CN"
+  },
+  {
+    "id": "demo-metadata",
+    "type": "article-journal",
+    "title": "科研论文元数据补全的人机协作流程",
+    "author": [
+      {
+        "family": "王",
+        "given": "岚"
+      }
+    ],
+    "abstract": "这是 synthetic demo data，用于说明导入后如何优先补全缺失字段。",
+    "keyword": "元数据补全;协作",
+    "URL": "https://example.local/demo/metadata",
+    "language": "zh-CN"
+  },
+  {
+    "id": "demo-triage-2024",
+    "type": "article-journal",
+    "title": "新导入论文筛选优先级的规则化框架",
+    "author": [
+      {
+        "family": "赵",
+        "given": "卓"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2024
+        ]
+      ]
+    },
+    "container-title": "情报工程",
+    "abstract": "这是 synthetic demo data，用于说明新导入论文如何进入待筛选队列。",
+    "keyword": "待筛选;导入",
+    "DOI": "10.4242/demo-triage-2024",
+    "URL": "https://example.local/demo/triage",
+    "language": "zh-CN"
+  },
+  {
+    "id": "demo-cited-2023",
+    "type": "article-journal",
+    "title": "博士生日常文献阅读节奏与引用决策",
+    "author": [
+      {
+        "family": "孙",
+        "given": "可"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2023
+        ]
+      ]
+    },
+    "container-title": "学术写作实践",
+    "abstract": "这是 synthetic demo data，用于说明已读论文如何回到周报或汇报引用场景。",
+    "keyword": "引用;阅读节奏",
+    "DOI": "10.4242/demo-cited-2023",
+    "URL": "https://example.local/demo/cited",
+    "language": "zh-CN"
+  },
+  {
+    "id": "demo-parked-2022",
+    "type": "article-journal",
+    "title": "低优先级知识管理补充调研",
+    "author": [
+      {
+        "family": "林",
+        "given": "舟"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2022
+        ]
+      ]
+    },
+    "container-title": "知识管理季刊",
+    "abstract": "这是 synthetic demo data，用于说明低优先级或暂缓论文仍可保留在工作台中。",
+    "keyword": "知识管理;补充调研",
+    "DOI": "10.4242/demo-parked-2022",
+    "URL": "https://example.local/demo/parked",
+    "language": "zh-CN"
+  },
+  {
+    "id": "demo-invalid-2024",
+    "type": "article-journal",
+    "author": [
+      {
+        "literal": "匿名作者"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2024
+        ]
+      ]
+    },
+    "container-title": "占位来源",
+    "abstract": "这是 synthetic demo data，用于说明缺题名记录在预览阶段会被拦截。",
+    "keyword": "错误示例",
+    "DOI": "10.4242/demo-invalid-2024",
+    "URL": "https://example.local/demo/invalid",
+    "language": "zh-CN"
+  }
+]
+

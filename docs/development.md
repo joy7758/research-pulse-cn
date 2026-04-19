@@ -140,6 +140,24 @@
   - confirm `draft` / `preview` / `not_sent` remain explicit visual states
   - confirm no page introduces real WeChat / desktop / mini-program capability language
 
+## Run MVP local demo
+- Demo docs:
+  - `docs/mvp_demo_fixture_pack_v1.md`
+  - `docs/mvp_local_demo_script_v1.md`
+- Run the local offline demo:
+  - `.venv/bin/python scripts/run_mvp_demo.py --output-dir /tmp/research_pulse_cn_demo --date 2026-04-19 --format csv --max-items-per-section 3`
+- Demo script test:
+  - `.venv/bin/python -m pytest tests/test_mvp_demo_script.py tests/test_mvp_end_to_end_smoke.py tests/test_api_contract_mvp.py tests/test_schema_contract_mvp.py`
+- Full suite:
+  - `.venv/bin/python -m pytest`
+- Guardrails:
+  - keep the demo local and offline
+  - do not add real WeChat API integration
+  - do not add real desktop notification calls
+  - do not add real mini-program frontend files
+  - do not add external-model or external-network dependencies
+  - generated output defaults to `/tmp` and should not be committed
+
 ## Desktop shell
 - Install desktop dependencies:
   - `make desktop-install`
