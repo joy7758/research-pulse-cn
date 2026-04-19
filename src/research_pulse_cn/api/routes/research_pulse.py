@@ -12,12 +12,17 @@ from research_pulse_cn.schemas.desktop_notification import (
     DesktopNotificationRequest,
     DesktopNotificationResult,
 )
+from research_pulse_cn.schemas.mini_program_detail import (
+    MiniProgramDetailRequest,
+    MiniProgramDetailResult,
+)
 from research_pulse_cn.schemas.official_account_daily_summary import (
     OfficialAccountDailySummaryRequest,
     OfficialAccountDailySummaryResult,
 )
 from research_pulse_cn.schemas.research_pulse import ResearchPulseRequest, ResearchPulseResult
 from research_pulse_cn.services.desktop_notification import DesktopNotificationService
+from research_pulse_cn.services.mini_program_detail import MiniProgramDetailService
 from research_pulse_cn.services.official_account_daily_summary import (
     OfficialAccountDailySummaryService,
 )
@@ -44,6 +49,16 @@ def get_desktop_notification_service(session: SessionDep) -> DesktopNotification
 DesktopNotificationServiceDep = Annotated[
     DesktopNotificationService,
     Depends(get_desktop_notification_service),
+]
+
+
+def get_mini_program_detail_service(session: SessionDep) -> MiniProgramDetailService:
+    return MiniProgramDetailService(session)
+
+
+MiniProgramDetailServiceDep = Annotated[
+    MiniProgramDetailService,
+    Depends(get_mini_program_detail_service),
 ]
 
 
@@ -78,6 +93,18 @@ def generate_desktop_notification_draft_from_imported_papers(
     service: DesktopNotificationServiceDep,
 ) -> DesktopNotificationResult:
     return service.generate_daily_notification_draft(payload)
+
+
+@router.post(
+    "/papers/mini-program/detail/preview",
+    response_model=MiniProgramDetailResult,
+)
+def generate_mini_program_detail_preview_from_imported_papers(
+    payload: MiniProgramDetailRequest,
+    _actor: ViewerDep,
+    service: MiniProgramDetailServiceDep,
+) -> MiniProgramDetailResult:
+    return service.generate_detail_preview(payload)
 
 
 @router.post(

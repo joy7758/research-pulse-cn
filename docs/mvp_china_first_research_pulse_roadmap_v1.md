@@ -87,6 +87,8 @@
 - Scope:
   - reuse the existing mini read path for pulse detail viewing
   - keep mini focused on lightweight reading and follow-up context
+- Implementation note:
+  - reuse paper-based `ResearchPulseResult` and paper progress read models to generate share-safe mini-program detail preview payloads, cards, and path placeholders without building a real mini frontend in this phase
 - Non-goals:
   - full mini editing
   - OAuth expansion

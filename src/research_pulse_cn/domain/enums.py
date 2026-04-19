@@ -315,6 +315,39 @@ class DesktopNotificationActionKind(StrEnum):
     OPEN_TRIAGE_QUEUE = "open_triage_queue"
 
 
+class MiniProgramDetailType(StrEnum):
+    DAILY_PULSE = "daily_pulse"
+    PAPER = "paper"
+    NEXT_ACTIONS = "next_actions"
+    METADATA_ATTENTION = "metadata_attention"
+    TRIAGE = "triage"
+
+
+class MiniProgramDetailDeliveryState(StrEnum):
+    PREVIEW = "preview"
+    DRAFT = "draft"
+    NOT_SENT = "not_sent"
+
+
+class MiniProgramDetailCardType(StrEnum):
+    OVERVIEW = "overview"
+    TODAY_FOCUS = "today_focus"
+    CONTINUE_READING = "continue_reading"
+    NEXT_ACTIONS = "next_actions"
+    METADATA_ATTENTION = "metadata_attention"
+    TRIAGE = "triage"
+    PAPER_DETAIL = "paper_detail"
+
+
+class MiniProgramDetailActionKind(StrEnum):
+    OPEN_DAILY_PULSE = "open_daily_pulse"
+    OPEN_PAPER_DETAIL = "open_paper_detail"
+    OPEN_NEXT_ACTIONS = "open_next_actions"
+    OPEN_METADATA_ATTENTION = "open_metadata_attention"
+    OPEN_TRIAGE = "open_triage"
+    OPEN_PAPERS_LIST = "open_papers_list"
+
+
 class OfficialAccountCallbackPayloadFormat(StrEnum):
     XML = "xml"
     JSON = "json"
