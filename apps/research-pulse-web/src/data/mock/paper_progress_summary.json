@@ -1,0 +1,31 @@
+{
+  "total_papers": 6,
+  "unread_count": 2,
+  "reading_count": 2,
+  "read_count": 1,
+  "high_priority_count": 1,
+  "urgent_count": 1,
+  "with_next_action_count": 2,
+  "by_reading_status": {
+    "unread": 2,
+    "skimming": 1,
+    "reading": 1,
+    "read": 1,
+    "archived": 1
+  },
+  "by_research_stage": {
+    "inbox": 1,
+    "triage": 1,
+    "relevant": 1,
+    "reviewing": 1,
+    "cited": 1,
+    "implemented": 0,
+    "parked": 1
+  },
+  "by_priority": {
+    "low": 1,
+    "normal": 3,
+    "high": 1,
+    "urgent": 1
+  }
+}

@@ -138,6 +138,19 @@ Private repository. Proprietary and confidential.
   - no new frontend implementation is added yet
   - Frontend-1 should stay limited to a minimal web shell over frozen APIs and demo JSON
 
+## Frontend Minimal Web Shell
+- Frontend-1 docs:
+  - `docs/frontend_minimal_web_shell_v1.md`
+- Frontend-1 app:
+  - `apps/research-pulse-web`
+- Minimal local run:
+  - `cd apps/research-pulse-web && npm install`
+  - `npm run dev`
+- Current boundary:
+  - the shell only includes 3 pages
+  - it defaults to mock mode over curated demo JSON
+  - it does not add login, admin, real WeChat, real mini-program, or real desktop delivery
+
 ## What is included
 - FastAPI backend with OpenAPI docs
 - SQLAlchemy 2 models and Alembic migration

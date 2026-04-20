@@ -177,6 +177,26 @@
   - `git diff --name-only | grep -E '^(src/|tests/|scripts/|demo/|alembic/|migrations/|pyproject\\.toml|requirements|package\\.json|pnpm-lock|yarn.lock|package-lock\\.json)' || true`
   - `git diff --name-only | grep -Ei 'package\\.json|pnpm-lock|yarn.lock|package-lock\\.json|vite|next|react|vue|svelte|tailwind|electron|tauri' || true`
 
+## Frontend minimal web shell
+- Frontend-1 app path:
+  - `apps/research-pulse-web`
+- Install:
+  - `cd apps/research-pulse-web && npm install`
+- Run:
+  - `npm run dev`
+- Build:
+  - `npm run build`
+- Static checks:
+  - `npm run lint`
+  - `npm run typecheck`
+- Current boundary:
+  - Frontend-1 only contains 3 pages:
+    - today pulse
+    - import / import preview
+    - pulse detail
+  - it defaults to mock mode and curated demo JSON
+  - it does not add login, admin, real channel delivery, or backend contract changes
+
 ## Desktop shell
 - Install desktop dependencies:
   - `make desktop-install`

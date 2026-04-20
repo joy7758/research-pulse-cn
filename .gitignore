@@ -25,6 +25,9 @@ Thumbs.db
 logs/
 tmp/
 data/
+!apps/research-pulse-web/src/data/
+!apps/research-pulse-web/src/data/mock/
+!apps/research-pulse-web/src/data/mock/*.json
 storage/
 uploads/
 *.sqlite3
@@ -54,3 +57,5 @@ apps/user-workbench-admin-web/dist/
 # Group workspace invite web shell
 apps/group-workspace-invite-web/node_modules/
 apps/group-workspace-invite-web/dist/
+apps/research-pulse-web/node_modules/
+apps/research-pulse-web/dist/
