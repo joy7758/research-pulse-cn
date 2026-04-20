@@ -229,11 +229,13 @@
   },
   "total_source_papers": 5,
   "warnings": [
-    "当前页面仅展示公众号摘要草稿，不会真实发送。"
+    "当前页面仅展示公众号摘要草稿，不会真实发送。",
+    "当前 binding preview 仍是 preview_only，占位信息不能理解成已配置模板消息。"
   ],
   "generated_at": "2026-04-19T16:54:07Z",
   "source_context_notes": [
     "当前草稿由 Research Pulse 草稿和论文进度上下文生成。",
-    "所有字段都保持 draft / not_sent 语义。"
+    "所有字段都保持 draft / not_sent 语义。",
+    "复制 Markdown 后仍然需要人工确认文案，不会触发真实公众号发送。"
   ]
 }

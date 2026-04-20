@@ -73,8 +73,15 @@ export function OfficialAccountDraftPage({
 }: OfficialAccountDraftPageProps) {
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
   const hasItems = draft.sections.some((section) => section.items.length > 0);
+  const hasHighlights = draft.publication_preview.digest_highlights.length > 0;
+  const selectedBinding = draft.binding_preview.selected_binding;
+  const templateFieldEntries = Object.entries(draft.template_payload_preview.logical_fields);
   const markdown = useMemo(() => buildMarkdown(draft), [draft]);
   const issues = useMemo(() => buildIssues(draft), [draft]);
+  const primaryActionDisabled = !hasItems;
+  const primaryHelperText = primaryActionDisabled
+    ? "当前没有可复制的摘要内容，请先回到 Pulse 详情确认今天的重点论文。"
+    : "当前为本地预览，主动作只复制 Markdown 草稿，不会真实发送公众号摘要。";
 
   async function handleCopyMarkdown() {
     try {
@@ -100,7 +107,9 @@ export function OfficialAccountDraftPage({
             className="button-primary"
             type="button"
             onClick={() => void handleCopyMarkdown()}
-            disabled={!hasItems}
+            disabled={primaryActionDisabled}
+            aria-label={primaryActionDisabled ? "当前没有可复制的公众号草稿内容" : "复制公众号 Markdown 草稿"}
+            aria-describedby="official-draft-primary-helper"
           >
             {hasItems ? "复制 Markdown 草稿（mock）" : "当前没有可复制的摘要内容"}
           </button>
@@ -113,8 +122,8 @@ export function OfficialAccountDraftPage({
           <button className="button-tertiary" type="button" onClick={onGoMiniPreview}>
             查看小程序详情预览
           </button>
-          <p className="action-helper-copy">
-            当前为本地预览，主动作只复制 Markdown 草稿，不会真实发送公众号摘要。
+          <p className="action-helper-copy" id="official-draft-primary-helper">
+            {primaryHelperText}
           </p>
         </div>
       </section>
@@ -152,6 +161,65 @@ export function OfficialAccountDraftPage({
         />
       </div>
 
+      <section className="channel-double-grid">
+        <section className="panel">
+          <div className="section-panel-header">
+            <div>
+              <p className="eyebrow">绑定预览</p>
+              <h3>公众号绑定仍是占位说明</h3>
+            </div>
+            <Badge tone="not-sent">{draft.binding_preview.active_binding_count} 个绑定</Badge>
+          </div>
+          {selectedBinding ? (
+            <div className="channel-definition-list">
+              <div>
+                <dt>显示名称</dt>
+                <dd>{selectedBinding.display_label ?? "绑定名称待补全"}</dd>
+              </div>
+              <div>
+                <dt>绑定状态</dt>
+                <dd>{selectedBinding.bind_state}</dd>
+              </div>
+              <div>
+                <dt>openid 占位</dt>
+                <dd>{selectedBinding.masked_openid}</dd>
+              </div>
+            </div>
+          ) : (
+            <EmptyState
+              compact
+              title="当前没有可展示的绑定预览"
+              description="这不影响草稿审阅，本页仍然只保留 not_sent 边界。"
+            />
+          )}
+          {draft.binding_preview.notes.length > 0 ? (
+            <ul className="issue-list channel-note-list">
+              {draft.binding_preview.notes.map((note) => (
+                <li key={note}>{note}</li>
+              ))}
+            </ul>
+          ) : null}
+        </section>
+
+        <section className="panel">
+          <div className="section-panel-header">
+            <div>
+              <p className="eyebrow">上下文说明</p>
+              <h3>这份草稿来自哪些上下文</h3>
+            </div>
+          </div>
+          {draft.source_context_notes.length > 0 ? (
+            <ul className="issue-list channel-note-list">
+              {draft.source_context_notes.map((note) => (
+                <li key={note}>{note}</li>
+              ))}
+            </ul>
+          ) : (
+            <p className="empty-inline">当前没有额外的上下文说明。</p>
+          )}
+        </section>
+      </section>
+
       <section className="panel">
         <div className="section-panel-header">
           <div>
@@ -161,7 +229,7 @@ export function OfficialAccountDraftPage({
           <Badge tone="not-sent">not_sent</Badge>
         </div>
         <p className="section-description">{draft.publication_preview.digest_subtitle}</p>
-        {draft.publication_preview.digest_highlights.length > 0 ? (
+        {hasHighlights ? (
           <div className="channel-list">
             {draft.publication_preview.digest_highlights.map((highlight) => (
               <article key={highlight.paper_id} className="channel-item-card">
@@ -232,14 +300,22 @@ export function OfficialAccountDraftPage({
               <h3>模板 payload 占位</h3>
             </div>
           </div>
-          <div className="channel-definition-list">
-            {Object.entries(draft.template_payload_preview.logical_fields).map(([label, key]) => (
-              <div key={label}>
-                <dt>{label}</dt>
-                <dd>{key}</dd>
-              </div>
-            ))}
-          </div>
+          {templateFieldEntries.length > 0 ? (
+            <div className="channel-definition-list">
+              {templateFieldEntries.map(([label, key]) => (
+                <div key={label}>
+                  <dt>{label}</dt>
+                  <dd>{key}</dd>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              compact
+              title="当前没有可展示的模板字段"
+              description="这说明模板映射仍停留在 mock-only 预览阶段，不会影响本页的 not_sent 边界。"
+            />
+          )}
         </section>
         <section className="panel">
           <div className="section-panel-header">
@@ -251,11 +327,15 @@ export function OfficialAccountDraftPage({
           <div className="channel-note-stack">
             <p>provider mode：{draft.provider_preview.provider_mode}</p>
             <p>transport kind：{draft.provider_preview.transport_kind}</p>
-            <ul className="issue-list">
-              {draft.provider_preview.notes.map((note) => (
-                <li key={note}>{note}</li>
-              ))}
-            </ul>
+            {draft.provider_preview.notes.length > 0 ? (
+              <ul className="issue-list channel-note-list">
+                {draft.provider_preview.notes.map((note) => (
+                  <li key={note}>{note}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="empty-inline">当前没有额外的 provider 边界说明。</p>
+            )}
           </div>
         </section>
       </section>

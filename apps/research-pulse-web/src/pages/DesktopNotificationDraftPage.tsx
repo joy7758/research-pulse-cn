@@ -49,8 +49,13 @@ export function DesktopNotificationDraftPage({
 }: DesktopNotificationDraftPageProps) {
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
   const hasItems = draft.items.length > 0;
+  const hasActions = draft.actions.length > 0;
   const issues = useMemo(() => buildIssues(draft), [draft]);
   const payloadCode = useMemo(() => JSON.stringify(draft.payload_preview, null, 2), [draft]);
+  const primaryActionDisabled = !hasItems;
+  const primaryHelperText = primaryActionDisabled
+    ? "当前没有可复制的桌面通知内容，请先回到 Pulse 详情确认今天的重点论文。"
+    : "当前为本地预览，主动作只复制通知 payload，不会调用系统通知或真实推送服务。";
 
   async function handleCopyPayload() {
     try {
@@ -76,7 +81,9 @@ export function DesktopNotificationDraftPage({
             className="button-primary"
             type="button"
             onClick={() => void handleCopyPayload()}
-            disabled={!hasItems}
+            disabled={primaryActionDisabled}
+            aria-label={primaryActionDisabled ? "当前没有可复制的桌面通知内容" : "复制桌面通知 payload 草稿"}
+            aria-describedby="desktop-draft-primary-helper"
           >
             {hasItems ? "复制通知 payload（mock）" : "当前没有可复制的通知内容"}
           </button>
@@ -89,8 +96,8 @@ export function DesktopNotificationDraftPage({
           <button className="button-tertiary" type="button" onClick={onGoMiniPreview}>
             查看小程序详情预览
           </button>
-          <p className="action-helper-copy">
-            当前为本地预览，主动作只复制通知 payload，不会调用系统通知或真实推送服务。
+          <p className="action-helper-copy" id="desktop-draft-primary-helper">
+            {primaryHelperText}
           </p>
         </div>
       </section>
@@ -186,7 +193,7 @@ export function DesktopNotificationDraftPage({
               <h3>deep link 和动作 payload</h3>
             </div>
           </div>
-          {draft.actions.length > 0 ? (
+          {hasActions ? (
             <ul className="channel-link-list">
               {draft.actions.map((action) => (
                 <li key={action.action_id}>
@@ -196,21 +203,44 @@ export function DesktopNotificationDraftPage({
               ))}
             </ul>
           ) : (
-            <p className="empty-inline">当前没有可展示的通知动作。</p>
+            <EmptyState
+              compact
+              title="当前没有可展示的通知动作"
+              description="这不影响 mock-only 审阅，但说明当前 payload 里没有额外 deep link 动作。"
+            />
           )}
         </section>
         <section className="panel">
           <div className="section-panel-header">
             <div>
-              <p className="eyebrow">交付说明</p>
-              <h3>delivery notes</h3>
+              <p className="eyebrow">通知边界</p>
+              <h3>当前仍是 draft / not_sent</h3>
+            </div>
+            <Badge tone="not-sent">{draft.delivery_state}</Badge>
+          </div>
+          <div className="channel-definition-list">
+            <div>
+              <dt>urgency</dt>
+              <dd>{draft.urgency}</dd>
+            </div>
+            <div>
+              <dt>deep link</dt>
+              <dd>{draft.deep_link}</dd>
+            </div>
+            <div>
+              <dt>通知类型</dt>
+              <dd>{draft.notification_type}</dd>
             </div>
           </div>
-          <ul className="issue-list">
-            {draft.delivery_notes.map((note) => (
-              <li key={note}>{note}</li>
-            ))}
-          </ul>
+          {draft.delivery_notes.length > 0 ? (
+            <ul className="issue-list channel-note-list">
+              {draft.delivery_notes.map((note) => (
+                <li key={note}>{note}</li>
+              ))}
+            </ul>
+          ) : (
+            <p className="empty-inline">当前没有额外的交付说明。</p>
+          )}
         </section>
       </section>
 

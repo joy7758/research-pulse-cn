@@ -163,6 +163,7 @@
   "delivery_state": "preview",
   "visibility_notes": [
     "当前 path 仅为前端占位路径，不会触发真实微信 API。",
-    "share_safe=true 时，已裁剪原始导入内容、研究笔记和内部调试字段。"
+    "share_safe=true 时，已裁剪原始导入内容、研究笔记和内部调试字段。",
+    "复制 detail payload 或 share card 后，仍然不会触发真实小程序登录、订阅消息或支付。"
   ]
 }

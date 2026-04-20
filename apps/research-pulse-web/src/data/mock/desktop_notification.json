@@ -121,12 +121,14 @@
   "total_source_papers": 5,
   "total_items": 3,
   "warnings": [
-    "当前页面只展示桌面通知草稿，不会调用系统通知。"
+    "当前页面只展示桌面通知草稿，不会调用系统通知。",
+    "当前 deep link 和 actions 仅用于本地预览复制，不代表已接入真实推送服务。"
   ],
   "generated_at": "2026-04-19T16:54:07Z",
   "delivery_state": "draft",
   "delivery_notes": [
     "当前结果仅为桌面端本地提醒草稿。",
-    "不会触发 macOS、Windows 或浏览器原生通知。"
+    "不会触发 macOS、Windows 或浏览器原生通知。",
+    "复制 payload 后仍然需要人工检查 urgency、badge 和 deep link 是否符合预期。"
   ]
 }

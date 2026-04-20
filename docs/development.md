@@ -188,6 +188,8 @@
   - `docs/frontend_paper_progress_page_hardening_v1.md`
 - Frontend-3 doc:
   - `docs/frontend_channel_draft_preview_pages_v1.md`
+- Frontend-3 hardening doc:
+  - `docs/frontend_channel_draft_preview_pages_hardening_v1.md`
 - Install:
   - `cd apps/research-pulse-web && npm install`
 - Run:
@@ -226,6 +228,12 @@
     - mini-program detail preview
   - confirm every channel page still shows `draft / preview / not_sent`
   - confirm copy actions stay local and do not trigger real send / push / mini-program abilities
+  - confirm build, lint, typecheck, ruff and pytest all pass
+- Frontend-3 hardening checks before closing:
+  - confirm channel-page primary actions show disabled reasons when内容为空
+  - confirm official / desktop / mini pages still keep `mock-only` copy and no real send wording
+  - confirm mini tabs expose `tablist / tab / tabpanel` accessibility semantics
+  - confirm `channel-double-grid` collapses cleanly by `1024px`
   - confirm build, lint, typecheck, ruff and pytest all pass
 - Frontend-1 Hardening checks before closing:
   - confirm no extra page is added under `apps/research-pulse-web/src/pages`

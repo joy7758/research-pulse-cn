@@ -145,6 +145,7 @@ Private repository. Proprietary and confidential.
   - `docs/frontend_paper_progress_page_v1.md`
   - `docs/frontend_paper_progress_page_hardening_v1.md`
   - `docs/frontend_channel_draft_preview_pages_v1.md`
+  - `docs/frontend_channel_draft_preview_pages_hardening_v1.md`
 - Frontend-1 app:
   - `apps/research-pulse-web`
 - Minimal local run:
@@ -163,6 +164,11 @@ Private repository. Proprietary and confidential.
     - official-account draft
     - desktop notification draft
     - mini-program detail preview
+  - Frontend-3 hardening keeps those 3 pages mock-only while tightening:
+    - empty / warning / disabled / mock-only 文案
+    - payload copy feedback
+    - narrow-screen channel layouts
+    - tab / action accessibility
   - these pages stay mock-only and only expose `draft / preview / not_sent`
   - it does not add login, admin, real WeChat, real mini-program, or real desktop delivery
 
