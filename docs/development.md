@@ -184,6 +184,8 @@
   - `docs/frontend_minimal_web_shell_hardening_v1.md`
 - Frontend-2 doc:
   - `docs/frontend_paper_progress_page_v1.md`
+- Frontend-2 hardening doc:
+  - `docs/frontend_paper_progress_page_hardening_v1.md`
 - Install:
   - `cd apps/research-pulse-web && npm install`
 - Run:
@@ -207,6 +209,11 @@
   - confirm no login / admin / settings / channel draft pages were added
   - confirm the page still runs fully in mock mode
   - confirm the primary action remains `更新选中论文进度`
+- Frontend-2 hardening checks before closing:
+  - confirm filter chips still show counts and selected state
+  - confirm search + filter empty state exposes `清除筛选` / `清除搜索`
+  - confirm `更新选中论文进度` stays disabled until one paper is selected
+  - confirm the page still says `本地预览，不会真实修改论文库`
 - Frontend-1 Hardening checks before closing:
   - confirm no extra page is added under `apps/research-pulse-web/src/pages`
   - confirm mock mode still works without backend tokens

@@ -290,6 +290,19 @@ main {
   min-width: 260px;
 }
 
+.hero-action-stack {
+  display: grid;
+  gap: var(--spacing-12);
+  justify-items: flex-end;
+}
+
+.action-helper-copy,
+.search-results-meta {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
 .button-primary,
 .button-secondary,
 .button-tertiary {
@@ -334,7 +347,8 @@ main {
 .nav-item:focus-visible,
 .field-select:focus-visible,
 .field-input:focus-visible,
-.paste-box:focus-visible {
+.paste-box:focus-visible,
+.progress-paper-card:focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);
 }
@@ -510,6 +524,10 @@ main {
   gap: 12px;
 }
 
+.progress-paper-card {
+  cursor: pointer;
+}
+
 .paper-card h4,
 .import-card h4 {
   font-size: 18px;
@@ -550,6 +568,22 @@ main {
   gap: var(--spacing-12);
 }
 
+.progress-card-actions {
+  justify-items: end;
+}
+
+.progress-warning-stack,
+.search-summary-panel {
+  display: grid;
+  gap: var(--spacing-8);
+}
+
+.search-summary-actions {
+  display: flex;
+  gap: var(--spacing-8);
+  flex-wrap: wrap;
+}
+
 .progress-meta-grid {
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
 }
@@ -583,6 +617,12 @@ main {
 
 .filter-chip-active strong {
   color: rgba(255, 255, 255, 0.86);
+}
+
+.filter-chip-active::after {
+  content: "已选中";
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.88);
 }
 
 .empty-state {
@@ -742,8 +782,10 @@ main {
 
   .hero-actions,
   .empty-state-actions,
-  .top-bar-meta {
+  .top-bar-meta,
+  .hero-action-stack {
     justify-content: flex-start;
+    justify-items: start;
   }
 }
 
@@ -801,6 +843,10 @@ main {
   .progress-meta-grid {
     grid-template-columns: 1fr;
   }
+
+  .progress-card-actions {
+    justify-items: stretch;
+  }
 }
 
 @media (max-width: 640px) {
@@ -828,6 +874,10 @@ main {
 
   .hero-actions,
   .empty-state-actions {
+    width: 100%;
+  }
+
+  .search-summary-actions {
     width: 100%;
   }
 }

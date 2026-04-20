@@ -1,4 +1,4 @@
-import { useDeferredValue, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 
 import { EmptyState } from "../components/EmptyState";
 import { ProgressFilterBar } from "../components/ProgressFilterBar";
@@ -89,6 +89,13 @@ export function PaperProgressPage({
     [items, filter, deferredSearchQuery],
   );
 
+  useEffect(() => {
+    if (selectedPaperId && !filteredItems.some((item) => item.paper_id === selectedPaperId)) {
+      setSelectedPaperId(null);
+      setMockUpdateMessage(null);
+    }
+  }, [filteredItems, selectedPaperId]);
+
   const filterOptions = useMemo(
     () => [
       { key: "all", label: "全部", count: items.length },
@@ -139,10 +146,28 @@ export function PaperProgressPage({
 
   const hasItems = items.length > 0;
   const hasMetadataWarnings = summary.metadataAttention > 0;
+  const hasSearchQuery = deferredSearchQuery.trim().length > 0;
+  const hasActiveFilter = filter !== "all";
+  const isFilteringLocally = deferredSearchQuery !== searchQuery;
+  const activeFilterLabel =
+    filterOptions.find((option) => option.key === filter)?.label ?? "全部";
+  const hasFilteredEmpty = hasItems && filteredItems.length === 0;
+  const conditionSummary = [
+    hasActiveFilter ? `筛选：${activeFilterLabel}` : "筛选：全部",
+    hasSearchQuery ? `搜索：${deferredSearchQuery}` : "搜索：未输入关键词",
+  ].join(" · ");
 
   function handleSelect(paperId: string) {
     setSelectedPaperId(paperId);
     setMockUpdateMessage(null);
+  }
+
+  function clearFilter() {
+    setFilter("all");
+  }
+
+  function clearSearch() {
+    setSearchQuery("");
   }
 
   function handleMockUpdate() {
@@ -164,25 +189,32 @@ export function PaperProgressPage({
             这一页不是完整文献库，也不是管理后台。它只帮助你快速判断哪些论文该继续看、该补什么、下一步做什么。
           </p>
         </div>
-        <div className="hero-actions">
-          <button
-            className="button-primary"
-            onClick={handleMockUpdate}
-            type="button"
-            disabled={!selectedPaper}
-            aria-describedby="progress-primary-action-note"
-          >
-            {selectedPaper ? "更新选中论文进度" : "请先选中一篇论文"}
-          </button>
-          <button className="button-secondary" onClick={onBackHome} type="button">
-            返回今日 Pulse
-          </button>
-          <button className="button-tertiary" onClick={onGoImport} type="button">
-            导入更多论文
-          </button>
-          <button className="button-tertiary" onClick={onGoPulse} type="button">
-            查看 Pulse 详情
-          </button>
+        <div className="hero-action-stack">
+          <div className="hero-actions">
+            <button
+              className="button-primary"
+              onClick={handleMockUpdate}
+              type="button"
+              disabled={!selectedPaper}
+              aria-describedby="progress-primary-action-note progress-selection-note"
+            >
+              更新选中论文进度
+            </button>
+            <button className="button-secondary" onClick={onBackHome} type="button">
+              返回今日 Pulse
+            </button>
+            <button className="button-tertiary" onClick={onGoImport} type="button">
+              导入更多论文
+            </button>
+            <button className="button-tertiary" onClick={onGoPulse} type="button">
+              查看 Pulse 详情
+            </button>
+          </div>
+          <p className="action-helper-copy" id="progress-selection-note">
+            {selectedPaper
+              ? `当前已选中「${selectedPaper.title}」，点击后只做本地预览，不会真实修改论文库。`
+              : "请选择一篇论文后再更新进度。"}
+          </p>
         </div>
       </section>
 
@@ -256,7 +288,7 @@ export function PaperProgressPage({
             <ProgressFilterBar options={filterOptions} activeKey={filter} onChange={(key) => setFilter(key as ProgressFilterKey)} />
             <div className="search-panel">
               <label className="field-label" htmlFor="progress-search-input">
-                按题名 / 作者 / 来源 / 关键词搜索
+                搜索题名、作者、来源、关键词或下一步动作
               </label>
               <input
                 id="progress-search-input"
@@ -264,11 +296,32 @@ export function PaperProgressPage({
                 type="search"
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
-                placeholder="例如：元数据补全 / 周宁 / 科研协同学刊"
+                placeholder="搜索题名、作者、来源、关键词或下一步动作"
               />
-              <p className="soft-copy">
-                当前筛选：{filterOptions.find((option) => option.key === filter)?.label ?? "全部"}，共 {filteredItems.length} 篇。
-              </p>
+              <div className="search-summary-panel" aria-live="polite">
+                <p className="soft-copy search-results-meta">{conditionSummary}</p>
+                <p className="soft-copy">
+                  当前结果：{filteredItems.length} 篇
+                  {hasSearchQuery ? "。建议先缩小到今天要处理的关键词。" : "。可以继续用筛选快速缩小范围。"}
+                </p>
+                {isFilteringLocally ? (
+                  <p className="soft-copy">正在按本地预览条件整理结果…</p>
+                ) : null}
+                {hasActiveFilter || hasSearchQuery ? (
+                  <div className="search-summary-actions">
+                    {hasActiveFilter ? (
+                      <button className="button-tertiary" onClick={clearFilter} type="button">
+                        清除筛选
+                      </button>
+                    ) : null}
+                    {hasSearchQuery ? (
+                      <button className="button-tertiary" onClick={clearSearch} type="button">
+                        清除搜索
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
             </div>
           </section>
 
@@ -280,7 +333,7 @@ export function PaperProgressPage({
               </div>
             </div>
             {filteredItems.length > 0 ? (
-              <div className="section-items">
+              <div className="section-items" role="list" aria-label="论文进度列表">
                 {filteredItems.map((item) => (
                   <ProgressPaperCard
                     key={item.paper_id}
@@ -293,14 +346,17 @@ export function PaperProgressPage({
             ) : (
               <EmptyState
                 compact
-                eyebrow="当前为空"
-                title="当前筛选条件下没有命中论文"
-                description={`当前没有符合“${filterOptions.find((option) => option.key === filter)?.label ?? "全部"}”和搜索词“${deferredSearchQuery || "空"}”的论文。建议先放宽筛选或清空搜索。`}
-                actionLabel="查看全部论文"
-                onAction={() => {
-                  setFilter("all");
-                  setSearchQuery("");
-                }}
+                eyebrow={hasFilteredEmpty ? "筛选结果为空" : "当前为空"}
+                title={hasFilteredEmpty ? "当前筛选下暂无论文" : "当前没有可展示的论文"}
+                description={
+                  hasFilteredEmpty
+                    ? `当前条件为“${conditionSummary}”。建议先清除筛选，或检查关键词后再继续。`
+                    : "当前还没有论文数据，建议先导入更多论文。"
+                }
+                actionLabel={hasFilteredEmpty ? "清除筛选" : "导入更多论文"}
+                onAction={hasFilteredEmpty ? clearFilter : onGoImport}
+                secondaryLabel={hasSearchQuery ? "清除搜索" : "返回今日 Pulse"}
+                onSecondaryAction={hasSearchQuery ? clearSearch : onBackHome}
               />
             )}
           </section>

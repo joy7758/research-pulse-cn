@@ -1,3 +1,5 @@
+import type { KeyboardEvent } from "react";
+
 import { Badge } from "./Badge";
 import type { PaperProgressItemRead } from "../lib/types";
 import {
@@ -30,13 +32,35 @@ export function ProgressPaperCard({
   selected,
   onSelect,
 }: ProgressPaperCardProps) {
+  const authorLine = item.authors.length > 0 ? item.authors.join(" / ") : "作者待补全";
+  const metadataDescriptionId = `${item.paper_id}-metadata`;
+  const selectionDescriptionId = `${item.paper_id}-selection`;
+
+  function handleSelect() {
+    onSelect(item.paper_id);
+  }
+
+  function handleKeyDown(event: KeyboardEvent<HTMLElement>) {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      handleSelect();
+    }
+  }
+
   return (
-    <article className={`paper-card progress-paper-card ${selected ? "paper-card-selected" : ""}`}>
+    <article
+      className={`paper-card progress-paper-card ${selected ? "paper-card-selected" : ""}`}
+      tabIndex={0}
+      onClick={handleSelect}
+      onKeyDown={handleKeyDown}
+      aria-current={selected ? "true" : undefined}
+      aria-describedby={`${metadataDescriptionId} ${selectionDescriptionId}`}
+    >
       <div className="paper-card-header">
         <div>
           <h4>{item.title}</h4>
           <p className="paper-meta">
-            {item.authors.join(" / ") || "作者待补全"}
+            {authorLine}
             {item.year ? ` · ${item.year}` : " · 年份待补全"}
             {item.venue ? ` · ${item.venue}` : " · 来源待补全"}
           </p>
@@ -55,7 +79,10 @@ export function ProgressPaperCard({
           </div>
           <button
             className={selected ? "button-secondary" : "button-tertiary"}
-            onClick={() => onSelect(item.paper_id)}
+            onClick={(event) => {
+              event.stopPropagation();
+              handleSelect();
+            }}
             type="button"
             aria-pressed={selected}
           >
@@ -86,14 +113,23 @@ export function ProgressPaperCard({
       </div>
 
       {item.warnings.length > 0 ? (
-        <div className="warning-list" aria-label="元数据待补全">
-          {item.warnings.map((warning) => (
-            <Badge key={warning} tone="warning" ariaLabel={`建议补全：${warning}`}>
-              建议补全：{warning}
-            </Badge>
-          ))}
+        <div className="progress-warning-stack">
+          <p className="eyebrow" id={metadataDescriptionId}>
+            建议补全
+          </p>
+          <div className="warning-list" aria-label="元数据待补全">
+            {item.warnings.map((warning) => (
+              <Badge key={warning} tone="warning" ariaLabel={`建议补全：${warning}`}>
+                建议补全：{warning}
+              </Badge>
+            ))}
+          </div>
         </div>
-      ) : null}
+      ) : (
+        <p className="soft-copy" id={metadataDescriptionId}>
+          当前没有待补全元数据。
+        </p>
+      )}
 
       <div className="paper-card-footer">
         <div className="badge-row">
@@ -108,7 +144,9 @@ export function ProgressPaperCard({
             </Badge>
           ))}
         </div>
-        <span className="paper-next-action">{selected ? "已加入本地更新预览" : "可加入本地更新预览"}</span>
+        <span className="paper-next-action" id={selectionDescriptionId}>
+          {selected ? "已加入本地更新预览，可直接触发主动作。" : "可加入本地更新预览。"}
+        </span>
       </div>
     </article>
   );

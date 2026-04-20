@@ -143,6 +143,7 @@ Private repository. Proprietary and confidential.
   - `docs/frontend_minimal_web_shell_v1.md`
   - `docs/frontend_minimal_web_shell_hardening_v1.md`
   - `docs/frontend_paper_progress_page_v1.md`
+  - `docs/frontend_paper_progress_page_hardening_v1.md`
 - Frontend-1 app:
   - `apps/research-pulse-web`
 - Minimal local run:
@@ -157,6 +158,7 @@ Private repository. Proprietary and confidential.
   - it defaults to mock mode over curated demo JSON
   - it now includes curated `default / empty / issues / broken` mock scenarios for page-state validation
   - the only Frontend-2 expansion is `论文进度` as the 4th page
+  - Frontend-2 hardening only stabilizes the paper-progress page itself
   - it does not add login, admin, real WeChat, real mini-program, or real desktop delivery
 
 ## What is included

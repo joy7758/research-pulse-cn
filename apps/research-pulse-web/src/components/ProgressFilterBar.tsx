@@ -24,6 +24,7 @@ export function ProgressFilterBar({
           className={`filter-chip ${option.key === activeKey ? "filter-chip-active" : ""}`}
           onClick={() => onChange(option.key)}
           aria-pressed={option.key === activeKey}
+          aria-label={`${option.label}，${option.count} 篇${option.key === activeKey ? "，当前已选中" : ""}`}
         >
           <span>{option.label}</span>
           <strong>{option.count}</strong>
