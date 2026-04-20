@@ -5,6 +5,179 @@ Commercial closed-source backend for a China-focused research paper lifecycle an
 ## Repository status
 Private repository. Proprietary and confidential.
 
+## Current Product Direction
+- Active direction:
+  - China-first Research Pulse
+- Product focus:
+  - import papers
+  - track paper and research progress
+  - generate daily Research Pulse
+  - deliver through desktop, official account, and mini-program surfaces
+- Frozen direction:
+  - admin preset, registry, threshold, report, print, copy, and audit overbuild
+- Read these docs before planning new work:
+  - `docs/product_pivot_china_first_research_pulse_v1.md`
+  - `docs/zotero_reference_strategy_v1.md`
+  - `docs/frozen_admin_overbuild_scope_v1.md`
+  - `docs/mvp_china_first_research_pulse_roadmap_v1.md`
+
+## Current MVP Flow
+- Current MVP chain:
+  - `import formats`
+  - `import preview`
+  - `import commit`
+  - `paper progress`
+  - `Research Pulse draft`
+  - `official-account daily summary draft`
+  - `desktop notification draft`
+  - `mini-program detail preview`
+- Current backend paths on that chain:
+  - `POST /papers/import-preview`
+  - `POST /papers/import-commit`
+  - `GET /papers/progress`
+  - `GET /papers/progress/summary`
+  - `GET /papers/progress/pulse-context`
+  - `PATCH /papers/{paper_id}/progress`
+  - `POST /pulse/papers/daily`
+  - `POST /pulse/papers/official-account/daily-summary`
+  - `POST /pulse/papers/desktop-notification/draft`
+  - `POST /pulse/papers/mini-program/detail/preview`
+- Delivery boundary:
+  - all official-account, desktop, and mini-program outputs are still `draft` / `preview` / `not_sent`
+  - there is no real WeChat send, real desktop push, or real mini frontend in the current MVP
+- Smoke-test doc:
+  - `docs/mvp_end_to_end_smoke_test_v1.md`
+
+## MVP API Contract Freeze
+- MVP contract docs:
+  - `docs/api_contract_mvp_v1.md`
+  - `docs/schema_contract_mvp_v1.md`
+  - `docs/error_warning_contract_mvp_v1.md`
+  - `docs/mvp_end_to_end_smoke_test_v1.md`
+- Current freeze focus:
+  - keep the API path list stable
+  - keep key schema fields stable
+  - keep `draft` / `preview` / `not_sent` semantics stable
+  - avoid accidental drift before frontend, mini-program, desktop, or official-account real integration starts
+
+## MVP UI Direction
+- Design-1 docs:
+  - `docs/ui_reference_audit_mvp_v1.md`
+  - `docs/mvp_interface_principles_v1.md`
+  - `docs/mvp_information_architecture_v1.md`
+  - `docs/mvp_user_flows_v1.md`
+  - `docs/mvp_copywriting_guidelines_cn_v1.md`
+- UI direction in one sentence:
+  - make the first screen answer what to read today, what needs fixing, and what to do next
+- Current UI guardrails:
+  - do not turn the homepage into a dense literature manager
+  - do not expose raw import complexity before the user needs it
+  - keep official-account, desktop, and mini surfaces explicit as `draft` / `preview` only
+
+## MVP Wireframe Spec
+- Design-2 docs:
+  - `docs/mvp_wireframes_v1.md`
+  - `docs/mvp_page_state_matrix_v1.md`
+  - `docs/mvp_component_inventory_v1.md`
+  - `docs/mvp_interaction_spec_v1.md`
+  - `docs/mvp_wireframe_acceptance_checklist_v1.md`
+- Scope:
+  - documentation-only page wireframes
+  - page state matrix
+  - component inventory
+  - interaction rules and acceptance checklist
+- Guardrail:
+  - do not turn Design-2 into frontend implementation work
+
+## MVP Visual Language and Prototype Spec
+- Design-3 docs:
+  - `docs/mvp_visual_language_v1.md`
+  - `docs/mvp_design_tokens_v1.md`
+  - `docs/mvp_component_visual_rules_v1.md`
+  - `docs/mvp_clickable_prototype_spec_v1.md`
+  - `docs/mvp_responsive_layout_rules_v1.md`
+  - `docs/mvp_accessibility_readability_v1.md`
+  - `docs/mvp_visual_acceptance_checklist_v1.md`
+- Scope:
+  - visual language
+  - design tokens
+  - component visual rules
+  - clickable prototype paths
+  - responsive/readability guidance
+- Guardrail:
+  - do not turn Design-3 into frontend implementation or visual system overbuild
+
+## MVP Local Demo
+- Demo docs:
+  - `docs/mvp_demo_fixture_pack_v1.md`
+  - `docs/mvp_local_demo_script_v1.md`
+- Minimal local demo command:
+  - `.venv/bin/python scripts/run_mvp_demo.py --output-dir /tmp/research_pulse_cn_demo --date 2026-04-19 --format csv --max-items-per-section 3`
+- Demo output:
+  - import preview and commit JSON
+  - progress summary JSON
+  - Research Pulse draft JSON
+  - official-account / desktop / mini demo payloads
+  - `demo_summary.md` for non-technical walkthroughs
+- Guardrail:
+  - the demo stays local, offline, and deterministic
+  - it does not introduce real WeChat, desktop notification, mini-program, or external-model integration
+
+## Frontend Technical Feasibility
+- Frontend-0 docs:
+  - `docs/frontend_technical_feasibility_review_v1.md`
+  - `docs/frontend_mvp_scope_v1.md`
+  - `docs/frontend_api_consumption_plan_v1.md`
+  - `docs/frontend_demo_data_mapping_v1.md`
+  - `docs/frontend_component_mapping_v1.md`
+  - `docs/frontend_implementation_sequence_v1.md`
+  - `docs/frontend_acceptance_checklist_v1.md`
+  - `docs/PROMPT_FRONTEND_1_MINIMAL_WEB_SHELL_CN.md`
+- Current boundary:
+  - this phase fixed the implementation boundary before code started
+  - Frontend-1 must stay limited to a minimal web shell over frozen APIs and demo JSON
+  - do not expand directly into a full product frontend
+
+## Frontend Minimal Web Shell
+- Frontend-1 docs:
+  - `docs/frontend_minimal_web_shell_v1.md`
+  - `docs/frontend_minimal_web_shell_hardening_v1.md`
+  - `docs/frontend_paper_progress_page_v1.md`
+  - `docs/frontend_paper_progress_page_hardening_v1.md`
+  - `docs/frontend_channel_draft_preview_pages_v1.md`
+  - `docs/frontend_channel_draft_preview_pages_hardening_v1.md`
+  - `docs/frontend_channel_draft_preview_pages_v2.md`
+- Frontend-1 app:
+  - `apps/research-pulse-web`
+- Minimal local run:
+  - `cd apps/research-pulse-web && npm install`
+  - `npm run dev`
+- Hardening checks:
+  - `npm run build`
+  - `npm run lint`
+  - `npm run typecheck`
+- Current boundary:
+  - the shell now includes 7 pages
+  - it defaults to mock mode over curated demo JSON
+  - it now includes curated `default / empty / issues / broken` mock scenarios for page-state validation
+  - Frontend-2 expansion adds `论文进度` as the 4th page
+  - Frontend-3 adds 3 channel draft / preview pages:
+    - official-account draft
+    - desktop notification draft
+    - mini-program detail preview
+  - Frontend-3 hardening keeps those 3 pages mock-only while tightening:
+    - empty / warning / disabled / mock-only 文案
+    - payload copy feedback
+    - narrow-screen channel layouts
+    - tab / action accessibility
+  - Frontend-4 keeps the same 3 channel pages and only refines:
+    - copy feedback reset across scenarios and tabs
+    - auto-dismiss for local copy feedback
+    - keyboard navigation for mini-program detail tabs
+    - overflow handling for long titles, paths, and notes
+  - these pages stay mock-only and only expose `draft / preview / not_sent`
+  - it does not add login, admin, real WeChat, real mini-program, or real desktop delivery
+
 ## What is included
 - FastAPI backend with OpenAPI docs
 - SQLAlchemy 2 models and Alembic migration
@@ -29,7 +202,9 @@ Private repository. Proprietary and confidential.
 - The same analytics reserve now also observes a read-only `workspace_board -> invite` redirect bridge so admin users can aggregate invite-handoff conversion without mixing share, invite, or self-service tokens
 - The same analytics reserve now also observes a read-only `workspace_board -> result collect` redirect bridge so admin users can aggregate collect-handoff conversion without mixing board-share tokens with digest/paper share tokens or self-service tokens
 - An admin-only group workspace conversion overview reserve now aggregates persisted share, handoff, invite-claim, and result-collect signals into global and per-workspace read models without introducing probabilistic attribution or source-file semantics
-- A thin internal React/Vite admin shell under `apps/group-workspace-admin-web` for operator-managed workspace list/detail, member/paper add-remove flows, and `workspace_board` share-grant issuance without introducing end-user login or source-file sharing
+- The same admin boundary now also exposes read-only conversion drilldown reserves with daily buckets, recent activity lists, and top workspace/share-grant aggregates while keeping invite claims explicitly workspace-level aggregate signals in v1
+- The same admin boundary now also exposes read-only per-share conversion drilldown reserves for one `ResultShareGrant` or one `ResultShareAlias`, keeping alias drilldown limited to alias-scoped access behavior while direct collect linkage remains grant-level only
+- A thin internal React/Vite admin shell under `apps/group-workspace-admin-web` for operator-managed workspace list/detail, member/paper add-remove flows, `workspace_board` share-grant issuance, read-only global/workspace conversion overview plus drilldown dashboards with compact time-window and dimension filters, read-only per-share grant/alias drilldown dashboards over the existing admin reserve, and a safe global registry for browsing share grants / aliases with applied filter chips, deterministic stable sort, grant-alias relationship shortcuts, local-only saved views with optional safe per-share drilldown context, local JSON preset import/export with merge-or-replace preview validation, local preset diagnostics / last-good backup / recovery controls, local-only preset activity history and audit summary, a local preset workspace for pinning and quick apply, a separate local JSON import/export path for preset workspace organization state, plus a deterministic local-only preset workspace health score with findings, recommended local actions, browser-local threshold preferences, safe local JSON/Markdown health report export, and clipboard-safe local report summaries, all without introducing end-user login or source-file sharing
 - A thin internal React/Vite admin shell under `apps/user-workbench-admin-web` for read-only search and drilldown across users, papers, and research watch profiles without introducing end-user login, file sharing, or business write flows
 - A backend-only workspace invite/join reserve that adds opaque invite grants, public invite bootstrap, self-service claim-preview/claim routes, and safe membership summaries without introducing source-file sharing or a generic login system
 - A thin public React/Vite invite shell under `apps/group-workspace-invite-web` for safe workspace-invite bootstrap, self-service claim preview/claim, and membership confirmation without introducing end-user login, browser token persistence, or source-file sharing
@@ -273,8 +448,11 @@ Admin-only analytics reserve now also exists behind the same share boundary:
 - `GET /admin/result-share-analytics/events`
 - `GET /admin/group-workspace-conversion-overview`
 - `GET /admin/group-workspaces/{workspace_id}/conversion-overview`
+- `GET /admin/group-workspace-conversion-drilldown`
+- `GET /admin/group-workspaces/{workspace_id}/conversion-drilldown`
 - event capture is backend-only and does not add browser trackers or expose raw IPs, full referrer URLs, or raw user agents
 - conversion overview stays aggregate-only and explicitly separates direct share/collect links from workspace-level invite aggregates
+- conversion drilldown adds daily buckets, recent safe rows, and top workspace/share-grant lists without introducing new attribution logic
 - does not add login, editing, or source-file sharing
 
 The separate invite shell under `apps/group-workspace-invite-web` now also:
@@ -289,6 +467,30 @@ The repository now also includes a thin internal browser shell under `apps/group
 - TypeScript
 - Vite
 
+The same shell now also includes a read-only result-share registry layer:
+- global share-grant registry rows
+- global alias registry rows
+- safe status and timestamp summaries only
+- quick-open actions that reuse the existing per-share drilldown panel
+- applied registry filter chips plus deterministic stable sort controls
+- grant-to-alias quick filters and alias-to-underlying-grant quick-open shortcuts
+- local-only saved views over non-sensitive registry filter/sort state, with optional safe per-share drilldown context
+- local-only preset JSON export/import with schema validation, merge/replace modes, and import preview before browser storage changes
+- local-only preset diagnostics, corrupted-storage validation, validation-only import preview, last-good backup snapshots, and safe reset/recovery controls
+- local-only preset activity history with safe action summaries, recent operations, and compact audit counts
+- a local preset workspace with pinned grant/alias presets, quick apply, recent local preset context, stale pin cleanup, and organization-only reset controls
+- local preset workspace JSON import/export for browser-local organization state only, with stale-pin preview, merge/replace handling, and workspace-only backup restore
+- a deterministic local preset workspace health score with breakdown dimensions, safety findings, and recommended local actions over diagnostics, stale pins, backups, audit history, and workspace import/export previews
+- local health threshold preferences for status mapping, local penalty overrides, reset-to-defaults, and draft validation preview without backend persistence
+- local JSON and Markdown health report export for that workspace health score, with safe report validation, threshold-source summary, findings/recommendations recap, and explicit safety exclusions
+- no plaintext tokens, plaintext aliases, or write actions
+- health scoring is browser-local operator hygiene only and is not backend, security, or compliance scoring
+
+This admin preset/report track is now frozen:
+- keep existing code
+- fix blockers only
+- do not extend this area with new feature phases
+
 This shell:
 - accepts an admin/operator bearer token from manual paste or query/fragment fallback
 - keeps the token in memory only
@@ -297,6 +499,21 @@ This shell:
   - `GET /admin/group-workspaces/{workspace_id}/board`
   - member and paper add/remove routes
   - `workspace_board` share-grant create/revoke flows
+- renders read-only conversion dashboards from:
+  - `GET /admin/group-workspace-conversion-overview`
+  - `GET /admin/group-workspaces/{workspace_id}/conversion-overview`
+  - `GET /admin/group-workspace-conversion-drilldown`
+  - `GET /admin/group-workspaces/{workspace_id}/conversion-drilldown`
+- supports read-only filter controls for:
+  - `date_from`
+  - `date_to`
+  - `share_kind`
+  - `access_mode`
+  - `event_type`
+  - `outcome`
+  - `limit` on drilldown recent/top sections
+- shows aggregate overview cards separately from deeper drilldown sections such as daily buckets, recent safe rows, top workspaces, and top result-share grants
+- makes it explicit that filter scope narrows the read model but does not change direct-vs-aggregate attribution semantics
 - reuses existing `GET /users` and `GET /papers` reads as internal lookup sources
 - does not add end-user login, public editing, or source-file sharing
 

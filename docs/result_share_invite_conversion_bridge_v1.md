@@ -35,6 +35,7 @@
   - no raw full user-agent storage
   - analytics failures must not block the redirect
 - These redirect events now also feed admin-only aggregate conversion overview reads; invite-claim outcomes remain workspace-level aggregates instead of strict per-share attribution in v1.
+- The first operator-facing consumer of those aggregates is the existing internal `apps/group-workspace-admin-web` shell.
 
 ## Bootstrap Handoff URL Enrichment
 - `workspace_board` share bootstrap now extends `workspace_invite_handoff_reserve` with:

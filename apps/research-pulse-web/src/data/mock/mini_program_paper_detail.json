@@ -1,0 +1,102 @@
+{
+  "detail_id": "demo-mini-paper-detail-20260419",
+  "detail_type": "paper",
+  "user_id": "demo-user-20260419",
+  "pulse_date": "2026-04-19",
+  "timezone": "Asia/Shanghai",
+  "title": "科研论文元数据补全的人机协作流程",
+  "subtitle": "论文详情预览",
+  "summary": "当前为高优先级，未读，研究阶段为收件箱。",
+  "cards": [
+    {
+      "card_id": "paper-detail",
+      "card_type": "paper_detail",
+      "title": "论文详情",
+      "subtitle": "年份待补全 · 来源待补全",
+      "body": "当前阅读状态为未读，研究阶段为收件箱，优先级为高优先级。当前仍有元数据待补全。",
+      "items": [
+        {
+          "item_id": "paper-metadata-detail",
+          "paper_id": "paper-metadata",
+          "title": "科研论文元数据补全的人机协作流程",
+          "authors": ["王岚"],
+          "year": null,
+          "venue": null,
+          "doi": null,
+          "url": "https://example.local/demo/metadata",
+          "priority": "high",
+          "reading_status": "unread",
+          "research_stage": "inbox",
+          "next_action": null,
+          "reason": "该论文仍有元数据待补全，建议先补齐基础信息再继续后续整理。",
+          "suggested_action": "先补全作者、年份、来源或 DOI，再继续推进阅读和筛选。",
+          "metadata_warnings": [
+            "缺少发表年份。",
+            "缺少来源。",
+            "缺少 DOI。"
+          ],
+          "tags": ["待补全"],
+          "source_format": "tabular",
+          "safe_abstract": null,
+          "detail_path": "/pages/papers/detail?id=paper-metadata"
+        }
+      ],
+      "badges": ["高优先级", "未读", "收件箱"],
+      "warnings": ["元数据仍未补全，当前只适合 preview 展示。"],
+      "empty_reason": null
+    }
+  ],
+  "actions": [
+    {
+      "action_id": "open_daily_pulse",
+      "label": "查看今日 Pulse",
+      "kind": "open_daily_pulse",
+      "path": "/pages/pulse/detail?date=2026-04-19",
+      "payload": {
+        "date": "2026-04-19"
+      }
+    },
+    {
+      "action_id": "open_metadata_attention",
+      "label": "查看元数据待补全",
+      "kind": "open_metadata_attention",
+      "path": "/pages/papers/list?filter=metadata_attention",
+      "payload": {
+        "filter": "metadata_attention"
+      }
+    }
+  ],
+  "share_card": {
+    "title": "论文详情：科研论文元数据补全的人机协作流程",
+    "summary": "当前为高优先级，未读，研究阶段为收件箱。",
+    "path": "/pages/papers/detail?id=paper-metadata",
+    "image_placeholder": null,
+    "share_safe": true,
+    "redacted_fields": [
+      "原始导入内容",
+      "用户笔记",
+      "研究笔记",
+      "内部调试字段"
+    ]
+  },
+  "navigation": {
+    "current_path": "/pages/papers/detail?id=paper-metadata",
+    "back_path": "/pages/pulse/detail?date=2026-04-19",
+    "related_paths": [
+      "/pages/papers/list",
+      "/pages/papers/list?filter=metadata_attention"
+    ]
+  },
+  "source_research_pulse_draft_id": null,
+  "total_source_papers": 1,
+  "total_items": 1,
+  "warnings": [
+    "当前 paper detail 预览只暴露适合小程序详情页展示的基础字段。"
+  ],
+  "generated_at": "2026-04-19T16:54:07Z",
+  "delivery_state": "preview",
+  "visibility_notes": [
+    "当前结果仅为小程序详情页 preview，不代表真实微信小程序页面、登录或订阅能力。",
+    "share_safe=true 时，已裁剪原始导入内容、研究笔记和内部调试字段。"
+  ]
+}

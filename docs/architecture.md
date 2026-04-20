@@ -3,6 +3,132 @@
 ## Overview
 Research Pulse CN is implemented as a modular monolith that keeps domain decisions, persistence, adapters, and API transport separate while remaining easy to run in one process.
 
+## Current Product Direction
+- Active direction:
+  - China-first Research Pulse
+- Product focus:
+  - import papers
+  - track paper and research progress
+  - generate daily Research Pulse
+  - deliver through desktop, official account, and mini-program surfaces
+- Frozen direction:
+  - admin preset, registry, threshold, report, print, copy, and audit overbuild
+- Read these docs before adding new roadmap phases:
+  - `docs/product_pivot_china_first_research_pulse_v1.md`
+  - `docs/zotero_reference_strategy_v1.md`
+  - `docs/frozen_admin_overbuild_scope_v1.md`
+  - `docs/mvp_china_first_research_pulse_roadmap_v1.md`
+
+## China-First Research Pulse MVP Architecture
+- MVP backend chain:
+  - import parsers normalize paper metadata into preview records
+  - import commit reuses `PaperProfile` persistence
+  - paper progress workbench reshapes committed papers into reading/research context
+  - paper-based `ResearchPulseService` turns that context into deterministic daily pulse drafts
+  - official-account, desktop, and mini-program services each adapt the same pulse context into channel-specific draft payloads
+- Active MVP adapters in this chain are draft-only:
+  - official-account daily summary draft
+  - desktop notification draft
+  - mini-program detail preview
+- There is still no real delivery system on this MVP chain:
+  - no real WeChat official-account send
+  - no real desktop system notification
+  - no real mini-program frontend or login
+- Admin preset/report/print/registry overbuild remains frozen:
+  - keep existing completed code
+  - blocker fixes only
+  - no new feature phases on that track
+
+## MVP Contract Boundaries
+- Import boundary:
+  - preview and commit are separate
+  - preview can warn or error without triggering downstream draft generation
+- Progress boundary:
+  - paper progress is the canonical research-state layer for the current MVP
+- Pulse boundary:
+  - `ResearchPulseService` produces deterministic daily draft content only
+  - it is not a real delivery system
+- Official-account boundary:
+  - daily summary output is a draft plus payload preview
+  - it does not send through the real WeChat provider path
+- Desktop boundary:
+  - desktop output is a local draft payload
+  - it does not call system notification APIs
+- Mini-program boundary:
+  - mini output is detail preview plus share-safe payload
+  - it does not imply mini frontend, login, or payment capability
+- Contract-freeze rule:
+  - keep these boundaries explicit in OpenAPI, schema docs, and tests
+  - do not let later platform work silently change draft-only semantics
+
+## MVP UI Direction
+- UI direction docs now live in:
+  - `docs/ui_reference_audit_mvp_v1.md`
+  - `docs/mvp_interface_principles_v1.md`
+  - `docs/mvp_information_architecture_v1.md`
+  - `docs/mvp_user_flows_v1.md`
+  - `docs/mvp_copywriting_guidelines_cn_v1.md`
+- UI architecture rule for the current MVP:
+  - homepage is `today's Research Pulse`, not a full literature database shell
+  - import stays a short `input -> preview -> confirm` flow
+  - paper progress is the main workbench for ongoing research decisions
+  - official-account, desktop, and mini outputs stay downstream previews of the same research context
+- No UI phase should silently weaken current backend boundaries:
+  - no real delivery system
+  - no real WeChat frontend/login/payment path
+  - no return to the frozen admin preset/report/print/registry track
+
+## MVP Wireframe Spec
+- Design-2 docs now define the page-level handoff for future frontend work:
+  - `docs/mvp_wireframes_v1.md`
+  - `docs/mvp_page_state_matrix_v1.md`
+  - `docs/mvp_component_inventory_v1.md`
+  - `docs/mvp_interaction_spec_v1.md`
+  - `docs/mvp_wireframe_acceptance_checklist_v1.md`
+- Wireframe boundary:
+  - documentation-only
+  - no frontend runtime or component implementation
+  - no backend contract change
+- Architecture implication:
+  - future UI work should map to the existing import -> progress -> pulse -> draft/preview chain
+  - page states must continue to expose `draft` / `preview` / `not_sent` semantics explicitly
+
+## MVP Visual Language and Prototype Spec
+- Design-3 docs now define the visual and prototype handoff for future frontend work:
+  - `docs/mvp_visual_language_v1.md`
+  - `docs/mvp_design_tokens_v1.md`
+  - `docs/mvp_component_visual_rules_v1.md`
+  - `docs/mvp_clickable_prototype_spec_v1.md`
+  - `docs/mvp_responsive_layout_rules_v1.md`
+  - `docs/mvp_accessibility_readability_v1.md`
+  - `docs/mvp_visual_acceptance_checklist_v1.md`
+- Boundary:
+  - documentation-only
+  - no frontend runtime or design-tool implementation
+  - no backend contract change
+- Architecture implication:
+  - future visual work must keep the homepage centered on Research Pulse decisions
+  - draft/preview/not_sent semantics remain first-class visual states, not hidden implementation details
+
+## MVP Local Demo
+- A local demo entry now exists to replay the current MVP chain with synthetic fixtures and a temporary SQLite runtime:
+  - `scripts/run_mvp_demo.py`
+  - `docs/mvp_demo_fixture_pack_v1.md`
+  - `docs/mvp_local_demo_script_v1.md`
+- Architecture boundary:
+  - this demo entry reuses existing routes and services
+  - it is not a production delivery system
+  - it does not add real WeChat, desktop notification, mini-program, or external-model integration
+
+## Frontend-0 Feasibility Boundary
+- Frontend-0 is planning-only and does not add runtime UI code.
+- Any future Frontend-1 shell should:
+  - consume the frozen API/schema contract
+  - support demo JSON mock mode first
+  - add real API mode only as an internal follow-up
+- Frontend work must not change backend contract just to simplify UI implementation.
+- Frontend work must not revive the frozen admin overbuild track.
+
 Core flow:
 1. CRUD APIs manage user profiles, paper profiles, events, snapshots, and subscription policies.
 2. Pulse preview and run requests build deterministic facts, candidates, scores, suppression reasons, and final selections.
@@ -18,12 +144,13 @@ Core flow:
 12. Admin-managed `GroupWorkspace` containers now group selected users and papers into compact shared boards, while `ResultShareGrant` exposes opaque public read-only links for structured digest issues, paper snapshots, and workspace boards without turning sharing into file sync.
 13. A thin public browser shell under `apps/result-share-web` now consumes those token-based share endpoints directly, optionally connects an in-memory self-service token, renders safe read-only structured outputs, exposes explicit collect-preview/collect actions for supported share kinds, and shows a manual invite/join handoff summary for `workspace_board` shares.
 14. A thin public browser shell under `apps/group-workspace-invite-web` now consumes the public invite bootstrap plus self-service claim routes, keeps invite/self-service tokens in memory only, and does not introduce a generic login surface or source-file sharing.
-15. A thin internal browser shell under `apps/group-workspace-admin-web` now consumes the admin-managed workspace and share-grant endpoints, reuses existing `GET /users` and `GET /papers` reads as lookup sources, and keeps admin bearer tokens in memory only.
-16. Sync devices consume incremental `SyncEvent` feeds and push idempotent mutations back through the same service layer.
-17. A Tauri desktop shell consumes the same sync feed, keeps a local SQLite outbox, performs limited writeback through `/sync/push`, manages a local-only paper workspace, stores local markdown notes/templates, keeps local review-matrix / response-letter workflows, exposes synced `SubscriptionPolicy` quiet-control fields in Settings with non-authoritative local hints, and renders sectioned daily digests on the Today page when the synced cache includes structured digest payloads.
-18. A pulse input layer now records lightweight work activity and research watch profiles so future retrieval can start from explicit inputs instead of implicit guesses.
-19. A thin internal browser shell under `apps/user-workbench-admin-web` now consumes read-only `/admin/user-workbench/*` aggregation routes so support workflows can traverse users, papers, and watch profiles without introducing writes or file sharing.
-20. An external retrieval boundary now converts those inputs into persisted source-specific plans, executes official-source fetches behind provider adapters, stores normalized scholarly results, and lets the pulse pipeline consume those persisted records for deterministic `related_paper` cards without executing retrieval inline.
+15. A thin internal browser shell under `apps/group-workspace-admin-web` now consumes the admin-managed workspace and share-grant endpoints, reuses existing `GET /users` and `GET /papers` reads as lookup sources, renders read-only conversion overview plus drilldown dashboards, adds compact time-window and dimension filters over those reads, can now open one grant or alias drilldown inside the same shell, adds a safe global registry for share grants and aliases with filter chips, deterministic stable sort, grant-alias cross-links, quick-open actions, local-only saved views over safe filter/sort state with optional safe per-share drilldown context, local JSON preset import/export with validation and merge/replace preview behavior, local preset integrity diagnostics plus last-good backup recovery, local-only preset activity history and audit summary, a local preset workspace for pinning and quick apply, a separate local JSON import/export path for preset workspace organization state, a deterministic local-only preset workspace health score with findings and recommendations, browser-local threshold preferences for that score, safe local JSON/Markdown health report export plus clipboard-safe local report summaries for that same score, and keeps admin bearer tokens in memory only.
+16. The same admin boundary now also exposes backend-only per-share drilldown reads for individual `ResultShareGrant` and `ResultShareAlias` objects so operators can inspect one share path without weakening the existing public boundary or inventing alias-level collect attribution.
+17. Sync devices consume incremental `SyncEvent` feeds and push idempotent mutations back through the same service layer.
+18. A Tauri desktop shell consumes the same sync feed, keeps a local SQLite outbox, performs limited writeback through `/sync/push`, manages a local-only paper workspace, stores local markdown notes/templates, keeps local review-matrix / response-letter workflows, exposes synced `SubscriptionPolicy` quiet-control fields in Settings with non-authoritative local hints, and renders sectioned daily digests on the Today page when the synced cache includes structured digest payloads.
+19. A pulse input layer now records lightweight work activity and research watch profiles so future retrieval can start from explicit inputs instead of implicit guesses.
+20. A thin internal browser shell under `apps/user-workbench-admin-web` now consumes read-only `/admin/user-workbench/*` aggregation routes so support workflows can traverse users, papers, and watch profiles without introducing writes or file sharing.
+21. An external retrieval boundary now converts those inputs into persisted source-specific plans, executes official-source fetches behind provider adapters, stores normalized scholarly results, and lets the pulse pipeline consume those persisted records for deterministic `related_paper` cards without executing retrieval inline.
 
 ## Module boundaries
 
@@ -334,6 +461,37 @@ Tie-break order is deterministic:
   - `GET /admin/group-workspaces/{workspace_id}/conversion-overview`
   - they aggregate only persisted view events, invite claims, and collect records
   - they explicitly separate direct share/collect links from workspace-level invite aggregates
+  - they can now accept the same read-only time-window and dimension filters that the admin shell surfaces for operator review
+- Admin conversion-drilldown reads extend the same reserve without changing public boundaries:
+  - `GET /admin/group-workspace-conversion-drilldown`
+  - `GET /admin/group-workspaces/{workspace_id}/conversion-drilldown`
+  - they reuse the same persisted records for daily buckets, recent safe rows, and top workspace/share-grant lists
+  - they keep invite claims labeled as workspace-level aggregate signals instead of strict per-share attribution
+- Admin per-share drilldown reads stay inside the same admin boundary:
+  - `GET /admin/result-share-grants/{grant_id}/conversion-drilldown`
+  - `GET /admin/result-share-aliases/{alias_id}/conversion-drilldown`
+  - grant drilldown combines direct share-event counts with direct collect linkage only when `GroupWorkspaceResultCollectRecord.result_share_grant_id` is present
+  - alias drilldown stays alias-scoped for access-path behavior and does not invent collect attribution when persistence is only grant-linked
+- The existing internal `apps/group-workspace-admin-web` shell can render those read-only conversion aggregates:
+  - a global overview panel
+  - a workspace-specific overview block in workspace detail
+  - a global drilldown panel for daily buckets, recent safe rows, top workspaces, and top result-share grants
+  - a workspace-specific drilldown block for recent activity plus active share/invite snapshots
+  - shared global/workspace filter bars for `date_from`, `date_to`, `share_kind`, `access_mode`, `event_type`, `outcome`, and drilldown `limit`
+  - attribution notes supplied by the backend read model rather than inferred client-side narratives
+  - a minimal per-share dashboard that can open one grant or alias drilldown, show aliases, recent events, direct collect rows, and attribution caveats without changing public share routes
+  - a read-only share registry with applied filter chips, stable frontend sorting, and grant-alias relationship shortcuts without introducing write actions
+  - local-only saved views for that registry, stored separately from bearer-token state and limited to safe filter/sort presets
+  - drilldown-linked preset application that can also restore safe per-share time-window, event-filter, and recent-row-limit context without backend preset persistence
+  - local preset JSON export/import with schema checks, unsafe-field rejection, and merge/replace scope handling without backend preset sync
+  - local preset diagnostics and recovery with integrity issue reports, validation-only import preview, last-good backup snapshots, and safe scope reset/discard actions without backend preset storage
+  - local preset activity history with safe action metadata only, capped browser-local retention, and no backend audit persistence
+  - local preset workspace organization with scope-aware pinning, quick apply, recent preset summaries, storage-health snippets, stale pin cleanup, and organization-only reset controls
+  - local workspace-state JSON export/import for that preset workspace, including stale-pin preview, merge/replace handling, and workspace-only backup restore without duplicating saved preset definition transfer
+  - a deterministic browser-local preset workspace health score that summarizes integrity, stale pins, backup readiness, audit reliability, import/export preview state, and drilldown-context hygiene without claiming backend, security, or compliance status
+  - browser-local threshold preferences for that health score so operators can adjust status mapping and selected local penalty weights without changing backend semantics or saved preset payloads
+  - local JSON and Markdown health report export for that workspace health score, including threshold-source summary, diagnostics recap, findings/recommendations summary, and explicit safe-exclusion notes without exporting preset payloads or source-file data
+  - this admin preset/report area is now frozen for blocker fixes only and is no longer the active roadmap center
 
 ### Result collect reserve boundary
 - `GroupWorkspaceResultCollectRecord` records one audit-friendly collect outcome per:

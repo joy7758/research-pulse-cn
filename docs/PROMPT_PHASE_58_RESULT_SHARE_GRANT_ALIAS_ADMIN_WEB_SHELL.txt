@@ -1,0 +1,271 @@
+Read AGENTS.md, docs/BUILD_SPEC.md, docs/architecture.md, docs/development.md, docs/group_workspace_admin_web_shell_v1.md, docs/group_workspace_conversion_admin_web_shell_v1.md, docs/group_workspace_conversion_drilldown_admin_web_shell_v1.md, docs/result_share_grant_alias_drilldown_reserve_v1.md, docs/result_share_analytics_reserve_v1.md, docs/result_share_alias_boundary_v1.md, docs/result_share_invite_conversion_bridge_v1.md, and docs/result_share_collect_conversion_bridge_v1.md before editing.
+
+Implement Phase 58 only: result share grant / alias admin web shell v1.
+
+Hard boundaries for this phase:
+- Do not add source file sharing.
+- Do not add local attachment sharing, note-file sharing, or cloud attachment sync.
+- Do not add real-time collaboration or live multi-user editing.
+- Do not add new delivery channels.
+- Do not add desktop or mini UI work in this phase.
+- Do not add a generic end-user login/session system.
+- Do not add campaign/broadcast/referral behavior.
+- Do not add third-party browser analytics scripts.
+- Do not add AI attribution, AI summarization, or LLM-based dashboard copy.
+- Do not create a new frontend app; extend the existing group-workspace-admin-web only.
+- Do not weaken existing auth boundaries.
+- Do not replace the modular monolith backend architecture.
+
+Primary goal:
+Extend the existing internal group-workspace admin shell with read-only per-share drilldown dashboards for:
+1. ResultShareGrant
+2. ResultShareAlias
+
+This phase should make the repository suitable for:
+- opening a specific share grant drilldown
+- opening a specific alias drilldown
+- reviewing direct event counts, aliases, recent events, and direct collect records
+- keeping grant-level vs alias-level attribution explicit
+- preparing a later richer per-share operator dashboard without exposing raw files
+
+Architectural intent:
+- Reuse existing apps/group-workspace-admin-web.
+- Reuse existing read-only backend endpoints only:
+  - GET /admin/result-share-grants/{grant_id}/conversion-drilldown
+  - GET /admin/result-share-aliases/{alias_id}/conversion-drilldown
+- Keep token handling exactly as the current in-memory admin shell.
+- Keep the dashboard compact, operator-readable, and explicitly safe.
+- No source-file semantics are exposed anywhere.
+
+Required changes:
+
+1. Reuse existing app
+Work only inside:
+- apps/group-workspace-admin-web
+
+Requirements:
+- do not create a new frontend app
+- preserve current workspace list/detail/member/paper/share-grant/conversion-overview/drilldown/filter behavior
+- add per-share drilldown views on top of the existing shell
+
+2. Existing admin auth boot flow remains unchanged
+Requirements:
+- continue to support in-memory admin bearer token entry
+- continue query/fragment token ingestion and immediate URL cleanup
+- do not persist admin bearer tokens in:
+  - localStorage
+  - sessionStorage
+  - cookies
+- reuse existing API base URL handling
+
+3. API client extension
+Extend the existing typed API client.
+
+Required calls:
+- GET /admin/result-share-grants/{grant_id}/conversion-drilldown
+- GET /admin/result-share-aliases/{alias_id}/conversion-drilldown
+
+Support reasonable filters where the backend already supports them:
+- date_from
+- date_to
+- access_mode
+- event_type
+- outcome
+- limit
+
+Requirements:
+- keep network logic out of React components
+- attach bearer token from in-memory state only
+- build query params deterministically
+- return structured error objects suitable for UI display
+
+4. Read models / view models
+Add frontend types/view models for:
+- ResultShareGrantConversionDrilldownRead
+- ResultShareAliasConversionDrilldownRead
+- ResultShareGrantSummaryViewModel
+- ResultShareAliasSummaryViewModel
+- ResultShareRecentEventViewModel
+- ResultShareDirectCollectRecordViewModel
+- ResultShareAttributionScopeViewModel
+- ResultShareGrantDrilldownViewModel
+- ResultShareAliasDrilldownViewModel
+
+Required dimensions to surface:
+
+Grant drilldown:
+- share_grant safe summary
+- window_start / window_end
+- total_events
+- bootstrap_view_count
+- content_view_count
+- redirect_count
+- invite_handoff_redirect_count
+- collect_handoff_redirect_count
+- resolved_event_count
+- rejected_event_count
+- by_access_mode
+- by_event_type
+- by_outcome
+- active_alias_count
+- aliases
+- recent_events
+- direct_collect_records
+- direct_collect_collected_count
+- direct_collect_already_present_count
+- direct_collect_rejected_count
+- unique_collecting_user_count
+- last_activity_at
+- attribution_scope
+- notes
+
+Alias drilldown:
+- alias safe summary
+- result_share_grant safe summary
+- window_start / window_end
+- total_events
+- bootstrap_view_count
+- content_view_count
+- redirect_count
+- invite_handoff_redirect_count
+- collect_handoff_redirect_count
+- resolved_event_count
+- rejected_event_count
+- by_event_type
+- by_outcome
+- recent_events
+- last_activity_at
+- attribution_scope
+- notes
+
+5. UI structure
+Extend the existing app shell with:
+- share drilldown launcher panel
+- share grant drilldown panel
+- alias drilldown panel
+- recent event list
+- alias list
+- direct collect record list
+- attribution notes block
+- empty/error states for per-share drilldown
+
+Requirements:
+- do not add a heavy routing system
+- a simple internal mode/toggle/panel approach is acceptable
+- if useful, support deep-link query params like:
+  - ?grant_id=...
+  - ?alias_id=...
+- no major design system dependency unless clearly justified
+- simple responsive layout is enough
+
+6. Integration behavior
+Requirements:
+- current workspace list/detail and conversion overview/drilldown remain intact
+- share drilldown may be entered:
+  - from existing workspace share-grant lists when practical
+  - from explicit grant_id / alias_id input when needed
+- alias rows inside grant drilldown should allow opening alias drilldown
+- no mutation actions in these panels
+- no revoke/create UI in this phase
+
+7. UX requirements
+Requirements:
+- show safe share/alias summary clearly
+- show direct event metrics and direct collect linkage separately
+- show alias drilldown as access-path scoped only
+- show zero-data states gracefully
+- do not over-interpret missing data
+- do not invent causal ratios
+- if any ratio is shown, make it optional, simple, and clearly derived
+
+8. Minimal backend compatibility
+Prefer no backend changes.
+
+Allowed only if strictly needed:
+- tiny response-shape normalization fixes
+- tiny query-param consistency fixes
+- tiny CORS/dev-origin support if current allowlist needs update
+- no migration unless absolutely necessary
+- no new mutations
+- no new analytics persistence
+
+9. Developer workflow and CI
+Reuse the existing group-workspace-admin-web app and commands.
+
+Requirements:
+- keep existing Makefile targets:
+  - workspace-admin-install
+  - workspace-admin-dev
+  - workspace-admin-lint
+  - workspace-admin-test
+  - workspace-admin-build
+- keep existing CI job for group-workspace-admin-web
+- extend tests/builds as needed
+- do not add deployment/release packaging
+
+10. Tests
+Add or update tests covering at minimum:
+
+Frontend / TS tests:
+- share grant drilldown shaping
+- alias drilldown shaping
+- by_access_mode / by_event_type / by_outcome shaping
+- alias list shaping
+- direct collect record shaping
+- attribution scope rendering/shaping
+- zero-data / empty-state shaping
+- token handling remains unchanged
+
+If lightweight component tests are practical:
+- share grant drilldown render
+- alias drilldown render
+- empty per-share drilldown state render
+- existing workspace list/detail/conversion behavior remains intact
+
+Backend:
+- no major backend work expected
+- if tiny compatibility changes are made, existing backend tests must continue to pass
+
+11. Documentation
+Add docs/result_share_grant_alias_admin_web_shell_v1.md
+
+It should explain:
+- why an internal per-share dashboard shell is added after per-share drilldown reserve exists
+- grant drilldown vs alias drilldown rendering
+- direct event attribution vs direct collect linkage
+- safe data model
+- current non-goals
+- future work:
+  - richer per-share operator dashboard
+  - time-series per-share views
+  - alias comparison UI if later justified
+  - still no source-file sharing by default
+
+Also update:
+- README.md
+- docs/development.md
+- docs/architecture.md
+- docs/group_workspace_admin_web_shell_v1.md
+- docs/group_workspace_conversion_drilldown_admin_web_shell_v1.md
+- docs/result_share_grant_alias_drilldown_reserve_v1.md
+- any docs that should mention the per-share admin shell
+
+12. Quality bar
+- keep frontend code typed and readable
+- keep backend changes zero or minimal
+- do not add unnecessary dependencies
+- do not require live external credentials in tests
+- do not add source-file sharing in this phase
+- do not add new channels in this phase
+- do not add a generic login system
+- do not weaken auth boundaries
+- do not add browser tracking scripts
+- run available checks
+- fix obvious lint/test issues
+- end with a concise summary:
+  - files changed
+  - whether any backend migration was needed
+  - changed app path
+  - surfaced drilldown sections
+  - attribution caveats
+  - next-phase recommendation only

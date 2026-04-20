@@ -1,0 +1,12 @@
+{
+  "preview_id": "mock-empty-preview",
+  "user_id": "demo-user-20260419",
+  "source_format": "mock",
+  "dry_run": false,
+  "committed_at": "2026-04-19T16:54:07Z",
+  "total_selected": 0,
+  "committed_count": 0,
+  "skipped_count": 0,
+  "failed_count": 0,
+  "record_results": []
+}

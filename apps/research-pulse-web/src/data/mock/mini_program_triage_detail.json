@@ -1,0 +1,121 @@
+{
+  "detail_id": "demo-mini-triage-20260419",
+  "detail_type": "triage",
+  "user_id": "demo-user-20260419",
+  "pulse_date": "2026-04-19",
+  "timezone": "Asia/Shanghai",
+  "title": "新导入待筛选详情",
+  "subtitle": "集中展示仍处于 inbox / triage / unread 的论文。",
+  "summary": "当前共有 2 项适合在小程序里继续处理。",
+  "cards": [
+    {
+      "card_id": "newly-imported-triage",
+      "card_type": "triage",
+      "title": "新导入待筛选",
+      "subtitle": null,
+      "body": "帮助把新导入但尚未筛选的论文尽快进入研究流程。",
+      "items": [
+        {
+          "item_id": "paper-metadata-triage",
+          "paper_id": "paper-metadata",
+          "title": "科研论文元数据补全的人机协作流程",
+          "authors": ["王岚"],
+          "year": null,
+          "venue": null,
+          "doi": null,
+          "url": "https://example.local/demo/metadata",
+          "priority": "high",
+          "reading_status": "unread",
+          "research_stage": "inbox",
+          "next_action": null,
+          "reason": "该论文刚导入且仍处于待筛选阶段，建议先完成相关性判断。",
+          "suggested_action": "先判断是否与当前研究问题相关，并决定保留、推进或暂缓。",
+          "metadata_warnings": [
+            "缺少发表年份。",
+            "缺少来源。",
+            "缺少 DOI。"
+          ],
+          "tags": ["待补全"],
+          "source_format": "tabular",
+          "safe_abstract": null,
+          "detail_path": "/pages/papers/detail?id=paper-metadata"
+        },
+        {
+          "item_id": "paper-triage-detail",
+          "paper_id": "paper-triage",
+          "title": "新导入论文筛选优先级的规则化框架",
+          "authors": ["赵卓"],
+          "year": 2024,
+          "venue": "情报工程",
+          "doi": "10.4242/demo-triage-2024",
+          "url": "https://example.local/demo/triage",
+          "priority": "normal",
+          "reading_status": "unread",
+          "research_stage": "triage",
+          "next_action": null,
+          "reason": "该论文刚导入且仍处于待筛选阶段，建议先完成相关性判断。",
+          "suggested_action": "先判断是否与当前研究问题相关，并决定保留、推进或暂缓。",
+          "metadata_warnings": [],
+          "tags": ["待筛选"],
+          "source_format": "tabular",
+          "safe_abstract": null,
+          "detail_path": "/pages/papers/detail?id=paper-triage"
+        }
+      ],
+      "badges": ["2 项"],
+      "warnings": [],
+      "empty_reason": null
+    }
+  ],
+  "actions": [
+    {
+      "action_id": "open_daily_pulse",
+      "label": "查看今日 Pulse",
+      "kind": "open_daily_pulse",
+      "path": "/pages/pulse/detail?date=2026-04-19",
+      "payload": {
+        "date": "2026-04-19"
+      }
+    },
+    {
+      "action_id": "open_triage",
+      "label": "查看待筛选论文",
+      "kind": "open_triage",
+      "path": "/pages/papers/list?filter=triage",
+      "payload": {
+        "detail_type": "triage"
+      }
+    }
+  ],
+  "share_card": {
+    "title": "新导入待筛选详情",
+    "summary": "当前共有 2 项适合在小程序里继续处理。",
+    "path": "/pages/papers/list?filter=triage",
+    "image_placeholder": null,
+    "share_safe": true,
+    "redacted_fields": [
+      "原始导入内容",
+      "用户笔记",
+      "研究笔记",
+      "内部调试字段"
+    ]
+  },
+  "navigation": {
+    "current_path": "/pages/papers/list?filter=triage",
+    "back_path": "/pages/pulse/detail?date=2026-04-19",
+    "related_paths": [
+      "/pages/pulse/detail?date=2026-04-19",
+      "/pages/papers/list"
+    ]
+  },
+  "source_research_pulse_draft_id": "demo-pulse-20260419",
+  "total_source_papers": 5,
+  "total_items": 2,
+  "warnings": [],
+  "generated_at": "2026-04-19T16:54:07Z",
+  "delivery_state": "preview",
+  "visibility_notes": [
+    "当前结果仅为小程序详情页 preview，不代表真实微信小程序页面、登录或订阅能力。",
+    "当前 path 仅为前端占位路径，不会触发真实微信 API。"
+  ]
+}

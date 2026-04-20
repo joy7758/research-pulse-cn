@@ -1,0 +1,221 @@
+Read AGENTS.md, docs/BUILD_SPEC.md, docs/architecture.md, docs/development.md, docs/group_workspace_admin_web_shell_v1.md, docs/result_share_registry_admin_web_shell_v1.md, docs/result_share_registry_filter_sort_admin_web_v1.md, docs/result_share_grant_alias_admin_web_shell_v1.md, and docs/result_share_grant_alias_drilldown_reserve_v1.md before editing.
+
+Implement Phase 61 only: result share registry saved views admin web shell v1.
+
+Hard boundaries for this phase:
+- Do not add source file sharing.
+- Do not add local attachment sharing, note-file sharing, or cloud attachment sync.
+- Do not add real-time collaboration or live multi-user editing.
+- Do not add new delivery channels.
+- Do not add desktop or mini UI work in this phase.
+- Do not add a generic end-user login/session system.
+- Do not add campaign/broadcast/referral behavior.
+- Do not add third-party browser analytics scripts.
+- Do not add AI attribution, AI summarization, or LLM-based dashboard copy.
+- Do not create a new frontend app; extend the existing group-workspace-admin-web only.
+- Do not weaken existing auth boundaries.
+- Do not replace the modular monolith backend architecture.
+
+Primary goal:
+Add local saved-view presets for the already completed read-only result share registry.
+
+This phase should make the repository suitable for:
+- saving common share grant registry filters/sorts
+- saving common alias registry filters/sorts
+- restoring a preferred operator view quickly
+- switching between presets without manual re-entry
+- staying strictly read-only and file-safe
+
+Architectural intent:
+- Reuse existing apps/group-workspace-admin-web only.
+- Build on top of the completed Phase 60 registry/filter/sort UX.
+- Presets are local-only in v1.
+- Presets must never include admin bearer tokens.
+- No backend persistence is required unless an extremely small compatibility fix becomes absolutely necessary.
+
+Required changes:
+
+1. Reuse existing app only
+Work inside:
+- apps/group-workspace-admin-web
+
+Requirements:
+- do not create a new frontend app
+- preserve current registry/filter/sort/drilldown behavior
+- add saved-view UX on top of the existing registry shell
+
+2. Existing admin auth boot flow remains unchanged
+Requirements:
+- continue in-memory admin bearer token entry
+- continue query/fragment token ingestion and immediate URL cleanup
+- do not persist admin bearer tokens in:
+  - localStorage
+  - sessionStorage
+  - cookies
+- reuse existing API base URL handling
+
+3. Preset persistence boundary
+Add local-only preset persistence.
+
+Allowed storage:
+- localStorage only for non-sensitive saved-view presets and UI preferences
+
+Must NOT store:
+- admin bearer token
+- raw share tokens
+- raw aliases
+- any secret or credential
+- any response payloads that exceed compact safe filter/sort state
+
+Suggested storage keys:
+- resultShareRegistryGrantPresets
+- resultShareRegistryAliasPresets
+- resultShareRegistryDefaultPresetId optional
+
+4. Preset models
+Add frontend types/view models for:
+- ResultShareRegistrySavedView
+- ResultShareRegistrySavedViewDraft
+- ResultShareRegistrySavedViewSummary
+- ResultShareRegistrySavedViewScope = "grant_registry" | "alias_registry"
+- ResultShareRegistrySavedViewStoreState
+
+Minimum saved fields:
+- id
+- name
+- scope
+- filters
+- sort
+- createdAt
+- updatedAt
+
+Filters/sort should reuse existing safe filter models from Phase 60.
+
+5. Preset actions
+Support:
+- save current view as preset
+- overwrite existing preset
+- apply preset
+- delete preset
+- set default preset optionally
+- clear current filters without deleting presets
+
+Requirements:
+- presets must be separate for grant registry and alias registry scopes
+- applying a preset should update existing filter/sort draft + applied state consistently
+- grant ↔ alias quick filter shortcuts from Phase 60 must still work
+- preset application must not silently alter unrelated scope state
+
+6. UI structure
+Extend the existing ResultShareRegistryPanel with:
+- saved views section
+- save current view action
+- preset picker/list
+- overwrite action
+- delete action
+- optional default preset marker
+- empty state for no presets
+
+Requirements:
+- keep current registry filters and sorts visible
+- make it clear presets are local-only
+- simple responsive layout is enough
+- no major design system dependency unless clearly justified
+
+7. Safe UX requirements
+Requirements:
+- saved view labels must be user-editable but purely local
+- show which filters/sort a preset contains
+- zero-result states should remain honest
+- do not imply backend-saved team views
+- do not store unsafe fields
+- do not add export/import in this phase
+
+8. Minimal backend compatibility
+Prefer zero backend changes.
+
+Allowed only if strictly needed:
+- tiny response-shape normalization fixes
+- no migration
+- no new endpoints
+- no mutations
+- no new analytics persistence
+
+9. Developer workflow and CI
+Reuse the existing group-workspace-admin-web app and commands.
+
+Requirements:
+- keep existing Makefile targets:
+  - workspace-admin-install
+  - workspace-admin-dev
+  - workspace-admin-lint
+  - workspace-admin-test
+  - workspace-admin-build
+- keep existing CI job for group-workspace-admin-web
+- extend tests/builds as needed
+- do not add deployment/release packaging
+
+10. Tests
+Add or update tests covering at minimum:
+
+Frontend / TS tests:
+- saved view draft shaping
+- save/apply/overwrite/delete preset logic
+- preset serialization/deserialization
+- default preset restore logic if implemented
+- grant-scope preset does not pollute alias-scope preset and vice versa
+- token handling remains unchanged
+- zero-preset empty state shaping
+
+If component tests are practical:
+- saved views panel render
+- save current view action render
+- apply preset action render
+- delete preset action render
+- existing registry/filter/sort/drilldown behavior remains intact
+
+Backend:
+- no backend changes expected
+- if tiny compatibility changes are made, existing tests must continue to pass
+
+11. Documentation
+Add docs/result_share_registry_saved_views_admin_web_v1.md
+
+It should explain:
+- why saved views are added after filter/sort UX exists
+- local-only preset model
+- grant vs alias preset scope separation
+- safe storage rules
+- current non-goals
+- future work:
+  - shared/team presets if later justified
+  - preset import/export if later justified
+  - richer operator workspaces
+  - still no source-file sharing by default
+
+Also update:
+- README.md
+- docs/development.md
+- docs/architecture.md
+- docs/result_share_registry_filter_sort_admin_web_v1.md
+- any docs that should mention local saved views
+
+12. Quality bar
+- keep frontend code typed and readable
+- keep backend changes zero or minimal
+- do not add unnecessary dependencies
+- do not require live external credentials in tests
+- do not add source-file sharing in this phase
+- do not add new channels in this phase
+- do not add a generic login system
+- do not weaken auth boundaries
+- do not add browser tracking scripts
+- run available checks
+- fix obvious lint/test issues
+- end with a concise summary:
+  - files changed
+  - whether any backend migration was needed
+  - changed app path
+  - preset scopes and stored fields
+  - preset actions supported
+  - next-phase recommendation only

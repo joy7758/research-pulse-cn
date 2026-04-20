@@ -11,6 +11,46 @@ class PaperType(StrEnum):
     PAUSED = "paused"
 
 
+class PaperImportSourceFormat(StrEnum):
+    CSL_JSON = "csl_json"
+    BIBTEX = "bibtex"
+    RIS = "ris"
+    TABULAR = "tabular"
+    PDF_FOLDER = "pdf_folder"
+
+
+class PaperImportCommitRecordStatus(StrEnum):
+    COMMITTED = "committed"
+    SKIPPED = "skipped"
+    FAILED = "failed"
+    DRY_RUN = "dry_run"
+
+
+class PaperReadingStatus(StrEnum):
+    UNREAD = "unread"
+    SKIMMING = "skimming"
+    READING = "reading"
+    READ = "read"
+    ARCHIVED = "archived"
+
+
+class PaperResearchStage(StrEnum):
+    INBOX = "inbox"
+    TRIAGE = "triage"
+    RELEVANT = "relevant"
+    REVIEWING = "reviewing"
+    CITED = "cited"
+    IMPLEMENTED = "implemented"
+    PARKED = "parked"
+
+
+class PaperPriorityLevel(StrEnum):
+    LOW = "low"
+    NORMAL = "normal"
+    HIGH = "high"
+    URGENT = "urgent"
+
+
 class SignalSource(StrEnum):
     CNKI = "CNKI"
     WANFANG = "WANFANG"
@@ -251,6 +291,61 @@ class OfficialAccountProviderMode(StrEnum):
 
 class OfficialAccountTransportKind(StrEnum):
     TEMPLATE_NOTICE = "template_notice"
+
+
+class DesktopNotificationType(StrEnum):
+    DAILY_RESEARCH_PULSE = "daily_research_pulse"
+
+
+class DesktopNotificationUrgency(StrEnum):
+    LOW = "low"
+    NORMAL = "normal"
+    HIGH = "high"
+
+
+class DesktopNotificationDeliveryState(StrEnum):
+    DRAFT = "draft"
+    NOT_SENT = "not_sent"
+
+
+class DesktopNotificationActionKind(StrEnum):
+    OPEN_DAILY_PULSE = "open_daily_pulse"
+    OPEN_NEXT_ACTIONS = "open_next_actions"
+    OPEN_METADATA_ATTENTION = "open_metadata_attention"
+    OPEN_TRIAGE_QUEUE = "open_triage_queue"
+
+
+class MiniProgramDetailType(StrEnum):
+    DAILY_PULSE = "daily_pulse"
+    PAPER = "paper"
+    NEXT_ACTIONS = "next_actions"
+    METADATA_ATTENTION = "metadata_attention"
+    TRIAGE = "triage"
+
+
+class MiniProgramDetailDeliveryState(StrEnum):
+    PREVIEW = "preview"
+    DRAFT = "draft"
+    NOT_SENT = "not_sent"
+
+
+class MiniProgramDetailCardType(StrEnum):
+    OVERVIEW = "overview"
+    TODAY_FOCUS = "today_focus"
+    CONTINUE_READING = "continue_reading"
+    NEXT_ACTIONS = "next_actions"
+    METADATA_ATTENTION = "metadata_attention"
+    TRIAGE = "triage"
+    PAPER_DETAIL = "paper_detail"
+
+
+class MiniProgramDetailActionKind(StrEnum):
+    OPEN_DAILY_PULSE = "open_daily_pulse"
+    OPEN_PAPER_DETAIL = "open_paper_detail"
+    OPEN_NEXT_ACTIONS = "open_next_actions"
+    OPEN_METADATA_ATTENTION = "open_metadata_attention"
+    OPEN_TRIAGE = "open_triage"
+    OPEN_PAPERS_LIST = "open_papers_list"
 
 
 class OfficialAccountCallbackPayloadFormat(StrEnum):

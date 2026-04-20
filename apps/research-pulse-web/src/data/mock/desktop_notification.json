@@ -1,0 +1,134 @@
+{
+  "draft_id": "demo-desktop-draft-20260419",
+  "source_research_pulse_draft_id": "demo-pulse-20260419",
+  "user_id": "demo-user-20260419",
+  "pulse_date": "2026-04-19",
+  "timezone": "Asia/Shanghai",
+  "title": "今日科研 Pulse：1 个重点事项",
+  "body": "有 1 篇高优先级论文、2 个下一步动作、1 条元数据待补全、2 篇新导入待筛选。",
+  "notification_type": "daily_research_pulse",
+  "urgency": "high",
+  "badge_count": 4,
+  "items": [
+    {
+      "paper_id": "paper-focus",
+      "title": "面向高校课题组的 Research Pulse 工作台设计",
+      "line": "urgent 且已定义下一步动作，今天适合优先推进。",
+      "reason": "该论文当前标记为 urgent 优先级，且已经定义下一步动作。",
+      "suggested_action": "今天先整理方法差异和实验变量",
+      "priority": "urgent",
+      "reading_status": "reading",
+      "research_stage": "reviewing",
+      "metadata_warnings": [],
+      "url": "https://example.local/demo/focus",
+      "doi": "10.4242/demo-focus-2026",
+      "tags": ["重点", "今日推进"],
+      "source_format": "tabular"
+    },
+    {
+      "paper_id": "paper-cited",
+      "title": "博士生日常文献阅读节奏与引用决策",
+      "line": "已明确要在汇报中引用，适合作为待执行动作提醒。",
+      "reason": "该论文已经有明确的下一步动作，适合直接转入执行。",
+      "suggested_action": "下次汇报时引用这篇结论部分",
+      "priority": "normal",
+      "reading_status": "read",
+      "research_stage": "cited",
+      "metadata_warnings": [],
+      "url": "https://example.local/demo/cited",
+      "doi": "10.4242/demo-cited-2023",
+      "tags": ["已读", "已引用"],
+      "source_format": "tabular"
+    },
+    {
+      "paper_id": "paper-metadata",
+      "title": "科研论文元数据补全的人机协作流程",
+      "line": "高优先级但元数据不完整，需要先补全年份、来源和 DOI。",
+      "reason": "该记录仍缺少年份、来源和 DOI 等关键元数据。",
+      "suggested_action": "先补全年份、来源和 DOI",
+      "priority": "high",
+      "reading_status": "unread",
+      "research_stage": "inbox",
+      "metadata_warnings": [
+        "缺少发表年份。",
+        "缺少来源。",
+        "缺少 DOI。"
+      ],
+      "url": "https://example.local/demo/metadata",
+      "doi": null,
+      "tags": ["待补全"],
+      "source_format": "tabular"
+    }
+  ],
+  "actions": [
+    {
+      "action_id": "open_daily_pulse",
+      "label": "查看今日 Pulse",
+      "kind": "open_daily_pulse",
+      "deep_link": "research-pulse://pulse/daily/2026-04-19",
+      "payload": {
+        "pulse_date": "2026-04-19"
+      }
+    },
+    {
+      "action_id": "open_next_actions",
+      "label": "查看下一步动作",
+      "kind": "open_next_actions",
+      "deep_link": "research-pulse://papers/progress?filter=next_action",
+      "payload": {
+        "filter": "next_action"
+      }
+    },
+    {
+      "action_id": "open_metadata_attention",
+      "label": "补全元数据",
+      "kind": "open_metadata_attention",
+      "deep_link": "research-pulse://papers/progress?filter=metadata_attention",
+      "payload": {
+        "filter": "metadata_attention"
+      }
+    }
+  ],
+  "deep_link": "research-pulse://pulse/daily/2026-04-19",
+  "payload_preview": {
+    "notification_title": "今日科研 Pulse：1 个重点事项",
+    "notification_body": "有 1 篇高优先级论文、2 个下一步动作、1 条元数据待补全、2 篇新导入待筛选。",
+    "badge_count": 4,
+    "urgency": "high",
+    "deep_link": "research-pulse://pulse/daily/2026-04-19",
+    "actions": [
+      {
+        "action_id": "open_daily_pulse",
+        "label": "查看今日 Pulse",
+        "kind": "open_daily_pulse"
+      },
+      {
+        "action_id": "open_next_actions",
+        "label": "查看下一步动作",
+        "kind": "open_next_actions"
+      },
+      {
+        "action_id": "open_metadata_attention",
+        "label": "补全元数据",
+        "kind": "open_metadata_attention"
+      }
+    ],
+    "source_pulse_draft_id": "demo-pulse-20260419",
+    "delivery_state": "draft",
+    "notification_type": "daily_research_pulse",
+    "mock_only": true
+  },
+  "total_source_papers": 5,
+  "total_items": 3,
+  "warnings": [
+    "当前页面只展示桌面通知草稿，不会调用系统通知。",
+    "当前 deep link 和 actions 仅用于本地预览复制，不代表已接入真实推送服务。"
+  ],
+  "generated_at": "2026-04-19T16:54:07Z",
+  "delivery_state": "draft",
+  "delivery_notes": [
+    "当前结果仅为桌面端本地提醒草稿。",
+    "不会触发 macOS、Windows 或浏览器原生通知。",
+    "复制 payload 后仍然需要人工检查 urgency、badge 和 deep link 是否符合预期。"
+  ]
+}

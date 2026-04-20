@@ -1,0 +1,215 @@
+{
+  "draft_id": "demo-pulse-20260419",
+  "user_id": "demo-user-20260419",
+  "pulse_date": "2026-04-19",
+  "timezone": "Asia/Shanghai",
+  "dry_run": true,
+  "generated_at": "2026-04-19T16:54:07Z",
+  "title": "2026-04-19 科研 Pulse 草稿",
+  "summary": "今日已从 5 篇已导入论文中整理出 2 篇重点推进论文，2 项下一步动作，1 条元数据补全提醒和 2 篇新导入待筛选论文。",
+  "warnings": [
+    "当前页面使用 mock mode，本页只展示草稿与预览边界，不触发真实投递。"
+  ],
+  "source_context_notes": [
+    "Research Pulse 由已导入论文和进度上下文生成。",
+    "公众号、桌面通知和小程序详情仍然只保留 draft / preview 语义。"
+  ],
+  "sections": [
+    {
+      "section_id": "today_focus",
+      "title": "今日重点论文",
+      "description": "优先处理高优先级、已有下一步动作且仍在推进中的论文。",
+      "empty_reason": null,
+      "items": [
+        {
+          "paper_id": "paper-focus",
+          "title": "面向高校课题组的 Research Pulse 工作台设计",
+          "authors": ["周宁", "陈一凡"],
+          "year": 2026,
+          "venue": "科研协同学刊",
+          "doi": "10.4242/demo-focus-2026",
+          "url": "https://example.local/demo/focus",
+          "priority": "urgent",
+          "reading_status": "reading",
+          "research_stage": "reviewing",
+          "next_action": "今天先整理方法差异和实验变量",
+          "reason": "该论文是 urgent 且已有下一步动作，适合作为今天最先推进的重点。",
+          "suggested_action": "今天先整理方法差异和实验变量",
+          "metadata_warnings": [],
+          "tags": ["重点", "今日推进"],
+          "source_format": "tabular"
+        },
+        {
+          "paper_id": "paper-metadata",
+          "title": "科研论文元数据补全的人机协作流程",
+          "authors": ["王岚"],
+          "year": null,
+          "venue": null,
+          "doi": null,
+          "url": "https://example.local/demo/metadata",
+          "priority": "high",
+          "reading_status": "unread",
+          "research_stage": "inbox",
+          "next_action": null,
+          "reason": "该论文是 high 优先级，但元数据尚不完整，需要尽快决定是否进入今天的推进列表。",
+          "suggested_action": "先补全年份、来源和 DOI，再明确今日动作。",
+          "metadata_warnings": [
+            "缺少发表年份。",
+            "缺少期刊或会议信息。",
+            "缺少 DOI。"
+          ],
+          "tags": ["待补全"],
+          "source_format": "tabular"
+        }
+      ]
+    },
+    {
+      "section_id": "continue_reading",
+      "title": "继续阅读与分析",
+      "description": "继续推进略读、精读和阅读分析阶段的论文。",
+      "empty_reason": null,
+      "items": [
+        {
+          "paper_id": "paper-reading",
+          "title": "面向研究生的持续阅读推进策略",
+          "authors": ["刘敏", "高桥"],
+          "year": 2025,
+          "venue": "教育技术研究",
+          "doi": "10.4242/demo-reading-2025",
+          "url": "https://example.local/demo/reading",
+          "priority": "normal",
+          "reading_status": "skimming",
+          "research_stage": "relevant",
+          "next_action": null,
+          "reason": "该论文仍在略读阶段，适合继续判断其与当前课题的相关性。",
+          "suggested_action": "继续阅读并补齐方法、实验和结论要点。",
+          "metadata_warnings": [],
+          "tags": ["继续阅读"],
+          "source_format": "tabular"
+        }
+      ]
+    },
+    {
+      "section_id": "next_actions",
+      "title": "下一步动作",
+      "description": "直接执行已经明确写下 next_action 的论文任务。",
+      "empty_reason": null,
+      "items": [
+        {
+          "paper_id": "paper-focus",
+          "title": "面向高校课题组的 Research Pulse 工作台设计",
+          "authors": ["周宁", "陈一凡"],
+          "year": 2026,
+          "venue": "科研协同学刊",
+          "doi": "10.4242/demo-focus-2026",
+          "url": "https://example.local/demo/focus",
+          "priority": "urgent",
+          "reading_status": "reading",
+          "research_stage": "reviewing",
+          "next_action": "今天先整理方法差异和实验变量",
+          "reason": "该论文已经有明确 next_action，可以直接进入执行。",
+          "suggested_action": "今天先整理方法差异和实验变量",
+          "metadata_warnings": [],
+          "tags": ["今日推进"],
+          "source_format": "tabular"
+        },
+        {
+          "paper_id": "paper-cited",
+          "title": "博士生日常文献阅读节奏与引用决策",
+          "authors": ["孙可"],
+          "year": 2023,
+          "venue": "学术写作实践",
+          "doi": "10.4242/demo-cited-2023",
+          "url": "https://example.local/demo/cited",
+          "priority": "normal",
+          "reading_status": "read",
+          "research_stage": "cited",
+          "next_action": "下次汇报时引用这篇结论部分",
+          "reason": "这篇已读论文已经明确要在下次汇报里使用，适合直接排进动作清单。",
+          "suggested_action": "下次汇报时引用这篇结论部分",
+          "metadata_warnings": [],
+          "tags": ["已读", "已引用"],
+          "source_format": "tabular"
+        }
+      ]
+    },
+    {
+      "section_id": "metadata_attention",
+      "title": "元数据待补全",
+      "description": "优先补齐作者、年份、来源和 DOI 等关键元数据。",
+      "empty_reason": null,
+      "items": [
+        {
+          "paper_id": "paper-metadata",
+          "title": "科研论文元数据补全的人机协作流程",
+          "authors": ["王岚"],
+          "year": null,
+          "venue": null,
+          "doi": null,
+          "url": "https://example.local/demo/metadata",
+          "priority": "high",
+          "reading_status": "unread",
+          "research_stage": "inbox",
+          "next_action": null,
+          "reason": "该记录仍缺少年份、来源和 DOI，后续筛选和引用追踪会受限。",
+          "suggested_action": "先补全作者、年份、来源和 DOI，再决定是否纳入今日推进。",
+          "metadata_warnings": [
+            "缺少发表年份。",
+            "缺少期刊或会议信息。",
+            "缺少 DOI。"
+          ],
+          "tags": ["待补全"],
+          "source_format": "tabular"
+        }
+      ]
+    },
+    {
+      "section_id": "newly_imported_triage",
+      "title": "新导入待筛选",
+      "description": "帮助把新导入但尚未筛选的论文尽快进入研究流程。",
+      "empty_reason": null,
+      "items": [
+        {
+          "paper_id": "paper-metadata",
+          "title": "科研论文元数据补全的人机协作流程",
+          "authors": ["王岚"],
+          "year": null,
+          "venue": null,
+          "doi": null,
+          "url": "https://example.local/demo/metadata",
+          "priority": "high",
+          "reading_status": "unread",
+          "research_stage": "inbox",
+          "next_action": null,
+          "reason": "该论文刚导入且尚未筛选，建议先判断是否进入当前课题的正式阅读列表。",
+          "suggested_action": "先快速判断相关性，再决定是否补全元数据。",
+          "metadata_warnings": [
+            "缺少发表年份。",
+            "缺少期刊或会议信息。",
+            "缺少 DOI。"
+          ],
+          "tags": ["待筛选", "待补全"],
+          "source_format": "tabular"
+        },
+        {
+          "paper_id": "paper-triage",
+          "title": "新导入论文筛选优先级的规则化框架",
+          "authors": ["赵卓"],
+          "year": 2024,
+          "venue": "情报工程",
+          "doi": "10.4242/demo-triage-2024",
+          "url": "https://example.local/demo/triage",
+          "priority": "normal",
+          "reading_status": "unread",
+          "research_stage": "triage",
+          "next_action": null,
+          "reason": "该论文处于 triage 阶段，适合先完成相关性判断。",
+          "suggested_action": "先用三分钟判断是否进入待读或停放队列。",
+          "metadata_warnings": [],
+          "tags": ["待筛选"],
+          "source_format": "tabular"
+        }
+      ]
+    }
+  ]
+}

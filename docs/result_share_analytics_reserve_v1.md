@@ -69,10 +69,17 @@
 - The same persisted records now also feed aggregate conversion overview reads:
   - `GET /admin/group-workspace-conversion-overview`
   - `GET /admin/group-workspaces/{workspace_id}/conversion-overview`
+- The same persisted records now also feed admin-only per-share drilldown reads:
+  - `GET /admin/result-share-grants/{grant_id}/conversion-drilldown`
+  - `GET /admin/result-share-aliases/{alias_id}/conversion-drilldown`
+- The same persisted records are now surfaced in the existing internal `apps/group-workspace-admin-web` shell as a compact read-only conversion dashboard.
 - Those overview reads stay explicit about attribution boundaries:
   - view/handoff signals are direct persisted event counts
   - invite claims stay workspace-level aggregate signals in v1
   - collect records are direct only when `result_share_grant_id` is present
+- Those per-share drilldown reads stay explicit too:
+  - grant drilldown mixes direct event counts with direct collect linkage only where persisted grant ids exist
+  - alias drilldown is limited to alias-scoped access behavior and does not infer collect attribution from grant-only linkage
 - These routes expose only safe event summaries:
   - no plaintext share tokens
   - no plaintext aliases
@@ -91,5 +98,6 @@
 ## Future Work
 - richer internal growth dashboard
 - share conversion funnel analysis
+- admin per-share drilldown UI over the existing grant/alias reserve
 - later alias-vs-token comparisons in UI
 - still no source-file sharing by default

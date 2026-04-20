@@ -1,0 +1,88 @@
+TY  - JOUR
+TI  - 面向高校课题组的 Research Pulse 工作台设计
+AU  - 周宁
+AU  - 陈一凡
+PY  - 2026
+JO  - 科研协同学刊
+AB  - 这是 synthetic demo data，用于说明课题组如何把今日重点论文组织成 Research Pulse。
+KW  - Research Pulse
+KW  - 课题组协同
+DO  - 10.4242/demo-focus-2026
+UR  - https://example.local/demo/focus
+LA  - zh-CN
+ER  -
+
+TY  - JOUR
+TI  - 面向研究生的持续阅读推进策略
+AU  - 刘敏
+AU  - 高桥
+PY  - 2025
+JO  - 教育技术研究
+AB  - 这是 synthetic demo data，用于说明阅读中论文如何进入继续阅读与分析 section。
+KW  - 阅读推进
+KW  - 研究生
+DO  - 10.4242/demo-reading-2025
+UR  - https://example.local/demo/reading
+LA  - zh-CN
+ER  -
+
+TY  - JOUR
+TI  - 科研论文元数据补全的人机协作流程
+AU  - 王岚
+AB  - 这是 synthetic demo data，用于说明导入后如何优先补全缺失字段。
+KW  - 元数据补全
+KW  - 协作
+UR  - https://example.local/demo/metadata
+LA  - zh-CN
+ER  -
+
+TY  - JOUR
+TI  - 新导入论文筛选优先级的规则化框架
+AU  - 赵卓
+PY  - 2024
+JO  - 情报工程
+AB  - 这是 synthetic demo data，用于说明新导入论文如何进入待筛选队列。
+KW  - 待筛选
+KW  - 导入
+DO  - 10.4242/demo-triage-2024
+UR  - https://example.local/demo/triage
+LA  - zh-CN
+ER  -
+
+TY  - JOUR
+TI  - 博士生日常文献阅读节奏与引用决策
+AU  - 孙可
+PY  - 2023
+JO  - 学术写作实践
+AB  - 这是 synthetic demo data，用于说明已读论文如何回到周报或汇报引用场景。
+KW  - 引用
+KW  - 阅读节奏
+DO  - 10.4242/demo-cited-2023
+UR  - https://example.local/demo/cited
+LA  - zh-CN
+ER  -
+
+TY  - JOUR
+TI  - 低优先级知识管理补充调研
+AU  - 林舟
+PY  - 2022
+JO  - 知识管理季刊
+AB  - 这是 synthetic demo data，用于说明低优先级或暂缓论文仍可保留在工作台中。
+KW  - 知识管理
+KW  - 补充调研
+DO  - 10.4242/demo-parked-2022
+UR  - https://example.local/demo/parked
+LA  - zh-CN
+ER  -
+
+TY  - JOUR
+AU  - 匿名作者
+PY  - 2024
+JO  - 占位来源
+AB  - 这是 synthetic demo data，用于说明缺题名记录在预览阶段会被拦截。
+KW  - 错误示例
+DO  - 10.4242/demo-invalid-2024
+UR  - https://example.local/demo/invalid
+LA  - zh-CN
+ER  -
+

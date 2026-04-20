@@ -1,0 +1,239 @@
+Read AGENTS.md, docs/BUILD_SPEC.md, docs/architecture.md, docs/development.md, docs/group_workspace_admin_web_shell_v1.md, docs/result_share_registry_admin_web_shell_v1.md, docs/result_share_grant_alias_admin_web_shell_v1.md, docs/result_share_grant_alias_drilldown_reserve_v1.md, docs/result_share_alias_boundary_v1.md, docs/result_share_analytics_reserve_v1.md, and docs/group_workspace_result_sharing_v1.md before editing.
+
+Implement Phase 60 only: result share registry filter and sort admin web shell v1.
+
+Hard boundaries for this phase:
+- Do not add source file sharing.
+- Do not add local attachment sharing, note-file sharing, or cloud attachment sync.
+- Do not add real-time collaboration or live multi-user editing.
+- Do not add new delivery channels.
+- Do not add desktop or mini UI work in this phase.
+- Do not add a generic end-user login/session system.
+- Do not add campaign/broadcast/referral behavior.
+- Do not add third-party browser analytics scripts.
+- Do not add AI attribution, AI summarization, or LLM-based dashboard copy.
+- Do not create a new frontend app; extend the existing group-workspace-admin-web only.
+- Do not weaken existing auth boundaries.
+- Do not replace the modular monolith backend architecture.
+
+Primary goal:
+Strengthen the already-added read-only result share registry inside apps/group-workspace-admin-web.
+
+This phase should make the registry more usable for operators:
+1. stronger filtering
+2. stable sorting
+3. filter summary / chips
+4. grant <-> alias relationship shortcuts
+5. quick open drilldown from registry rows
+6. still strictly read-only
+
+Context:
+- Phase 59 already added:
+  - ResultShareRegistryPanel
+  - resultShareGrants / resultShareAliases state
+  - listResultShareAliases()
+  - registry view models
+  - basic registry filters
+  - quick open drilldown
+- Do not rebuild those from scratch.
+- Inspect existing files and improve them minimally.
+
+Required changes:
+
+1. Reuse existing app only
+Work inside:
+- apps/group-workspace-admin-web
+
+Requirements:
+- do not create a new frontend app
+- preserve current workspace list/detail/conversion/per-share drilldown/filter behavior
+- preserve current share grant / alias registry behavior
+- strengthen filtering and sorting on top of the existing registry shell
+
+2. Existing admin auth boot flow remains unchanged
+Requirements:
+- continue in-memory admin bearer token entry
+- continue query/fragment token ingestion and immediate URL cleanup
+- do not persist admin bearer tokens in:
+  - localStorage
+  - sessionStorage
+  - cookies
+- reuse existing API base URL handling
+
+3. API client and query shaping
+Extend the existing typed API client only where needed.
+
+Existing list calls:
+- GET /admin/result-share-grants
+- GET /admin/result-share-aliases
+
+Continue to support:
+- GET /admin/result-share-grants/{grant_id}/conversion-drilldown
+- GET /admin/result-share-aliases/{alias_id}/conversion-drilldown
+
+Filter model:
+- ResultShareRegistryFilterInput
+- ResultShareGrantRegistryFilterInput if split is cleaner
+- ResultShareAliasRegistryFilterInput if split is cleaner
+
+Minimum filter fields:
+For share grants:
+- shareKind nullable
+- status nullable
+- workspaceId nullable
+- digestIssueId nullable if backend supports
+- paperId nullable if backend supports
+
+For aliases:
+- resultShareGrantId nullable
+- shareKind nullable
+- status nullable
+
+Sort model:
+- ResultShareRegistrySortInput
+
+Minimum sort fields:
+- createdAt desc/asc
+- lastUsedAt desc/asc
+- expiresAt desc/asc
+- shareKind asc/desc
+- status asc/desc
+
+Requirements:
+- build query params deterministically
+- if backend list endpoints do not support sort fields, do stable frontend sort over the loaded safe rows
+- do not add backend sort unless it is a tiny read-only compatibility fix
+- no mutation endpoints
+
+4. Filter / sort state model
+Add or refine frontend state and helpers for:
+- registry filter draft
+- applied filters
+- filter chips / summary
+- sort mode
+- reset to defaults
+- zero-result explanation
+- show aliases for this grant
+- open underlying grant from alias row
+
+Requirements:
+- share grant registry and alias registry may have independent filter drafts
+- sort mode must be explicit in UI
+- quick “show aliases for this grant” applies alias filter from a grant row
+- quick “open underlying grant” opens grant drilldown from alias row
+- optional query-param persistence only if simple and stable
+- no heavy routing layer
+
+5. UI structure
+Extend the existing ResultShareRegistryPanel with:
+- stronger registry filter bar
+- sort controls
+- applied filter chip row
+- summary cards above each registry
+- cross-link affordances:
+  - grant row -> open grant drilldown
+  - grant row -> filter aliases to this grant
+  - alias row -> open alias drilldown
+  - alias row -> open underlying grant drilldown
+- empty/error states for filtered registries
+
+Requirements:
+- keep grant vs alias distinction obvious
+- keep status, last_used_at, expires_at, created_at visible
+- never expose plaintext share tokens or aliases
+- no create/revoke buttons in this phase
+- no one-time token display in this phase
+
+6. Sorting semantics
+Implement deterministic stable sort.
+
+Requirements:
+- null timestamp handling:
+  - createdAt: usually non-null; use id as tie-breaker
+  - lastUsedAt desc/asc: null always last
+  - expiresAt desc/asc: null always last
+- tie-breaker:
+  - id ascending
+- document helper behavior in tests
+
+7. Minimal backend compatibility
+Prefer no backend changes.
+
+Allowed only if strictly needed:
+- tiny list-filter consistency fixes
+- tiny response-shape normalization fixes
+- tiny CORS/dev-origin support if current allowlist needs update
+- no migration unless absolutely necessary
+- no new mutations
+- no new analytics persistence
+
+8. Tests
+Add or update tests covering at minimum:
+
+Frontend / TS tests:
+- share grant registry filter shaping
+- alias registry filter shaping
+- registry sort shaping
+- filter chip summary shaping
+- alias-for-grant quick filter shaping
+- open-underlying-grant action shaping
+- stable sort with null timestamps
+- zero-data / filtered empty-state shaping
+- token handling remains unchanged
+
+If component tests are practical:
+- registry tab render
+- filtered share grant registry render
+- filtered alias registry render
+- sorted registry render
+- quick open drilldown action render
+- show aliases for this grant action render
+- existing per-share drilldown behavior remains intact
+
+Backend:
+- no major backend work expected
+- if tiny compatibility changes are made, existing backend tests must continue to pass
+
+9. Documentation
+Add docs/result_share_registry_filter_sort_admin_web_v1.md
+
+It should explain:
+- why registry filter/sort UX is added after the basic registry exists
+- supported filter dimensions
+- supported sort modes
+- grant <-> alias relationship shortcuts
+- safe data model
+- current non-goals
+- future work:
+  - saved registry filters
+  - per-share comparison views
+  - registry-level bulk ops if later justified
+  - still no source-file sharing by default
+
+Also update:
+- README.md
+- docs/development.md
+- docs/architecture.md
+- docs/result_share_registry_admin_web_shell_v1.md
+- docs/result_share_grant_alias_admin_web_shell_v1.md
+- any docs that should mention filterable/sortable share registries
+
+10. Quality bar
+- keep frontend code typed and readable
+- keep backend changes zero or minimal
+- do not add unnecessary dependencies
+- do not require live external credentials in tests
+- do not add source-file sharing in this phase
+- do not add new channels in this phase
+- do not add a generic login system
+- do not weaken auth boundaries
+- do not add browser tracking scripts
+- run available checks
+- fix obvious lint/test issues
+- end with a concise summary:
+  - files changed
+  - whether any backend migration was needed
+  - changed app path
+  - filter/sort dimensions surfaced
+  - quick-open / cross-link behavior
+  - next-phase recommendation only

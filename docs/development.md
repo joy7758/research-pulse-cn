@@ -1,5 +1,21 @@
 # Development Guide
 
+## Current Product Direction
+- Active direction:
+  - China-first Research Pulse
+- Product focus:
+  - import papers
+  - track paper and research progress
+  - generate daily Research Pulse
+  - deliver through desktop, official account, and mini-program surfaces
+- Frozen direction:
+  - admin preset, registry, threshold, report, print, copy, and audit overbuild
+- Read these docs before planning new phases:
+  - `docs/product_pivot_china_first_research_pulse_v1.md`
+  - `docs/zotero_reference_strategy_v1.md`
+  - `docs/frozen_admin_overbuild_scope_v1.md`
+  - `docs/mvp_china_first_research_pulse_roadmap_v1.md`
+
 ## Prerequisites
 - Python 3.12+
 - Docker and Docker Compose
@@ -29,6 +45,216 @@
 - Format: `make format`
 - Tests: `make test`
 - Full local gate: `make check`
+
+## MVP Smoke Test
+- Targeted Pivot-2 to Pivot-9 chain:
+  - `.venv/bin/python -m pytest tests/test_import_formats_foundation.py tests/test_import_preview_commit.py tests/test_paper_progress_workbench.py tests/test_research_pulse_over_imported_papers.py tests/test_official_account_daily_summary_mvp.py tests/test_desktop_notification_mvp.py tests/test_mini_program_detail_mvp.py tests/test_mvp_end_to_end_smoke.py`
+- Full backend suite:
+  - `.venv/bin/python -m pytest`
+- Ruff:
+  - `.venv/bin/python -m ruff format src tests`
+  - `.venv/bin/python -m ruff check .`
+- MVP smoke-test document:
+  - `docs/mvp_end_to_end_smoke_test_v1.md`
+- Guardrails for MVP smoke work:
+  - do not add real WeChat API calls
+  - do not add real desktop notification calls
+  - do not add real mini-program frontend files
+  - do not add external LLM or external network dependencies
+  - keep official-account / desktop / mini outputs at `draft` / `preview` / `not_sent`
+
+## API Contract Tests
+- Contract docs:
+  - `docs/api_contract_mvp_v1.md`
+  - `docs/schema_contract_mvp_v1.md`
+  - `docs/error_warning_contract_mvp_v1.md`
+- Targeted contract tests:
+  - `.venv/bin/python -m pytest tests/test_api_contract_mvp.py tests/test_schema_contract_mvp.py tests/test_mvp_end_to_end_smoke.py`
+- Related MVP chain tests:
+  - `.venv/bin/python -m pytest tests/test_import_formats_foundation.py tests/test_import_preview_commit.py tests/test_paper_progress_workbench.py tests/test_research_pulse_over_imported_papers.py tests/test_official_account_daily_summary_mvp.py tests/test_desktop_notification_mvp.py tests/test_mini_program_detail_mvp.py tests/test_mvp_end_to_end_smoke.py tests/test_api_contract_mvp.py tests/test_schema_contract_mvp.py`
+- Inspect OpenAPI locally without starting a separate export toolchain:
+  ```bash
+  .venv/bin/python - <<'PY'
+  from research_pulse_cn.app import create_app
+  import json
+  print(json.dumps(create_app().openapi(), ensure_ascii=False, indent=2))
+  PY
+  ```
+- Guardrails:
+  - do not add real WeChat API integration while adjusting docs or tests
+  - do not add real desktop notification calls
+  - do not add mini-program frontend files
+  - do not add external LLM or external network calls
+
+## MVP UI Direction
+- Design docs:
+  - `docs/ui_reference_audit_mvp_v1.md`
+  - `docs/mvp_interface_principles_v1.md`
+  - `docs/mvp_information_architecture_v1.md`
+  - `docs/mvp_user_flows_v1.md`
+  - `docs/mvp_copywriting_guidelines_cn_v1.md`
+- This phase is documentation-only:
+  - do not add frontend code
+  - do not add backend features
+  - do not add migrations
+  - do not add dependencies
+- UI design guardrails:
+  - keep the homepage centered on today's Research Pulse
+  - keep import as a short preview-first flow
+  - keep paper progress language closer to research work than system administration
+  - keep official-account / desktop / mini outputs explicit as `draft` / `preview`
+
+## MVP Wireframe Spec
+- Design-2 docs:
+  - `docs/mvp_wireframes_v1.md`
+  - `docs/mvp_page_state_matrix_v1.md`
+  - `docs/mvp_component_inventory_v1.md`
+  - `docs/mvp_interaction_spec_v1.md`
+  - `docs/mvp_wireframe_acceptance_checklist_v1.md`
+- This phase is also documentation-only:
+  - do not add frontend code
+  - do not add backend code
+  - do not add migrations
+  - do not add dependencies
+- Review checklist before closing the phase:
+  - run `git diff --name-only | grep -Ev '^(docs/|README\\.md$)' || true`
+  - confirm every wireframe page keeps a single primary action
+  - confirm all channel pages still show `draft` / `preview` / `not_sent`
+
+## MVP Visual Language and Prototype Spec
+- Design-3 docs:
+  - `docs/mvp_visual_language_v1.md`
+  - `docs/mvp_design_tokens_v1.md`
+  - `docs/mvp_component_visual_rules_v1.md`
+  - `docs/mvp_clickable_prototype_spec_v1.md`
+  - `docs/mvp_responsive_layout_rules_v1.md`
+  - `docs/mvp_accessibility_readability_v1.md`
+  - `docs/mvp_visual_acceptance_checklist_v1.md`
+- This phase is also documentation-only:
+  - do not add frontend code
+  - do not add backend code
+  - do not add migrations
+  - do not add dependencies
+- Review checklist before closing the phase:
+  - run `git diff --name-only | grep -Ev '^(docs/|README\\.md$)' || true`
+  - confirm `draft` / `preview` / `not_sent` remain explicit visual states
+  - confirm no page introduces real WeChat / desktop / mini-program capability language
+
+## Run MVP local demo
+- Demo docs:
+  - `docs/mvp_demo_fixture_pack_v1.md`
+  - `docs/mvp_local_demo_script_v1.md`
+- Run the local offline demo:
+  - `.venv/bin/python scripts/run_mvp_demo.py --output-dir /tmp/research_pulse_cn_demo --date 2026-04-19 --format csv --max-items-per-section 3`
+- Demo script test:
+  - `.venv/bin/python -m pytest tests/test_mvp_demo_script.py tests/test_mvp_end_to_end_smoke.py tests/test_api_contract_mvp.py tests/test_schema_contract_mvp.py`
+- Full suite:
+  - `.venv/bin/python -m pytest`
+- Guardrails:
+  - keep the demo local and offline
+  - do not add real WeChat API integration
+  - do not add real desktop notification calls
+  - do not add real mini-program frontend files
+  - do not add external-model or external-network dependencies
+  - generated output defaults to `/tmp` and should not be committed
+
+## Frontend planning only
+- Frontend-0 docs:
+  - `docs/frontend_technical_feasibility_review_v1.md`
+  - `docs/frontend_mvp_scope_v1.md`
+  - `docs/frontend_api_consumption_plan_v1.md`
+  - `docs/frontend_demo_data_mapping_v1.md`
+  - `docs/frontend_component_mapping_v1.md`
+  - `docs/frontend_implementation_sequence_v1.md`
+  - `docs/frontend_acceptance_checklist_v1.md`
+  - `docs/PROMPT_FRONTEND_1_MINIMAL_WEB_SHELL_CN.md`
+- This phase is documentation-only:
+  - do not run npm / pnpm / yarn
+  - do not add `package.json`
+  - do not add frontend runtime files
+- Recommended docs-only checks before closing:
+  - `git diff --name-only | grep -Ev '^(docs/|README\\.md$)' || true`
+  - `git diff --name-only | grep -E '^(src/|tests/|scripts/|demo/|alembic/|migrations/|pyproject\\.toml|requirements|package\\.json|pnpm-lock|yarn.lock|package-lock\\.json)' || true`
+  - `git diff --name-only | grep -Ei 'package\\.json|pnpm-lock|yarn.lock|package-lock\\.json|vite|next|react|vue|svelte|tailwind|electron|tauri' || true`
+
+## Frontend minimal web shell
+- Frontend-1 app path:
+  - `apps/research-pulse-web`
+- Hardening doc:
+  - `docs/frontend_minimal_web_shell_hardening_v1.md`
+- Frontend-2 doc:
+  - `docs/frontend_paper_progress_page_v1.md`
+- Frontend-2 hardening doc:
+  - `docs/frontend_paper_progress_page_hardening_v1.md`
+- Frontend-3 doc:
+  - `docs/frontend_channel_draft_preview_pages_v1.md`
+- Frontend-3 hardening doc:
+  - `docs/frontend_channel_draft_preview_pages_hardening_v1.md`
+- Frontend-4 doc:
+  - `docs/frontend_channel_draft_preview_pages_v2.md`
+- Install:
+  - `cd apps/research-pulse-web && npm install`
+- Run:
+  - `npm run dev`
+- Build:
+  - `npm run build`
+- Static checks:
+  - `npm run lint`
+  - `npm run typecheck`
+- Current boundary:
+  - the minimal shell currently contains 7 pages:
+    - today pulse
+    - import / import preview
+    - pulse detail
+    - paper progress
+    - official-account draft
+    - desktop notification draft
+    - mini-program detail preview
+  - it defaults to mock mode and curated demo JSON
+  - it also includes curated `default / empty / issues / broken` mock scenarios for state validation
+  - it does not add login, admin, real channel delivery, or backend contract changes
+- Frontend-2 checks before closing:
+  - confirm the only new page is `paper progress`
+  - confirm no login / admin / settings / channel draft pages were added
+  - confirm the page still runs fully in mock mode
+  - confirm the primary action remains `更新选中论文进度`
+- Frontend-2 hardening checks before closing:
+  - confirm filter chips still show counts and selected state
+  - confirm search + filter empty state exposes `清除筛选` / `清除搜索`
+  - confirm `更新选中论文进度` stays disabled until one paper is selected
+  - confirm the page still says `本地预览，不会真实修改论文库`
+- Frontend-3 checks before closing:
+  - confirm the only new pages are:
+    - official-account draft
+    - desktop notification draft
+    - mini-program detail preview
+  - confirm every channel page still shows `draft / preview / not_sent`
+  - confirm copy actions stay local and do not trigger real send / push / mini-program abilities
+  - confirm build, lint, typecheck, ruff and pytest all pass
+- Frontend-3 hardening checks before closing:
+  - confirm channel-page primary actions show disabled reasons when内容为空
+  - confirm official / desktop / mini pages still keep `mock-only` copy and no real send wording
+  - confirm mini tabs expose `tablist / tab / tabpanel` accessibility semantics
+  - confirm `channel-double-grid` collapses cleanly by `1024px`
+  - confirm build, lint, typecheck, ruff and pytest all pass
+- Frontend-4 checks before closing:
+  - confirm the same 3 channel pages remain mock-only
+  - confirm copy feedback does not leak across tab or scenario changes
+  - confirm local copy feedback can auto-clear after a short delay
+  - confirm mini tabs support keyboard navigation
+  - confirm channel action buttons stack cleanly below `820px`
+  - confirm long path / note / title content does not break narrow layouts
+  - confirm build, lint, typecheck, ruff and pytest all pass
+- Frontend-1 Hardening checks before closing:
+  - confirm no extra page is added under `apps/research-pulse-web/src/pages`
+  - confirm mock mode still works without backend tokens
+  - confirm `draft / preview / not_sent` stay explicit in visible copy
+  - run:
+    - `cd apps/research-pulse-web && npm run build`
+    - `cd apps/research-pulse-web && npm run lint`
+    - `cd apps/research-pulse-web && npm run typecheck`
+    - `.venv/bin/python -m ruff check .`
+    - `.venv/bin/python -m pytest`
 
 ## Desktop shell
 - Install desktop dependencies:
@@ -96,8 +322,20 @@ No browser tracker or third-party analytics script is added in this phase.
 Admin-only aggregate reads now also reuse those persisted records for:
 - `GET /admin/group-workspace-conversion-overview`
 - `GET /admin/group-workspaces/{workspace_id}/conversion-overview`
+- `GET /admin/group-workspace-conversion-drilldown`
+- `GET /admin/group-workspaces/{workspace_id}/conversion-drilldown`
+- `GET /admin/result-share-grants/{grant_id}/conversion-drilldown`
+- `GET /admin/result-share-aliases/{alias_id}/conversion-drilldown`
 - direct share/collect attribution where persisted links exist
 - workspace-level invite aggregates without claiming strict per-share causality
+- daily buckets, recent safe rows, and top workspace/share-grant lists now live in the drilldown reserve
+- per-share grant and alias drilldown now stays backend-only in this phase so a later admin shell can consume it without changing public share behavior
+The internal `apps/group-workspace-admin-web` shell now also renders those aggregates as:
+- a global conversion overview panel
+- a workspace conversion overview panel inside workspace detail
+- a global conversion drilldown panel with daily buckets, top entities, and recent safe rows
+- a workspace conversion drilldown panel with recent activity plus active grant snapshots
+- explicit attribution-scope notes from the backend read model
 `workspace_board` share pages now also render a manual invite/join handoff summary:
 - the page stays read-only
 - joining still requires a separate invite token
@@ -138,8 +376,61 @@ The shell lives under `apps/group-workspace-admin-web` and uses:
 - `GET /admin/result-share-aliases/{alias_id}`
 - `POST /admin/result-share-aliases/{alias_id}/revoke`
 - plus existing `GET /users` and `GET /papers` reads as internal lookup sources
+- plus read-only conversion dashboards over:
+  - `GET /admin/group-workspace-conversion-overview`
+  - `GET /admin/group-workspace-conversion-drilldown`
+  - `GET /admin/group-workspaces/{workspace_id}/conversion-overview`
+  - `GET /admin/group-workspaces/{workspace_id}/conversion-drilldown`
+- plus compact read-only filter controls for:
+  - `date_from`
+  - `date_to`
+  - `share_kind`
+  - `access_mode`
+  - `event_type`
+  - `outcome`
+  - `limit` on drilldown recent/top sections only
+- plus backend-only per-share drilldown reserve routes for future admin UI work:
+- plus backend-only per-share drilldown reserve routes now consumed by the same shell:
+  - `GET /admin/result-share-grants/{grant_id}/conversion-drilldown`
+  - `GET /admin/result-share-aliases/{alias_id}/conversion-drilldown`
 
-The shell is internal/admin-only, keeps bearer tokens in memory only, and does not introduce end-user login or source-file sharing.
+The shell now also includes a minimal read-only per-share dashboard:
+- open a grant drilldown from the existing workspace share-grant list when practical
+- open an alias drilldown from alias rows returned by a grant drilldown
+- manual `grant_id` / `alias_id` launcher fields for operator lookup when needed
+- a dedicated per-share filter bar for `date_from`, `date_to`, `access_mode`, `event_type`, `outcome`, and `limit`
+- direct collect linkage stays visible only on grant drilldown; alias drilldown stays access-path scoped
+
+The same shell now also includes a minimal read-only result-share registry:
+- `GET /admin/result-share-grants`
+- `GET /admin/result-share-aliases`
+- safe global share-grant rows with linked alias counts
+- safe global alias rows with linked grant hints
+- quick-open actions that reuse the existing per-share drilldown panel instead of adding new write flows
+- stronger registry filters for share kind, status, workspace, and linked grant
+- stable frontend sort controls for `created_at`, `last_used_at`, `expires_at`, `share_kind`, and `status`
+- applied filter/sort chips plus filtered zero-result explanations
+- grant-to-alias quick filters and alias-to-underlying-grant quick-open actions
+- local-only saved views that persist safe registry filter/sort state in browser storage only
+- optional local preset extension that also carries safe per-share drilldown `date_from`, `date_to`, `access_mode`, `event_type`, `outcome`, and `limit`
+- local-only preset JSON export/import with schema-version validation, unsafe-field rejection, preview-before-apply, and merge/replace scope handling
+- local-only preset diagnostics and recovery, including corrupted-storage checks, validation-only dry-run preview, last-good backup snapshots, and scope-safe reset actions
+- local-only preset activity history with safe action summaries, recent operations, and clear-audit controls for this browser only
+- local-only preset workspace organization with pinned grant/alias presets, recent preset snippets, storage-health summary, stale pin cleanup, and organization-only reset controls
+- local-only preset workspace JSON export/import for browser-local organization state only, with stale-pin preview, merge/replace handling, and workspace-only backup restore
+- a deterministic local preset workspace health score with breakdown cards, findings, and recommended local actions over integrity, stale pins, backups, audit history, and workspace import/export state
+- local threshold preferences for that health score, including threshold draft validation, before/after preview, reset-to-defaults, and browser-local storage only
+- local JSON and Markdown health report export for that health score, with safe validation, threshold-source summary, diagnostics recap, findings/recommendations summary, and explicit safety exclusions
+- local clipboard health-report summaries for score, findings, recommendations, compact Markdown, and compact JSON, with copy validation and safe local audit events only
+- no admin bearer token, raw share token, or raw alias is stored in those presets
+- the health score is browser-local hygiene only, not backend health, security scoring, or compliance scoring
+
+The shell is internal/admin-only, keeps bearer tokens in memory only, and does not introduce end-user login or source-file sharing. Filter controls narrow overview/drilldown reads only and do not change attribution semantics.
+
+This admin preset/report track is frozen:
+- keep the completed code
+- fix blockers only
+- do not plan new feature phases in this area
 
 ## User workbench admin web shell
 - Install user-workbench dependencies:
@@ -201,6 +492,8 @@ After membership is claimed or confirmed, the same shell may also show a manual 
   - `GET /admin/result-share-grants`
   - `POST /admin/result-share-grants`
   - `POST /admin/result-share-grants/{grant_id}/revoke`
+  - `GET /admin/result-share-grants/{grant_id}/conversion-drilldown`
+  - `GET /admin/result-share-aliases/{alias_id}/conversion-drilldown`
 - Admin-managed workspace invite routes:
   - `GET /admin/group-workspace-invite-grants`
   - `POST /admin/group-workspace-invite-grants`

@@ -1,0 +1,59 @@
+{
+  "preview_id": "demo-preview-errors-20260419",
+  "source_format": "tabular",
+  "created_at": "2026-04-19T16:54:07Z",
+  "total_records": 3,
+  "valid_records_count": 0,
+  "warning_records_count": 2,
+  "error_records_count": 3,
+  "records": [
+    {
+      "source_index": 1,
+      "title": "",
+      "authors": ["匿名样本 A"],
+      "year": null,
+      "venue": null,
+      "doi": null,
+      "url": null,
+      "keywords": [],
+      "warnings": ["缺少题名，建议先补全后再提交。"],
+      "errors": ["题名缺失，当前不可导入。"],
+      "can_commit": false,
+      "selected": false
+    },
+    {
+      "source_index": 2,
+      "title": "科研写作支持系统的院系部署经验",
+      "authors": [],
+      "year": null,
+      "venue": "教学研究实践",
+      "doi": null,
+      "url": "https://example.local/demo/import-issue-2",
+      "keywords": ["部署", "院系协同"],
+      "warnings": [
+        "缺少作者，建议先补全后再导入。",
+        "缺少年份，后续筛选会受限。"
+      ],
+      "errors": ["作者缺失，当前不可导入。"],
+      "can_commit": false,
+      "selected": false
+    },
+    {
+      "source_index": 3,
+      "title": "研究工具采用意愿的调研表",
+      "authors": ["示例用户"],
+      "year": 2026,
+      "venue": null,
+      "doi": null,
+      "url": "https://example.local/demo/import-issue-3",
+      "keywords": ["采用意愿"],
+      "warnings": [
+        "缺少来源，建议补齐后再提交。",
+        "缺少 DOI，去重能力会受限。"
+      ],
+      "errors": ["来源缺失，当前不可导入。"],
+      "can_commit": false,
+      "selected": false
+    }
+  ]
+}

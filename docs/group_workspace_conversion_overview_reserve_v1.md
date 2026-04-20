@@ -59,6 +59,19 @@
 
 ## Future Work
 - Internal read-only dashboard UI in the admin shell
-- Richer workspace drilldown and trend slices
+- Deeper drilldown reads for daily buckets, recent lists, and top workspaces/share grants
 - Stronger attribution only if later justified by real persisted links
 - Still no source-file sharing by default
+
+The first consumer of these read models is now the existing internal `apps/group-workspace-admin-web` shell, which renders:
+
+- a global conversion overview panel
+- a workspace conversion overview block inside workspace detail
+- direct-vs-aggregate attribution notes without adding new write flows
+
+The next reserve layer now also exists as admin-only drilldown reads:
+
+- `GET /admin/group-workspace-conversion-drilldown`
+- `GET /admin/group-workspaces/{workspace_id}/conversion-drilldown`
+- daily buckets plus recent share/invite/collect rows
+- top workspaces and top result-share grants without inventing new attribution rules

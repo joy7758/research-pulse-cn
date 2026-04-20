@@ -60,6 +60,18 @@
 - When redirect support is disabled or the result-share shell entry URL is not configured, the route fails cleanly.
 - Backend-only analytics reserve may also observe alias bootstrap/content/redirect traffic without changing the public alias contract.
 
+## Alias-Scoped Drilldown Reserve
+- Admin-only per-alias drilldown now adds:
+  - `GET /admin/result-share-aliases/{alias_id}/conversion-drilldown`
+- The alias drilldown is read-only and safe:
+  - it surfaces alias-scoped access-mode, event-type, and outcome counts
+  - it exposes recent safe event rows for that alias only
+  - it returns grant-safe summary context without re-exposing a raw token
+- Alias drilldown remains intentionally narrower than grant drilldown:
+  - it describes access-path behavior for one alias
+  - it does not claim direct collect attribution when persisted collect rows are only linked at grant level
+  - it does not expose source files, attachments, notes, or raw browser identity data
+
 ## Alias Mode In Result-Share-Web
 - The existing `apps/result-share-web` shell now accepts aliases from:
   - `/share-alias/<alias>`
@@ -82,5 +94,6 @@
 ## Future Work
 - signed short links
 - richer alias-vs-token analytics views
+- admin per-alias drilldown UI over the existing reserve
 - later custom share slugs if ever justified
 - still no source-file sharing by default

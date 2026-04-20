@@ -1,14 +1,23 @@
 import type {
   AdminApiErrorKind,
+  ConversionFilterInput,
   GroupWorkspaceAdminApiErrorShape,
   GroupWorkspaceBoardRead,
+  GroupWorkspaceConversionDrilldownRead,
+  GroupWorkspaceConversionOverviewRead,
   GroupWorkspaceMemberRead,
   GroupWorkspacePaperRead,
   GroupWorkspaceRead,
+  GroupWorkspaceWorkspaceConversionDrilldownRead,
+  GroupWorkspaceWorkspaceConversionOverviewRead,
   PaperProfileRead,
+  ResultShareAliasRead,
+  ResultShareAliasConversionDrilldownRead,
   ResultShareGrantIssueResponse,
+  ResultShareGrantConversionDrilldownRead,
   ResultShareGrantRead,
   ResultShareGrantRevokeResponse,
+  ResultShareAliasStatus,
   ResultShareGrantStatus,
   ResultShareKind,
   UserProfileRead,
@@ -18,6 +27,7 @@ import type {
   WorkspacePaperAddInput,
   WorkspaceUpdateInput,
 } from "./types";
+import { buildConversionFilterQuery } from "./conversionFilters";
 
 export type GroupWorkspaceAdminApiClientConfig = {
   apiBaseUrl: string;
@@ -171,6 +181,90 @@ export function createGroupWorkspaceAdminApiClient(
         method: "GET",
         path: `/admin/group-workspaces/${encodeURIComponent(workspaceId)}/board`,
       }),
+    getConversionOverview: (filters?: Partial<ConversionFilterInput>) =>
+      request<GroupWorkspaceConversionOverviewRead>({
+        method: "GET",
+        path: "/admin/group-workspace-conversion-overview",
+        query: filters
+          ? buildConversionFilterQuery(filters, {
+              includeDimensions: true,
+              includeOutcome: true,
+              includeLimit: false,
+            })
+          : undefined,
+      }),
+    getConversionDrilldown: (filters?: Partial<ConversionFilterInput>) =>
+      request<GroupWorkspaceConversionDrilldownRead>({
+        method: "GET",
+        path: "/admin/group-workspace-conversion-drilldown",
+        query: filters
+          ? buildConversionFilterQuery(filters, {
+              includeDimensions: true,
+              includeOutcome: true,
+              includeLimit: true,
+            })
+          : undefined,
+      }),
+    getWorkspaceConversionOverview: (
+      workspaceId: string,
+      filters?: Partial<ConversionFilterInput>,
+    ) =>
+      request<GroupWorkspaceWorkspaceConversionOverviewRead>({
+        method: "GET",
+        path: `/admin/group-workspaces/${encodeURIComponent(workspaceId)}/conversion-overview`,
+        query: filters
+          ? buildConversionFilterQuery(filters, {
+              includeDimensions: true,
+              includeOutcome: true,
+              includeLimit: false,
+            })
+          : undefined,
+      }),
+    getWorkspaceConversionDrilldown: (
+      workspaceId: string,
+      filters?: Partial<ConversionFilterInput>,
+    ) =>
+      request<GroupWorkspaceWorkspaceConversionDrilldownRead>({
+        method: "GET",
+        path: `/admin/group-workspaces/${encodeURIComponent(workspaceId)}/conversion-drilldown`,
+        query: filters
+          ? buildConversionFilterQuery(filters, {
+              includeDimensions: true,
+              includeOutcome: true,
+            includeLimit: true,
+          })
+          : undefined,
+      }),
+    getResultShareGrantConversionDrilldown: (
+      grantId: string,
+      filters?: Partial<ConversionFilterInput>,
+    ) =>
+      request<ResultShareGrantConversionDrilldownRead>({
+        method: "GET",
+        path: `/admin/result-share-grants/${encodeURIComponent(grantId)}/conversion-drilldown`,
+        query: filters
+          ? buildConversionFilterQuery(filters, {
+              includeDimensions: true,
+              includeOutcome: true,
+              includeLimit: true,
+            })
+          : undefined,
+      }),
+    getResultShareAliasConversionDrilldown: (
+      aliasId: string,
+      filters?: Partial<ConversionFilterInput>,
+    ) =>
+      request<ResultShareAliasConversionDrilldownRead>({
+        method: "GET",
+        path: `/admin/result-share-aliases/${encodeURIComponent(aliasId)}/conversion-drilldown`,
+        query: filters
+          ? buildConversionFilterQuery(filters, {
+              includeDimensions: true,
+              includeOutcome: true,
+              includeLimit: true,
+            })
+          : undefined,
+      }),
     addWorkspaceMember: (workspaceId: string, payload: WorkspaceMemberAddInput) =>
       request<GroupWorkspaceMemberRead>({
         method: "POST",
@@ -198,7 +292,7 @@ export function createGroupWorkspaceAdminApiClient(
       userId?: string;
       shareKind?: ResultShareKind;
       status?: ResultShareGrantStatus;
-    }) => {
+    } = {}) => {
       const query = new URLSearchParams();
       if (params.workspaceId) {
         query.set("workspace_id", params.workspaceId);
@@ -215,6 +309,27 @@ export function createGroupWorkspaceAdminApiClient(
       return request<ResultShareGrantRead[]>({
         method: "GET",
         path: "/admin/result-share-grants",
+        query,
+      });
+    },
+    listResultShareAliases: (params: {
+      resultShareGrantId?: string;
+      shareKind?: ResultShareKind;
+      status?: ResultShareAliasStatus;
+    } = {}) => {
+      const query = new URLSearchParams();
+      if (params.resultShareGrantId) {
+        query.set("result_share_grant_id", params.resultShareGrantId);
+      }
+      if (params.shareKind) {
+        query.set("share_kind", params.shareKind);
+      }
+      if (params.status) {
+        query.set("status", params.status);
+      }
+      return request<ResultShareAliasRead[]>({
+        method: "GET",
+        path: "/admin/result-share-aliases",
         query,
       });
     },

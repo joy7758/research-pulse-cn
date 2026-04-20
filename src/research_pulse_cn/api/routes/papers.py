@@ -6,10 +6,27 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query, Request, Response, status
 
 from research_pulse_cn.api.audit import audit_request_action
-from research_pulse_cn.api.dependencies import get_audit_service, get_paper_service
+from research_pulse_cn.api.dependencies import (
+    get_audit_service,
+    get_paper_import_service,
+    get_paper_progress_workbench_service,
+    get_paper_service,
+)
 from research_pulse_cn.api.security import require_admin_role
 from research_pulse_cn.domain.auth import ActorContext
-from research_pulse_cn.domain.enums import AdminRole
+from research_pulse_cn.domain.enums import (
+    AdminRole,
+    PaperImportSourceFormat,
+    PaperPriorityLevel,
+    PaperReadingStatus,
+    PaperResearchStage,
+)
+from research_pulse_cn.schemas.imports import (
+    PaperImportCommitRequest,
+    PaperImportCommitResult,
+    PaperImportPreviewCreateRequest,
+    PaperImportPreviewResult,
+)
 from research_pulse_cn.schemas.paper import (
     PaperProfileCreate,
     PaperProfileRead,
@@ -19,11 +36,25 @@ from research_pulse_cn.schemas.paper import (
     SignalSnapshotCreate,
     SignalSnapshotRead,
 )
+from research_pulse_cn.schemas.paper_progress import (
+    PaperProgressItemRead,
+    PaperProgressListResponse,
+    PaperProgressPulseContextRead,
+    PaperProgressSummaryRead,
+    PaperProgressUpdateRequest,
+)
 from research_pulse_cn.services.audit import AuditService
 from research_pulse_cn.services.paper import PaperService
+from research_pulse_cn.services.paper_import import PaperImportService
+from research_pulse_cn.services.paper_progress import PaperProgressWorkbenchService
 
 router = APIRouter(prefix="/papers", tags=["papers"])
 PaperServiceDep = Annotated[PaperService, Depends(get_paper_service)]
+PaperImportServiceDep = Annotated[PaperImportService, Depends(get_paper_import_service)]
+PaperProgressWorkbenchServiceDep = Annotated[
+    PaperProgressWorkbenchService,
+    Depends(get_paper_progress_workbench_service),
+]
 AuditServiceDep = Annotated[AuditService, Depends(get_audit_service)]
 ViewerDep = Annotated[ActorContext, Depends(require_admin_role(AdminRole.VIEWER))]
 OperatorDep = Annotated[ActorContext, Depends(require_admin_role(AdminRole.OPERATOR))]
@@ -60,6 +91,132 @@ def create_paper(
     return paper
 
 
+@router.post(
+    "/import-preview",
+    response_model=PaperImportPreviewResult,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_import_preview(
+    payload: PaperImportPreviewCreateRequest,
+    request: Request,
+    actor: OperatorDep,
+    service: PaperImportServiceDep,
+    audit_service: AuditServiceDep,
+) -> PaperImportPreviewResult:
+    preview = service.create_import_preview(payload)
+    audit_request_action(
+        audit_service=audit_service,
+        request=request,
+        actor=actor,
+        action="paper_import.preview",
+        resource_type="paper_import_preview",
+        resource_id=preview.preview_id,
+        status_code=201,
+        metadata={
+            "source_format": preview.source_format.value,
+            "total_records": preview.total_records,
+            "valid_records_count": preview.valid_records_count,
+            "warning_records_count": preview.warning_records_count,
+            "error_records_count": preview.error_records_count,
+        },
+    )
+    return preview
+
+
+@router.post(
+    "/import-commit",
+    response_model=PaperImportCommitResult,
+    status_code=status.HTTP_200_OK,
+)
+def commit_import_preview(
+    payload: PaperImportCommitRequest,
+    request: Request,
+    actor: OperatorDep,
+    service: PaperImportServiceDep,
+    audit_service: AuditServiceDep,
+) -> PaperImportCommitResult:
+    result = service.commit_import_preview(payload)
+    audit_request_action(
+        audit_service=audit_service,
+        request=request,
+        actor=actor,
+        action="paper_import.commit",
+        resource_type="paper_import_batch",
+        resource_id=result.preview_id,
+        status_code=200,
+        metadata={
+            "user_id": str(result.user_id),
+            "source_format": result.source_format.value,
+            "dry_run": result.dry_run,
+            "total_selected": result.total_selected,
+            "committed_count": result.committed_count,
+            "skipped_count": result.skipped_count,
+            "failed_count": result.failed_count,
+        },
+    )
+    return result
+
+
+@router.get("/progress", response_model=PaperProgressListResponse)
+def list_paper_progress_items(
+    _actor: ViewerDep,
+    service: PaperProgressWorkbenchServiceDep,
+    user_id: UserIdQuery = None,
+    reading_status: Annotated[PaperReadingStatus | None, Query()] = None,
+    research_stage: Annotated[PaperResearchStage | None, Query()] = None,
+    priority: Annotated[PaperPriorityLevel | None, Query()] = None,
+    keyword: Annotated[str | None, Query(min_length=1)] = None,
+    has_next_action: Annotated[bool | None, Query()] = None,
+    source_format: Annotated[PaperImportSourceFormat | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> PaperProgressListResponse:
+    return service.list_progress_items(
+        user_id=user_id,
+        reading_status=reading_status,
+        research_stage=research_stage,
+        priority=priority,
+        keyword=keyword,
+        has_next_action=has_next_action,
+        source_format=source_format,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.get("/progress/summary", response_model=PaperProgressSummaryRead)
+def get_paper_progress_summary(
+    _actor: ViewerDep,
+    service: PaperProgressWorkbenchServiceDep,
+    user_id: UserIdQuery = None,
+    reading_status: Annotated[PaperReadingStatus | None, Query()] = None,
+    research_stage: Annotated[PaperResearchStage | None, Query()] = None,
+    priority: Annotated[PaperPriorityLevel | None, Query()] = None,
+    keyword: Annotated[str | None, Query(min_length=1)] = None,
+    has_next_action: Annotated[bool | None, Query()] = None,
+    source_format: Annotated[PaperImportSourceFormat | None, Query()] = None,
+) -> PaperProgressSummaryRead:
+    return service.build_summary(
+        user_id=user_id,
+        reading_status=reading_status,
+        research_stage=research_stage,
+        priority=priority,
+        keyword=keyword,
+        has_next_action=has_next_action,
+        source_format=source_format,
+    )
+
+
+@router.get("/progress/pulse-context", response_model=PaperProgressPulseContextRead)
+def get_paper_progress_pulse_context(
+    _actor: ViewerDep,
+    service: PaperProgressWorkbenchServiceDep,
+    user_id: UserIdQuery = None,
+    limit: Annotated[int, Query(ge=1, le=50)] = 10,
+) -> PaperProgressPulseContextRead:
+    return service.get_progress_context_for_pulse(user_id=user_id, limit=limit)
+
+
 @router.get("/{paper_id}", response_model=PaperProfileRead)
 def get_paper(
     paper_id: UUID,
@@ -67,6 +224,43 @@ def get_paper(
     service: PaperServiceDep,
 ) -> PaperProfileRead:
     return service.get_paper(paper_id)
+
+
+@router.get("/{paper_id}/progress", response_model=PaperProgressItemRead)
+def get_paper_progress_item(
+    paper_id: UUID,
+    _actor: ViewerDep,
+    service: PaperProgressWorkbenchServiceDep,
+) -> PaperProgressItemRead:
+    return service.get_progress_item(paper_id)
+
+
+@router.patch("/{paper_id}/progress", response_model=PaperProgressItemRead)
+def update_paper_progress_item(
+    paper_id: UUID,
+    payload: PaperProgressUpdateRequest,
+    request: Request,
+    actor: OperatorDep,
+    service: PaperProgressWorkbenchServiceDep,
+    audit_service: AuditServiceDep,
+) -> PaperProgressItemRead:
+    item = service.update_progress_item(paper_id, payload)
+    audit_request_action(
+        audit_service=audit_service,
+        request=request,
+        actor=actor,
+        action="paper_progress.update",
+        resource_type="paper_progress",
+        resource_id=str(paper_id),
+        status_code=200,
+        metadata={
+            "reading_status": item.reading_status.value,
+            "research_stage": item.research_stage.value,
+            "priority": item.priority.value,
+            "has_next_action": item.next_action is not None,
+        },
+    )
+    return item
 
 
 @router.put("/{paper_id}", response_model=PaperProfileRead)
