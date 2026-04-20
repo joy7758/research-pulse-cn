@@ -172,6 +172,7 @@ Private repository. Proprietary and confidential.
     - tab / action accessibility
   - Frontend-4 keeps the same 3 channel pages and only refines:
     - copy feedback reset across scenarios and tabs
+    - auto-dismiss for local copy feedback
     - keyboard navigation for mini-program detail tabs
     - overflow handling for long titles, paths, and notes
   - these pages stay mock-only and only expose `draft / preview / not_sent`

@@ -88,6 +88,20 @@ export function MiniProgramDetailPreviewPage({
     setCopyFeedback(null);
   }, [activeTab, currentDetail.detail_id, scenarioLabel]);
 
+  useEffect(() => {
+    if (!copyFeedback) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setCopyFeedback(null);
+    }, 2800);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [copyFeedback]);
+
   function handleTabKeyDown(
     event: KeyboardEvent<HTMLButtonElement>,
     index: number,
@@ -236,6 +250,7 @@ export function MiniProgramDetailPreviewPage({
             </button>
           ))}
         </div>
+        <p className="channel-tab-helper">可以使用左右方向键、Home 或 End 快速切换 detail type 预览。</p>
       </section>
 
       <section

@@ -21,6 +21,7 @@
 
 - 场景切换后，公众号页和桌面通知页的复制反馈会自动清空
 - 小程序页在切换 `detail_type` tabs 后也会自动清空旧的复制反馈
+- 复制反馈会在短时间后自动收起，避免旧提示长期占位
 
 目的：
 
@@ -57,8 +58,15 @@
 - channel section card
 - channel note list
 - channel link list
+- hero action helper
+- detail path / openid 占位 / provider note
 
 让长标题、长 path、长说明在窄屏下不撑破布局。
+
+### 窄屏动作区
+
+- `820px` 以下，渠道页动作区按钮会改成全宽堆叠
+- 复制、返回和跨页跳转仍保持原顺序，但不会互相挤压
 
 ## 页面范围
 

@@ -61,6 +61,20 @@ export function DesktopNotificationDraftPage({
     setCopyFeedback(null);
   }, [draft.draft_id, scenarioLabel]);
 
+  useEffect(() => {
+    if (!copyFeedback) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setCopyFeedback(null);
+    }, 2800);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [copyFeedback]);
+
   async function handleCopyPayload() {
     try {
       await copyText(payloadCode);

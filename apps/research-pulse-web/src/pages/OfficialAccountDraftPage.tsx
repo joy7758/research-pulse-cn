@@ -87,6 +87,20 @@ export function OfficialAccountDraftPage({
     setCopyFeedback(null);
   }, [draft.draft_id, scenarioLabel]);
 
+  useEffect(() => {
+    if (!copyFeedback) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setCopyFeedback(null);
+    }, 2800);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [copyFeedback]);
+
   async function handleCopyMarkdown() {
     try {
       await copyText(markdown);
@@ -202,7 +216,9 @@ export function OfficialAccountDraftPage({
                 <li key={note}>{note}</li>
               ))}
             </ul>
-          ) : null}
+          ) : (
+            <p className="empty-inline">当前没有额外的绑定说明。</p>
+          )}
         </section>
 
         <section className="panel">

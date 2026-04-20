@@ -240,7 +240,9 @@
 - Frontend-4 checks before closing:
   - confirm the same 3 channel pages remain mock-only
   - confirm copy feedback does not leak across tab or scenario changes
+  - confirm local copy feedback can auto-clear after a short delay
   - confirm mini tabs support keyboard navigation
+  - confirm channel action buttons stack cleanly below `820px`
   - confirm long path / note / title content does not break narrow layouts
   - confirm build, lint, typecheck, ruff and pytest all pass
 - Frontend-1 Hardening checks before closing:
