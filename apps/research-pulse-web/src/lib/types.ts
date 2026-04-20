@@ -1,4 +1,11 @@
-export type AppPage = "home" | "import" | "pulse" | "progress";
+export type AppPage =
+  | "home"
+  | "import"
+  | "pulse"
+  | "progress"
+  | "officialDraft"
+  | "desktopDraft"
+  | "miniPreview";
 
 export type DataMode = "mock" | "api";
 
@@ -135,6 +142,246 @@ export interface ResearchPulseRead {
   sections: ResearchPulseSection[];
 }
 
+export interface OfficialAccountDailySummaryItem {
+  paper_id: string;
+  title: string;
+  authors: string[];
+  year: number | null;
+  venue: string | null;
+  doi: string | null;
+  url: string | null;
+  priority: Priority;
+  reading_status: string;
+  research_stage: string;
+  next_action: string | null;
+  reason: string;
+  suggested_action: string;
+  summary_line: string;
+  metadata_warnings: string[];
+  tags: string[];
+  source_format: string | null;
+}
+
+export interface OfficialAccountDailySummarySection {
+  section_id: string;
+  title: string;
+  description: string;
+  items: OfficialAccountDailySummaryItem[];
+  empty_reason: string | null;
+}
+
+export interface OfficialAccountDailySummaryHighlight {
+  sort_order: number;
+  section_id: string;
+  section_title: string;
+  paper_id: string;
+  title: string;
+  summary: string;
+  why_now: string;
+  suggested_action: string;
+}
+
+export interface OfficialAccountPublicationPreview {
+  digest_title: string;
+  digest_subtitle: string;
+  digest_highlights: OfficialAccountDailySummaryHighlight[];
+  primary_cta_text: string;
+  primary_cta_path: string | null;
+  mini_program_path: string | null;
+  article_url: string | null;
+}
+
+export interface OfficialAccountTemplatePayloadPreview {
+  template_id_configured: boolean;
+  field_mapping: Record<string, string>;
+  logical_fields: Record<string, string>;
+  payload_preview: Record<string, unknown>;
+}
+
+export interface OfficialAccountBindingTargetPreview {
+  binding_id: string;
+  channel_type: string;
+  bind_state: string;
+  display_label: string | null;
+  subscribed: boolean;
+  digest_enabled: boolean;
+  masked_openid: string;
+}
+
+export interface OfficialAccountBindingPreview {
+  active_binding_count: number;
+  selected_binding: OfficialAccountBindingTargetPreview | null;
+  notes: string[];
+}
+
+export interface OfficialAccountProviderPreview {
+  provider_mode: string;
+  transport_kind: string;
+  template_id_configured: boolean;
+  template_field_mapping_configured: boolean;
+  article_base_url_configured: boolean;
+  mini_program_app_id_configured: boolean;
+  callback_enabled: boolean;
+  real_send_enabled: boolean;
+  notes: string[];
+}
+
+export interface OfficialAccountDailySummaryRead {
+  draft_id: string;
+  source_research_pulse_draft_id: string;
+  user_id: string;
+  pulse_date: string;
+  timezone: string;
+  dry_run: boolean;
+  title: string;
+  headline: string;
+  summary: string;
+  sections: OfficialAccountDailySummarySection[];
+  highlight_count: number;
+  publication_preview: OfficialAccountPublicationPreview;
+  template_payload_preview: OfficialAccountTemplatePayloadPreview;
+  binding_preview: OfficialAccountBindingPreview;
+  provider_preview: OfficialAccountProviderPreview;
+  total_source_papers: number;
+  warnings: string[];
+  generated_at: string;
+  source_context_notes: string[];
+}
+
+export interface DesktopNotificationItemRead {
+  paper_id: string;
+  title: string;
+  line: string;
+  reason: string;
+  suggested_action: string;
+  priority: Priority;
+  reading_status: string;
+  research_stage: string;
+  metadata_warnings: string[];
+  url: string | null;
+  doi: string | null;
+  tags: string[];
+  source_format: string | null;
+}
+
+export interface DesktopNotificationActionRead {
+  action_id: string;
+  label: string;
+  kind: string;
+  deep_link: string;
+  payload: Record<string, unknown>;
+}
+
+export interface DesktopNotificationRead {
+  draft_id: string;
+  source_research_pulse_draft_id: string;
+  user_id: string;
+  pulse_date: string;
+  timezone: string;
+  title: string;
+  body: string;
+  notification_type: string;
+  urgency: string;
+  badge_count: number;
+  items: DesktopNotificationItemRead[];
+  actions: DesktopNotificationActionRead[];
+  deep_link: string;
+  payload_preview: Record<string, unknown>;
+  total_source_papers: number;
+  total_items: number;
+  warnings: string[];
+  generated_at: string;
+  delivery_state: DeliveryState | string;
+  delivery_notes: string[];
+}
+
+export interface MiniProgramDetailItemRead {
+  item_id: string;
+  paper_id: string | null;
+  title: string;
+  authors: string[];
+  year: number | null;
+  venue: string | null;
+  doi: string | null;
+  url: string | null;
+  priority: Priority | null;
+  reading_status: string | null;
+  research_stage: string | null;
+  next_action: string | null;
+  reason: string;
+  suggested_action: string;
+  metadata_warnings: string[];
+  tags: string[];
+  source_format: string | null;
+  safe_abstract: string | null;
+  detail_path: string;
+}
+
+export interface MiniProgramDetailCardRead {
+  card_id: string;
+  card_type: string;
+  title: string;
+  subtitle: string | null;
+  body: string;
+  items: MiniProgramDetailItemRead[];
+  badges: string[];
+  warnings: string[];
+  empty_reason: string | null;
+}
+
+export interface MiniProgramDetailActionRead {
+  action_id: string;
+  label: string;
+  kind: string;
+  path: string;
+  payload: Record<string, unknown>;
+}
+
+export interface MiniProgramShareCardRead {
+  title: string;
+  summary: string;
+  path: string;
+  image_placeholder: string | null;
+  share_safe: boolean;
+  redacted_fields: string[];
+}
+
+export interface MiniProgramNavigationRead {
+  current_path: string;
+  back_path: string;
+  related_paths: string[];
+}
+
+export interface MiniProgramDetailRead {
+  detail_id: string;
+  detail_type: string;
+  user_id: string;
+  pulse_date: string | null;
+  timezone: string;
+  title: string;
+  subtitle: string;
+  summary: string;
+  cards: MiniProgramDetailCardRead[];
+  actions: MiniProgramDetailActionRead[];
+  share_card: MiniProgramShareCardRead;
+  navigation: MiniProgramNavigationRead;
+  source_research_pulse_draft_id: string | null;
+  total_source_papers: number;
+  total_items: number;
+  warnings: string[];
+  generated_at: string;
+  delivery_state: DeliveryState | string;
+  visibility_notes: string[];
+}
+
+export interface MiniProgramPreviewCollection {
+  daily_pulse: MiniProgramDetailRead;
+  paper: MiniProgramDetailRead;
+  next_actions: MiniProgramDetailRead;
+  metadata_attention: MiniProgramDetailRead;
+  triage: MiniProgramDetailRead;
+}
+
 export interface ChannelStateHint {
   id: string;
   label: string;
@@ -154,5 +401,8 @@ export interface FrontendShellData {
   importPreview: ImportPreviewRead;
   importCommit: ImportCommitRead;
   researchPulse: ResearchPulseRead;
+  officialAccountDailySummary: OfficialAccountDailySummaryRead;
+  desktopNotificationDraft: DesktopNotificationRead;
+  miniProgramPreviews: MiniProgramPreviewCollection;
   channelStates: ChannelStateHint[];
 }

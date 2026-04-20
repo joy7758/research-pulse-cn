@@ -5,8 +5,11 @@ import { Badge } from "./components/Badge";
 import { StatusBanner } from "./components/StatusBanner";
 import { apiModePlan, loadShellData, mockScenarioOptions } from "./lib/dataSource";
 import type { AppPage, DataMode, FrontendShellData, MockScenario } from "./lib/types";
+import { DesktopNotificationDraftPage } from "./pages/DesktopNotificationDraftPage";
 import { HomePage } from "./pages/HomePage";
 import { ImportPage } from "./pages/ImportPage";
+import { MiniProgramDetailPreviewPage } from "./pages/MiniProgramDetailPreviewPage";
+import { OfficialAccountDraftPage } from "./pages/OfficialAccountDraftPage";
 import { PaperProgressPage } from "./pages/PaperProgressPage";
 import { PulseDetailPage } from "./pages/PulseDetailPage";
 
@@ -31,6 +34,21 @@ const navigationItems: NavigationItem[] = [
     key: "pulse",
     label: "Pulse 详情",
     description: "把今日重点、下一步动作和待补全事项展开到完整结构。",
+  },
+  {
+    key: "officialDraft",
+    label: "公众号草稿",
+    description: "只看 draft / not_sent，不做真实发送。",
+  },
+  {
+    key: "desktopDraft",
+    label: "桌面通知草稿",
+    description: "只看通知 payload 预览，不触发系统通知。",
+  },
+  {
+    key: "miniPreview",
+    label: "小程序详情预览",
+    description: "只看 share-safe 预览，不做真实小程序交互。",
   },
   {
     key: "progress",
@@ -58,7 +76,6 @@ function App() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showIssuesOnly, setShowIssuesOnly] = useState(false);
   const [importCommitted, setImportCommitted] = useState(false);
-  const [draftActionTriggered, setDraftActionTriggered] = useState(false);
   const [lastRefreshedAt, setLastRefreshedAt] = useState<string>("尚未刷新");
 
   const currentPageMeta = useMemo(
@@ -79,7 +96,6 @@ function App() {
     setShellData(null);
     setShowIssuesOnly(false);
     setImportCommitted(false);
-    setDraftActionTriggered(false);
 
     void (async () => {
       try {
@@ -151,7 +167,7 @@ function App() {
             <h1>前端壳还没拿到可读数据</h1>
             <StatusBanner tone="error" title="请先修复 mock mode">
               <p>{errorMessage ?? "当前没有可用的 shell 数据。"}</p>
-              <p>你可以先切回默认工作流，再继续验证四页状态和中文文案边界。</p>
+              <p>你可以先切回默认工作流，再继续验证七页状态和中文文案边界。</p>
             </StatusBanner>
             <div className="hero-actions">
               <button className="button-primary" onClick={() => setScenario("default")} type="button">
@@ -176,7 +192,7 @@ function App() {
             <div>
               <p className="eyebrow">minimal web shell</p>
               <h2 className="sidebar-title">Research Pulse</h2>
-              <p className="soft-copy">当前只做四页，不做完整产品后台。</p>
+              <p className="soft-copy">当前只做七页，不做完整产品后台。</p>
             </div>
           </div>
 
@@ -241,6 +257,9 @@ function App() {
               <li>{apiModePlan.progressSummary}</li>
               <li>{apiModePlan.pulseContext}</li>
               <li>{apiModePlan.dailyPulse}</li>
+              <li>{apiModePlan.officialAccountDailySummary}</li>
+              <li>{apiModePlan.desktopNotificationDraft}</li>
+              <li>{apiModePlan.miniProgramDetailPreview}</li>
             </ul>
           </section>
         </aside>
@@ -296,10 +315,41 @@ function App() {
             <PulseDetailPage
               pulse={shellData.researchPulse}
               channelStates={shellData.channelStates}
-              draftActionTriggered={draftActionTriggered}
               scenarioLabel={currentScenarioMeta.label}
-              onGenerateOfficialDraft={() => setDraftActionTriggered(true)}
+              onGoOfficialDraft={() => navigate("officialDraft")}
+              onGoDesktopDraft={() => navigate("desktopDraft")}
+              onGoMiniPreview={() => navigate("miniPreview")}
               onBackHome={() => navigate("home")}
+            />
+          ) : null}
+
+          {page === "officialDraft" ? (
+            <OfficialAccountDraftPage
+              draft={shellData.officialAccountDailySummary}
+              scenarioLabel={currentScenarioMeta.label}
+              onBackPulse={() => navigate("pulse")}
+              onGoDesktopDraft={() => navigate("desktopDraft")}
+              onGoMiniPreview={() => navigate("miniPreview")}
+            />
+          ) : null}
+
+          {page === "desktopDraft" ? (
+            <DesktopNotificationDraftPage
+              draft={shellData.desktopNotificationDraft}
+              scenarioLabel={currentScenarioMeta.label}
+              onBackPulse={() => navigate("pulse")}
+              onGoOfficialDraft={() => navigate("officialDraft")}
+              onGoMiniPreview={() => navigate("miniPreview")}
+            />
+          ) : null}
+
+          {page === "miniPreview" ? (
+            <MiniProgramDetailPreviewPage
+              previews={shellData.miniProgramPreviews}
+              scenarioLabel={currentScenarioMeta.label}
+              onBackPulse={() => navigate("pulse")}
+              onGoOfficialDraft={() => navigate("officialDraft")}
+              onGoDesktopDraft={() => navigate("desktopDraft")}
             />
           ) : null}
 

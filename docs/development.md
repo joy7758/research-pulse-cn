@@ -186,6 +186,8 @@
   - `docs/frontend_paper_progress_page_v1.md`
 - Frontend-2 hardening doc:
   - `docs/frontend_paper_progress_page_hardening_v1.md`
+- Frontend-3 doc:
+  - `docs/frontend_channel_draft_preview_pages_v1.md`
 - Install:
   - `cd apps/research-pulse-web && npm install`
 - Run:
@@ -196,11 +198,14 @@
   - `npm run lint`
   - `npm run typecheck`
 - Current boundary:
-  - the minimal shell currently contains 4 pages:
+  - the minimal shell currently contains 7 pages:
     - today pulse
     - import / import preview
     - pulse detail
     - paper progress
+    - official-account draft
+    - desktop notification draft
+    - mini-program detail preview
   - it defaults to mock mode and curated demo JSON
   - it also includes curated `default / empty / issues / broken` mock scenarios for state validation
   - it does not add login, admin, real channel delivery, or backend contract changes
@@ -214,6 +219,14 @@
   - confirm search + filter empty state exposes `清除筛选` / `清除搜索`
   - confirm `更新选中论文进度` stays disabled until one paper is selected
   - confirm the page still says `本地预览，不会真实修改论文库`
+- Frontend-3 checks before closing:
+  - confirm the only new pages are:
+    - official-account draft
+    - desktop notification draft
+    - mini-program detail preview
+  - confirm every channel page still shows `draft / preview / not_sent`
+  - confirm copy actions stay local and do not trigger real send / push / mini-program abilities
+  - confirm build, lint, typecheck, ruff and pytest all pass
 - Frontend-1 Hardening checks before closing:
   - confirm no extra page is added under `apps/research-pulse-web/src/pages`
   - confirm mock mode still works without backend tokens

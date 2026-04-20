@@ -746,6 +746,110 @@ main {
   font-size: 13px;
 }
 
+.channel-list,
+.channel-note-stack,
+.channel-definition-list {
+  display: grid;
+  gap: var(--spacing-12);
+}
+
+.channel-double-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--spacing-16);
+}
+
+.channel-section-card {
+  display: grid;
+  gap: var(--spacing-12);
+}
+
+.channel-item-card {
+  display: grid;
+  gap: var(--spacing-12);
+  padding: var(--spacing-16);
+  border-radius: 22px;
+  border: 1px solid rgba(20, 33, 51, 0.06);
+  background: #fbfcfd;
+}
+
+.channel-item-header {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--spacing-12);
+  align-items: flex-start;
+}
+
+.channel-item-helper {
+  color: var(--text-secondary);
+  line-height: 1.65;
+}
+
+.channel-bullet-list,
+.channel-link-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--spacing-12);
+}
+
+.channel-bullet-list li,
+.channel-link-list li {
+  display: grid;
+  gap: var(--spacing-4);
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: rgba(244, 248, 251, 0.92);
+  border: 1px solid rgba(20, 33, 51, 0.05);
+}
+
+.channel-link-list span {
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.channel-definition-list div {
+  display: grid;
+  gap: var(--spacing-4);
+}
+
+.channel-definition-list dt {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.channel-definition-list dd {
+  margin: 0;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.payload-panel {
+  display: grid;
+  gap: var(--spacing-12);
+}
+
+.payload-preview {
+  margin: 0;
+  padding: 16px;
+  border-radius: 22px;
+  background: #f6f9fc;
+  border: 1px solid rgba(20, 33, 51, 0.06);
+  overflow: auto;
+  max-height: 440px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #20415f;
+}
+
+.payload-preview code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .import-entry-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -823,7 +927,8 @@ main {
 
   .import-entry-grid,
   .summary-grid,
-  .channel-state-grid {
+  .channel-state-grid,
+  .channel-double-grid {
     grid-template-columns: 1fr;
   }
 
@@ -859,6 +964,10 @@ main {
   .progress-card-actions {
     justify-items: stretch;
   }
+
+  .channel-item-header {
+    display: grid;
+  }
 }
 
 @media (max-width: 640px) {
@@ -891,5 +1000,10 @@ main {
 
   .search-summary-actions {
     width: 100%;
+  }
+
+  .payload-preview {
+    padding: 14px;
+    font-size: 12px;
   }
 }

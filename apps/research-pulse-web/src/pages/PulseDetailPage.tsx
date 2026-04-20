@@ -8,9 +8,10 @@ import type { ChannelStateHint, ResearchPulseRead } from "../lib/types";
 type PulseDetailPageProps = {
   pulse: ResearchPulseRead;
   channelStates: ChannelStateHint[];
-  draftActionTriggered: boolean;
   scenarioLabel: string;
-  onGenerateOfficialDraft: () => void;
+  onGoOfficialDraft: () => void;
+  onGoDesktopDraft: () => void;
+  onGoMiniPreview: () => void;
   onBackHome: () => void;
 };
 
@@ -27,9 +28,10 @@ function buildWarningIssues(pulse: ResearchPulseRead): IssueItem[] {
 export function PulseDetailPage({
   pulse,
   channelStates,
-  draftActionTriggered,
   scenarioLabel,
-  onGenerateOfficialDraft,
+  onGoOfficialDraft,
+  onGoDesktopDraft,
+  onGoMiniPreview,
   onBackHome,
 }: PulseDetailPageProps) {
   const hasVisibleSections = pulse.sections.some((section) => section.items.length > 0);
@@ -46,11 +48,17 @@ export function PulseDetailPage({
         <div className="hero-actions">
           <button
             className="button-primary"
-            onClick={onGenerateOfficialDraft}
+            onClick={onGoOfficialDraft}
             type="button"
             disabled={!hasVisibleSections}
           >
-            {hasVisibleSections ? "生成公众号摘要草稿（mock）" : "当前没有可生成的草稿内容"}
+            {hasVisibleSections ? "查看公众号摘要草稿（mock）" : "当前没有可生成的草稿内容"}
+          </button>
+          <button className="button-secondary" onClick={onGoDesktopDraft} type="button" disabled={!hasVisibleSections}>
+            查看桌面通知草稿
+          </button>
+          <button className="button-tertiary" onClick={onGoMiniPreview} type="button" disabled={!hasVisibleSections}>
+            查看小程序详情预览
           </button>
           <button className="button-tertiary" onClick={onBackHome} type="button">
             返回首页
@@ -60,20 +68,13 @@ export function PulseDetailPage({
 
       <StatusBanner tone="warning" title={`当前仍是草稿边界 · ${scenarioLabel}`}>
         <p>Research Pulse 当前保持 <strong>draft</strong> 语义，不触发真实公众号、桌面或小程序投递。</p>
-        <p>当前前端只展示入口和状态，不在这个阶段增加草稿详情页。</p>
+        <p>当前前端新增的渠道页只做草稿、预览和 payload 展示，不做真实发送、推送或小程序交互。</p>
       </StatusBanner>
 
       <StatusBanner tone="info" title="当前渠道状态：draft / preview / not_sent">
         <p>本页会明确显示草稿、预览和未发送，不会出现“已发送成功”或“已推送成功”。</p>
-        <p>如果你现在点击主动作，也只会验证 mock-only 入口，不会产生真实外部调用。</p>
+        <p>如果你现在点击渠道入口，只会进入 mock-only 草稿页，不会产生真实外部调用。</p>
       </StatusBanner>
-
-      {draftActionTriggered ? (
-        <StatusBanner tone="info" title="公众号摘要草稿入口已触发">
-          <p>当前只在 mock mode 下确认入口可达，状态保持 <strong>draft / not_sent</strong>。</p>
-          <p>真实公众号草稿页被明确延期到后续阶段。</p>
-        </StatusBanner>
-      ) : null}
 
       <section className="panel">
         <div className="section-panel-header">
