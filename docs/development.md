@@ -182,6 +182,8 @@
   - `apps/research-pulse-web`
 - Hardening doc:
   - `docs/frontend_minimal_web_shell_hardening_v1.md`
+- Frontend-2 doc:
+  - `docs/frontend_paper_progress_page_v1.md`
 - Install:
   - `cd apps/research-pulse-web && npm install`
 - Run:
@@ -192,13 +194,19 @@
   - `npm run lint`
   - `npm run typecheck`
 - Current boundary:
-  - Frontend-1 only contains 3 pages:
+  - the minimal shell currently contains 4 pages:
     - today pulse
     - import / import preview
     - pulse detail
+    - paper progress
   - it defaults to mock mode and curated demo JSON
   - it also includes curated `default / empty / issues / broken` mock scenarios for state validation
   - it does not add login, admin, real channel delivery, or backend contract changes
+- Frontend-2 checks before closing:
+  - confirm the only new page is `paper progress`
+  - confirm no login / admin / settings / channel draft pages were added
+  - confirm the page still runs fully in mock mode
+  - confirm the primary action remains `更新选中论文进度`
 - Frontend-1 Hardening checks before closing:
   - confirm no extra page is added under `apps/research-pulse-web/src/pages`
   - confirm mock mode still works without backend tokens

@@ -45,7 +45,8 @@ body {
 
 button,
 textarea,
-select {
+select,
+input {
   font: inherit;
 }
 
@@ -208,6 +209,7 @@ main {
 }
 
 .field-select,
+.field-input,
 .paste-box {
   width: 100%;
   border-radius: 20px;
@@ -328,8 +330,10 @@ main {
 .button-primary:focus-visible,
 .button-secondary:focus-visible,
 .button-tertiary:focus-visible,
+.filter-chip:focus-visible,
 .nav-item:focus-visible,
 .field-select:focus-visible,
+.field-input:focus-visible,
 .paste-box:focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);
@@ -533,6 +537,54 @@ main {
   flex-wrap: wrap;
 }
 
+.paper-card-selected {
+  border-color: rgba(30, 91, 102, 0.26);
+  box-shadow: 0 18px 38px rgba(21, 49, 84, 0.08);
+  background: rgba(245, 250, 252, 0.96);
+}
+
+.progress-card-actions,
+.search-panel,
+.progress-meta-grid {
+  display: grid;
+  gap: var(--spacing-12);
+}
+
+.progress-meta-grid {
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-12);
+  margin-top: var(--spacing-16);
+}
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-8);
+  padding: 10px 14px;
+  border-radius: 999px;
+  background: #eef4f8;
+  color: var(--text-primary);
+}
+
+.filter-chip strong {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.filter-chip-active {
+  background: linear-gradient(135deg, #17355b, #255e5e);
+  color: white;
+}
+
+.filter-chip-active strong {
+  color: rgba(255, 255, 255, 0.86);
+}
+
 .empty-state {
   display: grid;
   gap: var(--spacing-16);
@@ -682,7 +734,8 @@ main {
   .hero-panel,
   .section-panel-header,
   .paper-card-header,
-  .issue-card-header {
+  .issue-card-header,
+  .import-card-header {
     grid-template-columns: 1fr;
     display: grid;
   }
@@ -702,6 +755,10 @@ main {
 
   .hero-actions {
     min-width: 0;
+  }
+
+  .progress-meta-grid {
+    grid-template-columns: 1fr 1fr;
   }
 }
 
@@ -730,6 +787,19 @@ main {
 
   .import-card-list {
     display: grid;
+  }
+
+  .filter-bar {
+    gap: var(--spacing-8);
+  }
+
+  .filter-chip {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .progress-meta-grid {
+    grid-template-columns: 1fr;
   }
 }
 

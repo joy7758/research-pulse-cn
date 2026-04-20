@@ -7,6 +7,7 @@ import { apiModePlan, loadShellData, mockScenarioOptions } from "./lib/dataSourc
 import type { AppPage, DataMode, FrontendShellData, MockScenario } from "./lib/types";
 import { HomePage } from "./pages/HomePage";
 import { ImportPage } from "./pages/ImportPage";
+import { PaperProgressPage } from "./pages/PaperProgressPage";
 import { PulseDetailPage } from "./pages/PulseDetailPage";
 
 type NavigationItem = {
@@ -30,6 +31,11 @@ const navigationItems: NavigationItem[] = [
     key: "pulse",
     label: "Pulse 详情",
     description: "把今日重点、下一步动作和待补全事项展开到完整结构。",
+  },
+  {
+    key: "progress",
+    label: "论文进度",
+    description: "围绕待读、略读、精读和下一步动作推进科研阅读。",
   },
 ];
 
@@ -128,7 +134,7 @@ function App() {
             <p className="eyebrow">正在载入</p>
             <h1>先把今天的 Pulse 准备好</h1>
             <p className="hero-summary">
-              当前使用 {currentScenarioMeta.label} 场景，Frontend-1 仍然只读取本地 curated mock JSON。
+              当前使用 {currentScenarioMeta.label} 场景，当前前端壳仍然只读取本地 curated mock JSON。
             </p>
           </section>
         </div>
@@ -145,7 +151,7 @@ function App() {
             <h1>前端壳还没拿到可读数据</h1>
             <StatusBanner tone="error" title="请先修复 mock mode">
               <p>{errorMessage ?? "当前没有可用的 shell 数据。"}</p>
-              <p>你可以先切回默认工作流，再继续验证三页状态和中文文案边界。</p>
+              <p>你可以先切回默认工作流，再继续验证四页状态和中文文案边界。</p>
             </StatusBanner>
             <div className="hero-actions">
               <button className="button-primary" onClick={() => setScenario("default")} type="button">
@@ -170,7 +176,7 @@ function App() {
             <div>
               <p className="eyebrow">minimal web shell</p>
               <h2 className="sidebar-title">Research Pulse</h2>
-              <p className="soft-copy">Frontend-1 只做三页，不做完整产品后台。</p>
+              <p className="soft-copy">当前只做四页，不做完整产品后台。</p>
             </div>
           </div>
 
@@ -229,6 +235,7 @@ function App() {
           <section className="sidebar-card">
             <p className="eyebrow">API mode 预留</p>
             <ul className="endpoint-list">
+              <li>{apiModePlan.progressList}</li>
               <li>{apiModePlan.importPreview}</li>
               <li>{apiModePlan.importCommit}</li>
               <li>{apiModePlan.progressSummary}</li>
@@ -293,6 +300,16 @@ function App() {
               scenarioLabel={currentScenarioMeta.label}
               onGenerateOfficialDraft={() => setDraftActionTriggered(true)}
               onBackHome={() => navigate("home")}
+            />
+          ) : null}
+
+          {page === "progress" ? (
+            <PaperProgressPage
+              items={shellData.paperProgressItems}
+              scenarioLabel={currentScenarioMeta.label}
+              onBackHome={() => navigate("home")}
+              onGoImport={() => navigate("import")}
+              onGoPulse={() => navigate("pulse")}
             />
           ) : null}
         </div>

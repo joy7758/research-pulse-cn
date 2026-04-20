@@ -60,7 +60,7 @@ export function PulseDetailPage({
 
       <StatusBanner tone="warning" title={`当前仍是草稿边界 · ${scenarioLabel}`}>
         <p>Research Pulse 当前保持 <strong>draft</strong> 语义，不触发真实公众号、桌面或小程序投递。</p>
-        <p>Front-end 只展示入口和状态，不在 Frontend-1 增加草稿详情页。</p>
+        <p>当前前端只展示入口和状态，不在这个阶段增加草稿详情页。</p>
       </StatusBanner>
 
       <StatusBanner tone="info" title="当前渠道状态：draft / preview / not_sent">
@@ -71,7 +71,7 @@ export function PulseDetailPage({
       {draftActionTriggered ? (
         <StatusBanner tone="info" title="公众号摘要草稿入口已触发">
           <p>当前只在 mock mode 下确认入口可达，状态保持 <strong>draft / not_sent</strong>。</p>
-          <p>真实公众号草稿页被明确延期到 Frontend-1 之后的阶段。</p>
+          <p>真实公众号草稿页被明确延期到后续阶段。</p>
         </StatusBanner>
       ) : null}
 

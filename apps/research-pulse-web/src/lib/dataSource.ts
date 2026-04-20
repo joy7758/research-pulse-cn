@@ -5,6 +5,7 @@ import emptyResearchPulseJson from "../data/mock/empty_research_pulse.json";
 import importCommitJson from "../data/mock/import_commit.json";
 import importPreviewWithErrorsJson from "../data/mock/import_preview_with_errors.json";
 import importPreviewJson from "../data/mock/import_preview.json";
+import paperProgressItemsJson from "../data/mock/paper_progress_items.json";
 import progressSummaryJson from "../data/mock/paper_progress_summary.json";
 import researchPulseJson from "../data/mock/research_pulse.json";
 import type {
@@ -17,6 +18,7 @@ import type {
   ImportPreviewRecord,
   MockScenario,
   MockScenarioOption,
+  PaperProgressItemRead,
   PaperProgressSummaryRead,
   ResearchPulseItem,
   ResearchPulseRead,
@@ -216,6 +218,43 @@ function normalizeProgressSummary(value: unknown): PaperProgressSummaryRead {
   };
 }
 
+function normalizeProgressItem(value: unknown, index: number): PaperProgressItemRead {
+  const item = isRecord(value) ? value : {};
+  const priority =
+    item.priority === "low" ||
+    item.priority === "normal" ||
+    item.priority === "high" ||
+    item.priority === "urgent"
+      ? item.priority
+      : "normal";
+
+  return {
+    paper_id: readString(item.paper_id, `progress-paper-${index + 1}`),
+    user_id: readString(item.user_id, "mock-user"),
+    title: readString(item.title, "题名待补全"),
+    authors: readStringArray(item.authors),
+    year: readNullableNumber(item.year),
+    venue: readNullableString(item.venue),
+    doi: readNullableString(item.doi),
+    url: readNullableString(item.url),
+    source_format: readString(item.source_format, "mock"),
+    reading_status: readString(item.reading_status, "unread"),
+    research_stage: readString(item.research_stage, "inbox"),
+    priority,
+    priority_score: readNumber(item.priority_score, priority === "urgent" ? 5 : priority === "high" ? 4 : priority === "low" ? 1 : 3),
+    next_action: readNullableString(item.next_action),
+    user_note: readNullableString(item.user_note),
+    research_note: readNullableString(item.research_note),
+    tags: readStringArray(item.tags),
+    keywords: readStringArray(item.keywords),
+    imported_at: readString(item.imported_at, "2026-04-19T00:00:00Z"),
+    created_at: readString(item.created_at, "2026-04-19T00:00:00Z"),
+    updated_at: readString(item.updated_at, "2026-04-19T00:00:00Z"),
+    last_touch_at: readString(item.last_touch_at, "2026-04-19T00:00:00Z"),
+    warnings: readStringArray(item.warnings),
+  };
+}
+
 function normalizePulseItem(value: unknown, index: number): ResearchPulseItem {
   const item = isRecord(value) ? value : {};
   const priority =
@@ -295,6 +334,7 @@ function buildScenarioData(scenario: MockScenario): FrontendShellData {
   if (scenario === "empty") {
     return {
       progressSummary: normalizeProgressSummary(emptyProgressSummaryJson),
+      paperProgressItems: [],
       importPreview: normalizeImportPreview(emptyImportPreviewJson),
       importCommit: normalizeImportCommit(emptyImportCommitJson),
       researchPulse: normalizeResearchPulse(emptyResearchPulseJson),
@@ -305,6 +345,9 @@ function buildScenarioData(scenario: MockScenario): FrontendShellData {
   if (scenario === "issues") {
     return {
       progressSummary: normalizeProgressSummary(progressSummaryJson),
+      paperProgressItems: (paperProgressItemsJson as unknown[]).map((item, index) =>
+        normalizeProgressItem(item, index),
+      ),
       importPreview: normalizeImportPreview(importPreviewWithErrorsJson),
       importCommit: normalizeImportCommit(emptyImportCommitJson),
       researchPulse: normalizeResearchPulse(researchPulseJson),
@@ -314,6 +357,9 @@ function buildScenarioData(scenario: MockScenario): FrontendShellData {
 
   return {
     progressSummary: normalizeProgressSummary(progressSummaryJson),
+    paperProgressItems: (paperProgressItemsJson as unknown[]).map((item, index) =>
+      normalizeProgressItem(item, index),
+    ),
     importPreview: normalizeImportPreview(importPreviewJson),
     importCommit: normalizeImportCommit(importCommitJson),
     researchPulse: normalizeResearchPulse(researchPulseJson),
@@ -329,7 +375,7 @@ export async function loadShellData(
 
   if (mode === "api") {
     throw new Error(
-      "Frontend-1 当前只启用 mock mode。real API mode 仅预留后续内部联调，不在本轮启用。",
+      "当前前端壳只启用 mock mode。real API mode 仅预留后续内部联调，不在本轮启用。",
     );
   }
 
@@ -337,6 +383,7 @@ export async function loadShellData(
 }
 
 export const apiModePlan = {
+  progressList: "GET /papers/progress",
   importPreview: "POST /papers/import-preview",
   importCommit: "POST /papers/import-commit",
   progressSummary: "GET /papers/progress/summary",

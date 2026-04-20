@@ -85,7 +85,7 @@ export function ImportPage({
           <p className="eyebrow">导入 / 导入预览</p>
           <h1>先看清结果，再确认导入</h1>
           <p className="hero-summary">
-            Frontend-1 暂不做真实文件上传复杂工程，这一页先用 mock 数据演示拖入、粘贴、预览和确认的最短路径。
+            当前前端壳暂不做真实文件上传复杂工程，这一页先用 mock 数据演示拖入、粘贴、预览和确认的最短路径。
           </p>
         </div>
         <div className="hero-actions">
@@ -133,7 +133,7 @@ export function ImportPage({
           <p className="eyebrow">拖入区域</p>
           <h3>把文件拖到这里</h3>
           <p className="soft-copy">
-            先支持 mock 演示：前端只展示拖入区域，不在 Frontend-1 实现复杂文件上传工程。
+            先支持 mock 演示：前端只展示拖入区域，不在当前阶段实现复杂文件上传工程。
           </p>
         </section>
         <section className="panel input-panel">

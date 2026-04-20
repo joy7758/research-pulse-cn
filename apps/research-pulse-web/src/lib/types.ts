@@ -1,4 +1,4 @@
-export type AppPage = "home" | "import" | "pulse";
+export type AppPage = "home" | "import" | "pulse" | "progress";
 
 export type DataMode = "mock" | "api";
 
@@ -68,6 +68,32 @@ export interface PaperProgressSummaryRead {
   by_priority: Record<string, number>;
 }
 
+export interface PaperProgressItemRead {
+  paper_id: string;
+  user_id: string;
+  title: string;
+  authors: string[];
+  year: number | null;
+  venue: string | null;
+  doi: string | null;
+  url: string | null;
+  source_format: string;
+  reading_status: string;
+  research_stage: string;
+  priority: Priority;
+  priority_score: number;
+  next_action: string | null;
+  user_note: string | null;
+  research_note: string | null;
+  tags: string[];
+  keywords: string[];
+  imported_at: string;
+  created_at: string;
+  updated_at: string;
+  last_touch_at: string;
+  warnings: string[];
+}
+
 export interface ResearchPulseItem {
   paper_id: string;
   title: string;
@@ -124,6 +150,7 @@ export interface MockScenarioOption {
 
 export interface FrontendShellData {
   progressSummary: PaperProgressSummaryRead;
+  paperProgressItems: PaperProgressItemRead[];
   importPreview: ImportPreviewRead;
   importCommit: ImportCommitRead;
   researchPulse: ResearchPulseRead;
