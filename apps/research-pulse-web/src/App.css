@@ -573,7 +573,8 @@ main {
 }
 
 .progress-warning-stack,
-.search-summary-panel {
+.search-summary-panel,
+.progress-selection-panel {
   display: grid;
   gap: var(--spacing-8);
 }
@@ -582,6 +583,17 @@ main {
   display: flex;
   gap: var(--spacing-8);
   flex-wrap: wrap;
+}
+
+.selection-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #eef4f8;
+  color: #214d6c;
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 .progress-meta-grid {

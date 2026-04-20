@@ -33,6 +33,7 @@ export function ProgressPaperCard({
   onSelect,
 }: ProgressPaperCardProps) {
   const authorLine = item.authors.length > 0 ? item.authors.join(" / ") : "作者待补全";
+  const titleId = `${item.paper_id}-title`;
   const metadataDescriptionId = `${item.paper_id}-metadata`;
   const selectionDescriptionId = `${item.paper_id}-selection`;
 
@@ -50,15 +51,17 @@ export function ProgressPaperCard({
   return (
     <article
       className={`paper-card progress-paper-card ${selected ? "paper-card-selected" : ""}`}
+      role="option"
       tabIndex={0}
       onClick={handleSelect}
       onKeyDown={handleKeyDown}
-      aria-current={selected ? "true" : undefined}
+      aria-selected={selected}
+      aria-labelledby={titleId}
       aria-describedby={`${metadataDescriptionId} ${selectionDescriptionId}`}
     >
       <div className="paper-card-header">
         <div>
-          <h4>{item.title}</h4>
+          <h4 id={titleId}>{item.title}</h4>
           <p className="paper-meta">
             {authorLine}
             {item.year ? ` · ${item.year}` : " · 年份待补全"}
@@ -85,6 +88,7 @@ export function ProgressPaperCard({
             }}
             type="button"
             aria-pressed={selected}
+            aria-label={`${selected ? "取消并重新选择" : "选中"}《${item.title}》作为当前本地更新预览对象`}
           >
             {selected ? "已选中" : "选中这篇"}
           </button>

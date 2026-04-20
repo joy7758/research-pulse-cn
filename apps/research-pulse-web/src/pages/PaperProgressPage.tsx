@@ -5,6 +5,7 @@ import { ProgressFilterBar } from "../components/ProgressFilterBar";
 import { ProgressPaperCard } from "../components/ProgressPaperCard";
 import { StatusBanner } from "../components/StatusBanner";
 import { SummaryCard } from "../components/SummaryCard";
+import { getPriorityLabel, getReadingStatusLabel, getResearchStageLabel } from "../lib/progressLabels";
 import type { PaperProgressItemRead } from "../lib/types";
 
 type ProgressFilterKey =
@@ -63,6 +64,22 @@ function matchesKeyword(item: PaperProgressItemRead, keyword: string) {
   return searchable.includes(normalizedKeyword);
 }
 
+function compareProgressItems(left: PaperProgressItemRead, right: PaperProgressItemRead) {
+  if (right.priority_score !== left.priority_score) {
+    return right.priority_score - left.priority_score;
+  }
+
+  if (Boolean(right.next_action) !== Boolean(left.next_action)) {
+    return Number(Boolean(right.next_action)) - Number(Boolean(left.next_action));
+  }
+
+  if (right.warnings.length !== left.warnings.length) {
+    return right.warnings.length - left.warnings.length;
+  }
+
+  return right.last_touch_at.localeCompare(left.last_touch_at);
+}
+
 export function PaperProgressPage({
   items,
   scenarioLabel,
@@ -83,9 +100,9 @@ export function PaperProgressPage({
 
   const filteredItems = useMemo(
     () =>
-      items.filter(
-        (item) => matchesFilter(item, filter) && matchesKeyword(item, deferredSearchQuery),
-      ),
+      items
+        .filter((item) => matchesFilter(item, filter) && matchesKeyword(item, deferredSearchQuery))
+        .sort(compareProgressItems),
     [items, filter, deferredSearchQuery],
   );
 
@@ -304,6 +321,7 @@ export function PaperProgressPage({
                   当前结果：{filteredItems.length} 篇
                   {hasSearchQuery ? "。建议先缩小到今天要处理的关键词。" : "。可以继续用筛选快速缩小范围。"}
                 </p>
+                <p className="soft-copy">默认按优先级、下一步动作、待补全紧急度和最近触达排序。</p>
                 {isFilteringLocally ? (
                   <p className="soft-copy">正在按本地预览条件整理结果…</p>
                 ) : null}
@@ -326,6 +344,34 @@ export function PaperProgressPage({
           </section>
 
           <section className="panel">
+            {selectedPaper ? (
+              <div className="progress-selection-panel" aria-live="polite">
+                <div className="section-panel-header">
+                  <div>
+                    <p className="eyebrow">当前选中</p>
+                    <h3>{selectedPaper.title}</h3>
+                  </div>
+                </div>
+                <div className="badge-row">
+                  <span className="selection-pill">优先级：{getPriorityLabel(selectedPaper.priority)}</span>
+                  <span className="selection-pill">
+                    阅读状态：{getReadingStatusLabel(selectedPaper.reading_status)}
+                  </span>
+                  <span className="selection-pill">
+                    研究阶段：{getResearchStageLabel(selectedPaper.research_stage)}
+                  </span>
+                </div>
+                <p className="soft-copy">
+                  下一步动作：{selectedPaper.next_action ?? "当前还没有写入 next_action，建议先补一句。"}
+                </p>
+                <p className="soft-copy">
+                  元数据状态：
+                  {selectedPaper.warnings.length > 0
+                    ? ` 仍有 ${selectedPaper.warnings.length} 项建议补全。`
+                    : " 当前没有待补全项。"}
+                </p>
+              </div>
+            ) : null}
             <div className="section-panel-header">
               <div>
                 <p className="eyebrow">论文列表</p>
@@ -333,7 +379,7 @@ export function PaperProgressPage({
               </div>
             </div>
             {filteredItems.length > 0 ? (
-              <div className="section-items" role="list" aria-label="论文进度列表">
+              <div className="section-items" role="listbox" aria-label="论文进度列表">
                 {filteredItems.map((item) => (
                   <ProgressPaperCard
                     key={item.paper_id}
