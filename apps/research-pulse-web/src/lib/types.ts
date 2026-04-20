@@ -2,6 +2,8 @@ export type AppPage = "home" | "import" | "pulse";
 
 export type DataMode = "mock" | "api";
 
+export type MockScenario = "default" | "empty" | "issues" | "broken";
+
 export type DeliveryState = "draft" | "preview" | "not_sent";
 
 export type Priority = "low" | "normal" | "high" | "urgent";
@@ -112,6 +114,12 @@ export interface ChannelStateHint {
   label: string;
   state: DeliveryState;
   message: string;
+}
+
+export interface MockScenarioOption {
+  id: MockScenario;
+  label: string;
+  description: string;
 }
 
 export interface FrontendShellData {

@@ -134,21 +134,27 @@ Private repository. Proprietary and confidential.
   - `docs/frontend_acceptance_checklist_v1.md`
   - `docs/PROMPT_FRONTEND_1_MINIMAL_WEB_SHELL_CN.md`
 - Current boundary:
-  - this phase is planning-only
-  - no new frontend implementation is added yet
-  - Frontend-1 should stay limited to a minimal web shell over frozen APIs and demo JSON
+  - this phase fixed the implementation boundary before code started
+  - Frontend-1 must stay limited to a minimal web shell over frozen APIs and demo JSON
+  - do not expand directly into a full product frontend
 
 ## Frontend Minimal Web Shell
 - Frontend-1 docs:
   - `docs/frontend_minimal_web_shell_v1.md`
+  - `docs/frontend_minimal_web_shell_hardening_v1.md`
 - Frontend-1 app:
   - `apps/research-pulse-web`
 - Minimal local run:
   - `cd apps/research-pulse-web && npm install`
   - `npm run dev`
+- Hardening checks:
+  - `npm run build`
+  - `npm run lint`
+  - `npm run typecheck`
 - Current boundary:
   - the shell only includes 3 pages
   - it defaults to mock mode over curated demo JSON
+  - it now includes curated `default / empty / issues / broken` mock scenarios for page-state validation
   - it does not add login, admin, real WeChat, real mini-program, or real desktop delivery
 
 ## What is included

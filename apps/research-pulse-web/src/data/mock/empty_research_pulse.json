@@ -1,0 +1,54 @@
+{
+  "draft_id": "demo-pulse-empty-20260419",
+  "user_id": "demo-user-20260419",
+  "pulse_date": "2026-04-19",
+  "timezone": "Asia/Shanghai",
+  "dry_run": true,
+  "generated_at": "2026-04-19T16:54:07Z",
+  "title": "2026-04-19 科研 Pulse 草稿",
+  "summary": "当前还没有可进入今日 Pulse 的论文。先导入 3 到 5 篇待处理论文，再回来查看今天该做什么。",
+  "warnings": [
+    "当前 mock 场景用于验证空状态。页面仍然保持 draft / preview / not_sent 边界。"
+  ],
+  "source_context_notes": [
+    "还没有已导入论文，所以不会生成重点论文和下一步动作。",
+    "建议先进入导入页，完成至少一批可导入记录。"
+  ],
+  "sections": [
+    {
+      "section_id": "today_focus",
+      "title": "今日重点论文",
+      "description": "优先处理高优先级、已有下一步动作且仍在推进中的论文。",
+      "empty_reason": "当前还没有重点论文。先导入论文，或把已导入论文推进到 reading / reviewing。",
+      "items": []
+    },
+    {
+      "section_id": "continue_reading",
+      "title": "继续阅读与分析",
+      "description": "继续推进略读、精读和阅读分析阶段的论文。",
+      "empty_reason": "当前没有正在阅读的论文。先导入论文，或在后续阶段补一页论文进度。",
+      "items": []
+    },
+    {
+      "section_id": "next_actions",
+      "title": "下一步动作",
+      "description": "直接执行已经明确写下 next_action 的论文任务。",
+      "empty_reason": "当前还没有下一步动作。先导入论文或补写 next_action。",
+      "items": []
+    },
+    {
+      "section_id": "metadata_attention",
+      "title": "元数据待补全",
+      "description": "优先补齐作者、年份、来源和 DOI 等关键元数据。",
+      "empty_reason": "当前没有待补全的元数据记录。",
+      "items": []
+    },
+    {
+      "section_id": "newly_imported_triage",
+      "title": "新导入待筛选",
+      "description": "帮助把新导入但尚未筛选的论文尽快进入研究流程。",
+      "empty_reason": "当前没有待筛选的新导入论文。",
+      "items": []
+    }
+  ]
+}

@@ -180,6 +180,8 @@
 ## Frontend minimal web shell
 - Frontend-1 app path:
   - `apps/research-pulse-web`
+- Hardening doc:
+  - `docs/frontend_minimal_web_shell_hardening_v1.md`
 - Install:
   - `cd apps/research-pulse-web && npm install`
 - Run:
@@ -195,7 +197,18 @@
     - import / import preview
     - pulse detail
   - it defaults to mock mode and curated demo JSON
+  - it also includes curated `default / empty / issues / broken` mock scenarios for state validation
   - it does not add login, admin, real channel delivery, or backend contract changes
+- Frontend-1 Hardening checks before closing:
+  - confirm no extra page is added under `apps/research-pulse-web/src/pages`
+  - confirm mock mode still works without backend tokens
+  - confirm `draft / preview / not_sent` stay explicit in visible copy
+  - run:
+    - `cd apps/research-pulse-web && npm run build`
+    - `cd apps/research-pulse-web && npm run lint`
+    - `cd apps/research-pulse-web && npm run typecheck`
+    - `.venv/bin/python -m ruff check .`
+    - `.venv/bin/python -m pytest`
 
 ## Desktop shell
 - Install desktop dependencies:
