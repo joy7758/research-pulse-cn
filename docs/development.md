@@ -158,6 +158,25 @@
   - do not add external-model or external-network dependencies
   - generated output defaults to `/tmp` and should not be committed
 
+## Frontend planning only
+- Frontend-0 docs:
+  - `docs/frontend_technical_feasibility_review_v1.md`
+  - `docs/frontend_mvp_scope_v1.md`
+  - `docs/frontend_api_consumption_plan_v1.md`
+  - `docs/frontend_demo_data_mapping_v1.md`
+  - `docs/frontend_component_mapping_v1.md`
+  - `docs/frontend_implementation_sequence_v1.md`
+  - `docs/frontend_acceptance_checklist_v1.md`
+  - `docs/PROMPT_FRONTEND_1_MINIMAL_WEB_SHELL_CN.md`
+- This phase is documentation-only:
+  - do not run npm / pnpm / yarn
+  - do not add `package.json`
+  - do not add frontend runtime files
+- Recommended docs-only checks before closing:
+  - `git diff --name-only | grep -Ev '^(docs/|README\\.md$)' || true`
+  - `git diff --name-only | grep -E '^(src/|tests/|scripts/|demo/|alembic/|migrations/|pyproject\\.toml|requirements|package\\.json|pnpm-lock|yarn.lock|package-lock\\.json)' || true`
+  - `git diff --name-only | grep -Ei 'package\\.json|pnpm-lock|yarn.lock|package-lock\\.json|vite|next|react|vue|svelte|tailwind|electron|tauri' || true`
+
 ## Desktop shell
 - Install desktop dependencies:
   - `make desktop-install`

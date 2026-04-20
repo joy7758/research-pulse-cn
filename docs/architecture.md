@@ -120,6 +120,15 @@ Research Pulse CN is implemented as a modular monolith that keeps domain decisio
   - it is not a production delivery system
   - it does not add real WeChat, desktop notification, mini-program, or external-model integration
 
+## Frontend-0 Feasibility Boundary
+- Frontend-0 is planning-only and does not add runtime UI code.
+- Any future Frontend-1 shell should:
+  - consume the frozen API/schema contract
+  - support demo JSON mock mode first
+  - add real API mode only as an internal follow-up
+- Frontend work must not change backend contract just to simplify UI implementation.
+- Frontend work must not revive the frozen admin overbuild track.
+
 Core flow:
 1. CRUD APIs manage user profiles, paper profiles, events, snapshots, and subscription policies.
 2. Pulse preview and run requests build deterministic facts, candidates, scores, suppression reasons, and final selections.

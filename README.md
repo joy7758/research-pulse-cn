@@ -123,6 +123,21 @@ Private repository. Proprietary and confidential.
   - the demo stays local, offline, and deterministic
   - it does not introduce real WeChat, desktop notification, mini-program, or external-model integration
 
+## Frontend Technical Feasibility
+- Frontend-0 docs:
+  - `docs/frontend_technical_feasibility_review_v1.md`
+  - `docs/frontend_mvp_scope_v1.md`
+  - `docs/frontend_api_consumption_plan_v1.md`
+  - `docs/frontend_demo_data_mapping_v1.md`
+  - `docs/frontend_component_mapping_v1.md`
+  - `docs/frontend_implementation_sequence_v1.md`
+  - `docs/frontend_acceptance_checklist_v1.md`
+  - `docs/PROMPT_FRONTEND_1_MINIMAL_WEB_SHELL_CN.md`
+- Current boundary:
+  - this phase is planning-only
+  - no new frontend implementation is added yet
+  - Frontend-1 should stay limited to a minimal web shell over frozen APIs and demo JSON
+
 ## What is included
 - FastAPI backend with OpenAPI docs
 - SQLAlchemy 2 models and Alembic migration
