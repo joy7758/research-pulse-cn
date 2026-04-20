@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Badge } from "../components/Badge";
 import { EmptyState } from "../components/EmptyState";
@@ -56,6 +56,10 @@ export function DesktopNotificationDraftPage({
   const primaryHelperText = primaryActionDisabled
     ? "当前没有可复制的桌面通知内容，请先回到 Pulse 详情确认今天的重点论文。"
     : "当前为本地预览，主动作只复制通知 payload，不会调用系统通知或真实推送服务。";
+
+  useEffect(() => {
+    setCopyFeedback(null);
+  }, [draft.draft_id, scenarioLabel]);
 
   async function handleCopyPayload() {
     try {

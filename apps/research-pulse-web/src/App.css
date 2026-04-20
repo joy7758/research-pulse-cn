@@ -756,6 +756,7 @@ main {
 .channel-tab-panel {
   display: grid;
   gap: var(--spacing-16);
+  min-width: 0;
 }
 
 .channel-double-grid {
@@ -767,6 +768,7 @@ main {
 .channel-section-card {
   display: grid;
   gap: var(--spacing-12);
+  min-width: 0;
 }
 
 .channel-item-card {
@@ -776,6 +778,7 @@ main {
   border-radius: 22px;
   border: 1px solid rgba(20, 33, 51, 0.06);
   background: #fbfcfd;
+  min-width: 0;
 }
 
 .channel-item-header {
@@ -814,6 +817,11 @@ main {
   overflow-wrap: anywhere;
 }
 
+.channel-link-list strong,
+.channel-bullet-list strong {
+  overflow-wrap: anywhere;
+}
+
 .channel-definition-list div {
   display: grid;
   gap: var(--spacing-4);
@@ -837,6 +845,10 @@ main {
   margin: 0;
   display: grid;
   gap: var(--spacing-8);
+}
+
+.channel-note-list li {
+  overflow-wrap: anywhere;
 }
 
 .payload-panel {

@@ -190,6 +190,8 @@
   - `docs/frontend_channel_draft_preview_pages_v1.md`
 - Frontend-3 hardening doc:
   - `docs/frontend_channel_draft_preview_pages_hardening_v1.md`
+- Frontend-4 doc:
+  - `docs/frontend_channel_draft_preview_pages_v2.md`
 - Install:
   - `cd apps/research-pulse-web && npm install`
 - Run:
@@ -234,6 +236,12 @@
   - confirm official / desktop / mini pages still keep `mock-only` copy and no real send wording
   - confirm mini tabs expose `tablist / tab / tabpanel` accessibility semantics
   - confirm `channel-double-grid` collapses cleanly by `1024px`
+  - confirm build, lint, typecheck, ruff and pytest all pass
+- Frontend-4 checks before closing:
+  - confirm the same 3 channel pages remain mock-only
+  - confirm copy feedback does not leak across tab or scenario changes
+  - confirm mini tabs support keyboard navigation
+  - confirm long path / note / title content does not break narrow layouts
   - confirm build, lint, typecheck, ruff and pytest all pass
 - Frontend-1 Hardening checks before closing:
   - confirm no extra page is added under `apps/research-pulse-web/src/pages`

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Badge } from "../components/Badge";
 import { EmptyState } from "../components/EmptyState";
@@ -82,6 +82,10 @@ export function OfficialAccountDraftPage({
   const primaryHelperText = primaryActionDisabled
     ? "当前没有可复制的摘要内容，请先回到 Pulse 详情确认今天的重点论文。"
     : "当前为本地预览，主动作只复制 Markdown 草稿，不会真实发送公众号摘要。";
+
+  useEffect(() => {
+    setCopyFeedback(null);
+  }, [draft.draft_id, scenarioLabel]);
 
   async function handleCopyMarkdown() {
     try {

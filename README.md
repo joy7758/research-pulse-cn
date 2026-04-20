@@ -146,6 +146,7 @@ Private repository. Proprietary and confidential.
   - `docs/frontend_paper_progress_page_hardening_v1.md`
   - `docs/frontend_channel_draft_preview_pages_v1.md`
   - `docs/frontend_channel_draft_preview_pages_hardening_v1.md`
+  - `docs/frontend_channel_draft_preview_pages_v2.md`
 - Frontend-1 app:
   - `apps/research-pulse-web`
 - Minimal local run:
@@ -169,6 +170,10 @@ Private repository. Proprietary and confidential.
     - payload copy feedback
     - narrow-screen channel layouts
     - tab / action accessibility
+  - Frontend-4 keeps the same 3 channel pages and only refines:
+    - copy feedback reset across scenarios and tabs
+    - keyboard navigation for mini-program detail tabs
+    - overflow handling for long titles, paths, and notes
   - these pages stay mock-only and only expose `draft / preview / not_sent`
   - it does not add login, admin, real WeChat, real mini-program, or real desktop delivery
 

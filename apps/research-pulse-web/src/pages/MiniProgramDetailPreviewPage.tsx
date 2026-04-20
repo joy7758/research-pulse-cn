@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
 
 import { Badge } from "../components/Badge";
 import { EmptyState } from "../components/EmptyState";
@@ -26,6 +26,15 @@ const miniTabs: Array<{ key: MiniProgramTabKey; label: string }> = [
   { key: "metadata_attention", label: "待补全" },
   { key: "triage", label: "待筛选" },
 ];
+
+function focusMiniTab(tabKey: MiniProgramTabKey) {
+  window.requestAnimationFrame(() => {
+    const tab = document.getElementById(`mini-tab-${tabKey}`);
+    if (tab instanceof HTMLButtonElement) {
+      tab.focus();
+    }
+  });
+}
 
 function getPriorityTone(priority: Priority | null) {
   switch (priority) {
@@ -74,6 +83,34 @@ export function MiniProgramDetailPreviewPage({
   const primaryHelperText = hasCopyableContent
     ? "当前为本地预览，主动作只复制 detail payload，不会真实创建小程序页面、登录、订阅消息或支付。"
     : "当前没有可复制的 detail payload，请先回到 Pulse 详情确认今天的重点论文和预览内容。";
+
+  useEffect(() => {
+    setCopyFeedback(null);
+  }, [activeTab, currentDetail.detail_id, scenarioLabel]);
+
+  function handleTabKeyDown(
+    event: KeyboardEvent<HTMLButtonElement>,
+    index: number,
+  ) {
+    let nextIndex = index;
+
+    if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+      nextIndex = (index + 1) % miniTabs.length;
+    } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+      nextIndex = (index - 1 + miniTabs.length) % miniTabs.length;
+    } else if (event.key === "Home") {
+      nextIndex = 0;
+    } else if (event.key === "End") {
+      nextIndex = miniTabs.length - 1;
+    } else {
+      return;
+    }
+
+    event.preventDefault();
+    const nextKey = miniTabs[nextIndex].key;
+    setActiveTab(nextKey);
+    focusMiniTab(nextKey);
+  }
 
   async function handleCopyDetailPayload() {
     try {
@@ -192,6 +229,7 @@ export function MiniProgramDetailPreviewPage({
               tabIndex={activeTab === tab.key ? 0 : -1}
               aria-label={`${tab.label}，${previews[tab.key].total_items} 项`}
               onClick={() => setActiveTab(tab.key)}
+              onKeyDown={(event) => handleTabKeyDown(event, miniTabs.findIndex((item) => item.key === tab.key))}
             >
               <span>{tab.label}</span>
               <strong>{previews[tab.key].total_items} 项</strong>
