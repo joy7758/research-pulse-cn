@@ -1,5 +1,7 @@
 """Pulse job and card repositories."""
 
+from __future__ import annotations
+
 from datetime import datetime
 from uuid import UUID
 

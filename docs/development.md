@@ -269,6 +269,11 @@
   - `make desktop-build-web`
 
 ## Subscription editor web shell
+- Shared core package:
+  - `make subscription-editor-core-install`
+  - `make subscription-editor-core-lint`
+  - `make subscription-editor-core-test`
+  - `make subscription-editor-core-build`
 - Install web-shell dependencies:
   - `make subscription-editor-install`
 - Run the web shell:
@@ -279,6 +284,8 @@
   - `make subscription-editor-test`
 - Build the web shell:
   - `make subscription-editor-build`
+
+The shared package under `packages/subscription-editor-core` owns the pure editor types, shaping helpers, and host/runtime adapter interfaces. The app under `apps/subscription-editor-web` is now only the first reference host.
 
 The shell lives under `apps/subscription-editor-web` and uses only:
 - `GET /subscription-editor/bootstrap`
@@ -584,7 +591,7 @@ Mini routes stay read-only and require mini-read grant auth only.
 - `GET /mini/subscription-reserve/editor-handoff-status`
 
 These mini endpoints only mint or inspect a short-lived editor handoff token. They do not make mini grants directly writable.
-The new browser/webview-friendly shell in `apps/subscription-editor-web` is the intended local/manual consumer of that handoff token in this phase.
+The new browser/webview-friendly shell in `apps/subscription-editor-web` is the intended local/manual consumer of that handoff token in this phase, while `packages/subscription-editor-core` keeps the reusable editor logic ready for a later mini/native host.
 `/mini/subscription-reserve` now also includes a read-only `workspace_invite_reserve` summary that explains:
 - mini grant still cannot claim workspace membership directly
 - a separate self-service grant is required

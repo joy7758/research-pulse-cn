@@ -1,16 +1,23 @@
 import {
   useCallback,
   useEffect,
+  useEffectEvent,
   useMemo,
   useRef,
   useState,
   startTransition,
 } from "react";
 
-import "./App.css";
-import { FieldIssueList } from "./components/FieldIssueList";
-import { PreviewPanel } from "./components/PreviewPanel";
-import { TokenEntryView } from "./components/TokenEntryView";
+import type {
+  EditorFormState,
+  SafeBindingSummaryRead,
+  SubscriptionEditorBootstrapRead,
+  SubscriptionEditorTransport,
+  SubscriptionSelfServiceEditorContractRead,
+  SubscriptionSettingsPreviewRead,
+  SubscriptionSettingsSaveResultRead,
+  SubscriptionSettingsValidationIssueRead,
+} from "@research-pulse/subscription-editor-core";
 import {
   buildContractFieldMap,
   buildDraftFingerprint,
@@ -20,29 +27,20 @@ import {
   groupValidationIssuesByField,
   normalizeWeekdaySelection,
   weekdayOptions,
-} from "./lib/editorModel";
+} from "@research-pulse/subscription-editor-core";
+
+import "./App.css";
+import { FieldIssueList } from "./components/FieldIssueList";
+import { PreviewPanel } from "./components/PreviewPanel";
+import { TokenEntryView } from "./components/TokenEntryView";
 import {
   createSubscriptionEditorApiClient,
   SubscriptionEditorApiError,
-  type SubscriptionEditorApiClient,
 } from "./lib/apiClient";
 import {
-  clearHandoffTokenFromVisibleUrl,
-  extractHandoffTokenFromFragment,
-} from "./lib/token";
-import type {
-  EditorFormState,
-  SafeBindingSummaryRead,
-  SubscriptionEditorBootstrapRead,
-  SubscriptionSelfServiceEditorContractRead,
-  SubscriptionSettingsPreviewRead,
-  SubscriptionSettingsSaveResultRead,
-  SubscriptionSettingsValidationIssueRead,
-} from "./lib/types";
-
-const DEFAULT_API_BASE_URL =
-  import.meta.env.VITE_SUBSCRIPTION_EDITOR_API_BASE_URL?.trim() ||
-  "http://127.0.0.1:8000";
+  createWebShellHostAdapter,
+  DEFAULT_SUBSCRIPTION_EDITOR_API_BASE_URL,
+} from "./lib/webHost";
 
 type SubscriptionEditorShellProps = {
   initialApiBaseUrl?: string;
@@ -55,7 +53,7 @@ type SubscriptionEditorShellProps = {
 type ConnectedState = {
   apiBaseUrl: string;
   handoffToken: string;
-  client: SubscriptionEditorApiClient;
+  client: SubscriptionEditorTransport;
   bootstrap: SubscriptionEditorBootstrapRead;
   contract: SubscriptionSelfServiceEditorContractRead;
 };
@@ -75,8 +73,19 @@ export function SubscriptionEditorShell({
     locationLike ?? (typeof window === "undefined" ? undefined : window.location);
   const resolvedHistory =
     historyLike ?? (typeof window === "undefined" ? undefined : window.history);
+  const hostAdapter = useMemo(
+    () =>
+      createWebShellHostAdapter({
+        initialApiBaseUrl,
+        initialHash,
+        locationLike: resolvedLocation,
+        historyLike: resolvedHistory,
+        defaultApiBaseUrl: initialApiBaseUrl ?? DEFAULT_SUBSCRIPTION_EDITOR_API_BASE_URL,
+      }),
+    [initialApiBaseUrl, initialHash, resolvedHistory, resolvedLocation],
+  );
   const [apiBaseUrlInput, setApiBaseUrlInput] = useState(
-    initialApiBaseUrl ?? DEFAULT_API_BASE_URL,
+    initialApiBaseUrl ?? DEFAULT_SUBSCRIPTION_EDITOR_API_BASE_URL,
   );
   const [handoffTokenInput, setHandoffTokenInput] = useState("");
   const [connectedState, setConnectedState] = useState<ConnectedState | null>(null);
@@ -121,6 +130,8 @@ export function SubscriptionEditorShell({
   const readOnlyBindingSummary: SafeBindingSummaryRead | null =
     connectedState?.bootstrap.official_account_binding_summary ?? null;
 
+  const runtimeMetadata = useMemo(() => hostAdapter.getRuntimeMetadata(), [hostAdapter]);
+
   const handleDisconnect = useCallback(() => {
     setConnectedState(null);
     setFormState(null);
@@ -134,7 +145,7 @@ export function SubscriptionEditorShell({
     setLastSavedFingerprint(null);
   }, []);
 
-  const connectWithToken = useCallback(
+  const connectWithToken = useEffectEvent(
     async ({
       handoffToken,
       apiBaseUrl,
@@ -215,7 +226,6 @@ export function SubscriptionEditorShell({
         setConnecting(false);
       }
     },
-    [apiClientFactory],
   );
 
   useEffect(() => {
@@ -224,22 +234,19 @@ export function SubscriptionEditorShell({
     }
     fragmentConsumedRef.current = true;
 
-    const fragment = initialHash ?? resolvedLocation?.hash ?? "";
-    const extracted = extractHandoffTokenFromFragment(fragment);
-    if (!extracted.handoffToken) {
+    const tokenInput = hostAdapter.getInitialTokenInput();
+    if (!tokenInput || typeof tokenInput !== "string") {
       return;
     }
 
-    if (resolvedLocation && resolvedHistory && !initialHash) {
-      clearHandoffTokenFromVisibleUrl(resolvedLocation, resolvedHistory);
-    }
+    hostAdapter.clearVisibleTokenHint?.();
 
     void connectWithToken({
-      handoffToken: extracted.handoffToken,
+      handoffToken: tokenInput,
       apiBaseUrl: apiBaseUrlInput,
       source: "fragment",
     });
-  }, [apiBaseUrlInput, connectWithToken, initialHash, resolvedHistory, resolvedLocation]);
+  }, [apiBaseUrlInput, connectWithToken, hostAdapter]);
 
   const handlePreview = useCallback(async () => {
     if (!connectedState || !formState) {
@@ -390,6 +397,10 @@ export function SubscriptionEditorShell({
           <div className="hero-chip">
             <span>API base</span>
             <strong>{connectedState.apiBaseUrl}</strong>
+          </div>
+          <div className="hero-chip">
+            <span>Runtime</span>
+            <strong>{runtimeMetadata.runtime_kind}</strong>
           </div>
           <button className="button-secondary" onClick={handleDisconnect} type="button">
             Clear token

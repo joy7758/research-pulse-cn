@@ -7,6 +7,7 @@
   - short-lived handoff grants for `/subscription-editor/*`
 - This phase adds a browser/webview-friendly shell so the handoff flow becomes visible and manually testable without building a real mini-program UI yet.
 - The shell stays thin and keeps all authoritative policy logic on the backend.
+- The next migration step can now extract pure editor logic into a shared host-agnostic core without changing the backend contract.
 
 ## Token Bootstrap Flow
 - The shell supports two startup paths:
@@ -76,6 +77,7 @@
 - campaign or broadcast behavior
 
 ## Future Work
+- shared pure editor core for future mini/native host reuse
 - real mini-program editing UI
 - tighter handoff UX from mini reserve
 - richer field rendering and section UX

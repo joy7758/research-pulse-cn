@@ -91,6 +91,37 @@ jobs:
       - name: Editor web build
         run: npm run build
 
+  subscription-editor-core:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/subscription-editor-core
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: packages/subscription-editor-core/package-lock.json
+
+      - name: Install editor core dependencies
+        run: npm ci
+
+      - name: Editor core lint
+        run: npm run lint
+
+      - name: Editor core typecheck
+        run: npm run typecheck
+
+      - name: Editor core tests
+        run: npm run test
+
+      - name: Editor core build
+        run: npm run build
+
   result-share-web:
     runs-on: ubuntu-latest
     defaults:

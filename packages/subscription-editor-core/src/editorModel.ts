@@ -38,13 +38,65 @@ export function normalizeWeekdaySelection(days: number[]): number[] {
     .sort((left, right) => left - right);
 }
 
-export function toDatetimeLocalValue(value: string | null): string {
+function formatDateTimeInTimeZone(value: Date, timeZone: string): string | null {
+  try {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).formatToParts(value);
+    const partMap = new Map(parts.map((part) => [part.type, part.value]));
+    const year = partMap.get("year");
+    const month = partMap.get("month");
+    const day = partMap.get("day");
+    const hour = partMap.get("hour");
+    const minute = partMap.get("minute");
+    if (!year || !month || !day || !hour || !minute) {
+      return null;
+    }
+    return `${year}-${month}-${day}T${hour}:${minute}`;
+  } catch {
+    return null;
+  }
+}
+
+function getTimeZoneOffsetMs(value: Date, timeZone: string): number | null {
+  const localValue = formatDateTimeInTimeZone(value, timeZone);
+  if (!localValue) {
+    return null;
+  }
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(localValue);
+  if (!match) {
+    return null;
+  }
+  const [, year, month, day, hour, minute] = match;
+  const localAsUtc = Date.UTC(
+    Number(year),
+    Number(month) - 1,
+    Number(day),
+    Number(hour),
+    Number(minute),
+  );
+  return localAsUtc - value.getTime();
+}
+
+export function toDatetimeLocalValue(value: string | null, timeZone?: string): string {
   if (!value) {
     return "";
   }
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) {
     return "";
+  }
+  if (timeZone) {
+    const zonedValue = formatDateTimeInTimeZone(parsed, timeZone);
+    if (zonedValue) {
+      return zonedValue;
+    }
   }
   const year = parsed.getFullYear();
   const month = String(parsed.getMonth() + 1).padStart(2, "0");
@@ -54,10 +106,33 @@ export function toDatetimeLocalValue(value: string | null): string {
   return `${year}-${month}-${day}T${hours}:${minutes}`;
 }
 
-export function fromDatetimeLocalValue(value: string): string | null {
+export function fromDatetimeLocalValue(value: string, timeZone?: string): string | null {
   const trimmed = value.trim();
   if (!trimmed) {
     return null;
+  }
+  const localMatch =
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(trimmed);
+  if (localMatch && timeZone) {
+    const [, year, month, day, hour, minute, second] = localMatch;
+    const utcGuess = new Date(
+      Date.UTC(
+        Number(year),
+        Number(month) - 1,
+        Number(day),
+        Number(hour),
+        Number(minute),
+        Number(second ?? "0"),
+      ),
+    );
+    const offset = getTimeZoneOffsetMs(utcGuess, timeZone);
+    if (offset !== null) {
+      const firstPass = new Date(utcGuess.getTime() - offset);
+      const correctedOffset = getTimeZoneOffsetMs(firstPass, timeZone);
+      return new Date(
+        utcGuess.getTime() - (correctedOffset ?? offset),
+      ).toISOString();
+    }
   }
   const parsed = new Date(trimmed);
   if (Number.isNaN(parsed.getTime())) {
@@ -80,7 +155,10 @@ export function buildFormStateFromBootstrap(
     allowedWeekdays: normalizeWeekdaySelection(
       bootstrap.current_settings_draft.allowed_weekdays,
     ),
-    mutedUntil: toDatetimeLocalValue(bootstrap.current_settings_draft.muted_until),
+    mutedUntil: toDatetimeLocalValue(
+      bootstrap.current_settings_draft.muted_until,
+      bootstrap.current_settings_draft.timezone,
+    ),
     minimumSelectedCards:
       bootstrap.current_settings_draft.minimum_selected_cards === null
         ? ""
@@ -110,7 +188,7 @@ export function buildSettingsPatchPayload(
           },
     timezone: trimmedTimezone,
     allowed_weekdays: normalizeWeekdaySelection(form.allowedWeekdays),
-    muted_until: fromDatetimeLocalValue(form.mutedUntil),
+    muted_until: fromDatetimeLocalValue(form.mutedUntil, trimmedTimezone),
     minimum_selected_cards:
       trimmedMinimumSelectedCards === ""
         ? null
